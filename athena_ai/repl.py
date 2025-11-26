@@ -212,6 +212,20 @@ class AthenaREPL:
 """
         console.print(Panel(Markdown(welcome), title=msg['welcome_title'], border_style="cyan"))
 
+        # Warning banner - experimental software
+        console.print()
+        console.print(Panel(
+            "[bold yellow]⚠️  EXPERIMENTAL SOFTWARE[/bold yellow]\n\n"
+            "[yellow]This tool is in early development. Use for debugging/testing only, NOT production.[/yellow]\n\n"
+            "[bold]Tips for best results:[/bold]\n"
+            "• Be specific in your requests\n"
+            "• Always specify the target server name\n"
+            "• Provide context (service name, error message, etc.)\n\n"
+            "[dim]Issues? → https://github.com/m-kis/athena/issues[/dim]",
+            title="⚠️  Warning",
+            border_style="yellow",
+        ))
+
     def show_help(self):
         """Show help message."""
         help_text = "## Available Slash Commands\n\n"
