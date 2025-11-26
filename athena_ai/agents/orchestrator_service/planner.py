@@ -1,3 +1,5 @@
+import io
+import sys
 from typing import Callable, List
 
 from rich.console import Console
@@ -151,8 +153,13 @@ Environment: {self.env}"""
             termination_condition=termination,
         )
 
-        # Run the team
-        result = await team.run(task=user_query)
+        # Capture and suppress autogen's console output
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            result = await team.run(task=user_query)
+        finally:
+            sys.stdout = old_stdout
 
         # Extract final response
         return self._extract_response(result)
@@ -173,7 +180,14 @@ Work together:
 3. DevSecOps_Engineer: Execute the plan
 """
 
-        result = await self.team.run(task=task)
+        # Capture and suppress autogen's console output
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            result = await self.team.run(task=task)
+        finally:
+            sys.stdout = old_stdout
+
         return self._extract_response(result)
 
     def _extract_response(self, result: "TaskResult") -> str:
