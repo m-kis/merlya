@@ -18,7 +18,7 @@ fabric = "^3.2"
 ansible-runner = "^2.4"
 netmiko = "^4.4"
 # AI/LLM providers (stable 2025 versions)
-anthropic = "^0.70"
+anthropic = "^0.75"
 openai = "^2.0"
 litellm = "^1.70"
 openai-agents = "^0.6.0"
