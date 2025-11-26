@@ -20,6 +20,7 @@ from athena_ai.memory.session import SessionManager
 from athena_ai.repl.commands import CommandHandler
 from athena_ai.repl.completer import create_completer
 from athena_ai.repl.ui import console, print_error, print_markdown, print_success, print_warning, show_welcome
+from athena_ai.tools.base import get_status_manager
 from athena_ai.utils.config import ConfigManager
 from athena_ai.utils.logger import logger
 
@@ -40,8 +41,12 @@ class AthenaREPL:
         if self.config.language is None:
             self._prompt_language_selection()
 
-        # Initialize orchestrator with language preference
-        self.orchestrator = Orchestrator(env=env, language=self.config.language or 'en')
+        # Initialize orchestrator with language preference and shared console
+        self.orchestrator = Orchestrator(
+            env=env,
+            language=self.config.language or 'en',
+            console=console
+        )
 
         # Use the same context manager as the orchestrator
         self.context_manager = self.orchestrator.context_manager
@@ -173,13 +178,21 @@ class AthenaREPL:
                 # Get recent conversation history for context
                 conversation_history = self._get_recent_history()
 
-                with console.status("[cyan]Processing...[/cyan]", spinner="dots"):
+                # Use StatusManager so tools can pause spinner for user input
+                status_manager = get_status_manager()
+                status_manager.set_console(console)
+                status_manager.start("[cyan]Processing...[/cyan]")
+                try:
                     response = asyncio.run(
                         self.orchestrator.process_request(
                             user_query=resolved_query,
-                            conversation_history=conversation_history
+                            conversation_history=conversation_history,
+                            # Pass original query for triage (without resolved credentials)
+                            original_query=user_input if resolved_query != user_input else None,
                         )
                     )
+                finally:
+                    status_manager.stop()
 
                 self.conversation_manager.add_assistant_message(response)
                 # Display response with markdown formatting
@@ -236,12 +249,31 @@ class AthenaREPL:
             console.print("\n[bold cyan]Add MCP Server[/bold cyan]\n")
             try:
                 name = input("Server name: ").strip()
-                command = input("Command (e.g., npx @modelcontextprotocol/server-git): ").strip()
+                command = input("Command (e.g., npx, uvx): ").strip()
                 args_str = input("Arguments (space-separated, or empty): ").strip()
+                env_str = input("Environment variables (KEY=VALUE, comma-separated, or empty): ").strip()
 
                 if name and command:
                     server_args = args_str.split() if args_str else []
-                    self.mcp_manager.add_server(name, command, server_args)
+                    # Parse environment variables
+                    env_vars = {}
+                    if env_str:
+                        for pair in env_str.split(','):
+                            pair = pair.strip()
+                            if '=' in pair:
+                                key, value = pair.split('=', 1)
+                                env_vars[key.strip()] = value.strip()
+
+                    # Build config dict as expected by MCPManager
+                    config = {
+                        "type": "stdio",
+                        "command": command,
+                        "args": server_args,
+                    }
+                    if env_vars:
+                        config["env"] = env_vars
+
+                    self.mcp_manager.add_server(name, config)
                     print_success(f"MCP server '{name}' added")
                 else:
                     print_error("Name and command are required")

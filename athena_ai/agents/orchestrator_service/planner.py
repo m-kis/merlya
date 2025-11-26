@@ -50,6 +50,7 @@ class ExecutionPlanner:
     def _init_enhanced_agents(self, knowledge_db):
         """Initialize additional agents for ENHANCED mode."""
         # Planner (no tools, just planning)
+        # Planner (no tools, just planning)
         self.planner = AssistantAgent(
             name="Planner",
             model_client=self.model_client,
@@ -106,11 +107,12 @@ Identify patterns across incidents.""",
             model_client=self.model_client,
             termination_condition=termination,
             selector_prompt="""Select the next speaker based on the conversation flow:
-- If the task needs planning, select Planner
-- If security review is needed, select Security_Expert
-- If execution is needed, select DevSecOps_Engineer
-- If knowledge lookup is needed, select Knowledge_Manager (if available)
-- After planning, usually DevSecOps_Engineer should execute
+1. START with Planner to create a plan (unless it's a simple follow-up).
+2. Planner -> Security_Expert (to review the plan).
+3. Security_Expert -> DevSecOps_Engineer (to execute).
+4. DevSecOps_Engineer -> Planner (if plan needs adjustment) or TERMINATE (if done).
+5. Knowledge_Manager can be called at any time to store findings.
+
 Return only the agent name.""",
         )
 
@@ -269,6 +271,7 @@ Environment: {self.env}"""
         conversation_history: List[dict] = None,
         allowed_tools: List[str] = None,
         intent: str = "action",
+        knowledge_context: str = None,
     ) -> str:
         """Process with multi-agent team."""
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
@@ -280,19 +283,18 @@ Environment: {self.env}"""
         intent_guidance = self._get_intent_guidance(intent)
 
         # Add tool restrictions if specified
-        tool_restriction = ""
-        if allowed_tools:
-            tool_restriction = f"\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
-
         task = f"""{intent_guidance}
 
 {base_task}
 
 Priority: {priority_name}
 Environment: {self.env}
-{tool_restriction}
+
+Past Knowledge Context:
+{knowledge_context or "No relevant past incidents found."}
+
 Work together:
-1. Planner: Create step-by-step plan
+1. Planner: Create step-by-step plan (considering past knowledge)
 2. Security_Expert: Review for security concerns
 3. DevSecOps_Engineer: Investigate, recommend, then execute if approved
 """
@@ -442,6 +444,13 @@ Provide your synthesis now:"""
 
         # Get last message from the assistant (not tool results)
         for msg in reversed(result.messages):
+            # Check for TextMessage or similar final response types
+            msg_type = type(msg).__name__
+
+            # Skip tool-related messages
+            if msg_type in ('ToolCallRequestEvent', 'ToolCallExecutionEvent', 'ToolCallSummaryMessage'):
+                continue
+
             raw_content = getattr(msg, 'content', '')
             if not raw_content:
                 continue
@@ -456,7 +465,6 @@ Provide your synthesis now:"""
                 continue
 
             # Clean up TERMINATE only from the end of the response
-            # (preserve legitimate uses of the word in content)
             content = content.strip()
             if content.endswith("TERMINATE"):
                 content = content[:-9].strip()  # Remove "TERMINATE" from end

@@ -329,7 +329,8 @@ Examples:
             Natural language error message with suggestions
         """
         error_type, confidence, analysis = self.classify_error(error)
-        cmd_name = command.split()[0] if command else "unknown"
+        # Safely extract command name, handling empty or whitespace-only strings
+        cmd_name = command.split()[0] if command and command.strip() else "unknown"
 
         # Error messages by type
         messages = {

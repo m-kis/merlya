@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from athena_ai.utils.logger import logger
 
-from .priority import Intent, Priority
+from .priority import Intent, Priority  # noqa: F401 - PriorityResult used in type hints
 from .signals import SignalDetector
 
 # Classification prompt - kept minimal for speed
@@ -262,20 +262,30 @@ class AITriageClassifier:
         self._cache_order.clear()
 
 
-# Singleton instance
+# Singleton instance - shared across the application for caching efficiency.
+# Note: The router passed to the first call (or force_new=True) is used.
+# Subsequent calls ignore the llm_router parameter unless force_new=True.
 _ai_classifier: Optional[AITriageClassifier] = None
 
 
 def get_ai_classifier(
-    llm_router=None,
+    llm_router: Optional[Any] = None,
     force_new: bool = False,
 ) -> AITriageClassifier:
     """
-    Get or create AI classifier instance.
+    Get or create AI classifier singleton instance.
+
+    This is a singleton factory. The first call (or calls with force_new=True)
+    creates the instance with the provided router. Subsequent calls return
+    the existing instance, ignoring the llm_router parameter.
 
     Args:
-        llm_router: User's LLM router. If None, uses keyword fallback only.
-        force_new: Force creation of new instance
+        llm_router: User's LLM router. Only used on first call or with force_new.
+                    If None, uses keyword fallback only.
+        force_new: Force creation of new instance with the provided router.
+
+    Returns:
+        The singleton AITriageClassifier instance.
     """
     global _ai_classifier
 

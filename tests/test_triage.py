@@ -606,7 +606,7 @@ class TestSmartTriageClassifier:
 
     def test_reset_specific_user(self):
         """reset_smart_classifier(user_id) should clear only that user."""
-        c1 = get_smart_classifier(db_client=None, user_id="user1")
+        _ = get_smart_classifier(db_client=None, user_id="user1")
         c2 = get_smart_classifier(db_client=None, user_id="user2")
         reset_smart_classifier(user_id="user1")
         # user2 should still be cached

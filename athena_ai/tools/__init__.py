@@ -7,8 +7,10 @@ Split from autogen_tools.py into focused modules.
 # High-level generation tools
 # Base utilities
 from .base import (
+    StatusManager,
     ToolContext,
     emit_hook,
+    get_status_manager,
     get_tool_context,
     initialize_tools,
     validate_host,
@@ -57,7 +59,9 @@ __all__ = [
     "PreviewFileEditTool",
     "RollbackTool",
     # Base
+    "StatusManager",
     "ToolContext",
+    "get_status_manager",
     "get_tool_context",
     "initialize_tools",
     "validate_host",

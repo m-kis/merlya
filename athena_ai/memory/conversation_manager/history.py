@@ -59,14 +59,16 @@ class HistoryManager:
         self.store.save_message(self.current_conversation.id, msg)
         return msg
 
+    DEFAULT_TITLE = "Untitled Conversation"
+
     def _update_title_from_prompt(self, prompt: str) -> None:
         """Generate conversation title from first user prompt."""
         # Clean and truncate
         title = prompt.strip().replace('\n', ' ')
 
-        # Skip if empty or whitespace-only
+        # Use fallback if empty or whitespace-only
         if not title:
-            return
+            title = self.DEFAULT_TITLE
 
         if len(title) > 50:
             # Truncate at word boundary

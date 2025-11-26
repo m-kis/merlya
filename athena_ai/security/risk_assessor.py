@@ -16,7 +16,9 @@ class RiskAssessor:
 
     def assess(self, command: str) -> Dict[str, str]:
         """Assess the risk level of a command."""
-        command.split()[0]
+        # Handle empty or whitespace-only commands
+        if not command or not command.strip():
+            return {"level": "low", "reason": "Empty command"}
 
         # Check for exact matches or starts with
         for level, patterns in self.RISK_LEVELS.items():

@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from .priority import Intent, Priority
 
-
 # ============================================================================
 # INTENT DETECTION KEYWORDS
 # ============================================================================
@@ -51,7 +50,7 @@ ANALYSIS_KEYWORDS: Set[str] = {
     # English
     "analyze", "analysis", "diagnose", "investigate", "troubleshoot",
     "why", "reason", "problem", "issue", "error", "debug", "root cause",
-    "performance", "bottleneck", "slow", "verbose", "verbosity",
+    "performance", "bottleneck", "slow", "verbosity",
 }
 
 # ============================================================================
@@ -329,9 +328,19 @@ class SignalDetector:
         host_match = re.search(host_pattern, text)
         if host_match:
             potential_host = host_match.group(1)
-            # Filter out common words
-            if potential_host.lower() not in {"prod", "production", "staging", "dev"}:
-                host = potential_host
+            # Filter out common words and credential-like patterns.
+            # This helps avoid false positives when credentials are resolved
+            # from @variables before reaching this detection.
+            excluded_words = {"prod", "production", "staging", "dev", "password", "pass", "user", "credential"}
+            potential_lower = potential_host.lower()
+            if potential_lower not in excluded_words:
+                # Filter out values that look like resolved credentials (contain only credential terms)
+                # but allow legitimate hostnames like "secrets-server", "api-token-01", "web-admin-01"
+                # by checking if the entire string is a credential pattern (not just contains it)
+                pure_credential_patterns = {"motdepasse", "secret", "token", "apikey", "password", "passwd"}
+                is_pure_credential = potential_lower in pure_credential_patterns
+                if not is_pure_credential:
+                    host = potential_host
 
         return host, service
 

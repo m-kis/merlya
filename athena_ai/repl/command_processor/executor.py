@@ -6,6 +6,7 @@ from rich.markdown import Markdown
 
 from athena_ai.repl.command_processor.registry import CommandRegistry
 from athena_ai.repl.ui import print_message
+from athena_ai.tools.base import get_status_manager
 
 console = Console()
 
@@ -49,10 +50,16 @@ class CommandExecutor:
         # Add to conversation and process
         self.repl.conversation_manager.add_user_message(prompt)
 
-        with console.status("[cyan]🦉 Athena is thinking...[/cyan]", spinner="dots"):
+        # Use StatusManager so tools can pause spinner for user input
+        status_manager = get_status_manager()
+        status_manager.set_console(console)
+        status_manager.start("[cyan]🦉 Athena is thinking...[/cyan]")
+        try:
             response = asyncio.run(
                 self.repl.orchestrator.process_request(user_query=prompt)
             )
+        finally:
+            status_manager.stop()
 
         self.repl.conversation_manager.add_assistant_message(response)
         console.print(Markdown(response))

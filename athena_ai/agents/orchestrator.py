@@ -356,9 +356,13 @@ class Orchestrator(BaseOrchestrator):
             return f"🔍 Dry run: Would process in {self.mode.value} mode"
 
         # Step 1: Full classification (priority + intent) - use AI when available
+        # Use original_query for triage if provided (avoids exposing resolved credentials)
         system_state = kwargs.get("system_state")
+        original_query = kwargs.get("original_query")
+        triage_query = original_query if original_query else user_query
+
         try:
-            triage_context = await self.intent_parser.classify_full_async(user_query, system_state)
+            triage_context = await self.intent_parser.classify_full_async(triage_query, system_state)
         except Exception as e:
             logger.error(f"Classification failed: {e}", exc_info=True)
             # Fallback: process without triage context
@@ -387,13 +391,14 @@ class Orchestrator(BaseOrchestrator):
         # Step 4: Execute based on mode (with tool restrictions and intent)
         try:
             allowed_tools = triage_context.allowed_tools
-            
+
             # Fetch knowledge context if in ENHANCED mode
             knowledge_context = None
             if self.mode == OrchestratorMode.ENHANCED and HAS_FALKORDB:
                 try:
-                    # Search for relevant knowledge
-                    knowledge_context = knowledge_tools.search_knowledge(user_query, limit=3)
+                    # Search for relevant knowledge using triage_query to avoid
+                    # exposing resolved credentials in search
+                    knowledge_context = knowledge_tools.search_knowledge(triage_query, limit=3)
                 except Exception as e:
                     logger.warning(f"Failed to fetch knowledge context: {e}")
 

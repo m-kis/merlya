@@ -330,14 +330,12 @@ class RequestClassifier:
         if complexity == RequestComplexity.COMPLEX:
             if service and host:
                 return (
-                    f"Perform comprehensive analysis of {service} service on {host}, including: "
-                    f"service status, configuration, logs, performance metrics, "
-                    f"resource usage, and backup status. Provide detailed findings and recommendations."
+                    f"Perform comprehensive analysis of {service} service on {host}. "
+                    f"Investigate status, logs, and performance. Provide findings and recommendations."
                 )
             elif service:
                 return (
-                    f"Analyze {service} service comprehensively: check status, review configuration, "
-                    f"examine logs for errors, monitor performance metrics, and verify backups."
+                    f"Analyze {service} service comprehensively. Check status, logs, and performance."
                 )
 
         elif complexity == RequestComplexity.MODERATE:

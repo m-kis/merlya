@@ -18,8 +18,9 @@ from .signals import SignalDetector
 
 # Optional imports for embeddings
 try:
-    from sentence_transformers import SentenceTransformer
     import numpy as np
+    from sentence_transformers import SentenceTransformer
+
     HAS_EMBEDDINGS = True
 except ImportError:
     HAS_EMBEDDINGS = False
@@ -99,7 +100,7 @@ class EmbeddingCache:
         # Batch compute uncached
         if uncached:
             new_embeddings = self.model.encode(uncached, convert_to_numpy=True)
-            for idx, text, embedding in zip(uncached_indices, uncached, new_embeddings):
+            for idx, text, embedding in zip(uncached_indices, uncached, new_embeddings, strict=False):
                 key = self._get_key(text)
                 self._cache[key] = embedding
                 self._access_order.append(key)
