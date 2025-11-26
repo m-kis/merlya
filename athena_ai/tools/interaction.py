@@ -110,9 +110,11 @@ def request_elevation(
     if not is_valid:
         return f"❌ BLOCKED: Invalid host '{target}'\n\n{message}"
 
-    # Check if we have permissions manager
+    # Check if we have required dependencies
     if not ctx.permissions:
         return "❌ Permission manager not available"
+    if not ctx.executor:
+        return "❌ Command executor not available"
 
     # Detect elevation capabilities
     try:
@@ -163,10 +165,13 @@ def request_elevation(
         return f"❌ Elevation declined by user (response: '{response}')"
 
     # Elevate and execute
-    elevated_command = ctx.permissions.elevate_command(command, target)
-    logger.info(f"Executing elevated command: {elevated_command}")
-
-    result = ctx.executor.execute(target, elevated_command, confirm=True)
+    try:
+        elevated_command = ctx.permissions.elevate_command(command, target)
+        logger.info(f"Executing elevated command: {elevated_command}")
+        result = ctx.executor.execute(target, elevated_command, confirm=True)
+    except Exception as e:
+        logger.warning(f"Elevated execution failed: {e}")
+        return f"❌ Elevated execution failed: {e}"
 
     if result['success']:
         output = result.get('stdout') or "(no output)"

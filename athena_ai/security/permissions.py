@@ -189,16 +189,14 @@ class PermissionManager:
         for protected_path in protected_read_paths:
             if protected_path in command:
                 for read_cmd in read_commands:
-                    if cmd_lower.startswith(read_cmd) or f" {read_cmd} " in cmd_lower or f"|{read_cmd} " in cmd_lower:
+                    # Use space suffix to avoid false positives (e.g., 'batch' matching 'bat')
+                    if cmd_lower.startswith(f"{read_cmd} ") or f" {read_cmd} " in cmd_lower or f"|{read_cmd} " in cmd_lower:
                         return True
-                # Also check simple cat/file operations
-                if cmd_lower.startswith('cat ') or cmd_lower.startswith('head ') or cmd_lower.startswith('tail '):
-                    return True
 
         # Check if command reads from /var/log/ (logs are often protected)
         if '/var/log/' in command:
             for read_cmd in read_commands:
-                if cmd_lower.startswith(read_cmd) or f" {read_cmd} " in cmd_lower or f"|{read_cmd} " in cmd_lower:
+                if cmd_lower.startswith(f"{read_cmd} ") or f" {read_cmd} " in cmd_lower or f"|{read_cmd} " in cmd_lower:
                     return True
 
         return False
