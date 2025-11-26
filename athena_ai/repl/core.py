@@ -156,8 +156,15 @@ class AthenaREPL:
                 # Resolve @variables before sending to LLM
                 # (user sees original query, LLM gets resolved values)
                 resolved_query = user_input
-                if self.credentials.has_variables(user_input):
-                    resolved_query = self.credentials.resolve_variables(user_input)
+                try:
+                    if self.credentials.has_variables(user_input):
+                        resolved_query = self.credentials.resolve_variables(user_input)
+                        # Security: Log resolution without exposing secret values
+                        logger.debug(f"Variables resolved (original: {len(user_input)}, resolved: {len(resolved_query)} chars)")
+                except Exception as e:
+                    logger.warning(f"Variable resolution failed: {e}")
+                    print_warning(f"Variable resolution failed: {e}")
+                    # Continue with original query
 
                 with console.status("[cyan]Processing...[/cyan]", spinner="dots"):
                     response = asyncio.run(
@@ -424,8 +431,14 @@ class AthenaREPL:
 
         # Resolve @variables before sending to LLM
         resolved_query = query
-        if self.credentials.has_variables(query):
-            resolved_query = self.credentials.resolve_variables(query)
+        try:
+            if self.credentials.has_variables(query):
+                resolved_query = self.credentials.resolve_variables(query)
+                # Security: Log variable resolution (without exposing secret values)
+                logger.debug(f"Variables resolved in query (original length: {len(query)}, resolved: {len(resolved_query)})")
+        except Exception as e:
+            logger.warning(f"Variable resolution failed: {e}")
+            # Continue with original query if resolution fails
 
         response = asyncio.run(self.orchestrator.process_request(user_query=resolved_query))
         self.conversation_manager.add_assistant_message(response)
