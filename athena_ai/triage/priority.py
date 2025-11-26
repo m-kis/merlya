@@ -32,14 +32,12 @@ class Intent(Enum):
     ANALYSIS = "analysis"  # "analyze performance", "diagnose issue"
 
     @property
-    def allowed_tools(self) -> List[str]:
-        """Tools allowed for this intent type."""
+    def allowed_tools(self) -> Optional[List[str]]:
+        """Tools allowed for this intent type. None means all tools allowed."""
         if self == Intent.QUERY:
             return ["list_hosts", "get_infrastructure_context", "recall_skill"]
-        elif self == Intent.ACTION:
-            return None  # All tools allowed
-        else:  # ANALYSIS
-            return None  # All tools allowed
+        # ACTION and ANALYSIS: all tools allowed
+        return None
 
 
 class Priority(IntEnum):

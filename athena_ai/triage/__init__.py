@@ -9,7 +9,7 @@ from .behavior import BEHAVIOR_PROFILES, BehaviorProfile, describe_behavior, get
 from .classifier import PriorityClassifier, classify_priority, get_classifier
 from .priority import Intent, Priority, PriorityResult, TriageResult
 from .signals import SignalDetector
-from .smart_classifier import SmartTriageClassifier, get_smart_classifier
+from .smart_classifier import SmartTriageClassifier, get_smart_classifier, reset_smart_classifier
 
 __all__ = [
     # Priority & Intent
@@ -25,6 +25,7 @@ __all__ = [
     # Smart Classifier
     "SmartTriageClassifier",
     "get_smart_classifier",
+    "reset_smart_classifier",
     # Behavior
     "BehaviorProfile",
     "BEHAVIOR_PROFILES",

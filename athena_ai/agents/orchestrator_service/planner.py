@@ -229,8 +229,8 @@ Environment: {self.env}"""
         task = f"""{base_task}
 
 Priority: {priority_name}
-Environment: {self.env}{tool_restriction}
-
+Environment: {self.env}
+{tool_restriction}
 Work together:
 1. Planner: Create step-by-step plan
 2. Security_Expert: Review for security concerns

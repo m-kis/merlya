@@ -63,6 +63,11 @@ class HistoryManager:
         """Generate conversation title from first user prompt."""
         # Clean and truncate
         title = prompt.strip().replace('\n', ' ')
+
+        # Skip if empty or whitespace-only
+        if not title:
+            return
+
         if len(title) > 50:
             # Truncate at word boundary
             title = title[:47]

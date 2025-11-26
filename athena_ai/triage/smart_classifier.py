@@ -8,8 +8,6 @@ Falls back to keyword-based classification if embeddings unavailable.
 """
 
 import hashlib
-from datetime import datetime
-from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
@@ -24,6 +22,7 @@ try:
     HAS_EMBEDDINGS = True
 except ImportError:
     HAS_EMBEDDINGS = False
+    np = None  # type: ignore
     logger.debug("sentence-transformers not installed. Using keyword-only classification.")
 
 
@@ -87,6 +86,10 @@ class EmbeddingCache:
         for i, text in enumerate(texts):
             key = self._get_key(text)
             if key in self._cache:
+                # Update access order for cache hit (LRU behavior)
+                if key in self._access_order:
+                    self._access_order.remove(key)
+                self._access_order.append(key)
                 cached.append((i, self._cache[key]))
             else:
                 uncached.append(text)
@@ -393,6 +396,9 @@ class SmartTriageClassifier:
         # Reference patterns for semantic matching
         self._reference_patterns = self._build_reference_patterns()
 
+        # Cache for reference embeddings (avoid lru_cache on instance method)
+        self._reference_embeddings_cache: Dict[Intent, Tuple[List[str], Any]] = {}
+
     def _build_reference_patterns(self) -> Dict[Intent, List[str]]:
         """Build reference patterns for each intent."""
         return {
@@ -428,15 +434,20 @@ class SmartTriageClassifier:
             ],
         }
 
-    @lru_cache(maxsize=128)
-    def _get_reference_embeddings(self, intent: Intent) -> Tuple[List[str], "np.ndarray"]:
+    def _get_reference_embeddings(self, intent: Intent) -> Tuple[List[str], Optional["np.ndarray"]]:
         """Get cached reference embeddings for an intent."""
         if not self._use_embeddings or not self._embedding_cache:
             return [], None
 
+        # Use instance-level cache instead of lru_cache (avoids memory leak)
+        if intent in self._reference_embeddings_cache:
+            return self._reference_embeddings_cache[intent]
+
         patterns = self._reference_patterns[intent]
         embeddings = self._embedding_cache.get_embeddings_batch(patterns)
-        return patterns, np.array(embeddings)
+        result = (patterns, np.array(embeddings))
+        self._reference_embeddings_cache[intent] = result
+        return result
 
     def _semantic_intent_score(self, query: str) -> Dict[Intent, float]:
         """
@@ -456,9 +467,20 @@ class SmartTriageClassifier:
                 if ref_embeddings is None or len(ref_embeddings) == 0:
                     continue
 
-                # Cosine similarity
-                similarities = np.dot(ref_embeddings, query_embedding) / (
-                    np.linalg.norm(ref_embeddings, axis=1) * np.linalg.norm(query_embedding)
+                # Cosine similarity with zero-norm protection
+                query_norm = np.linalg.norm(query_embedding)
+                if query_norm == 0:
+                    # Zero vector - skip semantic scoring
+                    continue
+
+                ref_norms = np.linalg.norm(ref_embeddings, axis=1)
+                # Avoid division by zero for any reference embedding
+                valid_mask = ref_norms > 0
+                if not np.any(valid_mask):
+                    continue
+
+                similarities = np.dot(ref_embeddings[valid_mask], query_embedding) / (
+                    ref_norms[valid_mask] * query_norm
                 )
                 # Use max similarity as score
                 scores[intent] = float(np.max(similarities))
@@ -594,21 +616,32 @@ class SmartTriageClassifier:
         }
 
 
-# Singleton instance
-_smart_classifier: Optional[SmartTriageClassifier] = None
+# Singleton instances per (db_client_id, user_id) combination
+_smart_classifiers: Dict[Tuple[int, str], SmartTriageClassifier] = {}
 
 
 def get_smart_classifier(
     db_client=None,
     user_id: str = "default",
 ) -> SmartTriageClassifier:
-    """Get or create the smart classifier instance."""
-    global _smart_classifier
+    """
+    Get or create a smart classifier instance.
 
-    if _smart_classifier is None:
-        _smart_classifier = SmartTriageClassifier(
+    Creates separate instances for different db_client/user_id combinations.
+    """
+    # Use id(db_client) to distinguish different client instances
+    cache_key = (id(db_client) if db_client else 0, user_id)
+
+    if cache_key not in _smart_classifiers:
+        _smart_classifiers[cache_key] = SmartTriageClassifier(
             db_client=db_client,
             user_id=user_id,
         )
 
-    return _smart_classifier
+    return _smart_classifiers[cache_key]
+
+
+def reset_smart_classifier() -> None:
+    """Reset all cached classifier instances. Useful for testing."""
+    global _smart_classifiers
+    _smart_classifiers.clear()
