@@ -79,6 +79,7 @@ class Orchestrator(BaseOrchestrator):
         mode: OrchestratorMode = OrchestratorMode.BASIC,
         env: str = "dev",
         language: str = "en",
+        console: Console = None,
     ):
         super().__init__(env=env, language=language)
 
@@ -89,7 +90,7 @@ class Orchestrator(BaseOrchestrator):
             )
 
         self.mode = mode
-        self.console = Console()
+        self.console = console or Console()
         self.config_manager = ConfigManager()
 
         # Verbosity (optional)
@@ -386,6 +387,16 @@ class Orchestrator(BaseOrchestrator):
         # Step 4: Execute based on mode (with tool restrictions and intent)
         try:
             allowed_tools = triage_context.allowed_tools
+            
+            # Fetch knowledge context if in ENHANCED mode
+            knowledge_context = None
+            if self.mode == OrchestratorMode.ENHANCED and HAS_FALKORDB:
+                try:
+                    # Search for relevant knowledge
+                    knowledge_context = knowledge_tools.search_knowledge(user_query, limit=3)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch knowledge context: {e}")
+
             if self.mode == OrchestratorMode.ENHANCED:
                 result = await self.planner.execute_enhanced(
                     user_query,
@@ -393,6 +404,7 @@ class Orchestrator(BaseOrchestrator):
                     conversation_history,
                     allowed_tools=allowed_tools,
                     intent=intent_value,  # Pass intent for behavior adaptation
+                    knowledge_context=knowledge_context,
                 )
             else:
                 result = await self.planner.execute_basic(
@@ -425,6 +437,7 @@ def create_orchestrator(
     mode: str = "basic",
     env: str = "dev",
     language: str = "en",
+    console: Console = None,
 ) -> Orchestrator:
     """
     Factory function to create orchestrator.
@@ -433,9 +446,10 @@ def create_orchestrator(
         mode: "basic" or "enhanced"
         env: Environment name
         language: Response language
+        console: Optional existing console
 
     Returns:
         Configured Orchestrator instance
     """
     mode_enum = OrchestratorMode(mode.lower())
-    return Orchestrator(mode=mode_enum, env=env, language=language)
+    return Orchestrator(mode=mode_enum, env=env, language=language, console=console)
