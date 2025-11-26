@@ -152,10 +152,21 @@ class PermissionManager:
             'reboot', 'shutdown', 'halt', 'poweroff'
         ]
 
-        # Paths that require root access
+        # Paths that require root access for writes
         root_paths = [
             '/etc/', '/var/log/', '/root/', '/sys/', '/proc/sys/',
             '/usr/bin/', '/usr/sbin/', '/sbin/'
+        ]
+
+        # Paths that often require root even for reads (protected configs)
+        protected_read_paths = [
+            '/etc/shadow', '/etc/gshadow', '/etc/sudoers',
+            '/etc/datadog-agent/', '/etc/dd-agent/',
+            '/etc/newrelic/', '/etc/zabbix/',
+            '/etc/ssl/private/', '/etc/pki/tls/private/',
+            '/var/log/secure', '/var/log/auth.log',
+            '/var/log/audit/', '/var/log/messages',
+            '/root/',
         ]
 
         cmd_lower = command.lower()
@@ -173,8 +184,18 @@ class PermissionManager:
                     if op in command:
                         return True
 
+        # Check if command reads from protected paths (even read requires elevation)
+        read_commands = ['cat', 'tail', 'head', 'less', 'more', 'grep', 'awk', 'sed', 'vim', 'vi', 'nano', 'bat', 'view']
+        for protected_path in protected_read_paths:
+            if protected_path in command:
+                for read_cmd in read_commands:
+                    if cmd_lower.startswith(read_cmd) or f" {read_cmd} " in cmd_lower or f"|{read_cmd} " in cmd_lower:
+                        return True
+                # Also check simple cat/file operations
+                if cmd_lower.startswith('cat ') or cmd_lower.startswith('head ') or cmd_lower.startswith('tail '):
+                    return True
+
         # Check if command reads from /var/log/ (logs are often protected)
-        read_commands = ['cat', 'tail', 'head', 'less', 'more', 'grep', 'awk', 'sed', 'vim', 'vi', 'nano']
         if '/var/log/' in command:
             for read_cmd in read_commands:
                 if cmd_lower.startswith(read_cmd) or f" {read_cmd} " in cmd_lower or f"|{read_cmd} " in cmd_lower:

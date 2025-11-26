@@ -38,7 +38,7 @@ from .infra_tools import (
     PreviewFileEditTool,
     RollbackTool,
 )
-from .interaction import ask_user, recall_skill, remember_skill
+from .interaction import ask_user, recall_skill, remember_skill, request_elevation
 from .security import analyze_security_logs, audit_host
 from .system import (
     disk_info,
@@ -96,4 +96,5 @@ __all__ = [
     "ask_user",
     "remember_skill",
     "recall_skill",
+    "request_elevation",
 ]

@@ -34,13 +34,20 @@ def web_search(
 
     try:
         # Use ThreadPoolExecutor for cross-platform timeout (works on Windows too)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_search, query, 5)
-            try:
-                results = future.result(timeout=10)  # 10 second timeout
-            except concurrent.futures.TimeoutError:
-                logger.warning("DuckDuckGo search timed out (possible CAPTCHA)")
-                return "❌ Search timed out (DuckDuckGo may require verification). Try again later."
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_do_search, query, 5)
+        timed_out = False
+        try:
+            results = future.result(timeout=10)  # 10 second timeout
+        except concurrent.futures.TimeoutError:
+            timed_out = True
+            logger.warning("DuckDuckGo search timed out (possible CAPTCHA)")
+        finally:
+            # Don't wait for thread on timeout - return immediately
+            executor.shutdown(wait=not timed_out, cancel_futures=timed_out)
+
+        if timed_out:
+            return "❌ Search timed out (DuckDuckGo may require verification). Try again later."
 
         if not results:
             return "❌ No results found."

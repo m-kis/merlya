@@ -442,7 +442,7 @@ class AthenaREPL:
         if not conv or not conv.messages:
             return []
 
-        # Get recent messages (excluding the current one being processed)
+        # Get recent messages (including the current user message if already added)
         recent = conv.messages[-max_messages:]
         return [{"role": msg.role, "content": msg.content} for msg in recent]
 

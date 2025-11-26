@@ -14,7 +14,7 @@ All tool implementations have been moved to separate modules following SRP:
 - tools/system.py: disk, memory, network, processes, services
 - tools/containers.py: docker_exec, kubectl_exec
 - tools/web.py: web_search, web_fetch
-- tools/interaction.py: ask_user, remember_skill, recall_skill
+- tools/interaction.py: ask_user, remember_skill, recall_skill, request_elevation
 
 For new code, import directly from athena_ai.tools:
     from athena_ai.tools import execute_command, list_hosts
@@ -45,6 +45,7 @@ from athena_ai.tools import (
     read_remote_file,
     recall_skill,
     remember_skill,
+    request_elevation,
     scan_host,
     service_control,
     tail_logs,
@@ -104,4 +105,5 @@ __all__ = [
     "ask_user",
     "remember_skill",
     "recall_skill",
+    "request_elevation",
 ]
