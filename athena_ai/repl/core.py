@@ -9,13 +9,13 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.history import FileHistory
 
-# Using Ag2 Multi-Agent Orchestrator
-from athena_ai.agents.ag2_orchestrator import Ag2Orchestrator as Orchestrator
+# Using unified Multi-Agent Orchestrator
+from athena_ai.agents import Orchestrator
 from athena_ai.commands import get_command_loader
 from athena_ai.mcp.manager import MCPManager
 
-# Using SQLite-based ConversationManager for unified storage
-from athena_ai.memory.conversation_manager_sqlite import ConversationManager
+# Using unified ConversationManager
+from athena_ai.memory.conversation import ConversationManager
 from athena_ai.memory.session import SessionManager
 from athena_ai.repl.commands import CommandHandler
 from athena_ai.repl.completer import create_completer

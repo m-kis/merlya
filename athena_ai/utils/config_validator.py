@@ -1,3 +1,8 @@
+"""
+Configuration Validator for Athena.
+
+Validates configuration and dependencies before starting.
+"""
 import os
 import sys
 from pathlib import Path
@@ -6,6 +11,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 console = Console()
+
 
 class ConfigValidator:
     """
@@ -26,17 +32,12 @@ class ConfigValidator:
         checks = [
             self.check_config_dir,
             self.check_env_file,
-            self.check_api_keys,
+            self.check_provider,
             self.check_dependencies
         ]
 
         for check in checks:
             if not check():
-                # We stop at the first failure to guide the user step-by-step
-                # or we could continue to show all issues.
-                # For a "wizard" feel, stopping might be better to fix one thing at a time.
-                # But let's show all issues for now, or maybe return False immediately if critical?
-                # Let's return False immediately to trigger the fix flow for that specific issue.
                 return False
 
         console.print("[green]✓ System is ready![/green]")
@@ -69,17 +70,49 @@ class ConfigValidator:
                         key, value = line.split("=", 1)
                         os.environ[key] = value
 
-    def check_api_keys(self) -> bool:
-        """Check if essential API keys are present."""
-        # Check for at least one provider
-        providers = ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OLLAMA_MODEL"]
+    def check_provider(self) -> bool:
+        """
+        Check if a valid AI provider is configured.
 
-        # If OLLAMA_MODEL is set, we assume Ollama is used and key is not strictly required
-        # ATHENA_PROVIDER can also be checked for provider configuration
+        Respects the chosen provider - if one is configured, don't require others.
+        """
+        provider = os.getenv("ATHENA_PROVIDER", "").lower()
 
-        has_key = any(os.getenv(k) for k in providers)
+        # Check based on configured provider
+        if provider == "ollama":
+            # Ollama: just need model name, no API key
+            if os.getenv("OLLAMA_MODEL"):
+                return True
+            console.print("[yellow]⚠ OLLAMA_MODEL not set.[/yellow]")
+            return False
 
-        if not has_key:
+        elif provider == "openrouter":
+            if os.getenv("OPENROUTER_API_KEY"):
+                return True
+            console.print("[yellow]⚠ OPENROUTER_API_KEY not set.[/yellow]")
+            return False
+
+        elif provider == "anthropic":
+            if os.getenv("ANTHROPIC_API_KEY"):
+                return True
+            console.print("[yellow]⚠ ANTHROPIC_API_KEY not set.[/yellow]")
+            return False
+
+        elif provider == "openai":
+            if os.getenv("OPENAI_API_KEY"):
+                return True
+            console.print("[yellow]⚠ OPENAI_API_KEY not set.[/yellow]")
+            return False
+
+        # No provider specified - check if any key exists
+        has_config = any([
+            os.getenv("OLLAMA_MODEL"),
+            os.getenv("OPENROUTER_API_KEY"),
+            os.getenv("ANTHROPIC_API_KEY"),
+            os.getenv("OPENAI_API_KEY"),
+        ])
+
+        if not has_config:
             console.print("[yellow]⚠ No AI Provider configuration found.[/yellow]")
             return False
 
@@ -87,14 +120,24 @@ class ConfigValidator:
 
     def check_dependencies(self) -> bool:
         """Check for optional but recommended dependencies."""
+        # Check for new autogen-agentchat API (0.7+)
+        try:
+            from autogen_agentchat.agents import AssistantAgent
+            return True
+        except ImportError:
+            pass
+
+        # Fallback: check for old pyautogen API (0.2.x)
         try:
             import autogen
+            from autogen import AssistantAgent
+            return True
         except ImportError:
-            console.print("[yellow]⚠ 'pyautogen' is not installed.[/yellow]")
-            console.print("[dim]It is required for the Multi-Agent system.[/dim]")
-            return False
+            pass
 
-        return True
+        console.print("[yellow]⚠ 'autogen-agentchat' is not installed.[/yellow]")
+        console.print("[dim]It is required for the Multi-Agent system.[/dim]")
+        return False
 
     def fix_issues(self) -> bool:
         """
@@ -110,8 +153,8 @@ class ConfigValidator:
             else:
                 return False
 
-        # 2. Env File & API Keys (Combined Init)
-        if not self.env_file.exists() or not self.check_api_keys():
+        # 2. Env File & Provider Config (Combined Init)
+        if not self.env_file.exists() or not self.check_provider():
             if Confirm.ask("Initialize configuration now?"):
                 from athena_ai.cli import init_interactive
                 init_interactive()
@@ -121,19 +164,44 @@ class ConfigValidator:
                 return False
 
         # 3. Dependencies
-        try:
-            import autogen
-        except ImportError:
-            if Confirm.ask("Install 'pyautogen' now?"):
+        if not self.check_dependencies():
+            if Confirm.ask("Install 'pyautogen' and 'autogen-ext[openai]' now?"):
                 import subprocess
                 try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyautogen"])
-                    console.print("[green]✓ pyautogen installed[/green]")
+                    subprocess.check_call([
+                        sys.executable, "-m", "pip", "install",
+                        "pyautogen", "autogen-ext[openai]"
+                    ])
+                    console.print("[green]✓ autogen packages installed[/green]")
                 except subprocess.CalledProcessError:
-                    console.print("[red]✗ Failed to install pyautogen[/red]")
+                    console.print("[red]✗ Failed to install autogen packages[/red]")
                     return False
             else:
-                console.print("[yellow]Skipping dependency installation. Ag2 features will be disabled.[/yellow]")
+                console.print("[yellow]Skipping dependency installation. Multi-agent features will be disabled.[/yellow]")
                 # We allow proceeding but warn
 
+        console.print("\n[green]Configuration fixed![/green]")
         return True
+
+
+# Convenience function
+def validate_config(env: str = "dev", auto_fix: bool = True) -> bool:
+    """
+    Validate configuration and optionally fix issues.
+
+    Args:
+        env: Environment name
+        auto_fix: If True, offer to fix issues interactively
+
+    Returns:
+        True if configuration is valid (or was fixed)
+    """
+    validator = ConfigValidator(env)
+
+    if validator.check_all():
+        return True
+
+    if auto_fix:
+        return validator.fix_issues()
+
+    return False

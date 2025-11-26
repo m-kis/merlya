@@ -1,38 +1,93 @@
+"""
+Agent Coordinator - Orchestrates multiple specialized agents.
+
+Refactored to use AgentRegistry (OCP) instead of hard-coded if/elif chains.
+Adding new agents requires only registration, not code modification here.
+"""
 import json
+import re
 from typing import Any, Dict
 
-from athena_ai.agents.cloud import CloudAgent
-from athena_ai.agents.diagnostic import DiagnosticAgent
-from athena_ai.agents.monitoring import MonitoringAgent
-from athena_ai.agents.provisioning import ProvisioningAgent
-from athena_ai.agents.remediation import RemediationAgent
 from athena_ai.context.manager import ContextManager
+from athena_ai.core.registry import get_registry, register_builtin_agents
 from athena_ai.llm.router import LLMRouter
 from athena_ai.utils.logger import logger
 
 
 class AgentCoordinator:
+    """
+    Coordinates multiple agents to fulfill complex requests.
+
+    Uses AgentRegistry for dynamic agent lookup (OCP principle).
+    The coordinator doesn't need modification when new agents are added.
+    """
+
     def __init__(self, context_manager: ContextManager):
         self.context_manager = context_manager
         self.llm = LLMRouter()
-        self.diagnostic_agent = DiagnosticAgent(context_manager)
-        self.remediation_agent = RemediationAgent(context_manager)
-        self.monitoring_agent = MonitoringAgent(context_manager)
-        self.provisioning_agent = ProvisioningAgent(context_manager)
-        self.cloud_agent = CloudAgent(context_manager)
+        self._registry = get_registry()
 
-    def coordinate(self, user_query: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
+        # Ensure built-in agents are registered
+        if not self._registry.list_all():
+            register_builtin_agents()
+
+    def coordinate(
+        self,
+        user_query: str,
+        target: str = "local",
+        confirm: bool = False,
+        dry_run: bool = False
+    ) -> Dict[str, Any]:
         """
         Coordinate multiple agents to fulfill a request.
+
+        Args:
+            user_query: The user's request
+            target: Target host
+            confirm: Auto-confirm actions
+            dry_run: Preview without executing
+
+        Returns:
+            Coordination results with plan and step outcomes
         """
         logger.info(f"Coordinating request: {user_query}")
 
-        # Get context to provide awareness of environment
+        # Get context for environment awareness
         context = self.context_manager.get_context()
         inventory = context.get("inventory", {})
         local_info = context.get("local", {})
 
-        # 1. Decompose Task
+        # Get available agents from registry
+        available_agents = self._registry.list_with_descriptions()
+
+        # 1. Decompose Task via LLM
+        plan = self._create_plan(user_query, target, inventory, local_info, available_agents)
+
+        if "error" in plan:
+            return plan
+
+        # 2. Execute Plan Steps
+        results = self._execute_plan(plan, target, confirm, dry_run)
+
+        return {
+            "coordination_plan": plan,
+            "step_results": results
+        }
+
+    def _create_plan(
+        self,
+        user_query: str,
+        target: str,
+        inventory: Dict,
+        local_info: Dict,
+        available_agents: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Create execution plan using LLM."""
+        # Format available agents for prompt
+        agents_list = "\n".join(
+            f"- {name}: {desc}" for name, desc in available_agents.items()
+        )
+
         plan_prompt = f"""
         User Query: {user_query}
         Target: {target}
@@ -43,11 +98,7 @@ class AgentCoordinator:
 
         Decide which agents to call and in what order.
         Available Agents:
-        - DiagnosticAgent: For troubleshooting and finding root causes.
-        - RemediationAgent: For fixing issues (restarts, config edits).
-        - MonitoringAgent: For checking health and metrics.
-        - ProvisioningAgent: For Ansible playbooks and Terraform.
-        - CloudAgent: For AWS and Kubernetes tasks.
+        {agents_list}
 
         Return a JSON plan:
         {{
@@ -64,34 +115,36 @@ class AgentCoordinator:
             logger.debug(f"Raw LLM Plan Response: {plan_response}")
 
             # Robust JSON extraction
-            import re
             json_match = re.search(r'\{.*\}', plan_response, re.DOTALL)
             if json_match:
                 plan_response = json_match.group(0)
 
-            plan = json.loads(plan_response)
+            return json.loads(plan_response)
+
         except Exception as e:
-            logger.error(f"Coordination planning failed: {e}. Response was: {plan_response if 'plan_response' in locals() else 'None'}")
+            plan_str = plan_response if 'plan_response' in locals() else 'None'
+            logger.error(f"Coordination planning failed: {e}. Response: {plan_str}")
             return {"error": "Coordination failed"}
 
+    def _execute_plan(
+        self,
+        plan: Dict[str, Any],
+        target: str,
+        confirm: bool,
+        dry_run: bool
+    ) -> list[Dict[str, Any]]:
+        """Execute plan steps using registry for agent lookup."""
         results = []
+
         for step in plan.get("steps", []):
             agent_name = step["agent"]
             task = step["task"]
 
             logger.info(f"Dispatching to {agent_name}: {task}")
 
-            step_result = {}
-            if agent_name == "DiagnosticAgent":
-                step_result = self.diagnostic_agent.run(task, target, confirm, dry_run)
-            elif agent_name == "RemediationAgent":
-                step_result = self.remediation_agent.run(task, target, confirm, dry_run)
-            elif agent_name == "MonitoringAgent":
-                step_result = self.monitoring_agent.run(task, target, confirm, dry_run)
-            elif agent_name == "ProvisioningAgent":
-                step_result = self.provisioning_agent.run(task, target, confirm, dry_run)
-            elif agent_name == "CloudAgent":
-                step_result = self.cloud_agent.run(task, target, confirm, dry_run)
+            step_result = self._dispatch_to_agent(
+                agent_name, task, target, confirm, dry_run
+            )
 
             results.append({
                 "agent": agent_name,
@@ -99,10 +152,37 @@ class AgentCoordinator:
                 "result": step_result
             })
 
-            # Simple logic: if diagnostic found no issue, maybe skip remediation?
-            # For MVP, we just execute the plan linearly.
+        return results
 
-        return {
-            "coordination_plan": plan,
-            "step_results": results
-        }
+    def _dispatch_to_agent(
+        self,
+        agent_name: str,
+        task: str,
+        target: str,
+        confirm: bool,
+        dry_run: bool
+    ) -> Dict[str, Any]:
+        """
+        Dispatch task to agent using registry lookup.
+
+        OCP: New agents only need registration, not code changes here.
+        """
+        if not self._registry.has(agent_name):
+            available = ", ".join(self._registry.list_all())
+            return {
+                "error": f"Unknown agent '{agent_name}'. Available: {available}"
+            }
+
+        try:
+            # Get agent from registry
+            agent = self._registry.get(
+                agent_name,
+                context_manager=self.context_manager
+            )
+
+            # Execute with standard interface
+            return agent.run(task, target, confirm, dry_run)
+
+        except Exception as e:
+            logger.error(f"Agent {agent_name} failed: {e}")
+            return {"error": str(e)}

@@ -24,7 +24,7 @@ jobs:
         run: pip install ruff
 
       - name: Lint
-        run: ruff check athena_ai/ --output-format=github
+        run: ruff check athena_ai/ tests/ --output-format=github
 
   test:
     runs-on: ubuntu-latest

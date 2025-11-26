@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
 
@@ -105,7 +105,7 @@ class AuditLogger:
         self,
         log_dir: Optional[str] = None,
         environment: str = "dev",
-        alert_callback: Optional[callable] = None,
+        alert_callback: Optional[Callable] = None,
     ):
         # Setup log directory
         if log_dir is None:

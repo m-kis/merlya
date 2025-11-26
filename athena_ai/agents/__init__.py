@@ -14,7 +14,12 @@ Features:
 - Safe execution with automatic rollback
 - Modular DDD architecture
 """
-from athena_ai.agents.ag2_orchestrator import Ag2Orchestrator
+# New unified Orchestrator (DRY: replaces Ag2Orchestrator + EnhancedAg2Orchestrator)
+from athena_ai.agents.orchestrator import (
+    Orchestrator,
+    OrchestratorMode,
+    create_orchestrator,
+)
 from athena_ai.agents.remediation import (
     RemediationAgent,
     RemediationMode,
@@ -31,11 +36,15 @@ from athena_ai.agents.sentinel import (
     get_sentinel_agent,
 )
 
-# UnifiedOrchestrator has been replaced by Ag2Orchestrator
-# for advanced multi-agent capabilities
+# Backward compatibility alias
+Ag2Orchestrator = Orchestrator
 
 __all__ = [
-    "Ag2Orchestrator",
+    # Orchestrator
+    "Orchestrator",
+    "OrchestratorMode",
+    "create_orchestrator",
+    "Ag2Orchestrator",  # Backward compatibility
     # Remediation
     "RemediationAgent",
     "RemediationMode",

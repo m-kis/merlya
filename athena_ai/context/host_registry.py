@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from athena_ai.utils.logger import logger
 
@@ -657,10 +657,10 @@ class HostRegistry:
 
 # Singleton instance
 _registry: Optional[HostRegistry] = None
-_setup_callback: Optional[callable] = None
+_setup_callback: Optional[Callable] = None
 
 
-def set_inventory_setup_callback(callback: callable) -> None:
+def set_inventory_setup_callback(callback: Callable) -> None:
     """
     Set callback for inventory setup when no hosts found.
 
