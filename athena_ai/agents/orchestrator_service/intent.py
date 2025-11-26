@@ -33,7 +33,7 @@ class TriageContext:
 class IntentParser:
     """Handles intent classification and priority display."""
 
-    def __init__(self, console: Console, verbosity=None, use_ai: bool = True, db_client=None):
+    def __init__(self, console: Console, verbosity=None, use_ai: bool = True, db_client=None, llm_router=None):
         self.console = console
         self.verbosity = verbosity
         self.classifier = PriorityClassifier()
@@ -42,15 +42,17 @@ class IntentParser:
         self._ai_classifier: Optional[AITriageClassifier] = None
         self._smart_classifier = None
         self._db_client = db_client
+        self._llm_router = llm_router
         self._last_query: Optional[str] = None  # Track for feedback
 
+        # AI classifier uses user's LLM router (if provided)
         if use_ai:
             try:
-                self._ai_classifier = get_ai_classifier()
+                self._ai_classifier = get_ai_classifier(llm_router=llm_router)
             except Exception as e:
                 logger.debug(f"AI classifier unavailable: {e}")
 
-        # Initialize smart classifier for learning
+        # Initialize smart classifier for learning (local embeddings)
         try:
             self._smart_classifier = get_smart_classifier(db_client=db_client)
         except Exception as e:

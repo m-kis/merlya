@@ -95,8 +95,12 @@ class Orchestrator(BaseOrchestrator):
         # Verbosity (optional)
         self.verbosity = get_verbosity() if HAS_VERBOSITY else None
 
-        # Intent Parser
-        self.intent_parser = IntentParser(self.console, self.verbosity)
+        # Intent Parser (uses local embeddings first, LLM router as fallback)
+        self.intent_parser = IntentParser(
+            self.console,
+            self.verbosity,
+            llm_router=self.llm_router
+        )
         self.current_priority = None
 
         # Knowledge graph (ENHANCED mode only)

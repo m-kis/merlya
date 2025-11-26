@@ -8,11 +8,11 @@ Falls back to keyword-based classification if LLM is unavailable.
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from athena_ai.utils.logger import logger
 
-from .priority import Intent, Priority, PriorityResult
+from .priority import Intent, Priority
 from .signals import SignalDetector
 
 # Classification prompt - kept minimal for speed
@@ -49,15 +49,15 @@ class AITriageClassifier:
     AI-powered triage classifier using LLM.
 
     Features:
-    - Fast LLM classification (haiku/mini)
+    - Uses user's configured LLM router (if provided)
     - In-memory cache for repeated queries
-    - Keyword fallback when LLM unavailable
+    - Keyword fallback when LLM/router unavailable
     - Configurable timeout
     """
 
     def __init__(
         self,
-        model: str = "haiku",
+        llm_router=None,
         timeout: float = 5.0,
         cache_size: int = 500,
         use_fallback: bool = True,
@@ -66,19 +66,18 @@ class AITriageClassifier:
         Initialize AI classifier.
 
         Args:
-            model: LLM model to use (haiku, sonnet, gpt-4o-mini)
+            llm_router: User's LLM router. If None, uses keyword fallback only.
             timeout: Max seconds to wait for LLM response
             cache_size: Max cached classifications
             use_fallback: Whether to use keyword fallback on LLM failure
         """
-        self._model = model
+        self._llm_router = llm_router
         self._timeout = timeout
         self._cache: Dict[str, AIClassificationResult] = {}
         self._cache_order: list = []
         self._cache_size = cache_size
         self._use_fallback = use_fallback
         self._signal_detector = SignalDetector() if use_fallback else None
-        self._llm_client = None
 
     def _get_cache_key(self, query: str) -> str:
         """Generate cache key from query."""
@@ -109,22 +108,22 @@ class AITriageClassifier:
             del self._cache[oldest]
 
     async def _call_llm(self, query: str) -> Optional[Dict[str, Any]]:
-        """Call LLM for classification."""
-        try:
-            # Lazy import to avoid circular deps
-            from litellm import acompletion
+        """Call LLM for classification using user's router."""
+        # No router = skip LLM, use keyword fallback
+        if not self._llm_router:
+            return None
 
+        try:
             prompt = CLASSIFICATION_PROMPT.format(query=query[:500])  # Limit query length
 
-            response = await acompletion(
-                model=self._resolve_model(),
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=100,
-                timeout=self._timeout,
+            # Use the user's configured router
+            response = self._llm_router.generate(
+                prompt=prompt,
+                system_prompt="Respond with valid JSON only. No explanation.",
+                task="triage",  # Use fast model for triage
             )
 
-            content = response.choices[0].message.content.strip()
+            content = response.strip() if response else ""
 
             # Parse JSON response
             # Handle markdown code blocks
@@ -138,16 +137,6 @@ class AITriageClassifier:
         except Exception as e:
             logger.debug(f"LLM classification failed: {e}")
             return None
-
-    def _resolve_model(self) -> str:
-        """Resolve model name to full model ID."""
-        model_map = {
-            "haiku": "anthropic/claude-3-haiku-20240307",
-            "sonnet": "anthropic/claude-sonnet-4-20250514",
-            "gpt-mini": "gpt-4o-mini",
-            "gpt4": "gpt-4o",
-        }
-        return model_map.get(self._model, self._model)
 
     def _parse_llm_response(self, response: Dict[str, Any]) -> Optional[AIClassificationResult]:
         """Parse and validate LLM response."""
@@ -257,7 +246,7 @@ class AITriageClassifier:
     def get_stats(self) -> Dict[str, Any]:
         """Get classifier statistics."""
         return {
-            "model": self._model,
+            "has_router": self._llm_router is not None,
             "cache_size": len(self._cache),
             "cache_max": self._cache_size,
             "fallback_enabled": self._use_fallback,
@@ -274,13 +263,19 @@ _ai_classifier: Optional[AITriageClassifier] = None
 
 
 def get_ai_classifier(
-    model: str = "haiku",
+    llm_router=None,
     force_new: bool = False,
 ) -> AITriageClassifier:
-    """Get or create AI classifier instance."""
+    """
+    Get or create AI classifier instance.
+
+    Args:
+        llm_router: User's LLM router. If None, uses keyword fallback only.
+        force_new: Force creation of new instance
+    """
     global _ai_classifier
 
     if force_new or _ai_classifier is None:
-        _ai_classifier = AITriageClassifier(model=model)
+        _ai_classifier = AITriageClassifier(llm_router=llm_router)
 
     return _ai_classifier
