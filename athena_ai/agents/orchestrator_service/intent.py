@@ -65,17 +65,36 @@ class IntentParser:
 
     async def classify_full_async(self, user_query: str, system_state=None) -> TriageContext:
         """
-        Full classification using AI (async).
+        Full classification using local embeddings first, then LLM fallback.
 
-        Uses LLM for intelligent intent/priority detection with keyword fallback.
+        Priority:
+        1. SmartTriageClassifier (local embeddings - fast, no API)
+        2. AITriageClassifier (LLM API - only if embeddings unavailable)
+        3. Keyword-based fallback
         """
         self._last_query = user_query  # Track for feedback
 
+        # 1. Try SmartTriageClassifier first (local embeddings, no API call)
+        if self._smart_classifier:
+            try:
+                intent, priority_result = self._smart_classifier.classify(user_query)
+
+                return TriageContext(
+                    priority_result=priority_result,
+                    intent=intent,
+                    intent_confidence=priority_result.confidence,
+                    intent_signals=[f"smart:{intent.value}"],
+                    allowed_tools=intent.allowed_tools,
+                    query=user_query,
+                )
+            except Exception as e:
+                logger.debug(f"Smart classifier failed: {e}")
+
+        # 2. Fallback to AI classifier (LLM API) only if smart classifier unavailable
         if self._ai_classifier:
             try:
                 ai_result = await self._ai_classifier.classify(user_query)
 
-                # Build PriorityResult from AI classification
                 priority_result = PriorityResult(
                     priority=ai_result.priority,
                     confidence=0.9 if not ai_result.from_cache else 0.95,
@@ -96,7 +115,7 @@ class IntentParser:
             except Exception as e:
                 logger.debug(f"AI classification failed, using fallback: {e}")
 
-        # Fallback to keyword-based
+        # 3. Final fallback to keyword-based
         return self.classify_full(user_query, system_state)
 
     def classify_full(self, user_query: str, system_state=None) -> TriageContext:
