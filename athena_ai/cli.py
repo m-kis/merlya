@@ -237,13 +237,7 @@ def status(ctx):
 @cli.command()
 def version():
     """Show version information."""
-    try:
-        from importlib.metadata import version as get_version
-        ver = get_version("athena")
-    except Exception:
-        ver = "0.1.0"
-
-    console.print(f"Athena v{ver}")
+    console.print(f"Athena v{__version__}")
 
 
 @cli.command()

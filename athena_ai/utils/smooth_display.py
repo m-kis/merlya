@@ -12,6 +12,8 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from rich.syntax import Syntax
 from rich.table import Table
 
+from athena_ai import __version__
+
 
 class SmoothDisplay:
     """
@@ -29,8 +31,10 @@ class SmoothDisplay:
         self.console = Console()
         self._current_status = None
 
-    def show_welcome(self, version: str = "0.1.0"):
+    def show_welcome(self, version: str = None):
         """Show welcome banner."""
+        if version is None:
+            version = __version__
         banner = f"""
 [bold cyan]
 ╦  ╦╦╔╗ ╔═╗  ╦╔╗╔╔═╗╦═╗╔═╗

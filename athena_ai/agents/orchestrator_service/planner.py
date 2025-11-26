@@ -187,6 +187,18 @@ Work together:
             if not content:
                 continue
 
+            # Handle content as list (autogen can return list of content blocks)
+            if isinstance(content, list):
+                # Join text content blocks
+                content = "\n".join(
+                    str(c.get('text', c) if isinstance(c, dict) else c)
+                    for c in content
+                )
+
+            # Ensure content is string
+            if not isinstance(content, str):
+                content = str(content)
+
             # Skip tool call results (they start with SUCCESS/ERROR or are raw output)
             if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
                 continue
