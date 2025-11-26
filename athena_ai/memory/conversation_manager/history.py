@@ -51,9 +51,28 @@ class HistoryManager:
         if not self.current_conversation:
             self.create_conversation()
 
+        # Auto-title from first user message
+        if role == "user" and not self.current_conversation.messages:
+            self._update_title_from_prompt(content)
+
         msg = self.current_conversation.add_message(role, content)
         self.store.save_message(self.current_conversation.id, msg)
         return msg
+
+    def _update_title_from_prompt(self, prompt: str) -> None:
+        """Generate conversation title from first user prompt."""
+        # Clean and truncate
+        title = prompt.strip().replace('\n', ' ')
+        if len(title) > 50:
+            # Truncate at word boundary
+            title = title[:47]
+            last_space = title.rfind(' ')
+            if last_space > 30:
+                title = title[:last_space]
+            title += "..."
+
+        self.current_conversation.title = title
+        self.store.save_conversation(self.current_conversation)
 
     def list_conversations(self, limit: int = 20) -> List[dict[str, Any]]:
         """List all conversations."""
