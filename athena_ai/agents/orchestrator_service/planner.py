@@ -128,10 +128,16 @@ Rules:
 1. Use list_hosts() FIRST to verify hosts exist
 2. ALWAYS scan a host before acting on it
 3. If a command fails, try an alternative approach
-4. CONTINUE until task is FULLY COMPLETE
-5. Provide clear summary of findings
+4. Be EFFICIENT: Only run necessary commands, avoid redundant checks
+5. ALWAYS end with a clear, human-readable summary explaining your findings
 
-Say "TERMINATE" only when ALL steps are complete.
+IMPORTANT: Your FINAL message must be a clear summary for the user, NOT raw command output.
+Format your final response in markdown with:
+- Brief answer to the user's question
+- Key findings (if applicable)
+- Any recommendations
+
+Say "TERMINATE" at the END of your final summary message.
 
 Environment: {self.env}"""
 
@@ -175,10 +181,21 @@ Work together:
         if not result.messages:
             return "✅ Task completed."
 
-        # Get last non-empty message
+        # Get last message from the assistant (not tool results)
         for msg in reversed(result.messages):
             content = getattr(msg, 'content', '')
-            if content and "TERMINATE" not in content:
+            if not content:
+                continue
+
+            # Skip tool call results (they start with SUCCESS/ERROR or are raw output)
+            if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
+                continue
+
+            # Clean up TERMINATE from the response
+            if "TERMINATE" in content:
+                content = content.replace("TERMINATE", "").strip()
+
+            if content:
                 return content
 
         return "✅ Task completed."
