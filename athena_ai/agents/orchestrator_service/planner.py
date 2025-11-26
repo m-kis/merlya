@@ -1,5 +1,5 @@
-import io
-import sys
+import os
+from contextlib import redirect_stdout
 from typing import Callable, List
 
 from rich.console import Console
@@ -145,24 +145,26 @@ Environment: {self.env}"""
 
     async def execute_basic(self, user_query: str) -> str:
         """Process with single engineer agent."""
+        if self.engineer is None:
+            raise RuntimeError("Agents not initialized. Call init_agents() first.")
+
         # Create a simple team with just the engineer
-        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(10)
+        # Higher limit to give agent room to synthesize after tool calls
+        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(15)
 
         team = RoundRobinGroupChat(
             participants=[self.engineer],
             termination_condition=termination,
         )
 
-        # Capture and suppress autogen's console output
-        old_stdout = sys.stdout
-        sys.stdout = io.StringIO()
-        try:
-            result = await team.run(task=user_query)
-        finally:
-            sys.stdout = old_stdout
+        # Suppress autogen's console output (redirect to /dev/null)
+        # Using os.devnull preserves rich console's stderr output for spinner
+        with open(os.devnull, 'w') as devnull:
+            with redirect_stdout(devnull):
+                result = await team.run(task=user_query)
 
-        # Extract final response
-        return self._extract_response(result)
+        # Extract or generate synthesis
+        return await self._extract_or_synthesize(result, user_query)
 
     async def execute_enhanced(self, user_query: str, priority_name: str) -> str:
         """Process with multi-agent team."""
@@ -180,15 +182,104 @@ Work together:
 3. DevSecOps_Engineer: Execute the plan
 """
 
-        # Capture and suppress autogen's console output
-        old_stdout = sys.stdout
-        sys.stdout = io.StringIO()
-        try:
-            result = await self.team.run(task=task)
-        finally:
-            sys.stdout = old_stdout
+        # Suppress autogen's console output
+        with open(os.devnull, 'w') as devnull:
+            with redirect_stdout(devnull):
+                result = await self.team.run(task=task)
 
-        return self._extract_response(result)
+        return await self._extract_or_synthesize(result, user_query)
+
+    async def _extract_or_synthesize(self, result: "TaskResult", user_query: str) -> str:
+        """
+        Extract synthesis from result, or generate one if missing.
+
+        If the agent didn't provide a clear synthesis, collect tool outputs
+        and ask the LLM to synthesize them.
+        """
+        # First, try to find an existing synthesis
+        synthesis = self._extract_response(result)
+
+        # If we got a real synthesis (not just task completed), return it
+        if synthesis and synthesis != "✅ Task completed.":
+            return synthesis
+
+        # No synthesis found - collect tool outputs and generate one
+        tool_outputs = self._collect_tool_outputs(result)
+
+        if not tool_outputs:
+            return "✅ Task completed - no data collected."
+
+        # Ask LLM to synthesize the outputs
+        return await self._generate_synthesis(user_query, tool_outputs)
+
+    def _collect_tool_outputs(self, result: "TaskResult") -> List[str]:
+        """Collect all tool execution outputs from the conversation."""
+        outputs = []
+
+        for msg in result.messages:
+            content = getattr(msg, 'content', '')
+            if not content:
+                continue
+
+            # Handle list content
+            if isinstance(content, list):
+                content = "\n".join(
+                    str(c.get('text', c) if isinstance(c, dict) else c)
+                    for c in content
+                )
+
+            if not isinstance(content, str):
+                content = str(content)
+
+            # Collect tool results
+            if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
+                # Extract just the output part, not the status prefix
+                if "\nOutput:" in content:
+                    output_part = content.split("\nOutput:", 1)[1].strip()
+                    if output_part and len(output_part) < 2000:  # Limit size
+                        outputs.append(output_part)
+
+        return outputs
+
+    async def _generate_synthesis(self, user_query: str, tool_outputs: List[str]) -> str:
+        """Generate a synthesis from tool outputs using the LLM."""
+        # Combine outputs (limit total size)
+        combined = "\n---\n".join(tool_outputs[:5])  # Max 5 outputs
+        if len(combined) > 4000:
+            combined = combined[:4000] + "\n... (truncated)"
+
+        synthesis_prompt = f"""Based on the following command outputs, provide a clear, concise answer to the user's question.
+
+User question: {user_query}
+
+Command outputs:
+{combined}
+
+Instructions:
+- Answer the user's question directly
+- Summarize key findings
+- Use markdown formatting
+- Be concise but complete
+- Include any recommendations if relevant
+
+Provide your synthesis now:"""
+
+        try:
+            # Use the model client to generate synthesis
+            from autogen_core import CancellationToken
+
+            response = await self.model_client.create(
+                messages=[{"role": "user", "content": synthesis_prompt}],
+                cancellation_token=CancellationToken(),
+            )
+
+            if response and response.content:
+                return response.content
+        except Exception:
+            # Fallback: return a basic summary
+            return f"## Résumé\n\nCommandes exécutées avec succès.\n\n### Données collectées:\n```\n{combined[:1000]}\n```"
+
+        return "✅ Task completed."
 
     def _extract_response(self, result: "TaskResult") -> str:
         """Extract response from TaskResult."""
@@ -217,9 +308,11 @@ Work together:
             if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
                 continue
 
-            # Clean up TERMINATE from the response
-            if "TERMINATE" in content:
-                content = content.replace("TERMINATE", "").strip()
+            # Clean up TERMINATE only from the end of the response
+            # (preserve legitimate uses of the word in content)
+            content = content.strip()
+            if content.endswith("TERMINATE"):
+                content = content[:-9].strip()  # Remove "TERMINATE" from end
 
             if content:
                 return content
