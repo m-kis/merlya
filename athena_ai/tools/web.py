@@ -1,9 +1,21 @@
 """
 Web tools (search, fetch).
 """
+import concurrent.futures
 from typing import Annotated
 
 from athena_ai.utils.logger import logger
+
+
+def _do_search(query: str, max_results: int = 5) -> list:
+    """Execute DuckDuckGo search in a separate thread (for timeout support)."""
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        from duckduckgo_search import DDGS
+
+    with DDGS() as ddgs:
+        return list(ddgs.text(query, max_results=max_results))
 
 
 def web_search(
@@ -21,10 +33,14 @@ def web_search(
     logger.info(f"Tool: web_search '{query}'")
 
     try:
-        from duckduckgo_search import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=5))
+        # Use ThreadPoolExecutor for cross-platform timeout (works on Windows too)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_search, query, 5)
+            try:
+                results = future.result(timeout=10)  # 10 second timeout
+            except concurrent.futures.TimeoutError:
+                logger.warning("DuckDuckGo search timed out (possible CAPTCHA)")
+                return "❌ Search timed out (DuckDuckGo may require verification). Try again later."
 
         if not results:
             return "❌ No results found."
@@ -39,8 +55,11 @@ def web_search(
         return "\n".join(summary)
 
     except ImportError:
-        return "❌ duckduckgo-search not installed."
+        return "❌ duckduckgo-search not installed. Run: pip install ddgs"
     except Exception as e:
+        error_msg = str(e).lower()
+        if "verification" in error_msg or "captcha" in error_msg:
+            return "❌ DuckDuckGo requires verification. Try again later."
         return f"❌ Search failed: {e}"
 
 

@@ -143,10 +143,46 @@ Say "TERMINATE" at the END of your final summary message.
 
 Environment: {self.env}"""
 
-    async def execute_basic(self, user_query: str) -> str:
+    def _build_task_with_context(self, user_query: str, conversation_history: List[dict] = None) -> str:
+        """
+        Build task string with conversation context.
+
+        Injects recent conversation history so the agent understands
+        references like "this server", "the file", etc.
+        """
+        if not conversation_history:
+            return user_query
+
+        # Take last N exchanges (user + assistant pairs) to keep context manageable
+        max_context_messages = 6  # 3 exchanges
+        recent = conversation_history[-max_context_messages:]
+
+        if not recent:
+            return user_query
+
+        # Build context summary
+        context_parts = ["[Previous conversation context:]"]
+        for msg in recent:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            # Truncate long messages
+            if len(content) > 500:
+                content = content[:500] + "..."
+            prefix = "User" if role == "user" else "Assistant"
+            context_parts.append(f"{prefix}: {content}")
+
+        context_parts.append("\n[Current request:]")
+        context_parts.append(user_query)
+
+        return "\n".join(context_parts)
+
+    async def execute_basic(self, user_query: str, conversation_history: List[dict] = None) -> str:
         """Process with single engineer agent."""
         if self.engineer is None:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
+
+        # Build task with conversation context
+        task = self._build_task_with_context(user_query, conversation_history)
 
         # Create a simple team with just the engineer
         # Higher limit to give agent room to synthesize after tool calls
@@ -158,17 +194,19 @@ Environment: {self.env}"""
         )
 
         # Run the team
-        result = await team.run(task=user_query)
+        result = await team.run(task=task)
 
         # Extract or generate synthesis
         return await self._extract_or_synthesize(result, user_query)
 
-    async def execute_enhanced(self, user_query: str, priority_name: str) -> str:
+    async def execute_enhanced(self, user_query: str, priority_name: str, conversation_history: List[dict] = None) -> str:
         """Process with multi-agent team."""
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
 
-        task = f"""
-Task: {user_query}
+        # Build base task with context
+        base_task = self._build_task_with_context(user_query, conversation_history)
+
+        task = f"""{base_task}
 
 Priority: {priority_name}
 Environment: {self.env}

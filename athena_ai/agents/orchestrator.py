@@ -341,6 +341,7 @@ class Orchestrator(BaseOrchestrator):
             user_query: User's request
             auto_confirm: Auto-confirm critical actions
             dry_run: Preview only, don't execute
+            conversation_history: Recent conversation context (list of {role, content})
 
         Returns:
             Agent response
@@ -360,12 +361,17 @@ class Orchestrator(BaseOrchestrator):
             f"(confidence: {self.current_priority.confidence:.0%}, mode: {self.mode.value})"
         )
 
-        # Step 3: Execute based on mode
+        # Step 3: Get conversation history for context
+        conversation_history = kwargs.get("conversation_history", [])
+
+        # Step 4: Execute based on mode
         try:
             if self.mode == OrchestratorMode.ENHANCED:
-                return await self.planner.execute_enhanced(user_query, self.current_priority.priority.name)
+                return await self.planner.execute_enhanced(
+                    user_query, self.current_priority.priority.name, conversation_history
+                )
             else:
-                return await self.planner.execute_basic(user_query)
+                return await self.planner.execute_basic(user_query, conversation_history)
         except Exception as e:
             logger.error(f"Orchestrator failed: {e}", exc_info=True)
             return f"❌ Error: {str(e)}"

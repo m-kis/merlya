@@ -170,9 +170,15 @@ class AthenaREPL:
                     print_warning(f"Variable resolution failed: {e}")
                     # Continue with original query
 
+                # Get recent conversation history for context
+                conversation_history = self._get_recent_history()
+
                 with console.status("[cyan]Processing...[/cyan]", spinner="dots"):
                     response = asyncio.run(
-                        self.orchestrator.process_request(user_query=resolved_query)
+                        self.orchestrator.process_request(
+                            user_query=resolved_query,
+                            conversation_history=conversation_history
+                        )
                     )
 
                 self.conversation_manager.add_assistant_message(response)
@@ -426,6 +432,20 @@ class AthenaREPL:
 
         return True
 
+    def _get_recent_history(self, max_messages: int = 6) -> list:
+        """
+        Get recent conversation history for context injection.
+
+        Returns list of {role, content} dicts for the last N messages.
+        """
+        conv = self.conversation_manager.current_conversation
+        if not conv or not conv.messages:
+            return []
+
+        # Get recent messages (excluding the current one being processed)
+        recent = conv.messages[-max_messages:]
+        return [{"role": msg.role, "content": msg.content} for msg in recent]
+
     def process_single_query(self, query: str) -> str:
         """
         Process a single query without entering the interactive REPL.
@@ -434,6 +454,7 @@ class AthenaREPL:
         self.conversation_manager.add_user_message(query)
 
         # Resolve @variables before sending to LLM
+        # (consistent error handling with REPL loop)
         resolved_query = query
         try:
             if self.credentials.has_variables(query):
@@ -442,9 +463,18 @@ class AthenaREPL:
                 logger.debug(f"Variables resolved in query (original length: {len(query)}, resolved: {len(resolved_query)})")
         except Exception as e:
             logger.warning(f"Variable resolution failed: {e}")
+            print_warning(f"Variable resolution failed: {e}")
             # Continue with original query if resolution fails
 
-        response = asyncio.run(self.orchestrator.process_request(user_query=resolved_query))
+        # Get conversation history for context
+        conversation_history = self._get_recent_history()
+
+        response = asyncio.run(
+            self.orchestrator.process_request(
+                user_query=resolved_query,
+                conversation_history=conversation_history
+            )
+        )
         self.conversation_manager.add_assistant_message(response)
         return response
 
