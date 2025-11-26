@@ -383,18 +383,25 @@ class Orchestrator(BaseOrchestrator):
         try:
             allowed_tools = triage_context.allowed_tools
             if self.mode == OrchestratorMode.ENHANCED:
-                return await self.planner.execute_enhanced(
+                result = await self.planner.execute_enhanced(
                     user_query,
                     priority_name,  # Already extracted with defensive access above
                     conversation_history,
                     allowed_tools=allowed_tools,
                 )
             else:
-                return await self.planner.execute_basic(
+                result = await self.planner.execute_basic(
                     user_query,
                     conversation_history,
                     allowed_tools=allowed_tools,
                 )
+
+            # Step 5: Implicit positive feedback - classification was used successfully
+            # After ~3 successful uses, pattern becomes trusted (confidence >= 0.7)
+            self.intent_parser.confirm_last_classification()
+
+            return result
+
         except Exception as e:
             logger.error(f"Orchestrator failed: {e}", exc_info=True)
             return f"❌ Error: {str(e)}"

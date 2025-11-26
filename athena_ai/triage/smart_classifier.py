@@ -163,6 +163,11 @@ class PatternStore:
         """
         Store or update a triage pattern (upsert).
 
+        Confidence levels:
+        - 0.5: Auto-classified (not used for predictions)
+        - 0.7: Implicitly validated (no correction after use)
+        - 1.0: User confirmed via /feedback
+
         Args:
             query: The user query text
             intent: Detected intent
@@ -284,6 +289,43 @@ class PatternStore:
         except Exception as e:
             logger.warning(f"Failed to find patterns: {e}")
             return []
+
+    def increment_pattern_confidence(self, query: str) -> bool:
+        """
+        Increment confidence for a pattern (implicit positive feedback).
+
+        Called when a classification is used without correction.
+        Increases confidence by 0.1 up to 0.8 (never reaches user-confirmed 1.0).
+        """
+        if not self.is_available:
+            return False
+
+        normalized = query.lower().strip()
+
+        try:
+            existing = self._db.find_node(
+                "TriagePattern",
+                {"user_id": self._user_id, "query": normalized},
+            )
+
+            if existing:
+                current_conf = existing.get("confidence", 0.5)
+                # Only increment if below implicit validation threshold
+                if current_conf < 0.8:
+                    self._db.update_node(
+                        "TriagePattern",
+                        {"user_id": self._user_id, "query": normalized},
+                        {
+                            "confidence": min(0.8, current_conf + 0.1),
+                            "use_count": existing.get("use_count", 1) + 1,
+                        },
+                    )
+                    return True
+            return False
+
+        except Exception as e:
+            logger.warning(f"Failed to increment confidence: {e}")
+            return False
 
     def update_pattern_feedback(
         self,
@@ -544,9 +586,9 @@ class SmartTriageClassifier:
         Returns:
             (intent, priority_result)
         """
-        # Layer 1: Check stored patterns
+        # Layer 1: Check stored patterns (threshold: 0.7 for implicitly validated)
         stored = self._pattern_store.find_similar_patterns(query, limit=1)
-        if stored and stored[0].get("confidence", 0) >= 0.9:
+        if stored and stored[0].get("confidence", 0) >= 0.7:
             # High confidence stored pattern
             pattern = stored[0]
             try:
@@ -644,6 +686,18 @@ class SmartTriageClassifier:
         return self._pattern_store.update_pattern_feedback(
             query, correct_intent, correct_priority
         )
+
+    def confirm_classification(self, query: str) -> bool:
+        """
+        Confirm a classification was useful (implicit positive feedback).
+
+        Call this when a classification is used successfully without correction.
+        Gradually increases confidence until pattern becomes trusted.
+
+        Example: After agent completes a task successfully, call this
+        to reinforce the classification that was used.
+        """
+        return self._pattern_store.increment_pattern_confidence(query)
 
     def get_stats(self) -> Dict[str, Any]:
         """Get classifier statistics."""

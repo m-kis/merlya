@@ -246,3 +246,22 @@ class IntentParser:
             return {"available": False, "reason": "Smart classifier not initialized"}
 
         return self._smart_classifier.get_stats()
+
+    def confirm_last_classification(self) -> bool:
+        """
+        Confirm last classification was correct (implicit positive feedback).
+
+        Call this after a successful request to gradually build confidence
+        in the classification. After ~3 successful uses without correction,
+        the pattern becomes trusted (confidence >= 0.7).
+
+        Returns:
+            True if confirmation was stored, False otherwise
+        """
+        if not self._last_query:
+            return False
+
+        if not self._smart_classifier:
+            return False
+
+        return self._smart_classifier.confirm_classification(self._last_query)
