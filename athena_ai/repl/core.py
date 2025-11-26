@@ -153,9 +153,15 @@ class AthenaREPL:
                 # Process natural language query
                 self.conversation_manager.add_user_message(user_input)
 
+                # Resolve @variables before sending to LLM
+                # (user sees original query, LLM gets resolved values)
+                resolved_query = user_input
+                if self.credentials.has_variables(user_input):
+                    resolved_query = self.credentials.resolve_variables(user_input)
+
                 with console.status("[cyan]Processing...[/cyan]", spinner="dots"):
                     response = asyncio.run(
-                        self.orchestrator.process_request(user_query=user_input)
+                        self.orchestrator.process_request(user_query=resolved_query)
                     )
 
                 self.conversation_manager.add_assistant_message(response)
@@ -415,7 +421,13 @@ class AthenaREPL:
         Used for CLI one-shot mode.
         """
         self.conversation_manager.add_user_message(query)
-        response = asyncio.run(self.orchestrator.process_request(user_query=query))
+
+        # Resolve @variables before sending to LLM
+        resolved_query = query
+        if self.credentials.has_variables(query):
+            resolved_query = self.credentials.resolve_variables(query)
+
+        response = asyncio.run(self.orchestrator.process_request(user_query=resolved_query))
         self.conversation_manager.add_assistant_message(response)
         return response
 

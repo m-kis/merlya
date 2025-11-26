@@ -8,6 +8,7 @@ from typing import Any, Dict
 
 from athena_ai.context.manager import ContextManager
 from athena_ai.executors.action_executor import ActionExecutor
+from athena_ai.knowledge.storage_manager import StorageManager
 from athena_ai.llm.litellm_router import LiteLLMRouter
 from athena_ai.mcp.manager import MCPManager
 from athena_ai.memory.session import SessionManager
@@ -44,11 +45,14 @@ class BaseOrchestrator(ABC):
         # Core dependencies - shared by all orchestrators
         logger.info(f"Initializing orchestrator for {env} (language: {language})")
 
+        # Storage manager (SQLite) - used for persistence
+        self.storage = StorageManager()
+
         self.llm_router = LiteLLMRouter()
         self.context_manager = ContextManager(env=env)
         self.executor = ActionExecutor()
         self.risk_assessor = RiskAssessor()
-        self.credentials = CredentialManager()
+        self.credentials = CredentialManager(storage_manager=self.storage)
         self.permissions = PermissionManager(executor=self.executor)
         self.session = SessionManager(env=env)
         self.mcp_manager = MCPManager()
