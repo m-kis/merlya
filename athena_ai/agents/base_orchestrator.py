@@ -2,9 +2,10 @@
 Base Orchestrator - Common foundation for all orchestrators.
 
 Follows DRY principle by extracting all common initialization and utilities.
+FalkorDB is used as long-term memory for incidents, patterns, and knowledge.
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from athena_ai.context.manager import ContextManager
 from athena_ai.executors.action_executor import ActionExecutor
@@ -45,8 +46,10 @@ class BaseOrchestrator(ABC):
         # Core dependencies - shared by all orchestrators
         logger.info(f"Initializing orchestrator for {env} (language: {language})")
 
-        # Storage manager (SQLite) - used for persistence
-        self.storage = StorageManager()
+        # Storage manager (SQLite + FalkorDB) - hybrid persistence
+        # FalkorDB is used as long-term memory (Docker auto-started if needed)
+        self.storage = StorageManager(enable_falkordb=True)
+        self._init_long_term_memory()
 
         self.llm_router = LiteLLMRouter()
         self.context_manager = ContextManager(env=env)
@@ -109,3 +112,85 @@ class BaseOrchestrator(ABC):
                 response=response,
                 execution_time_ms=execution_time_ms
             )
+
+    # =========================================================================
+    # Long-Term Memory (FalkorDB)
+    # =========================================================================
+
+    def _init_long_term_memory(self) -> None:
+        """
+        Initialize FalkorDB as long-term memory.
+
+        Connects to FalkorDB (auto-starts Docker container if needed).
+        Gracefully degrades to SQLite-only if FalkorDB is unavailable.
+        """
+        try:
+            if self.storage.connect_falkordb():
+                logger.info("FalkorDB connected - long-term memory enabled")
+                # Sync any unsynced data from SQLite
+                synced = self.storage.sync_to_falkordb()
+                if synced.get("incidents", 0) > 0:
+                    logger.info(f"Synced {synced['incidents']} incidents to FalkorDB")
+            else:
+                logger.warning(
+                    "FalkorDB not available - using SQLite-only mode. "
+                    "Run 'docker run -d -p 6379:6379 falkordb/falkordb' to enable."
+                )
+        except Exception as e:
+            logger.warning(f"FalkorDB init failed: {e} - continuing with SQLite-only")
+
+    @property
+    def has_long_term_memory(self) -> bool:
+        """Check if long-term memory (FalkorDB) is available."""
+        return self.storage.falkordb_available
+
+    def store_incident(self, incident: Dict[str, Any]) -> str:
+        """
+        Store an incident in long-term memory.
+
+        Stored in both SQLite (always) and FalkorDB (if available).
+
+        Args:
+            incident: Incident data with title, description, priority, etc.
+
+        Returns:
+            Incident ID
+        """
+        return self.storage.store_incident(incident)
+
+    def find_similar_incidents(
+        self,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict]:
+        """
+        Find similar past incidents from long-term memory.
+
+        Uses FalkorDB graph queries if available, falls back to SQLite.
+
+        Args:
+            symptoms: List of symptom descriptions
+            service: Service name
+            environment: Environment (prod, staging, dev)
+            limit: Maximum number of results
+
+        Returns:
+            List of similar incidents
+        """
+        return self.storage.find_similar_incidents(
+            symptoms=symptoms,
+            service=service,
+            environment=environment,
+            limit=limit
+        )
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about long-term memory.
+
+        Returns:
+            Dict with SQLite and FalkorDB stats
+        """
+        return self.storage.get_stats()

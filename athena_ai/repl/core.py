@@ -132,6 +132,10 @@ class AthenaREPL:
 **Conversation**: {conv.id} ({len(conv.messages)} messages, {conv.token_count:,} tokens)
 **Token usage**: {token_usage:.1f}% of limit
 """
+        # Add memory status
+        memory_status = "✓ FalkorDB" if self.orchestrator.has_long_term_memory else "SQLite only"
+        conv_info += f"**Memory**: {memory_status}\n"
+
         show_welcome(self.env, self.session_manager.current_session_id, self.config.language, conv_info)
 
         while True:
