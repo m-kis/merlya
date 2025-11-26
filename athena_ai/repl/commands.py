@@ -23,6 +23,8 @@ SLASH_COMMANDS = {
     '/mcp': 'Manage MCP servers (add, list, delete, show)',
     '/language': 'Change language (en/fr)',
     '/triage': 'Test priority classification for a query',
+    '/feedback': 'Correct triage classification (intent/priority)',
+    '/triage-stats': 'Show learned triage patterns statistics',
     '/conversations': 'List all conversations',
     '/new': 'Start new conversation [title]',
     '/load': 'Load conversation <id>',
@@ -76,6 +78,8 @@ class CommandHandler:
             '/mcp': lambda: self._handle_mcp(args),
             '/language': lambda: self._handle_language(args),
             '/triage': lambda: self._handle_triage(args),
+            '/feedback': lambda: self._handle_feedback(args),
+            '/triage-stats': lambda: self._handle_triage_stats(args),
             '/conversations': lambda: self._handle_conversations(args),
             '/new': lambda: self._handle_new_conversation(args),
             '/load': lambda: self._handle_load_conversation(args),
@@ -661,6 +665,12 @@ class CommandHandler:
 
     def _handle_triage(self, args):
         return self.repl._handle_triage_command(args)
+
+    def _handle_feedback(self, args):
+        return self.repl._handle_feedback_command(args)
+
+    def _handle_triage_stats(self, args):
+        return self.repl._handle_triage_stats_command(args)
 
     def _handle_conversations(self, args):
         return self.repl._handle_conversations_command(args)

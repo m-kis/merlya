@@ -321,6 +321,154 @@ class AthenaREPL:
 
         return True
 
+    def _handle_feedback_command(self, args):
+        """Handle /feedback command to correct triage classification."""
+        from athena_ai.triage import Intent, Priority
+
+        if not args:
+            self._show_feedback_help()
+            return True
+
+        # Parse arguments: /feedback <intent> <priority> [query]
+        # or: /feedback --last <intent> <priority>
+        use_last = '--last' in args
+        if use_last:
+            args = [a for a in args if a != '--last']
+
+        if len(args) < 2:
+            self._show_feedback_help()
+            return True
+
+        intent_str = args[0].lower()
+        priority_str = args[1].upper()
+        query = ' '.join(args[2:]) if len(args) > 2 else None
+
+        # Validate intent
+        intent_map = {
+            'query': Intent.QUERY,
+            'action': Intent.ACTION,
+            'analysis': Intent.ANALYSIS,
+        }
+        if intent_str not in intent_map:
+            print_error(f"Invalid intent: {intent_str}")
+            console.print("[dim]Valid intents: query, action, analysis[/dim]")
+            return True
+
+        # Validate priority
+        if priority_str not in ('P0', 'P1', 'P2', 'P3'):
+            print_error(f"Invalid priority: {priority_str}")
+            console.print("[dim]Valid priorities: P0, P1, P2, P3[/dim]")
+            return True
+
+        intent = intent_map[intent_str]
+        priority = Priority[priority_str]
+
+        # Get query to correct
+        if not query and use_last:
+            # Use last query from intent parser
+            if hasattr(self.orchestrator, 'intent_parser') and self.orchestrator.intent_parser._last_query:
+                query = self.orchestrator.intent_parser._last_query
+            else:
+                print_error("No previous query to correct. Use: /feedback <intent> <priority> <query>")
+                return True
+
+        if not query:
+            print_error("Please provide a query to correct")
+            self._show_feedback_help()
+            return True
+
+        # Provide feedback
+        try:
+            success = self.orchestrator.intent_parser.provide_feedback(
+                query=query,
+                correct_intent=intent,
+                correct_priority=priority,
+            )
+
+            if success:
+                print_success("Feedback recorded!")
+                console.print(f"  Query: [dim]{query[:50]}{'...' if len(query) > 50 else ''}[/dim]")
+                console.print(f"  Intent: [cyan]{intent.value}[/cyan]")
+                console.print(f"  Priority: [{priority.color}]{priority.label}[/{priority.color}]")
+                console.print("[dim]This correction will improve future classifications.[/dim]")
+            else:
+                print_warning("Could not store feedback (FalkorDB may not be available)")
+
+        except Exception as e:
+            print_error(f"Feedback failed: {e}")
+
+        return True
+
+    def _show_feedback_help(self):
+        """Show help for /feedback command."""
+        console.print("[yellow]Usage:[/yellow]")
+        console.print("  /feedback <intent> <priority> <query>  - Correct a specific query")
+        console.print("  /feedback --last <intent> <priority>   - Correct last query")
+        console.print()
+        console.print("[yellow]Intents:[/yellow]")
+        console.print("  [cyan]query[/cyan]    - Information request (list, show, what is)")
+        console.print("  [cyan]action[/cyan]   - Execute/modify (restart, check, deploy)")
+        console.print("  [cyan]analysis[/cyan] - Investigation (diagnose, why, troubleshoot)")
+        console.print()
+        console.print("[yellow]Priorities:[/yellow]")
+        console.print("  [bold red]P0[/bold red] - CRITICAL (production down, data loss)")
+        console.print("  [bold yellow]P1[/bold yellow] - URGENT (degraded, security issue)")
+        console.print("  [cyan]P2[/cyan] - IMPORTANT (performance, warnings)")
+        console.print("  [dim]P3[/dim] - NORMAL (maintenance, questions)")
+        console.print()
+        console.print("[yellow]Examples:[/yellow]")
+        console.print("  /feedback query P3 list my servers")
+        console.print("  /feedback action P1 restart nginx on prod")
+        console.print("  /feedback --last analysis P2")
+
+    def _handle_triage_stats_command(self, args):
+        """Handle /triage-stats command to show learning statistics."""
+        from rich.table import Table
+
+        try:
+            stats = self.orchestrator.intent_parser.get_learning_stats()
+
+            if not stats.get('available', False):
+                print_warning("Smart triage learning not available")
+                reason = stats.get('reason', 'Unknown')
+                console.print(f"[dim]{reason}[/dim]")
+                return True
+
+            console.print("\n[bold]Triage Learning Statistics[/bold]\n")
+
+            # Pattern store stats
+            pattern_stats = stats.get('pattern_store', {})
+            if pattern_stats.get('available'):
+                total = pattern_stats.get('total_patterns', 0)
+                console.print(f"  Total patterns learned: [cyan]{total}[/cyan]")
+
+                by_intent = pattern_stats.get('by_intent', {})
+                if by_intent:
+                    table = Table(title="Patterns by Intent")
+                    table.add_column("Intent", style="cyan")
+                    table.add_column("Count", style="green")
+
+                    for intent, count in by_intent.items():
+                        table.add_row(intent, str(count))
+
+                    console.print(table)
+            else:
+                console.print("  Pattern store: [yellow]Not connected[/yellow]")
+                console.print("[dim]  Connect FalkorDB to enable pattern learning[/dim]")
+
+            # Embedding status
+            embeddings = stats.get('embeddings_available', False)
+            if embeddings:
+                console.print("\n  Embeddings: [green]✓ Available[/green]")
+            else:
+                console.print("\n  Embeddings: [yellow]Not available[/yellow]")
+                console.print("[dim]  Install sentence-transformers for semantic matching[/dim]")
+
+        except Exception as e:
+            print_error(f"Failed to get stats: {e}")
+
+        return True
+
     def _handle_conversations_command(self, args):
         """Handle /conversations command to list all conversations."""
         from rich.table import Table

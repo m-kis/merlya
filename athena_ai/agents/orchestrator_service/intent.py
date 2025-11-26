@@ -6,11 +6,13 @@ from rich.panel import Panel
 
 from athena_ai.triage import (
     Intent,
+    Priority,
     PriorityClassifier,
     PriorityResult,
     SignalDetector,
     describe_behavior,
     get_behavior,
+    get_smart_classifier,
 )
 from athena_ai.triage.ai_classifier import AITriageClassifier, get_ai_classifier
 from athena_ai.utils.logger import logger
@@ -25,26 +27,38 @@ class TriageContext:
     intent_confidence: float
     intent_signals: List[str]
     allowed_tools: Optional[List[str]]  # None = all tools allowed
+    query: Optional[str] = None  # Original query for feedback
 
 
 class IntentParser:
     """Handles intent classification and priority display."""
 
-    def __init__(self, console: Console, verbosity=None, use_ai: bool = True):
+    def __init__(self, console: Console, verbosity=None, use_ai: bool = True, db_client=None):
         self.console = console
         self.verbosity = verbosity
         self.classifier = PriorityClassifier()
         self.signal_detector = SignalDetector()
         self._use_ai = use_ai
         self._ai_classifier: Optional[AITriageClassifier] = None
+        self._smart_classifier = None
+        self._db_client = db_client
+        self._last_query: Optional[str] = None  # Track for feedback
+
         if use_ai:
             try:
                 self._ai_classifier = get_ai_classifier()
             except Exception as e:
                 logger.debug(f"AI classifier unavailable: {e}")
 
+        # Initialize smart classifier for learning
+        try:
+            self._smart_classifier = get_smart_classifier(db_client=db_client)
+        except Exception as e:
+            logger.debug(f"Smart classifier unavailable: {e}")
+
     def classify(self, user_query: str, system_state=None) -> PriorityResult:
         """Classify the user query (legacy, returns PriorityResult only)."""
+        self._last_query = user_query  # Track for feedback
         result = self.classifier.classify(user_query, system_state=system_state)
         _ = get_behavior(result.priority)
         return result
@@ -55,6 +69,8 @@ class IntentParser:
 
         Uses LLM for intelligent intent/priority detection with keyword fallback.
         """
+        self._last_query = user_query  # Track for feedback
+
         if self._ai_classifier:
             try:
                 ai_result = await self._ai_classifier.classify(user_query)
@@ -74,6 +90,7 @@ class IntentParser:
                     intent_confidence=0.9,
                     intent_signals=[f"ai:{ai_result.reasoning[:50]}"],
                     allowed_tools=ai_result.intent.allowed_tools,
+                    query=user_query,
                 )
 
             except Exception as e:
@@ -91,6 +108,8 @@ class IntentParser:
         Returns:
             TriageContext with priority, intent, and allowed tools
         """
+        self._last_query = user_query  # Track for feedback
+
         # Try sync AI classification (cache only, no LLM call)
         if self._ai_classifier:
             cached = self._ai_classifier._get_from_cache(user_query)
@@ -108,6 +127,7 @@ class IntentParser:
                     intent_confidence=0.95,
                     intent_signals=["cached"],
                     allowed_tools=cached.intent.allowed_tools,
+                    query=user_query,
                 )
 
         # Keyword-based classification
@@ -125,6 +145,7 @@ class IntentParser:
             intent_confidence=intent_conf,
             intent_signals=intent_signals,
             allowed_tools=allowed_tools,
+            query=user_query,
         )
 
     def display_triage(self, result: PriorityResult):
@@ -176,3 +197,52 @@ class IntentParser:
         # Show behavior mode
         behavior_desc = describe_behavior(priority)
         self.console.print(f"[dim]Mode: {behavior_desc}[/dim]\n")
+
+    def provide_feedback(
+        self,
+        query: Optional[str],
+        correct_intent: Intent,
+        correct_priority: Priority,
+    ) -> bool:
+        """
+        Provide feedback to improve future classifications.
+
+        Args:
+            query: Query to correct. If None, uses last classified query.
+            correct_intent: The correct intent
+            correct_priority: The correct priority
+
+        Returns:
+            True if feedback was stored successfully
+        """
+        target_query = query or self._last_query
+        if not target_query:
+            logger.warning("No query to provide feedback for")
+            return False
+
+        if not self._smart_classifier:
+            logger.warning("Smart classifier not available for feedback")
+            return False
+
+        success = self._smart_classifier.provide_feedback(
+            target_query, correct_intent, correct_priority
+        )
+
+        if success:
+            logger.info(f"Feedback stored: {correct_intent.value}/{correct_priority.name}")
+
+        return success
+
+    def get_feedback_options(self) -> dict:
+        """Get available feedback options for display."""
+        return {
+            "intents": {i.value: i.name for i in Intent},
+            "priorities": {p.name: p.label for p in Priority},
+        }
+
+    def get_learning_stats(self) -> dict:
+        """Get statistics about learned patterns."""
+        if not self._smart_classifier:
+            return {"available": False, "reason": "Smart classifier not initialized"}
+
+        return self._smart_classifier.get_stats()
