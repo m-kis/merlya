@@ -9,13 +9,17 @@ import pytest
 from athena_ai.triage import (
     BEHAVIOR_PROFILES,
     BehaviorProfile,
+    Intent,
     Priority,
     PriorityClassifier,
     PriorityResult,
+    TriageResult,
     classify_priority,
     describe_behavior,
     get_behavior,
     get_classifier,
+    get_smart_classifier,
+    reset_smart_classifier,
 )
 from athena_ai.triage.signals import SignalDetector
 
@@ -43,6 +47,186 @@ class TestPriority:
         assert "yellow" in Priority.P1.color
         assert Priority.P2.color  # Has some color
         assert Priority.P3.color  # Has some color
+
+
+class TestIntent:
+    """Tests for Intent enum."""
+
+    def test_intent_values(self):
+        """Intent should have expected values."""
+        assert Intent.QUERY.value == "query"
+        assert Intent.ACTION.value == "action"
+        assert Intent.ANALYSIS.value == "analysis"
+
+    def test_query_intent_has_restricted_tools(self):
+        """QUERY intent should restrict tools."""
+        allowed = Intent.QUERY.allowed_tools
+        assert allowed is not None
+        assert "list_hosts" in allowed
+        assert "request_elevation" in allowed
+        assert "execute_ssh_command" in allowed
+
+    def test_action_intent_allows_all_tools(self):
+        """ACTION intent should allow all tools."""
+        assert Intent.ACTION.allowed_tools is None
+
+    def test_analysis_intent_allows_all_tools(self):
+        """ANALYSIS intent should allow all tools."""
+        assert Intent.ANALYSIS.allowed_tools is None
+
+
+class TestTriageResult:
+    """Tests for TriageResult dataclass."""
+
+    def test_triage_result_creation(self):
+        """TriageResult should be creatable."""
+        result = TriageResult(
+            priority=Priority.P1,
+            intent=Intent.ACTION,
+            confidence=0.85,
+            signals=["P1:degraded"],
+            reasoning="Service degraded",
+        )
+        assert result.priority == Priority.P1
+        assert result.intent == Intent.ACTION
+        assert result.confidence == 0.85
+
+    def test_triage_result_response_time(self):
+        """TriageResult should provide response time."""
+        result = TriageResult(
+            priority=Priority.P0,
+            intent=Intent.ACTION,
+            confidence=0.9,
+        )
+        assert result.suggested_response_time == 60  # P0 = 1 minute
+
+    def test_triage_result_allowed_tools(self):
+        """TriageResult should delegate allowed_tools to intent."""
+        result_query = TriageResult(
+            priority=Priority.P3,
+            intent=Intent.QUERY,
+            confidence=0.8,
+        )
+        assert result_query.allowed_tools is not None
+        assert "list_hosts" in result_query.allowed_tools
+
+        result_action = TriageResult(
+            priority=Priority.P3,
+            intent=Intent.ACTION,
+            confidence=0.8,
+        )
+        assert result_action.allowed_tools is None
+
+    def test_triage_result_to_dict(self):
+        """TriageResult should serialize to dict."""
+        result = TriageResult(
+            priority=Priority.P2,
+            intent=Intent.ANALYSIS,
+            confidence=0.75,
+            signals=["analysis:diagnose"],
+            reasoning="Deep investigation needed",
+        )
+        d = result.to_dict()
+        assert d["priority"] == "P2"
+        assert d["priority_label"] == "IMPORTANT"
+        assert d["intent"] == "analysis"
+        assert d["confidence"] == 0.75
+        assert "analysis:diagnose" in d["signals"]
+
+    def test_triage_result_str(self):
+        """TriageResult should have string representation."""
+        result = TriageResult(
+            priority=Priority.P1,
+            intent=Intent.ACTION,
+            confidence=0.9,
+            signals=["P1:degraded", "action:restart"],
+        )
+        s = str(result)
+        assert "P1" in s
+        assert "URGENT" in s
+        assert "action" in s
+        assert "90%" in s
+
+
+class TestIntentDetection:
+    """Tests for intent detection in SignalDetector."""
+
+    def setup_method(self):
+        self.detector = SignalDetector()
+
+    def test_query_intent_detection_english(self):
+        """QUERY intent should be detected for information requests (English)."""
+        test_cases = [
+            "what are my servers",
+            "list hosts",
+            "show me the services",
+            "how many containers are running?",
+            "where is the database?",
+        ]
+        for query in test_cases:
+            intent, confidence, signals = self.detector.detect_intent(query)
+            assert intent == Intent.QUERY, f"Failed for: {query}"
+            assert confidence >= 0.6
+
+    def test_query_intent_detection_french(self):
+        """QUERY intent should be detected for information requests (French)."""
+        test_cases = [
+            "quels sont mes serveurs",
+            "liste les hosts",
+            "montre moi les services",
+            "combien de conteneurs",
+        ]
+        for query in test_cases:
+            intent, confidence, signals = self.detector.detect_intent(query)
+            assert intent == Intent.QUERY, f"Failed for: {query}"
+
+    def test_action_intent_detection(self):
+        """ACTION intent should be detected for commands."""
+        test_cases = [
+            "restart nginx",
+            "check the disk space",
+            "deploy the application",
+            "stop the container",
+            "install package",
+        ]
+        for query in test_cases:
+            intent, confidence, signals = self.detector.detect_intent(query)
+            assert intent == Intent.ACTION, f"Failed for: {query}"
+
+    def test_analysis_intent_detection(self):
+        """ANALYSIS intent should be detected for investigations."""
+        test_cases = [
+            "analyze the performance",
+            "why is the service slow",
+            "diagnose the problem",
+            "troubleshoot the error",
+            "investigate the logs",
+        ]
+        for query in test_cases:
+            intent, confidence, signals = self.detector.detect_intent(query)
+            assert intent == Intent.ANALYSIS, f"Failed for: {query}"
+
+    def test_question_mark_detection(self):
+        """Question mark at end should boost QUERY intent."""
+        query = "is nginx running?"
+        intent, confidence, signals = self.detector.detect_intent(query)
+        assert intent == Intent.QUERY
+        assert "?" in signals or any("?" in s for s in signals)
+
+    def test_question_mark_in_middle_not_detected(self):
+        """Question mark in middle should not trigger query detection."""
+        # This tests that we use endswith("?") not "?" in text
+        query = "fix the error? restart the service"
+        intent, confidence, signals = self.detector.detect_intent(query)
+        # Should be ACTION because "restart" and "fix" are action keywords
+        assert intent == Intent.ACTION
+
+    def test_default_to_action(self):
+        """Ambiguous queries should default to ACTION."""
+        query = "hello world"  # No keywords
+        intent, confidence, signals = self.detector.detect_intent(query)
+        assert intent == Intent.ACTION
+        assert confidence == 0.5
 
 
 class TestSignalDetector:
@@ -338,6 +522,125 @@ class TestIntegration:
         assert hasattr(result, 'environment_detected')
         assert hasattr(result, 'service_detected')
         assert hasattr(result, 'host_detected')
+
+
+class TestSmartTriageClassifier:
+    """Tests for SmartTriageClassifier."""
+
+    def setup_method(self):
+        # Reset classifier to get fresh instance
+        reset_smart_classifier()
+        # Get classifier without DB (uses in-memory only)
+        self.classifier = get_smart_classifier(db_client=None, user_id="test")
+
+    def teardown_method(self):
+        reset_smart_classifier()
+
+    def test_classifier_creation(self):
+        """SmartTriageClassifier should be creatable without DB."""
+        assert self.classifier is not None
+
+    def test_classify_returns_intent_and_priority(self):
+        """classify() should return (Intent, PriorityResult)."""
+        intent, priority_result = self.classifier.classify("list my servers")
+        assert isinstance(intent, Intent)
+        assert isinstance(priority_result, PriorityResult)
+
+    def test_classify_query_intent(self):
+        """classify() should detect QUERY intent."""
+        intent, _ = self.classifier.classify("what servers do I have?")
+        assert intent == Intent.QUERY
+
+    def test_classify_action_intent(self):
+        """classify() should detect ACTION intent."""
+        intent, _ = self.classifier.classify("restart the nginx service")
+        assert intent == Intent.ACTION
+
+    def test_classify_analysis_intent(self):
+        """classify() should detect ANALYSIS intent."""
+        intent, _ = self.classifier.classify("why is the database slow")
+        assert intent == Intent.ANALYSIS
+
+    def test_provide_feedback_without_db(self):
+        """provide_feedback() should return False without DB."""
+        # Without FalkorDB, feedback cannot be stored
+        success = self.classifier.provide_feedback(
+            "test query",
+            Intent.QUERY,
+            Priority.P3,
+        )
+        assert success is False  # No DB available
+
+    def test_get_stats(self):
+        """get_stats() should return statistics dict."""
+        stats = self.classifier.get_stats()
+        assert "embeddings_available" in stats
+        assert "pattern_store" in stats
+
+    def test_singleton_pattern(self):
+        """get_smart_classifier should return same instance for same params."""
+        c1 = get_smart_classifier(db_client=None, user_id="test")
+        c2 = get_smart_classifier(db_client=None, user_id="test")
+        assert c1 is c2
+
+    def test_different_users_different_classifiers(self):
+        """Different user_ids should get different classifiers."""
+        c1 = get_smart_classifier(db_client=None, user_id="user1")
+        c2 = get_smart_classifier(db_client=None, user_id="user2")
+        assert c1 is not c2
+
+    def test_force_new_creates_new_instance(self):
+        """force_new=True should create new instance."""
+        c1 = get_smart_classifier(db_client=None, user_id="test")
+        c2 = get_smart_classifier(db_client=None, user_id="test", force_new=True)
+        assert c1 is not c2
+
+    def test_reset_clears_all(self):
+        """reset_smart_classifier() should clear all instances."""
+        get_smart_classifier(db_client=None, user_id="user1")
+        get_smart_classifier(db_client=None, user_id="user2")
+        reset_smart_classifier()
+        # After reset, new calls should create new instances
+        c1 = get_smart_classifier(db_client=None, user_id="user1")
+        assert c1 is not None
+
+    def test_reset_specific_user(self):
+        """reset_smart_classifier(user_id) should clear only that user."""
+        c1 = get_smart_classifier(db_client=None, user_id="user1")
+        c2 = get_smart_classifier(db_client=None, user_id="user2")
+        reset_smart_classifier(user_id="user1")
+        # user2 should still be cached
+        c2_new = get_smart_classifier(db_client=None, user_id="user2")
+        assert c2 is c2_new
+
+
+class TestIntegrationWithIntent:
+    """Integration tests for intent + priority classification."""
+
+    def test_full_triage_with_intent(self):
+        """Test complete triage with intent detection."""
+        detector = SignalDetector()
+
+        # Query intent with low priority
+        intent, _, _ = detector.detect_intent("list my hosts")
+        priority, _, _ = detector.detect_keywords("list my hosts")
+        assert intent == Intent.QUERY
+        assert priority == Priority.P3
+
+        # Action intent with production escalation
+        intent, _, _ = detector.detect_intent("restart nginx on prod")
+        priority, _, _ = detector.detect_keywords("restart nginx on prod")
+        assert intent == Intent.ACTION
+        # prod environment should have been detected
+        env, mult, min_p = detector.detect_environment("restart nginx on prod")
+        assert env == "prod"
+        assert min_p == Priority.P1
+
+        # Analysis intent with critical issue
+        intent, _, _ = detector.detect_intent("why is production down")
+        priority, _, _ = detector.detect_keywords("why is production down")
+        assert intent == Intent.ANALYSIS
+        assert priority == Priority.P0  # "down" is P0 keyword
 
 
 if __name__ == "__main__":
