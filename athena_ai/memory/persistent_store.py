@@ -38,7 +38,7 @@ class KnowledgeStore:
     def __init__(self, storage_path: str = "~/.athena/knowledge.json"):
         self.storage_path = os.path.expanduser(storage_path)
         self.data = self._load_data()
-        
+
         # Lazy load knowledge manager to avoid circular imports
         self._knowledge_manager = None
 
@@ -119,23 +119,23 @@ class KnowledgeStore:
         routes.append({"network": network_cidr, "gateway": gateway_host})
         self._save_data()
         logger.info(f"Added route: {network_cidr} via {gateway_host}")
-        
+
         # Sync to FalkorDB for visualization
         try:
             # We use the storage manager directly to add nodes/rels if possible,
-            # or we can rely on a sync method. 
+            # or we can rely on a sync method.
             # Since OpsKnowledgeManager doesn't expose a direct "add_route" for graph yet,
             # we'll use the storage manager's falkordb client if available.
             km = self.knowledge_manager
             if km.storage.falkordb_available:
                 # Create Network node
                 km.storage._falkordb.query(
-                    "MERGE (n:Network {cidr: $cidr})", 
+                    "MERGE (n:Network {cidr: $cidr})",
                     {"cidr": network_cidr}
                 )
                 # Create Gateway node (Host)
                 km.storage._falkordb.query(
-                    "MERGE (h:Host {hostname: $host})", 
+                    "MERGE (h:Host {hostname: $host})",
                     {"host": gateway_host}
                 )
                 # Create Relationship

@@ -4,27 +4,26 @@ Integration tests for the Knowledge System.
 Tests the complete flow from triage to incident resolution.
 """
 
-import pytest
-import tempfile
 import os
+import tempfile
 
+import pytest
+
+from athena_ai.knowledge import (
+    CVEMonitor,
+    OpsKnowledgeManager,
+    WebSearchEngine,
+)
+from athena_ai.security import (
+    AuditEventType,
+    AuditLogger,
+    CheckResult,
+    PreflightChecker,
+)
 from athena_ai.triage import (
     Priority,
     classify_priority,
     get_behavior,
-    describe_behavior,
-)
-from athena_ai.knowledge import (
-    OpsKnowledgeManager,
-    StorageManager,
-    CVEMonitor,
-    WebSearchEngine,
-)
-from athena_ai.security import (
-    PreflightChecker,
-    CheckResult,
-    AuditLogger,
-    AuditEventType,
 )
 
 

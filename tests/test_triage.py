@@ -5,16 +5,17 @@ Tests priority classification, signal detection, and behavior profiles.
 """
 
 import pytest
+
 from athena_ai.triage import (
-    Priority,
-    PriorityResult,
-    PriorityClassifier,
-    classify_priority,
-    get_classifier,
-    BehaviorProfile,
     BEHAVIOR_PROFILES,
-    get_behavior,
+    BehaviorProfile,
+    Priority,
+    PriorityClassifier,
+    PriorityResult,
+    classify_priority,
     describe_behavior,
+    get_behavior,
+    get_classifier,
 )
 from athena_ai.triage.signals import SignalDetector
 
