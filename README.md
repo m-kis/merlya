@@ -1,233 +1,249 @@
-# Athena CLI
+# Athena
 
-**AI-powered infrastructure orchestration tool** - Un DevOps IA qui agit avec tes droits SSH.
+**AI-powered infrastructure orchestration CLI** - A natural language interface for managing your infrastructure.
 
-## 🎯 Philosophie
+## Features
 
-Athena utilise la **puissance des LLMs** pour comprendre et agir sur ton infrastructure. Pas d'agents spécialisés rigides - juste une IA intelligente qui :
+- Natural language queries for infrastructure management
+- Multi-LLM support (OpenRouter, Anthropic, OpenAI, Ollama)
+- SSH execution with your existing credentials (`~/.ssh/config`, `ssh-agent`)
+- Interactive REPL with conversation memory
+- Extensible slash commands and hooks system
+- Host validation to prevent hallucinated commands
+- Risk assessment for dangerous operations
 
-- ✅ Lit le contexte pour les queries simples (pas de commandes inutiles)
-- ✅ SSH sur tes machines quand nécessaire (avec tes clés SSH)
-- ✅ Utilise `~/.ssh/config` et `ssh-agent` comme toi
-- ✅ Comprend tes inventaires et se souvient de ton infra
-
-## 🚀 Installation
+## Installation
 
 ```bash
-# Clone le repo
-cd athena
+# With pip
+pip install .
 
-# Install dependencies
-pip install -r requirements.txt
-# ou avec poetry
+# Or with poetry
 poetry install
 
-# Configure ton LLM provider
-export ANTHROPIC_API_KEY="sk-..."
-# ou OPENAI_API_KEY, OPENROUTER_API_KEY, etc.
-
-# Init l'environnement
-python3 -m athena_ai.cli init
+# Optional: knowledge graph support
+pip install ".[knowledge]"
 ```
 
-## 📖 Usage
-
-### 1. Scanner l'infrastructure
+## Quick Start
 
 ```bash
-# Scan initial : détecte /etc/hosts + SSH sur les machines
-python3 -m athena_ai.cli init
+# Configure your LLM provider
+export OPENROUTER_API_KEY="sk-or-..."
+# or ANTHROPIC_API_KEY, OPENAI_API_KEY, OLLAMA_HOST
 
-# Re-scan si besoin
-python3 -m athena_ai.cli scan
+# Launch interactive REPL (default)
+athena
+
+# Or run a single query
+athena ask "list all mongo hosts"
 ```
 
-### 2. Poser des questions
+## Usage
 
-#### Questions sur l'inventaire (lecture contexte)
+### Interactive Mode (REPL)
 
 ```bash
-# Liste des IPs
-python3 -m athena_ai.cli ask "give me the list of the ip of mongo preprod"
+$ athena
 
-# Résultat :
-# Preprod MongoDB IPs:
+Athena REPL - Type /help for commands
 
-```
-
-#### Questions nécessitant SSH (état live)
-
-```bash
-# Check service status
-python3 -m athena_ai.cli ask "check if mongodb is running on mongo-preprod-1"
-
-# Dry-run pour voir le plan
-python3 -m athena_ai.cli ask "check mongodb status on all preprod hosts" --dry-run
-
-# Actions critiques (restart, etc.)
-python3 -m athena_ai.cli ask "restart nginx on web-prod-001" --confirm
-```
-
-### 3. Flags utiles
-
-```bash
---dry-run      # Simule les actions sans exécuter
---confirm      # Auto-confirme les actions critiques
---verbose      # Mode debug
---env dev      # Change l'environnement (dev/staging/prod)
---model gpt-4  # Override le modèle AI
-```
-
-## 🏗️ Architecture
-
-```
-User Query
-    ↓
-Orchestrator (cerveau)
-    ↓
-LLM Router (multi-provider)
-    ↓
-Context Manager ← Discovery (scan SSH)
-    ↓
-AI Decision:
-  - Réponse directe (si info dans contexte)
-  - Actions SSH (si besoin état live)
-    ↓
-ActionExecutor → SSHManager (avec tes clés)
-```
-
-## 🔑 SSH & Credentials
-
-Athena utilise **tes credentials existantes** :
-
-1. **ssh-agent** (si disponible)
-2. **~/.ssh/config** (user et clés par host)
-3. **~/.ssh/id_ed25519**, **id_rsa**, etc.
-
-Exemple `~/.ssh/config` :
-```ssh
-Host mongo-preprod-*
-    User mongodb-admin
-    IdentityFile ~/.ssh/id_mongo_preprod
-
-Host *.prod
-    User root
-    IdentityFile ~/.ssh/id_prod
-```
-
-Athena respectera ces configs automatiquement.
-
-## 🧠 Comment l'IA Décide
-
-L'IA reçoit un **système prompt expert** avec :
-
-```
-INFRASTRUCTURE CONTEXT:
-INVENTORY (hostname -> IP):
+> list mongo preprod IPs
+MongoDB Preprod hosts:
   - mongo-preprod-1: 203.0.113.10
   - mongo-preprod-2: 198.51.100.20
-  ...
 
-REMOTE HOSTS (detailed info from SSH scan):
-mongo-preprod-1 (203.0.113.10):
-  - OS: Linux
-  - Kernel: 5.15.0-89-generic
-  - Running services: mongod.service, nginx.service, datadog-agent.service
+> check if mongodb is running on mongo-preprod-1
+Checking mongodb status...
+[SSH] systemctl status mongod
+mongod.service - MongoDB Database Server
+   Active: active (running)
 
-IMPORTANT RULES:
-- NEVER use 'echo' commands - extract info from context
-- Only SSH when you need LIVE state (CPU, status, logs)
-- Be smart: "list IPs" = context, "check status" = SSH
+> /scan --full
+Scanning all hosts...
+
+> /help
 ```
 
-L'IA comprend :
-- **Query informationelle** → Lit le contexte, répond directement
-- **Query diagnostique** → Génère commandes SSH intelligentes
-
-## 📊 Exemples Concrets
-
-### ✅ Bon Comportement (Après Fix)
+### Single Query Mode
 
 ```bash
-$ python3 -m athena_ai.cli ask "list mongo preprod IPs"
+# Simple query
+athena ask "what services are running on web-prod-1"
 
+# Dry-run (see plan without executing)
+athena ask "restart nginx on lb-prod-1" --dry-run
 
-
-# 0 commandes exécutées ✅
+# Auto-confirm critical actions
+athena ask "restart mongodb" --confirm
 ```
 
-### ❌ Ancien Comportement (Avant Fix)
+### Slash Commands
 
-```bash
-$ athena ask "list mongo preprod IPs"
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/scan` | Scan infrastructure |
+| `/scan --full` | Full SSH scan of all hosts |
+| `/hosts` | List known hosts |
+| `/variables set <key> <value>` | Set a variable |
+| `/variables set-secret <key>` | Set a secret (hidden input) |
+| `/model list` | List available models |
+| `/model set <provider> <model>` | Switch LLM model |
+| `/clear` | Clear conversation |
+| `/exit` | Exit REPL |
 
-# Générait 7 commandes echo inutiles
-# Temps: 15s, erreurs "requires confirmation"
+### Custom Commands
+
+Create markdown files in `~/.athena/commands/` or `.athena/commands/`:
+
+```markdown
+---
+name: healthcheck
+description: Run health check on a host
+aliases: [hc, health]
+---
+
+Perform health check on {{$1}}:
+- Check CPU, memory, disk
+- List running services
+- Check for errors in logs
 ```
 
-## 🛠️ Configuration
+Then use: `/healthcheck web-prod-1`
+
+## Configuration
 
 ### LLM Providers
 
 ```bash
-# Anthropic (Claude)
+# OpenRouter (recommended - multiple models)
+export OPENROUTER_API_KEY="sk-or-..."
+export OPENROUTER_MODEL="anthropic/claude-sonnet-4"
+
+# Anthropic
 export ANTHROPIC_API_KEY="sk-ant-..."
 
 # OpenAI
 export OPENAI_API_KEY="sk-..."
 
-# OpenRouter (multi-models)
-export OPENROUTER_API_KEY="sk-or-..."
-export OPENROUTER_MODEL="anthropic/claude-3-opus"
-
-# Ollama (local)
+# Ollama (local/offline)
+export OLLAMA_HOST="http://localhost:11434"
 export OLLAMA_MODEL="llama3"
 ```
 
-### Environnements
+### SSH Configuration
 
-Par défaut : `~/.athena/{env}/`
-- `dev/` (default)
-- `staging/`
-- `prod/`
+Athena uses your existing SSH setup:
 
-Chaque env a son propre contexte, mémoire, logs.
+```ssh
+# ~/.ssh/config
+Host mongo-*
+    User mongodb-admin
+    IdentityFile ~/.ssh/id_mongo
 
-## 🔒 Sécurité
+Host *.prod
+    User ops
+    IdentityFile ~/.ssh/id_prod
+```
+
+### Inventory Sources
+
+Athena discovers hosts from:
+- `/etc/hosts`
+- `~/.ssh/config`
+- SSH scanning
+- Custom inventory files (`~/.athena/inventory.yaml`)
+
+## Architecture
+
+```
+User Query
+    |
+    v
++-------------------+
+|   REPL / CLI      |
++-------------------+
+    |
+    v
++-------------------+
+|   Orchestrator    |  <- AutoGen/AG2 multi-agent
++-------------------+
+    |
+    v
++-------------------+
+|   LLM Router      |  <- OpenRouter, Anthropic, OpenAI, Ollama
++-------------------+
+    |
+    v
++-------------------+
+|  Context Manager  |  <- Host registry, SSH scan results
++-------------------+
+    |
+    v
++-------------------+
+|  SSH Executor     |  <- Connection pooling, error correction
++-------------------+
+```
+
+## Security
 
 ### Risk Assessment
 
-Toutes les commandes sont évaluées :
-- **Low** : read-only (ps, cat, grep) → Exécution automatique
-- **Moderate** : reload, chmod → Demande confirmation
-- **Critical** : restart, stop, rm, reboot → **Requiert --confirm**
+Commands are evaluated before execution:
+- **Low**: read-only (ps, cat, df) - auto-execute
+- **Moderate**: config changes (chmod) - prompt confirmation
+- **Critical**: destructive (rm, reboot, stop) - requires `--confirm`
+
+### Host Validation
+
+All commands are validated against the host registry. Operations on unknown/hallucinated hostnames are blocked.
 
 ### Audit Trail
 
-Toutes les actions sont loguées dans `athena_ai.log`.
+All actions logged to `~/.athena/athena.log`
 
-## 📈 Roadmap
+## Optional Features
 
-- [x] SSH avec credentials user
-- [x] Prompts intelligents (contexte vs SSH)
-- [x] Discovery automatique via SSH
-- [ ] Memory persistante (snapshots, rollback)
-- [ ] Ansible/Terraform integration
-- [ ] Multi-cloud (AWS, GCP, K8s)
-- [ ] REPL interactif
+### Knowledge Graph (FalkorDB)
 
-## 🤝 Contributing
+```bash
+# Install with knowledge support
+pip install ".[knowledge]"
 
-Athena coding style :
-- Python 3.11+
-- Type hints partout
-- Logs avec loguru
-- Tests avec pytest
+# Start FalkorDB
+docker run -p 6379:6379 falkordb/falkordb
 
-## 📝 License
+# Enable in Athena
+export FALKORDB_HOST="localhost"
+```
 
-MIT
+### Hooks
 
----
+Create `~/.athena/hooks.yaml` to intercept tool executions:
 
-**Made with ❤️ by Athena Contributors**
+```yaml
+hooks:
+  tool_execute_start:
+    - name: audit
+      action: log
+      config:
+        file: /var/log/athena-audit.log
+```
+
+## Development
+
+```bash
+# Install dev dependencies
+poetry install
+
+# Run tests
+pytest
+
+# Type checking
+mypy athena_ai
+```
+
+## License
+
+MIT - See [LICENSE](LICENSE)
