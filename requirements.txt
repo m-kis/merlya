@@ -1,0 +1,47 @@
+# Vibe Infra Dependencies
+# Generated from pyproject.toml
+
+# Core CLI
+click>=8.1
+rich>=13.7
+prompt_toolkit>=3.0
+
+# SSH and Remote Execution
+paramiko>=3.4
+fabric>=3.2
+netmiko>=4.3
+
+# Infrastructure Tools
+ansible-runner>=2.3
+python-terraform>=0.10
+
+# LLM and AI
+anthropic>=0.18
+openai>=1.12
+litellm>=1.30
+openai-agents>=0.1.0
+pyautogen>=0.10.0
+
+# Data and Storage
+redis>=5.0
+sqlalchemy>=2.0
+
+# Data source connectors (for intelligent routing)
+psycopg2-binary>=2.9
+pymysql>=1.1
+pymongo>=4.6
+requests>=2.31
+
+# Data Validation
+pydantic>=2.6
+
+# Security
+cryptography>=42.0
+keyring>=24.3
+
+# Utilities
+tenacity>=8.2
+python-dotenv>=1.0
+pyyaml>=6.0
+jinja2>=3.1
+loguru>=0.7.2
