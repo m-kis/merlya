@@ -1,5 +1,3 @@
-import os
-from contextlib import redirect_stdout
 from typing import Callable, List
 
 from rich.console import Console
@@ -157,11 +155,8 @@ Environment: {self.env}"""
             termination_condition=termination,
         )
 
-        # Suppress autogen's console output (redirect to /dev/null)
-        # Using os.devnull preserves rich console's stderr output for spinner
-        with open(os.devnull, 'w') as devnull:
-            with redirect_stdout(devnull):
-                result = await team.run(task=user_query)
+        # Run the team
+        result = await team.run(task=user_query)
 
         # Extract or generate synthesis
         return await self._extract_or_synthesize(result, user_query)
@@ -182,10 +177,8 @@ Work together:
 3. DevSecOps_Engineer: Execute the plan
 """
 
-        # Suppress autogen's console output
-        with open(os.devnull, 'w') as devnull:
-            with redirect_stdout(devnull):
-                result = await self.team.run(task=task)
+        # Run the team
+        result = await self.team.run(task=task)
 
         return await self._extract_or_synthesize(result, user_query)
 
