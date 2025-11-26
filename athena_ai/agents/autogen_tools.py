@@ -17,6 +17,7 @@ from typing import Annotated, Optional
 
 from athena_ai.context.host_registry import HostRegistry, get_host_registry
 from athena_ai.core.hooks import HookEvent, get_hook_manager
+from athena_ai.knowledge.ops_knowledge_manager import get_knowledge_manager
 from athena_ai.utils.logger import logger
 
 # Global instances (injected by AutoGenOrchestrator at startup)
@@ -200,6 +201,18 @@ def execute_command(
                 "success": True,
                 "output_length": len(output)
             })
+
+            # Audit Log (Knowledge Graph)
+            try:
+                get_knowledge_manager().log_action(
+                    action="execute_command",
+                    target=target,
+                    command=original_command,
+                    result="success",
+                    details=reason
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log audit action: {e}")
 
             return f"✅ SUCCESS{retry_note}\n\nOutput:\n{output}"
 

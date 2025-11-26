@@ -38,6 +38,16 @@ class KnowledgeStore:
     def __init__(self, storage_path: str = "~/.athena/knowledge.json"):
         self.storage_path = os.path.expanduser(storage_path)
         self.data = self._load_data()
+        
+        # Lazy load knowledge manager to avoid circular imports
+        self._knowledge_manager = None
+
+    @property
+    def knowledge_manager(self):
+        if not self._knowledge_manager:
+            from athena_ai.knowledge.ops_knowledge_manager import get_knowledge_manager
+            self._knowledge_manager = get_knowledge_manager()
+        return self._knowledge_manager
 
     def _load_data(self) -> Dict[str, Any]:
         """Load knowledge from disk."""
@@ -105,9 +115,40 @@ class KnowledgeStore:
                 return
 
         # Add new
+        # Add new
         routes.append({"network": network_cidr, "gateway": gateway_host})
         self._save_data()
         logger.info(f"Added route: {network_cidr} via {gateway_host}")
+        
+        # Sync to FalkorDB for visualization
+        try:
+            # We use the storage manager directly to add nodes/rels if possible,
+            # or we can rely on a sync method. 
+            # Since OpsKnowledgeManager doesn't expose a direct "add_route" for graph yet,
+            # we'll use the storage manager's falkordb client if available.
+            km = self.knowledge_manager
+            if km.storage.falkordb_available:
+                # Create Network node
+                km.storage._falkordb.query(
+                    "MERGE (n:Network {cidr: $cidr})", 
+                    {"cidr": network_cidr}
+                )
+                # Create Gateway node (Host)
+                km.storage._falkordb.query(
+                    "MERGE (h:Host {hostname: $host})", 
+                    {"host": gateway_host}
+                )
+                # Create Relationship
+                km.storage._falkordb.query(
+                    """
+                    MATCH (n:Network {cidr: $cidr}), (h:Host {hostname: $host})
+                    MERGE (h)-[:ROUTES_TO]->(n)
+                    """,
+                    {"cidr": network_cidr, "host": gateway_host}
+                )
+                logger.debug(f"Synced route {network_cidr} -> {gateway_host} to FalkorDB")
+        except Exception as e:
+            logger.warning(f"Failed to sync route to FalkorDB: {e}")
 
     def get_route_for_host(self, host_ip: str) -> Optional[str]:
         """
