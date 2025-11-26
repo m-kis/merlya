@@ -71,7 +71,7 @@ class PatternLearner:
         if self._loaded:
             return
 
-        with self.storage._sqlite_connection() as conn:
+        with self.storage.sqlite._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM patterns")
 
@@ -128,7 +128,7 @@ class PatternLearner:
         """
         import json
 
-        with self.storage._sqlite_connection() as conn:
+        with self.storage.sqlite._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO patterns
@@ -392,7 +392,7 @@ class PatternLearner:
     def _update_pattern_stats(self, pattern_id: int, success: bool):
         """Update pattern statistics."""
 
-        with self.storage._sqlite_connection() as conn:
+        with self.storage.sqlite._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE patterns

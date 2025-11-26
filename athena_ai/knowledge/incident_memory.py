@@ -167,7 +167,7 @@ class IncidentMemory:
 
         # Update incident
         import json
-        with self.storage._sqlite_connection() as conn:
+        with self.storage.sqlite._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE incidents
@@ -342,7 +342,7 @@ class IncidentMemory:
 
     def get_resolution_stats(self, service: str = None) -> Dict[str, Any]:
         """Get resolution statistics."""
-        with self.storage._sqlite_connection() as conn:
+        with self.storage.sqlite._connection() as conn:
             cursor = conn.cursor()
 
             if service:

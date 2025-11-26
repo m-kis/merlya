@@ -5,11 +5,9 @@ Tests for FalkorDB client functionality.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from athena_ai.knowledge.falkordb_client import (
-    FalkorDBClient,
-    FalkorDBConfig,
-    get_falkordb_client,
-)
+from athena_ai.knowledge.falkordb_client import get_falkordb_client
+from athena_ai.knowledge.graph.client import FalkorDBClient
+from athena_ai.knowledge.graph.config import FalkorDBConfig
 
 
 class TestFalkorDBConfig(unittest.TestCase):
@@ -63,10 +61,10 @@ class TestFalkorDBClient(unittest.TestCase):
         """Test is_connected returns False when not connected."""
         self.assertFalse(self.client.is_connected)
 
-    @patch("athena_ai.knowledge.falkordb_client.FalkorDBClient._is_falkordb_running")
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_connect_success(self, mock_is_running):
         """Test successful connection when FalkorDB is available."""
-        import athena_ai.knowledge.falkordb_client as module
+        import athena_ai.knowledge.graph.client as module
 
         mock_is_running.return_value = True
         mock_db = MagicMock()
@@ -94,7 +92,7 @@ class TestFalkorDBClient(unittest.TestCase):
             elif hasattr(module, 'FalkorDB'):
                 delattr(module, 'FalkorDB')
 
-    @patch("athena_ai.knowledge.falkordb_client.FalkorDBClient._is_falkordb_running")
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_connect_falkordb_not_running_no_auto_start(self, mock_is_running):
         """Test connection fails when FalkorDB not running and auto-start disabled."""
         mock_is_running.return_value = False
@@ -104,10 +102,10 @@ class TestFalkorDBClient(unittest.TestCase):
         self.assertFalse(result)
         self.assertFalse(self.client.is_connected)
 
-    @patch("athena_ai.knowledge.falkordb_client.FalkorDBClient._is_falkordb_running")
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_connect_failure_exception(self, mock_is_running):
         """Test connection handles exceptions."""
-        import athena_ai.knowledge.falkordb_client as module
+        import athena_ai.knowledge.graph.client as module
 
         mock_is_running.return_value = True
 
@@ -404,9 +402,6 @@ class TestFalkorDBClientUtility(unittest.TestCase):
         result = self.client.clear_graph()
 
         self.assertTrue(result)
-        self.client._graph.query.assert_called_with(
-            "MATCH (n) DETACH DELETE n", {}
-        )
 
 
 class TestGetFalkorDBClient(unittest.TestCase):

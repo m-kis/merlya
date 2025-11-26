@@ -16,6 +16,7 @@ from athena_ai.utils.logger import logger
 
 from .cve_monitor import CVE, CVEMonitor, VulnerabilityCheck
 from .incident_memory import IncidentMemory, SimilarityMatch
+from .ops.suggestions import SuggestionEngine
 from .pattern_learner import PatternLearner, PatternMatch
 from .storage_manager import AuditEntry, StorageManager
 
@@ -67,6 +68,13 @@ class OpsKnowledgeManager:
         self.incidents = IncidentMemory(self.storage)
         self.patterns = PatternLearner(self.storage)
         self.cve_monitor = CVEMonitor(cache_ttl_hours=cve_cache_hours)
+
+        # Initialize suggestion engine
+        self.suggestion_engine = SuggestionEngine(
+            self.incidents,
+            self.patterns,
+            self.storage
+        )
 
         # Session tracking
         self._current_session_id: Optional[str] = None
@@ -273,36 +281,12 @@ class OpsKnowledgeManager:
             - source: Where suggestion came from
             - source_id: ID of pattern or incident
         """
-        # Try patterns first (faster, more precise)
-        pattern_suggestion = self.patterns.suggest_from_text(text)
-        if pattern_suggestion and pattern_suggestion.get("confidence", 0) >= 0.5:
-            return {
-                "solution": pattern_suggestion["solution"],
-                "commands": pattern_suggestion.get("commands", []),
-                "confidence": pattern_suggestion["confidence"],
-                "source": "pattern",
-                "source_id": pattern_suggestion["pattern_id"],
-                "source_name": pattern_suggestion["pattern_name"],
-            }
-
-        # Try incident memory
-        incident_suggestion = self.incidents.suggest_solution(
+        return self.suggestion_engine.get_suggestion(
+            text=text,
             symptoms=symptoms,
             service=service,
             environment=environment,
         )
-        if incident_suggestion and incident_suggestion.get("confidence", 0) >= 0.3:
-            return {
-                "solution": incident_suggestion["solution"],
-                "commands": incident_suggestion.get("commands", []),
-                "confidence": incident_suggestion["confidence"],
-                "source": "incident",
-                "source_id": incident_suggestion["source_incident"],
-                "source_name": incident_suggestion["source_title"],
-                "root_cause": incident_suggestion.get("root_cause"),
-            }
-
-        return None
 
     def record_suggestion_feedback(
         self,
@@ -315,9 +299,7 @@ class OpsKnowledgeManager:
 
         This improves future suggestions.
         """
-        if source == "pattern" and source_id:
-            self.patterns.record_match(source_id, success=helpful)
-            logger.debug(f"Recorded pattern feedback: {source_id} -> {helpful}")
+        self.suggestion_engine.record_feedback(source, source_id, helpful)
 
     def get_remediation_for_incident(
         self,
@@ -356,133 +338,13 @@ class OpsKnowledgeManager:
             - risk_level: Estimated risk (low, medium, high)
             - auto_executable: Whether commands are safe for auto-execution
         """
-        # If incident_id provided, load its details
-        if incident_id:
-            incident = self.storage.get_incident(incident_id)
-            if incident:
-                symptoms = symptoms or incident.get("symptoms", [])
-                service = service or incident.get("service")
-                environment = environment or incident.get("environment")
-                title = title or incident.get("title", "")
-
-        # First try pattern matching (faster, more reliable)
-        pattern_matches = self.patterns.match_patterns(
-            text=title,
+        return self.suggestion_engine.get_remediation_for_incident(
+            incident_id=incident_id,
             symptoms=symptoms,
             service=service,
             environment=environment,
-            min_score=0.4,
-            limit=3,
+            title=title,
         )
-
-        if pattern_matches:
-            best_match = pattern_matches[0]
-            pattern = best_match.pattern
-
-            # Assess risk level based on commands
-            commands = pattern.suggested_commands or []
-            risk_level, auto_executable = self._assess_command_risk(commands)
-
-            return {
-                "remediation": pattern.suggested_solution,
-                "commands": commands,
-                "confidence": best_match.score,
-                "source": "pattern",
-                "source_id": pattern.id,
-                "source_name": pattern.name,
-                "matched_keywords": best_match.matched_keywords,
-                "matched_symptoms": best_match.matched_symptoms,
-                "risk_level": risk_level,
-                "auto_executable": auto_executable,
-            }
-
-        # Try incident memory
-        incident_suggestion = self.incidents.suggest_solution(
-            symptoms=symptoms,
-            service=service,
-            environment=environment,
-        )
-
-        if incident_suggestion and incident_suggestion.get("confidence", 0) >= 0.3:
-            commands = incident_suggestion.get("commands", [])
-            risk_level, auto_executable = self._assess_command_risk(commands)
-
-            return {
-                "remediation": incident_suggestion["solution"],
-                "commands": commands,
-                "confidence": incident_suggestion["confidence"],
-                "source": "incident",
-                "source_id": incident_suggestion["source_incident"],
-                "source_name": incident_suggestion["source_title"],
-                "root_cause": incident_suggestion.get("root_cause"),
-                "matching_features": incident_suggestion.get("matching_features", []),
-                "risk_level": risk_level,
-                "auto_executable": auto_executable,
-            }
-
-        return None
-
-    def _assess_command_risk(self, commands: List[str]) -> tuple:
-        """
-        Assess the risk level of a list of commands.
-
-        Returns:
-            (risk_level, auto_executable) tuple
-        """
-        if not commands:
-            return "low", True
-
-        # High risk patterns
-        high_risk_patterns = [
-            "rm -rf", "rm -r", "dd if=", "mkfs", "fdisk",
-            ":(){:|:&};:", "chmod -R 777", "> /dev/sd",
-            "DROP TABLE", "DROP DATABASE", "TRUNCATE",
-            "shutdown", "reboot", "halt", "init 0",
-            "kill -9", "pkill -9", "killall",
-        ]
-
-        # Medium risk patterns
-        medium_risk_patterns = [
-            "systemctl stop", "systemctl restart", "service stop",
-            "docker rm", "docker stop", "kubectl delete",
-            "rm ", "mv ", "cp ", "chmod", "chown",
-            "apt remove", "yum remove", "pip uninstall",
-            "UPDATE ", "DELETE FROM",
-        ]
-
-        # Safe patterns (read-only, diagnostic)
-        safe_patterns = [
-            "systemctl status", "service status", "ps ", "top",
-            "df ", "du ", "ls ", "cat ", "grep ", "tail ",
-            "docker ps", "docker logs", "kubectl get",
-            "SELECT ", "SHOW ", "DESCRIBE ",
-            "ping ", "curl ", "wget ", "nc ",
-        ]
-
-        risk_level = "low"
-        auto_executable = True
-
-        for cmd in commands:
-            cmd_lower = cmd.lower()
-
-            # Check high risk
-            for pattern in high_risk_patterns:
-                if pattern.lower() in cmd_lower:
-                    return "high", False
-
-            # Check medium risk
-            for pattern in medium_risk_patterns:
-                if pattern.lower() in cmd_lower:
-                    risk_level = "medium"
-                    auto_executable = False
-
-            # Check if it's a known safe command
-            is_safe = any(pattern.lower() in cmd_lower for pattern in safe_patterns)
-            if not is_safe and risk_level == "low":
-                # Unknown command - treat as medium risk
-                risk_level = "medium"
-
-        return risk_level, auto_executable
 
     # =========================================================================
     # CVE Monitoring

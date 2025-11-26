@@ -11,99 +11,14 @@ CRITICAL: This is a security-critical module. Never execute commands on unvalida
 """
 
 import re
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from difflib import SequenceMatcher
-from enum import Enum
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from athena_ai.context.sources.ansible import AnsibleSource
+from athena_ai.context.sources.base import Host, HostValidationResult, InventorySource
+from athena_ai.context.sources.cloud import AWSSource, GCPSource
+from athena_ai.context.sources.local import EtcHostsSource, SSHConfigSource
 from athena_ai.utils.logger import logger
-
-
-class InventorySource(Enum):
-    """Types of inventory sources."""
-    # File-based sources
-    ETC_HOSTS = "etc_hosts"
-    SSH_CONFIG = "ssh_config"
-    ANSIBLE_INVENTORY = "ansible_inventory"
-    ANSIBLE_FILE = "ansible_file"  # Alias for inventory_setup compatibility
-    CUSTOM_FILE = "custom_file"
-    # Cloud sources
-    CLOUD_AWS = "cloud_aws"
-    CLOUD_GCP = "cloud_gcp"
-    CLOUD_AZURE = "cloud_azure"
-    AWS_EC2 = "aws_ec2"  # Alias
-    GCP_COMPUTE = "gcp_compute"  # Alias
-    # API sources
-    NETBOX = "netbox"
-    CMDB = "cmdb"
-    # Manual
-    MANUAL = "manual"
-
-
-@dataclass
-class Host:
-    """A validated host entry."""
-    hostname: str
-    ip_address: Optional[str] = None
-    aliases: List[str] = field(default_factory=list)
-    source: InventorySource = InventorySource.MANUAL
-    environment: Optional[str] = None  # prod, staging, dev
-    groups: List[str] = field(default_factory=list)  # Ansible groups
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    last_seen: Optional[datetime] = None
-    accessible: Optional[bool] = None
-
-    def matches(self, query: str) -> bool:
-        """Check if this host matches a query (case-insensitive)."""
-        query_lower = query.lower()
-        if self.hostname.lower() == query_lower:
-            return True
-        if any(alias.lower() == query_lower for alias in self.aliases):
-            return True
-        if self.ip_address and self.ip_address == query:
-            return True
-        return False
-
-    def similarity(self, query: str) -> float:
-        """Calculate similarity score with a query."""
-        query_lower = query.lower()
-
-        # Exact match
-        if self.matches(query):
-            return 1.0
-
-        # Calculate best similarity across hostname and aliases
-        scores = [SequenceMatcher(None, query_lower, self.hostname.lower()).ratio()]
-        for alias in self.aliases:
-            scores.append(SequenceMatcher(None, query_lower, alias.lower()).ratio())
-
-        return max(scores)
-
-
-@dataclass
-class HostValidationResult:
-    """Result of validating a hostname."""
-    is_valid: bool
-    host: Optional[Host] = None
-    original_query: str = ""
-    suggestions: List[Tuple[str, float]] = field(default_factory=list)  # (hostname, score)
-    error_message: str = ""
-
-    def get_suggestion_text(self) -> str:
-        """Get human-readable suggestion text."""
-        if self.is_valid:
-            return f"✓ Host '{self.host.hostname}' is valid"
-
-        if not self.suggestions:
-            return f"✗ Host '{self.original_query}' not found. No similar hosts in inventory."
-
-        lines = [f"✗ Host '{self.original_query}' not found in inventory."]
-        lines.append("Did you mean one of these?")
-        for hostname, score in self.suggestions[:5]:
-            lines.append(f"  • {hostname} ({score:.0%} match)")
-        return "\n".join(lines)
 
 
 class HostRegistry:
@@ -158,298 +73,29 @@ class HostRegistry:
                 logger.debug("Host registry cache still valid, skipping reload")
                 return len(self._hosts)
 
-        initial_count = len(self._hosts)
+        # Initialize sources
+        sources = [
+            EtcHostsSource(self.config),
+            SSHConfigSource(self.config),
+            AnsibleSource(self.config),
+        ]
+
+        if self.config.get("enable_aws"):
+            sources.append(AWSSource(self.config))
+        if self.config.get("enable_gcp"):
+            sources.append(GCPSource(self.config))
 
         # Load from each source
-        self._load_etc_hosts()
-        self._load_ssh_config()
-        self._load_ansible_inventory()
-
-        # Optional: Cloud sources
-        if self.config.get("enable_aws"):
-            self._load_aws_hosts()
-        if self.config.get("enable_gcp"):
-            self._load_gcp_hosts()
+        for source in sources:
+            hosts = source.load()
+            for host in hosts:
+                self._register_host(host)
+                self._loaded_sources.add(host.source)
 
         self._last_refresh = datetime.now()
-        len(self._hosts) - initial_count
 
         logger.info(f"Host registry loaded: {len(self._hosts)} total hosts from {len(self._loaded_sources)} sources")
         return len(self._hosts)
-
-    def _load_etc_hosts(self) -> None:
-        """Load hosts from /etc/hosts."""
-        hosts_file = self.config.get("etc_hosts_path", "/etc/hosts")
-
-        if not Path(hosts_file).exists():
-            logger.debug(f"Hosts file not found: {hosts_file}")
-            return
-
-        try:
-            with open(hosts_file, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-
-                    parts = line.split()
-                    if len(parts) < 2:
-                        continue
-
-                    ip = parts[0]
-
-                    # Skip special IPs
-                    if ip in ["127.0.0.1", "::1", "255.255.255.255", "0.0.0.0"]:
-                        continue
-                    if ip.startswith("fe80::") or ip.startswith("ff02::"):
-                        continue
-
-                    # First name is canonical, rest are aliases
-                    canonical = parts[1]
-                    aliases = parts[2:] if len(parts) > 2 else []
-
-                    # Skip special hostnames
-                    if canonical in ["localhost", "broadcasthost", "ip6-localhost"]:
-                        continue
-
-                    self._register_host(Host(
-                        hostname=canonical,
-                        ip_address=ip,
-                        aliases=aliases,
-                        source=InventorySource.ETC_HOSTS,
-                    ))
-
-            self._loaded_sources.add(InventorySource.ETC_HOSTS)
-            logger.debug(f"Loaded hosts from {hosts_file}")
-
-        except Exception as e:
-            logger.warning(f"Failed to load {hosts_file}: {e}")
-
-    def _load_ssh_config(self) -> None:
-        """Load hosts from SSH config (~/.ssh/config)."""
-        ssh_config = Path.home() / ".ssh" / "config"
-
-        if not ssh_config.exists():
-            logger.debug("SSH config not found")
-            return
-
-        try:
-            current_host = None
-            current_hostname = None
-
-            with open(ssh_config, "r") as f:
-                for line in f:
-                    line = line.strip()
-
-                    if line.lower().startswith("host "):
-                        # Save previous host
-                        if current_host and current_host != "*":
-                            self._register_host(Host(
-                                hostname=current_host,
-                                ip_address=current_hostname,
-                                source=InventorySource.SSH_CONFIG,
-                            ))
-
-                        # Start new host
-                        current_host = line.split()[1]
-                        current_hostname = None
-
-                    elif line.lower().startswith("hostname "):
-                        current_hostname = line.split()[1]
-
-            # Save last host
-            if current_host and current_host != "*":
-                self._register_host(Host(
-                    hostname=current_host,
-                    ip_address=current_hostname,
-                    source=InventorySource.SSH_CONFIG,
-                ))
-
-            self._loaded_sources.add(InventorySource.SSH_CONFIG)
-            logger.debug("Loaded hosts from SSH config")
-
-        except Exception as e:
-            logger.warning(f"Failed to load SSH config: {e}")
-
-    def _load_ansible_inventory(self) -> None:
-        """Load hosts from Ansible inventory."""
-        # Try common Ansible inventory locations
-        inventory_paths = [
-            Path.home() / "inventory",
-            Path.home() / "ansible" / "inventory",
-            Path.home() / "ansible" / "hosts",
-            Path("/etc/ansible/hosts"),
-            Path("./inventory"),
-            Path("./hosts"),
-        ]
-
-        # Add configured paths
-        if self.config.get("ansible_inventory_paths"):
-            for p in self.config["ansible_inventory_paths"]:
-                inventory_paths.append(Path(p))
-
-        for inv_path in inventory_paths:
-            if inv_path.exists():
-                self._parse_ansible_inventory(inv_path)
-
-    def _parse_ansible_inventory(self, path: Path) -> None:
-        """Parse an Ansible inventory file (INI format)."""
-        try:
-            current_group = "ungrouped"
-
-            with open(path, "r") as f:
-                for line in f:
-                    line = line.strip()
-
-                    if not line or line.startswith("#") or line.startswith(";"):
-                        continue
-
-                    # Group header
-                    if line.startswith("[") and line.endswith("]"):
-                        group_name = line[1:-1]
-                        # Skip special groups
-                        if ":vars" in group_name or ":children" in group_name:
-                            current_group = None
-                        else:
-                            current_group = group_name
-                        continue
-
-                    if current_group is None:
-                        continue
-
-                    # Parse host line
-                    # Format: hostname ansible_host=IP other_vars...
-                    parts = line.split()
-                    if not parts:
-                        continue
-
-                    hostname = parts[0]
-                    ip_address = None
-                    metadata = {}
-
-                    for part in parts[1:]:
-                        if "=" in part:
-                            key, value = part.split("=", 1)
-                            if key == "ansible_host":
-                                ip_address = value
-                            else:
-                                metadata[key] = value
-
-                    # Detect environment from group name
-                    env = None
-                    group_lower = current_group.lower()
-                    if "prod" in group_lower:
-                        env = "production"
-                    elif "stag" in group_lower:
-                        env = "staging"
-                    elif "dev" in group_lower:
-                        env = "development"
-
-                    self._register_host(Host(
-                        hostname=hostname,
-                        ip_address=ip_address,
-                        source=InventorySource.ANSIBLE_INVENTORY,
-                        environment=env,
-                        groups=[current_group],
-                        metadata=metadata,
-                    ))
-
-            self._loaded_sources.add(InventorySource.ANSIBLE_INVENTORY)
-            logger.debug(f"Loaded Ansible inventory from {path}")
-
-        except Exception as e:
-            logger.warning(f"Failed to parse Ansible inventory {path}: {e}")
-
-    def _load_aws_hosts(self) -> None:
-        """Load hosts from AWS EC2 (requires boto3)."""
-        try:
-            import boto3
-
-            ec2 = boto3.client('ec2')
-            response = ec2.describe_instances(
-                Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
-            )
-
-            for reservation in response['Reservations']:
-                for instance in reservation['Instances']:
-                    # Get Name tag
-                    name = None
-                    for tag in instance.get('Tags', []):
-                        if tag['Key'] == 'Name':
-                            name = tag['Value']
-                            break
-
-                    if not name:
-                        name = instance['InstanceId']
-
-                    # Get environment from tags
-                    env = None
-                    for tag in instance.get('Tags', []):
-                        if tag['Key'].lower() in ['environment', 'env']:
-                            env = tag['Value']
-                            break
-
-                    self._register_host(Host(
-                        hostname=name,
-                        ip_address=instance.get('PrivateIpAddress'),
-                        source=InventorySource.CLOUD_AWS,
-                        environment=env,
-                        metadata={
-                            'instance_id': instance['InstanceId'],
-                            'instance_type': instance['InstanceType'],
-                            'availability_zone': instance['Placement']['AvailabilityZone'],
-                        }
-                    ))
-
-            self._loaded_sources.add(InventorySource.CLOUD_AWS)
-            logger.info("Loaded hosts from AWS EC2")
-
-        except ImportError:
-            logger.debug("boto3 not installed, skipping AWS")
-        except Exception as e:
-            logger.warning(f"Failed to load AWS hosts: {e}")
-
-    def _load_gcp_hosts(self) -> None:
-        """Load hosts from GCP Compute Engine."""
-        try:
-            from google.cloud import compute_v1
-
-            client = compute_v1.InstancesClient()
-            project = self.config.get("gcp_project")
-
-            if not project:
-                logger.debug("GCP project not configured")
-                return
-
-            # List all zones and instances
-            for zone in compute_v1.ZonesClient().list(project=project):
-                for instance in client.list(project=project, zone=zone.name):
-                    if instance.status != "RUNNING":
-                        continue
-
-                    ip = None
-                    for interface in instance.network_interfaces:
-                        if interface.network_i_p:
-                            ip = interface.network_i_p
-                            break
-
-                    self._register_host(Host(
-                        hostname=instance.name,
-                        ip_address=ip,
-                        source=InventorySource.CLOUD_GCP,
-                        metadata={
-                            'zone': zone.name,
-                            'machine_type': instance.machine_type,
-                        }
-                    ))
-
-            self._loaded_sources.add(InventorySource.CLOUD_GCP)
-            logger.info("Loaded hosts from GCP")
-
-        except ImportError:
-            logger.debug("google-cloud-compute not installed, skipping GCP")
-        except Exception as e:
-            logger.warning(f"Failed to load GCP hosts: {e}")
 
     def _register_host(self, host: Host) -> None:
         """Register a host in the registry."""
