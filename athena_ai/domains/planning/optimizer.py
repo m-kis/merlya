@@ -170,7 +170,7 @@ class PlanOptimizer:
             levels[level].append(step)
 
         # Mark steps as parallelizable if they don't conflict
-        for level, level_steps in levels.items():
+        for level_steps in levels.values():
             if len(level_steps) <= 1:
                 continue
 

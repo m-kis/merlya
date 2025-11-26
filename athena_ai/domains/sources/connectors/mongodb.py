@@ -134,10 +134,10 @@ class MongoDBConnector(BaseConnector):
             finally:
                 client.close()
 
-        except ImportError:
-            raise ConnectorError("pymongo not installed. Run: pip install pymongo")
+        except ImportError as e:
+            raise ConnectorError("pymongo not installed. Run: pip install pymongo") from e
         except Exception as e:
-            raise ConnectorError(f"MongoDB query failed: {e}")
+            raise ConnectorError(f"MongoDB query failed: {e}") from e
 
     def get_metadata(self) -> SourceMetadata:
         """Get metadata about this MongoDB source."""

@@ -93,10 +93,10 @@ class MySQLConnector(BaseConnector):
             finally:
                 conn.close()
 
-        except ImportError:
-            raise ConnectorError("pymysql not installed. Run: pip install pymysql")
+        except ImportError as e:
+            raise ConnectorError("pymysql not installed. Run: pip install pymysql") from e
         except Exception as e:
-            raise ConnectorError(f"MySQL query failed: {e}")
+            raise ConnectorError(f"MySQL query failed: {e}") from e
 
     def get_metadata(self) -> SourceMetadata:
         """Get metadata about this MySQL source."""

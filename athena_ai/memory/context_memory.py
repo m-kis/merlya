@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Set
 
 from athena_ai.memory.persistent_store import KnowledgeStore
+from athena_ai.memory.skill_store import SkillStore
 from athena_ai.utils.logger import logger
 
 
@@ -24,6 +25,7 @@ class ContextMemory:
     - Remembers which hosts were mentioned/used recently
     - Provides compact context summaries
     - Pattern-based host filtering (mongo, prod, mysql, etc.)
+    - Access to learned Skills
     """
 
     def __init__(self, max_hosts_in_context: int = 20):
@@ -46,6 +48,9 @@ class ContextMemory:
 
         # Persistent knowledge store
         self.knowledge_store = KnowledgeStore()
+
+        # Learned skills store
+        self.skill_store = SkillStore()
 
         # Load initial context from persistence if available
         self._load_from_persistence()

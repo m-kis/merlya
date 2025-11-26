@@ -121,7 +121,7 @@ class APIConnector(BaseConnector):
                 raise ConnectorError(f"API query failed: HTTP {response.status_code} - {response.text}")
 
         except requests.exceptions.RequestException as e:
-            raise ConnectorError(f"API query failed: {e}")
+            raise ConnectorError(f"API query failed: {e}") from e
 
     def get_metadata(self) -> SourceMetadata:
         """Get metadata about this API source."""

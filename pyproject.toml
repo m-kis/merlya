@@ -129,11 +129,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
-    "E722",  # bare except (TODO: fix gradually)
-    "E741",  # ambiguous variable name (TODO: fix gradually)
-    "B007",  # loop control variable not used (TODO: fix gradually)
     "B008",  # function call in default arg
-    "B904",  # raise from err (TODO: fix gradually)
 ]
 
 [tool.ruff.lint.flake8-unused-arguments]

@@ -78,7 +78,7 @@ class MCPClient:
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON from MCP server: {e}")
-            raise RuntimeError(f"Invalid JSON response from MCP server: {e}")
+            raise RuntimeError(f"Invalid JSON response from MCP server: {e}") from e
         except Exception as e:
             logger.error(f"MCP server communication failed: {e}")
             raise

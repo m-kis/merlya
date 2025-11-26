@@ -331,8 +331,8 @@ Be factual and concise."""
                     if summary:
                         logger.info(f"Used local {display_name} to summarize inventory")
                         return summary
-            except:
-                continue
+            except (requests.RequestException, ValueError, KeyError):
+                continue  # Try next model if this one fails
 
     except Exception as e:
         logger.debug(f"Local model summarization failed: {e}")
@@ -697,8 +697,8 @@ def audit_host(
             _context_memory.save_host_fact(target, "last_audit", "Just now")
             if res_ports['success']:
                 _context_memory.save_host_fact(target, "open_ports", res_ports['stdout'][:200])
-        except:
-            pass
+        except Exception:
+            pass  # Non-critical: memory save failure shouldn't break audit
 
     return "\n".join(report)
 
@@ -815,6 +815,117 @@ def read_remote_file(
         return f"✅ {path} ({line_count} lines):\n```\n{content}\n```"
 
     return f"❌ Failed to read {path}: {result.get('stderr', 'Unknown error')}"
+
+
+def glob_files(
+    pattern: Annotated[str, "Glob pattern (e.g. /var/log/*.log)"],
+    host: Annotated[str, "Target host (must exist in inventory)"]
+) -> str:
+    """
+    List files matching a glob pattern.
+
+    Args:
+        pattern: Glob pattern
+        host: Target host
+
+    Returns:
+        List of matching files
+    """
+    logger.info(f"AutoGen Tool: glob_files {pattern} on {host}")
+
+    is_valid, msg = _validate_host(host)
+    if not is_valid:
+        return f"❌ BLOCKED: {msg}\n\n💡 Use list_hosts() to see available hosts."
+
+    # Use ls -d to list files matching pattern
+    cmd = f"ls -d {pattern}"
+    result = _executor.execute(host, cmd, confirm=True)
+
+    if result['success']:
+        files = result['stdout'].strip().split('\n')
+        count = len(files)
+        return f"✅ Found {count} files matching '{pattern}':\n```\n{result['stdout']}\n```"
+
+    return f"❌ No files found or error: {result.get('stderr', 'Unknown error')}"
+
+
+def grep_files(
+    pattern: Annotated[str, "Regex pattern to search for"],
+    path: Annotated[str, "File or directory path to search in"],
+    host: Annotated[str, "Target host (must exist in inventory)"],
+    recursive: Annotated[bool, "Search recursively (-r)"] = False
+) -> str:
+    """
+    Search for text patterns in files using grep.
+
+    Args:
+        pattern: Regex pattern
+        path: Path to search
+        host: Target host
+        recursive: Recursive search
+
+    Returns:
+        Matching lines
+    """
+    logger.info(f"AutoGen Tool: grep_files '{pattern}' in {path} on {host}")
+
+    is_valid, msg = _validate_host(host)
+    if not is_valid:
+        return f"❌ BLOCKED: {msg}\n\n💡 Use list_hosts() to see available hosts."
+
+    flags = "-E" # Extended regex
+    if recursive:
+        flags += "r"
+
+    # Limit output to avoid overwhelming context
+    cmd = f"grep {flags} '{pattern}' '{path}' | head -n 50"
+
+    result = _executor.execute(host, cmd, confirm=True)
+
+    if result['success']:
+        output = result['stdout']
+        if not output:
+            return f"✅ No matches found for '{pattern}' in {path}"
+        return f"✅ Grep results for '{pattern}':\n```\n{output}\n```"
+
+    return f"❌ Grep failed: {result.get('stderr', 'Unknown error')}"
+
+
+def find_file(
+    name: Annotated[str, "Filename pattern (e.g. *.conf)"],
+    path: Annotated[str, "Search start path (default: /)"],
+    host: Annotated[str, "Target host (must exist in inventory)"]
+) -> str:
+    """
+    Find files by name.
+
+    Args:
+        name: Filename pattern
+        path: Start path
+        host: Target host
+
+    Returns:
+        List of found files
+    """
+    logger.info(f"AutoGen Tool: find_file {name} in {path} on {host}")
+
+    is_valid, msg = _validate_host(host)
+    if not is_valid:
+        return f"❌ BLOCKED: {msg}\n\n💡 Use list_hosts() to see available hosts."
+
+    # Use find command with safety limits
+    cmd = f"find '{path}' -name '{name}' -type f 2>/dev/null | head -n 20"
+
+    result = _executor.execute(host, cmd, confirm=True)
+
+    if result['success']:
+        output = result['stdout']
+        if not output:
+            return f"✅ No files found matching '{name}' in {path}"
+        return f"✅ Found files:\n```\n{output}\n```"
+
+    return f"❌ Find failed: {result.get('stderr', 'Unknown error')}"
+
 
 
 def write_remote_file(
@@ -1270,3 +1381,183 @@ def kubectl_exec(
         return f"✅ kubectl exec {namespace}/{pod}:\n```\n{result['stdout']}\n```"
 
     return f"❌ Failed: {result.get('stderr', 'Unknown error')}"
+
+
+# ============================================================================
+# WEB TOOLS
+# ============================================================================
+
+def web_search(
+    query: Annotated[str, "Search query"]
+) -> str:
+    """
+    Search the web for information using DuckDuckGo.
+
+    Use this to find documentation, error solutions, or general information.
+
+    Args:
+        query: Search query
+
+    Returns:
+        Search results summary
+    """
+    logger.info(f"AutoGen Tool: web_search '{query}'")
+
+    try:
+        from duckduckgo_search import DDGS
+
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+
+        if not results:
+            return "❌ No results found."
+
+        summary = [f"🔍 Search Results for '{query}':", ""]
+        for i, res in enumerate(results, 1):
+            summary.append(f"{i}. {res['title']}")
+            summary.append(f"   {res['body']}")
+            summary.append(f"   Source: {res['href']}")
+            summary.append("")
+
+        return "\n".join(summary)
+
+    except ImportError:
+        return "❌ duckduckgo-search not installed. Please install it to use this tool."
+    except Exception as e:
+        return f"❌ Search failed: {str(e)}"
+
+
+def web_fetch(
+    url: Annotated[str, "URL to fetch"]
+) -> str:
+    """
+    Fetch content from a URL.
+
+    Use this to read documentation or articles found via web_search.
+
+    Args:
+        url: URL to fetch
+
+    Returns:
+        Page content (text only)
+    """
+    logger.info(f"AutoGen Tool: web_fetch {url}")
+
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+
+        headers = {'User-Agent': 'Athena/0.1.0 (AI Assistant)'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        # Parse HTML to text
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.extract()
+
+        text = soup.get_text()
+
+        # Clean up whitespace
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = '\n'.join(chunk for chunk in chunks if chunk)
+
+        # Limit length
+        if len(text) > 5000:
+            text = text[:5000] + "\n...(truncated)"
+
+        return f"✅ Content of {url}:\n\n{text}"
+
+    except Exception as e:
+        return f"❌ Fetch failed: {str(e)}"
+
+
+# ============================================================================
+# INTERACTION & LEARNING
+# ============================================================================
+
+def ask_user(
+    question: Annotated[str, "Question to ask the user"]
+) -> str:
+    """
+    Ask the user a question and wait for their response.
+
+    Use this when:
+    - You need clarification
+    - You need a decision (Yes/No)
+    - You need missing information (passwords, IPs, etc.)
+
+    Args:
+        question: The question to ask
+
+    Returns:
+        User's response
+    """
+    logger.info(f"AutoGen Tool: ask_user '{question}'")
+
+    # In the REPL context, this is tricky because the tool execution is synchronous.
+    # We can print the question and use input(), but that blocks the whole thread.
+    # However, since we are in a local CLI tool, blocking input() is actually acceptable/expected.
+
+    print(f"\n❓ [bold cyan]Athena asks:[/bold cyan] {question}")
+    try:
+        response = input("   > ")
+        return f"User response: {response}"
+    except (KeyboardInterrupt, EOFError):
+        return "User cancelled input."
+
+
+def remember_skill(
+    trigger: Annotated[str, "The problem or situation (e.g. 'how to restart mongo')"],
+    solution: Annotated[str, "The solution or command (e.g. 'systemctl restart mongod')"],
+    context: Annotated[str, "Optional context tags (e.g. 'linux production')"] = ""
+) -> str:
+    """
+    Teach Athena a new skill (problem-solution pair).
+
+    Use this when you have successfully solved a problem and want to remember how to do it.
+
+    Args:
+        trigger: The problem description
+        solution: The solution
+        context: Optional tags
+
+    Returns:
+        Confirmation
+    """
+    logger.info(f"AutoGen Tool: remember_skill '{trigger}'")
+
+    if _context_memory and hasattr(_context_memory, 'skill_store'):
+        _context_memory.skill_store.add_skill(trigger, solution, context)
+        return f"✅ Learned skill: When '{trigger}', do '{solution}'"
+
+    return "❌ Memory system not available"
+
+
+def recall_skill(
+    query: Annotated[str, "Search query for skills"]
+) -> str:
+    """
+    Search learned skills for a solution.
+
+    Use this when you are stuck or want to check if you've solved this before.
+
+    Args:
+        query: Search query
+
+    Returns:
+        Matching skills
+    """
+    logger.info(f"AutoGen Tool: recall_skill '{query}'")
+
+    if _context_memory and hasattr(_context_memory, 'skill_store'):
+        summary = _context_memory.skill_store.get_skill_summary(query)
+        if summary:
+            return summary
+        return f"❌ No skills found matching '{query}'"
+
+    return "❌ Memory system not available"
+

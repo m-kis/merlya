@@ -232,7 +232,7 @@ class InventorySetupWizard:
                             if not ip.startswith("fe80::"):
                                 count += 1
             return count
-        except:
+        except (OSError, IOError):
             return 0
 
     def _count_ssh_hosts(self) -> int:
@@ -247,7 +247,7 @@ class InventorySetupWizard:
                         if host != "*":
                             count += 1
             return count
-        except:
+        except (OSError, IOError, IndexError):
             return 0
 
     def _count_ansible_hosts(self, path: Path) -> int:
@@ -266,7 +266,7 @@ class InventorySetupWizard:
                     if not in_vars and line and "=" not in line.split()[0]:
                         count += 1
             return count
-        except:
+        except (OSError, IOError, IndexError):
             return 0
 
     def _check_aws_available(self) -> bool:
@@ -367,7 +367,7 @@ class InventorySetupWizard:
         else:
             try:
                 selected_indices = [int(x.strip()) - 1 for x in response.split(",")]
-            except:
+            except (ValueError, AttributeError):
                 self.console("Invalid input, using all sources")
                 selected_indices = list(range(len(available)))
 

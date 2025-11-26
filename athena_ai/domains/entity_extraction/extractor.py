@@ -114,7 +114,7 @@ RESPOND WITH VALID JSON ONLY:"""
                         response_clean = ollama_response
                         if response_clean.startswith("```"):
                             lines = response_clean.split("\n")
-                            response_clean = "\n".join([l for l in lines if not l.startswith("```")])
+                            response_clean = "\n".join([line for line in lines if not line.startswith("```")])
                         if response_clean.startswith("json"):
                             response_clean = response_clean[4:].strip()
 
@@ -141,7 +141,7 @@ RESPOND WITH VALID JSON ONLY:"""
             response_clean = response.strip()
             if response_clean.startswith("```"):
                 lines = response_clean.split("\n")
-                response_clean = "\n".join([l for l in lines if not l.startswith("```")])
+                response_clean = "\n".join([line for line in lines if not line.startswith("```")])
             if response_clean.startswith("json"):
                 response_clean = response_clean[4:].strip()
 

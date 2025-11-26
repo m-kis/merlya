@@ -103,7 +103,7 @@ class SSHManager:
         target_ip = None
         try:
             target_ip = socket.gethostbyname(host)
-        except:
+        except socket.gaierror:
             pass
 
         strategy = self.connectivity.get_connection_strategy(host, target_ip)

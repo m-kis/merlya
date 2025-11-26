@@ -227,7 +227,7 @@ class PlanValidator:
             levels[level].append(step)
 
         # Check for resource conflicts within each level
-        for level, parallel_steps in levels.items():
+        for parallel_steps in levels.values():
             targets = {}
             for step in parallel_steps:
                 target = step.get("target", "local")

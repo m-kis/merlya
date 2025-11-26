@@ -142,10 +142,10 @@ class PostgreSQLConnector(BaseConnector):
             finally:
                 conn.close()
 
-        except ImportError:
-            raise ConnectorError("psycopg2 not installed. Run: pip install psycopg2-binary")
+        except ImportError as e:
+            raise ConnectorError("psycopg2 not installed. Run: pip install psycopg2-binary") from e
         except Exception as e:
-            raise ConnectorError(f"PostgreSQL query failed: {e}")
+            raise ConnectorError(f"PostgreSQL query failed: {e}") from e
 
     def get_metadata(self) -> SourceMetadata:
         """

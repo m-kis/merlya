@@ -247,7 +247,7 @@ echo "=== LOAD ===" && uptime
 
             # Extract CPU
             if 'Cpu(s):' in output:
-                cpu_line = [l for l in output.split('\n') if 'Cpu(s):' in l][0]
+                cpu_line = [line for line in output.split('\n') if 'Cpu(s):' in line][0]
                 # Parse: %Cpu(s):  2.3 us,  1.1 sy,  0.0 ni, 96.5 id, ...
                 parts = cpu_line.split(',')
                 for part in parts:
@@ -258,7 +258,7 @@ echo "=== LOAD ===" && uptime
 
             # Extract Memory
             if 'Mem:' in output:
-                mem_line = [l for l in output.split('\n') if 'Mem:' in l and 'total' in l][0]
+                mem_line = [line for line in output.split('\n') if 'Mem:' in line and 'total' in line][0]
                 parts = mem_line.split()
                 if len(parts) >= 4:
                     metrics['mem_total'] = parts[1]
@@ -266,7 +266,7 @@ echo "=== LOAD ===" && uptime
                     metrics['mem_free'] = parts[3]
 
             # Extract Disk
-            disk_lines = [l for l in output.split('\n') if '/' in l and '%' in l]
+            disk_lines = [line for line in output.split('\n') if '/' in line and '%' in line]
             if disk_lines:
                 # Parse first disk line (usually root filesystem)
                 parts = disk_lines[0].split()
@@ -278,9 +278,9 @@ echo "=== LOAD ===" && uptime
 
             # Extract Load Average
             if 'load average:' in output:
-                load_line = [l for l in output.split('\n') if 'load average:' in l][0]
+                load_line = [line for line in output.split('\n') if 'load average:' in line][0]
                 load_part = load_line.split('load average:')[1].strip()
-                loads = [l.strip() for l in load_part.split(',')[:3]]
+                loads = [item.strip() for item in load_part.split(',')[:3]]
                 metrics['load_1min'] = loads[0] if len(loads) > 0 else None
                 metrics['load_5min'] = loads[1] if len(loads) > 1 else None
                 metrics['load_15min'] = loads[2] if len(loads) > 2 else None
@@ -319,7 +319,7 @@ echo "=== LOAD ===" && uptime
 
             if 'Linux' in output:
                 # Parse uname output
-                uname_line = [l for l in output.split('\n') if 'Linux' in l][0]
+                uname_line = [line for line in output.split('\n') if 'Linux' in line][0]
                 parts = uname_line.split()
                 if len(parts) >= 3:
                     os_info['kernel'] = parts[2]

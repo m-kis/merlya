@@ -204,8 +204,8 @@ class SSHConnectionPool:
         if key in self.connections:
             try:
                 self.connections[key]['client'].close()
-            except:
-                pass
+            except Exception:
+                pass  # Ignore errors when closing stale connections
             del self.connections[key]
 
     def close_all(self):

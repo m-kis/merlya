@@ -191,7 +191,7 @@ class ResultSynthesizer:
 
             # Process detection
             if "ps aux" in command and output and "grep" not in output.split("\n")[-1]:
-                proc_lines = [l for l in output.split("\n") if l.strip() and "grep" not in l]
+                proc_lines = [line for line in output.split("\n") if line.strip() and "grep" not in line]
                 if len(proc_lines) > 0:
                     findings.append(f"Processus trouvé: {len(proc_lines)} instance(s)")
 

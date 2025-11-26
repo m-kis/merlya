@@ -137,7 +137,7 @@ If permission error or unfixable, return original command exactly.
 
     def _extract_command(self, ai_response: str) -> str:
         """Extract clean command from AI response and filter out sudo/su suggestions."""
-        lines = [l.strip() for l in ai_response.split('\n') if l.strip()]
+        lines = [line.strip() for line in ai_response.split('\n') if line.strip()]
 
         for line in lines:
             # Skip markdown, comments

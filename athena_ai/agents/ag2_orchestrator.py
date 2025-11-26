@@ -10,10 +10,8 @@ from typing import Any, Dict, Optional
 from rich.console import Console
 from rich.panel import Panel
 
-from athena_ai.agents import autogen_tools
+from athena_ai.agents import autogen_tools, knowledge_tools
 from athena_ai.agents.base_orchestrator import BaseOrchestrator
-
-# Triage System
 from athena_ai.triage import (
     BehaviorProfile,
     PriorityClassifier,
@@ -255,6 +253,24 @@ Current Environment: {self.env}
         register(autogen_tools.read_remote_file)
         register(autogen_tools.write_remote_file)
         register(autogen_tools.tail_logs)
+        register(autogen_tools.glob_files)
+        register(autogen_tools.grep_files)
+        register(autogen_tools.find_file)
+
+        # Web tools
+        register(autogen_tools.web_search)
+        register(autogen_tools.web_fetch)
+
+        # Interaction & Learning
+        register(autogen_tools.ask_user)
+        register(autogen_tools.remember_skill)
+        register(autogen_tools.recall_skill)
+
+        # Knowledge Graph (FalkorDB)
+        register(knowledge_tools.record_incident)
+        register(knowledge_tools.search_knowledge)
+        register(knowledge_tools.get_solution_suggestion)
+        register(knowledge_tools.graph_stats)
 
         # System info
         register(autogen_tools.disk_info)
