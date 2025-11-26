@@ -1,16 +1,45 @@
 """
-Priority definitions for incident triage.
+Priority and Intent definitions for incident triage.
 
 P0 = CRITICAL: Production down, data loss, security breach
 P1 = URGENT: Service degraded, security vulnerability, imminent failure
 P2 = IMPORTANT: Performance issues, non-critical failures
 P3 = NORMAL: Maintenance, improvements, monitoring checks
+
+Intent types:
+- QUERY: Information request (list hosts, show status) - read-only
+- ACTION: Execute commands, make changes
+- ANALYSIS: Deep investigation, diagnostics
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import List, Optional
+
+
+class Intent(Enum):
+    """
+    Request intent classification.
+
+    Determines what type of operation the user wants:
+    - QUERY: Just asking for information (read-only)
+    - ACTION: Execute commands or make changes
+    - ANALYSIS: Deep investigation requiring multiple steps
+    """
+    QUERY = "query"        # "quels sont mes serveurs", "list hosts", "show me"
+    ACTION = "action"      # "restart nginx", "check disk", "execute"
+    ANALYSIS = "analysis"  # "analyze performance", "diagnose issue"
+
+    @property
+    def allowed_tools(self) -> List[str]:
+        """Tools allowed for this intent type."""
+        if self == Intent.QUERY:
+            return ["list_hosts", "get_infrastructure_context", "recall_skill"]
+        elif self == Intent.ACTION:
+            return None  # All tools allowed
+        else:  # ANALYSIS
+            return None  # All tools allowed
 
 
 class Priority(IntEnum):
@@ -58,8 +87,27 @@ class Priority(IntEnum):
 
 
 @dataclass
+class TriageResult:
+    """Result of triage classification (priority + intent)."""
+
+    priority: Priority
+    intent: Intent
+    confidence: float  # 0.0 to 1.0
+    signals: List[str] = field(default_factory=list)
+    reasoning: str = ""
+    escalation_required: bool = False
+    detected_at: datetime = field(default_factory=datetime.now)
+
+    # Context that influenced the classification
+    environment_detected: Optional[str] = None  # prod, staging, dev
+    service_detected: Optional[str] = None
+    host_detected: Optional[str] = None
+
+
+# Backward compatibility alias
+@dataclass
 class PriorityResult:
-    """Result of priority classification."""
+    """Result of priority classification (legacy, use TriageResult)."""
 
     priority: Priority
     confidence: float  # 0.0 to 1.0

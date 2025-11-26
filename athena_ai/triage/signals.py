@@ -1,17 +1,58 @@
 """
-Signal detection for priority classification.
+Signal detection for priority and intent classification.
 
 Multi-layer detection:
-1. Keyword matching (fastest, < 5ms)
-2. Context/environment analysis (< 10ms)
-3. Pattern matching for severity amplifiers
+1. Intent detection (QUERY vs ACTION vs ANALYSIS)
+2. Keyword matching for priority (fastest, < 5ms)
+3. Context/environment analysis (< 10ms)
+4. Pattern matching for severity amplifiers
 """
 
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from .priority import Priority
+from .priority import Intent, Priority
+
+
+# ============================================================================
+# INTENT DETECTION KEYWORDS
+# ============================================================================
+
+# QUERY intent: User wants information, not action
+QUERY_KEYWORDS: Set[str] = {
+    # French
+    "quels sont", "quel est", "quelle est", "dis moi", "montre moi",
+    "liste", "lister", "affiche", "afficher", "combien", "où est",
+    # English
+    "what is", "what are", "which", "show me", "list", "display",
+    "how many", "where is", "tell me", "give me the list",
+    # Common patterns
+    "?",  # Questions often indicate queries
+}
+
+# ACTION intent: User wants to execute something
+ACTION_KEYWORDS: Set[str] = {
+    # French
+    "vérifie", "vérifier", "redémarre", "redémarrer", "arrête", "arrêter",
+    "exécute", "exécuter", "lance", "lancer", "démarre", "démarrer",
+    "installe", "installer", "supprime", "supprimer", "modifie", "modifier",
+    # English
+    "check", "restart", "stop", "start", "execute", "run",
+    "install", "remove", "delete", "modify", "change", "fix",
+    "repair", "update", "upgrade", "configure", "setup",
+}
+
+# ANALYSIS intent: Deep investigation
+ANALYSIS_KEYWORDS: Set[str] = {
+    # French
+    "analyse", "analyser", "diagnostique", "diagnostiquer", "investigue",
+    "investiguer", "pourquoi", "problème", "panne", "erreur",
+    # English
+    "analyze", "analysis", "diagnose", "investigate", "troubleshoot",
+    "why", "problem", "issue", "error", "debug", "root cause",
+    "performance", "bottleneck", "slow",
+}
 
 # ============================================================================
 # KEYWORD DICTIONARIES
@@ -110,7 +151,7 @@ class SignalMatch:
 
 class SignalDetector:
     """
-    Fast signal detection for priority classification.
+    Fast signal detection for priority and intent classification.
 
     Uses pre-compiled patterns for speed.
     """
@@ -132,6 +173,55 @@ class SignalDetector:
         self._p0_keywords = {k.lower() for k in P0_KEYWORDS}
         self._p1_keywords = {k.lower() for k in P1_KEYWORDS}
         self._p2_keywords = {k.lower() for k in P2_KEYWORDS}
+
+        # Intent keyword sets
+        self._query_keywords = {k.lower() for k in QUERY_KEYWORDS}
+        self._action_keywords = {k.lower() for k in ACTION_KEYWORDS}
+        self._analysis_keywords = {k.lower() for k in ANALYSIS_KEYWORDS}
+
+    def detect_intent(self, text: str) -> Tuple[Intent, float, List[str]]:
+        """
+        Detect user intent from text.
+
+        Returns:
+            (intent, confidence, matched_signals)
+        """
+        text_lower = text.lower()
+        signals = []
+
+        # Count matches for each intent
+        query_matches = [kw for kw in self._query_keywords if kw in text_lower]
+        action_matches = [kw for kw in self._action_keywords if kw in text_lower]
+        analysis_matches = [kw for kw in self._analysis_keywords if kw in text_lower]
+
+        # Score each intent
+        scores = {
+            Intent.QUERY: len(query_matches) * 1.5,  # Boost query detection
+            Intent.ACTION: len(action_matches),
+            Intent.ANALYSIS: len(analysis_matches) * 1.2,  # Slight boost
+        }
+
+        # Find best match
+        best_intent = max(scores, key=scores.get)
+        best_score = scores[best_intent]
+
+        # If no matches, default to ACTION (most common)
+        if best_score == 0:
+            return Intent.ACTION, 0.5, ["default:action"]
+
+        # Calculate confidence
+        total_matches = sum(scores.values())
+        confidence = min(0.95, 0.6 + (best_score / max(total_matches, 1)) * 0.3)
+
+        # Build signals
+        if best_intent == Intent.QUERY:
+            signals = [f"query:{kw}" for kw in query_matches[:3]]
+        elif best_intent == Intent.ACTION:
+            signals = [f"action:{kw}" for kw in action_matches[:3]]
+        else:
+            signals = [f"analysis:{kw}" for kw in analysis_matches[:3]]
+
+        return best_intent, confidence, signals
 
     def detect_keywords(self, text: str) -> Tuple[Priority, List[str], float]:
         """
@@ -245,6 +335,9 @@ class SignalDetector:
 
         Returns:
             {
+                "intent": Intent,
+                "intent_confidence": float,
+                "intent_signals": List[str],
                 "keyword_priority": Priority,
                 "keyword_signals": List[str],
                 "keyword_confidence": float,
@@ -256,12 +349,19 @@ class SignalDetector:
                 "service": str | None,
             }
         """
+        # Intent detection (new)
+        intent, intent_conf, intent_signals = self.detect_intent(text)
+
+        # Priority detection
         kw_priority, kw_signals, kw_confidence = self.detect_keywords(text)
         env, env_mult, env_min = self.detect_environment(text)
         impact_mult = self.detect_impact(text)
         host, service = self.detect_host_or_service(text)
 
         return {
+            "intent": intent,
+            "intent_confidence": intent_conf,
+            "intent_signals": intent_signals,
             "keyword_priority": kw_priority,
             "keyword_signals": kw_signals,
             "keyword_confidence": kw_confidence,

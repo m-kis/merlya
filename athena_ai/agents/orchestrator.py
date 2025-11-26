@@ -350,29 +350,40 @@ class Orchestrator(BaseOrchestrator):
         if dry_run:
             return f"🔍 Dry run: Would process in {self.mode.value} mode"
 
-        # Step 1: Classify priority
+        # Step 1: Full classification (priority + intent)
         system_state = kwargs.get("system_state")
-        self.current_priority = self.intent_parser.classify(user_query, system_state)
+        triage_context = self.intent_parser.classify_full(user_query, system_state)
 
-        # Step 2: Display triage
-        self.intent_parser.display_triage(self.current_priority)
+        # Store for backward compatibility
+        self.current_priority = triage_context.priority_result
+
+        # Step 2: Display triage with intent
+        self.intent_parser.display_full_triage(triage_context)
 
         logger.info(
-            f"Request classified as {self.current_priority.priority.name} "
-            f"(confidence: {self.current_priority.confidence:.0%}, mode: {self.mode.value})"
+            f"Request classified as {triage_context.priority_result.priority.name} "
+            f"(intent: {triage_context.intent.value}, mode: {self.mode.value})"
         )
 
         # Step 3: Get conversation history for context
         conversation_history = kwargs.get("conversation_history", [])
 
-        # Step 4: Execute based on mode
+        # Step 4: Execute based on mode (with tool restrictions for QUERY intent)
         try:
+            allowed_tools = triage_context.allowed_tools
             if self.mode == OrchestratorMode.ENHANCED:
                 return await self.planner.execute_enhanced(
-                    user_query, self.current_priority.priority.name, conversation_history
+                    user_query,
+                    triage_context.priority_result.priority.name,
+                    conversation_history,
+                    allowed_tools=allowed_tools,
                 )
             else:
-                return await self.planner.execute_basic(user_query, conversation_history)
+                return await self.planner.execute_basic(
+                    user_query,
+                    conversation_history,
+                    allowed_tools=allowed_tools,
+                )
         except Exception as e:
             logger.error(f"Orchestrator failed: {e}", exc_info=True)
             return f"❌ Error: {str(e)}"

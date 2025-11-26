@@ -64,10 +64,13 @@ requests = "^2.32"
 # Knowledge system (optional)
 falkordb = {version = "^1.2", optional = true}
 duckduckgo-search = {version = "^8.0", optional = true}
+# Smart triage with embeddings (optional)
+sentence-transformers = {version = "^3.0", optional = true}
 
 [tool.poetry.extras]
 knowledge = ["falkordb", "duckduckgo-search"]
-all = ["falkordb", "duckduckgo-search"]
+smart-triage = ["sentence-transformers", "falkordb"]
+all = ["falkordb", "duckduckgo-search", "sentence-transformers"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

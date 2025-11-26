@@ -176,13 +176,22 @@ Environment: {self.env}"""
 
         return "\n".join(context_parts)
 
-    async def execute_basic(self, user_query: str, conversation_history: List[dict] = None) -> str:
+    async def execute_basic(
+        self,
+        user_query: str,
+        conversation_history: List[dict] = None,
+        allowed_tools: List[str] = None,
+    ) -> str:
         """Process with single engineer agent."""
         if self.engineer is None:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 
         # Build task with conversation context
         task = self._build_task_with_context(user_query, conversation_history)
+
+        # Add tool restrictions for QUERY intent
+        if allowed_tools:
+            task += f"\n\n⚠️ IMPORTANT: This is an information query. Only use these tools: {', '.join(allowed_tools)}. Do NOT execute commands."
 
         # Create a simple team with just the engineer
         # Higher limit to give agent room to synthesize after tool calls
@@ -199,17 +208,28 @@ Environment: {self.env}"""
         # Extract or generate synthesis
         return await self._extract_or_synthesize(result, user_query)
 
-    async def execute_enhanced(self, user_query: str, priority_name: str, conversation_history: List[dict] = None) -> str:
+    async def execute_enhanced(
+        self,
+        user_query: str,
+        priority_name: str,
+        conversation_history: List[dict] = None,
+        allowed_tools: List[str] = None,
+    ) -> str:
         """Process with multi-agent team."""
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
 
         # Build base task with context
         base_task = self._build_task_with_context(user_query, conversation_history)
 
+        # Add tool restrictions for QUERY intent
+        tool_restriction = ""
+        if allowed_tools:
+            tool_restriction = f"\n⚠️ TOOL RESTRICTION: Only use these tools: {', '.join(allowed_tools)}. Do NOT execute commands."
+
         task = f"""{base_task}
 
 Priority: {priority_name}
-Environment: {self.env}
+Environment: {self.env}{tool_restriction}
 
 Work together:
 1. Planner: Create step-by-step plan
