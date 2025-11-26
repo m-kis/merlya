@@ -47,11 +47,12 @@ ACTION_KEYWORDS: Set[str] = {
 ANALYSIS_KEYWORDS: Set[str] = {
     # French
     "analyse", "analyser", "diagnostique", "diagnostiquer", "investigue",
-    "investiguer", "pourquoi", "problème", "panne", "erreur",
+    "investiguer", "pourquoi", "raison", "problème", "panne", "erreur",
+    "verbosité", "verbose", "log", "logs",
     # English
     "analyze", "analysis", "diagnose", "investigate", "troubleshoot",
-    "why", "problem", "issue", "error", "debug", "root cause",
-    "performance", "bottleneck", "slow",
+    "why", "reason", "problem", "issue", "error", "debug", "root cause",
+    "performance", "bottleneck", "slow", "verbose", "verbosity",
 }
 
 # ============================================================================

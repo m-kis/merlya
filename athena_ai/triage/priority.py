@@ -35,7 +35,14 @@ class Intent(Enum):
     def allowed_tools(self) -> Optional[List[str]]:
         """Tools allowed for this intent type. None means all tools allowed."""
         if self == Intent.QUERY:
-            return ["list_hosts", "get_infrastructure_context", "recall_skill"]
+            # Include request_elevation for read operations on protected files (logs, configs)
+            return [
+                "list_hosts",
+                "get_infrastructure_context",
+                "recall_skill",
+                "request_elevation",
+                "execute_ssh_command",  # Needed for read commands (cat, tail, grep)
+            ]
         # ACTION and ANALYSIS: all tools allowed
         return None
 
