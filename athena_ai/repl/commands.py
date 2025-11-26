@@ -468,7 +468,7 @@ class CommandHandler:
             console.print(table)
 
         elif cmd == 'set':
-             # Delegate to existing logic
+            # Set model for provider
             if len(args) == 2:
                 provider = model_config.get_provider()
                 model = args[1]
@@ -482,6 +482,8 @@ class CommandHandler:
             try:
                 model_config.set_model(provider, model)
                 print_success(f"Model for {provider} set to: {model}")
+                # Reload agents to apply the new model
+                self.repl.orchestrator.reload_agents()
             except ValueError as e:
                 print_error(f"{e}")
 
@@ -490,6 +492,8 @@ class CommandHandler:
             try:
                 self.repl.orchestrator.llm_router.switch_provider(provider)
                 print_success(f"Provider set to: {provider}")
+                # Reload agents to apply the new provider
+                self.repl.orchestrator.reload_agents()
             except ValueError as e:
                 print_error(f"{e}")
 
