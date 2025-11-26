@@ -27,8 +27,7 @@ QUERY_KEYWORDS: Set[str] = {
     # English
     "what is", "what are", "which", "show me", "list", "display",
     "how many", "where is", "tell me", "give me the list",
-    # Common patterns
-    "?",  # Questions often indicate queries
+    # Note: "?" handled separately in detect_intent (endswith check)
 }
 
 # ACTION intent: User wants to execute something
@@ -188,12 +187,18 @@ class SignalDetector:
             (intent, confidence, matched_signals)
         """
         text_lower = text.lower()
+        text_stripped = text.strip()
         signals = []
 
         # Count matches for each intent
         query_matches = [kw for kw in self._query_keywords if kw in text_lower]
         action_matches = [kw for kw in self._action_keywords if kw in text_lower]
         analysis_matches = [kw for kw in self._analysis_keywords if kw in text_lower]
+
+        # Special handling: text ending with "?" suggests a question (QUERY)
+        # This is more precise than substring matching "?" anywhere
+        if text_stripped.endswith("?"):
+            query_matches.append("?")
 
         # Score each intent
         scores = {

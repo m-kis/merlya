@@ -379,13 +379,13 @@ class Orchestrator(BaseOrchestrator):
         # Step 3: Get conversation history for context
         conversation_history = kwargs.get("conversation_history", [])
 
-        # Step 4: Execute based on mode (with tool restrictions for QUERY intent)
+        # Step 4: Execute based on mode (with tool restrictions if specified)
         try:
             allowed_tools = triage_context.allowed_tools
             if self.mode == OrchestratorMode.ENHANCED:
                 return await self.planner.execute_enhanced(
                     user_query,
-                    triage_context.priority_result.priority.name,
+                    priority_name,  # Already extracted with defensive access above
                     conversation_history,
                     allowed_tools=allowed_tools,
                 )

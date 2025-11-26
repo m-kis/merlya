@@ -189,9 +189,9 @@ Environment: {self.env}"""
         # Build task with conversation context
         task = self._build_task_with_context(user_query, conversation_history)
 
-        # Add tool restrictions for QUERY intent
+        # Add tool restrictions if specified
         if allowed_tools:
-            task += f"\n\n⚠️ IMPORTANT: This is an information query. Only use these tools: {', '.join(allowed_tools)}. Do NOT execute commands."
+            task += f"\n\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
 
         # Create a simple team with just the engineer
         # Higher limit to give agent room to synthesize after tool calls
@@ -221,10 +221,10 @@ Environment: {self.env}"""
         # Build base task with context
         base_task = self._build_task_with_context(user_query, conversation_history)
 
-        # Add tool restrictions for QUERY intent
+        # Add tool restrictions if specified
         tool_restriction = ""
         if allowed_tools:
-            tool_restriction = f"\n⚠️ TOOL RESTRICTION: Only use these tools: {', '.join(allowed_tools)}. Do NOT execute commands."
+            tool_restriction = f"\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
 
         task = f"""{base_task}
 

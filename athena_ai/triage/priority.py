@@ -108,6 +108,43 @@ class TriageResult:
     service_detected: Optional[str] = None
     host_detected: Optional[str] = None
 
+    @property
+    def suggested_response_time(self) -> int:
+        """Response time in seconds based on priority."""
+        return self.priority.response_time_seconds
+
+    @property
+    def allowed_tools(self) -> Optional[List[str]]:
+        """Tools allowed based on intent. None = all tools allowed."""
+        return self.intent.allowed_tools
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "priority": self.priority.name,
+            "priority_label": self.priority.label,
+            "intent": self.intent.value,
+            "confidence": self.confidence,
+            "signals": self.signals,
+            "reasoning": self.reasoning,
+            "escalation_required": self.escalation_required,
+            "detected_at": self.detected_at.isoformat(),
+            "environment": self.environment_detected,
+            "service": self.service_detected,
+            "host": self.host_detected,
+            "response_time_seconds": self.suggested_response_time,
+            "allowed_tools": self.allowed_tools,
+        }
+
+    def __str__(self) -> str:
+        signals_str = ", ".join(self.signals[:3])
+        if len(self.signals) > 3:
+            signals_str += f" (+{len(self.signals) - 3} more)"
+        return (
+            f"[{self.priority.name}] {self.priority.label} "
+            f"(intent: {self.intent.value}, confidence: {self.confidence:.0%}) - {signals_str}"
+        )
+
 
 # Backward compatibility alias
 @dataclass
