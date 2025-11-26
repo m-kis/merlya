@@ -52,19 +52,13 @@ class ActionExecutor:
             return error_analysis.get("needs_credentials", False)
         return False
 
-    def prompt_credentials(
-        self,
-        service: str,
-        host: str,
-        prompt_message: Optional[str] = None,
-    ) -> Optional[tuple]:
+    def prompt_credentials(self, service: str, host: str) -> Optional[tuple]:
         """
         Prompt user for credentials.
 
         Args:
             service: Service name (e.g., "mysql", "mongodb", "ssh")
             host: Target host
-            prompt_message: Optional custom prompt message
 
         Returns:
             (username, password) tuple or None if cancelled
