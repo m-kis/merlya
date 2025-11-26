@@ -173,7 +173,7 @@ class AthenaREPL:
                 print_error(f"{e}")
 
         print_success("Goodbye!")
-        self.session_manager.end_session(self.session_manager.current_session_id)
+        self.session_manager.end_session()
 
     # Command implementations called from CommandHandler
 
