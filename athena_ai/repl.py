@@ -34,7 +34,7 @@ console = Console()
 MESSAGES = {
     'en': {
         'welcome_title': 'Welcome',
-        'welcome_header': '🚀 Athena Ag2 Interactive Mode',
+        'welcome_header': '🚀 Athena AI Interactive Mode',
         'welcome_env': 'Environment',
         'welcome_session': 'Session',
         'welcome_intro': 'Type your questions naturally or use slash commands:',
@@ -47,7 +47,7 @@ MESSAGES = {
     },
     'fr': {
         'welcome_title': 'Bienvenue',
-        'welcome_header': '🚀 Athena Ag2 Mode Interactif',
+        'welcome_header': '🚀 Athena AI Mode Interactif',
         'welcome_env': 'Environnement',
         'welcome_session': 'Session',
         'welcome_intro': 'Posez vos questions naturellement ou utilisez les commandes slash :',

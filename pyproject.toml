@@ -1,9 +1,28 @@
 [tool.poetry]
-name = "athena"
+name = "athena-ai-ops"
 version = "0.1.0"
-description = "AI-powered infrastructure orchestration CLI"
-authors = ["Athena Team"]
+description = "AI-powered infrastructure orchestration CLI - Vibe Infra for DevOps"
+authors = ["Athena Contributors"]
+license = "MIT"
 readme = "README.md"
+homepage = "https://github.com/m-kis/athena"
+repository = "https://github.com/m-kis/athena"
+documentation = "https://github.com/m-kis/athena#readme"
+keywords = ["cli", "infrastructure", "devops", "ai", "automation", "ssh", "autogen", "llm", "ops"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Monitoring",
+]
 packages = [{include = "athena_ai"}]
 
 [tool.poetry.dependencies]
