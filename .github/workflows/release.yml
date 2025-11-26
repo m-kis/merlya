@@ -56,7 +56,7 @@ jobs:
             dist/*
 
   publish-pypi:
-    needs: [build, github-release]
+    needs: [build]  # Don't depend on github-release (can be created manually)
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
