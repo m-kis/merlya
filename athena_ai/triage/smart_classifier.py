@@ -217,34 +217,52 @@ class PatternStore:
         self._ensure_schema()
         normalized = query.lower().strip()
 
+        # Validate limit to prevent injection (must be positive int)
+        limit = max(1, min(int(limit), 100))
+
         try:
+            # Build params dict - use parameters to prevent Cypher injection
+            params = {"user_id": self._user_id, "query": normalized}
+
+            # Build WHERE clause with optional intent filter
+            if intent:
+                params["intent_val"] = intent.value
+                where_clause = "p.user_id = $user_id AND p.query = $query AND p.intent = $intent_val"
+            else:
+                where_clause = "p.user_id = $user_id AND p.query = $query"
+
             # Try exact match first
-            intent_filter = f" AND p.intent = '{intent.value}'" if intent else ""
             result = self._db.query(
                 f"""
                 MATCH (p:TriagePattern)
-                WHERE p.user_id = $user_id AND p.query = $query{intent_filter}
+                WHERE {where_clause}
                 RETURN p.query as query, p.intent as intent, p.priority as priority,
                        p.confidence as confidence, p.use_count as use_count
                 LIMIT {limit}
                 """,
-                {"user_id": self._user_id, "query": normalized},
+                params,
             )
 
             if result:
                 return result
 
             # Try prefix match
+            params["prefix"] = normalized[:20]
+            if intent:
+                prefix_where = "p.user_id = $user_id AND p.query STARTS WITH $prefix AND p.intent = $intent_val"
+            else:
+                prefix_where = "p.user_id = $user_id AND p.query STARTS WITH $prefix"
+
             result = self._db.query(
                 f"""
                 MATCH (p:TriagePattern)
-                WHERE p.user_id = $user_id AND p.query STARTS WITH $prefix{intent_filter}
+                WHERE {prefix_where}
                 RETURN p.query as query, p.intent as intent, p.priority as priority,
                        p.confidence as confidence, p.use_count as use_count
                 ORDER BY p.confidence DESC, p.use_count DESC
                 LIMIT {limit}
                 """,
-                {"user_id": self._user_id, "prefix": normalized[:20]},
+                params,
             )
 
             return result
@@ -517,12 +535,16 @@ class SmartTriageClassifier:
         if stored and stored[0].get("confidence", 0) >= 0.9:
             # High confidence stored pattern
             pattern = stored[0]
-            intent = Intent(pattern["intent"])
-            priority = Priority[pattern["priority"]]
+            try:
+                intent = Intent(pattern["intent"])
+                priority = Priority[pattern["priority"]]
 
-            # Still run priority classification for signals
-            priority_result = self._classify_priority(query, priority, system_state)
-            return intent, priority_result
+                # Still run priority classification for signals
+                priority_result = self._classify_priority(query, priority, system_state)
+                return intent, priority_result
+            except (ValueError, KeyError) as e:
+                # Invalid enum value in DB (corrupted/outdated data) - fall through to fresh classification
+                logger.warning(f"Invalid stored pattern data, reclassifying: {e}")
 
         # Layer 2: Keyword detection
         kw_intent, kw_conf, kw_signals = self._signal_detector.detect_intent(query)
@@ -539,7 +561,8 @@ class SmartTriageClassifier:
         priority_result = self._classify_priority(query, None, system_state)
 
         # Store pattern for learning (low confidence until confirmed)
-        if self._pattern_store.is_available:
+        # Only store if not already stored (avoid duplicates)
+        if self._pattern_store.is_available and not stored:
             embedding = None
             if self._use_embeddings and self._embedding_cache:
                 embedding = self._embedding_cache.get_embedding(query).tolist()

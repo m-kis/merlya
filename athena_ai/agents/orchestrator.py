@@ -352,7 +352,13 @@ class Orchestrator(BaseOrchestrator):
 
         # Step 1: Full classification (priority + intent)
         system_state = kwargs.get("system_state")
-        triage_context = self.intent_parser.classify_full(user_query, system_state)
+        try:
+            triage_context = self.intent_parser.classify_full(user_query, system_state)
+        except Exception as e:
+            logger.error(f"Classification failed: {e}", exc_info=True)
+            # Fallback: process without triage context
+            conversation_history = kwargs.get("conversation_history", [])
+            return await self.planner.execute_basic(user_query, conversation_history)
 
         # Store for backward compatibility
         self.current_priority = triage_context.priority_result
@@ -360,9 +366,14 @@ class Orchestrator(BaseOrchestrator):
         # Step 2: Display triage with intent
         self.intent_parser.display_full_triage(triage_context)
 
+        # Log with defensive attribute access
+        priority_name = getattr(
+            getattr(triage_context.priority_result, "priority", None), "name", "UNKNOWN"
+        )
+        intent_value = getattr(triage_context.intent, "value", "unknown") if triage_context.intent else "unknown"
         logger.info(
-            f"Request classified as {triage_context.priority_result.priority.name} "
-            f"(intent: {triage_context.intent.value}, mode: {self.mode.value})"
+            f"Request classified as {priority_name} "
+            f"(intent: {intent_value}, mode: {self.mode.value})"
         )
 
         # Step 3: Get conversation history for context
