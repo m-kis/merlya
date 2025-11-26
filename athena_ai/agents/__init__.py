@@ -15,8 +15,38 @@ Features:
 - Modular DDD architecture
 """
 from athena_ai.agents.ag2_orchestrator import Ag2Orchestrator
+from athena_ai.agents.remediation import (
+    RemediationAgent,
+    RemediationMode,
+    RemediationResult,
+    get_remediation_agent,
+)
+from athena_ai.agents.sentinel import (
+    Alert,
+    AlertSeverity,
+    CheckResult,
+    HealthCheck,
+    SentinelAgent,
+    SentinelStatus,
+    get_sentinel_agent,
+)
 
 # UnifiedOrchestrator has been replaced by Ag2Orchestrator
 # for advanced multi-agent capabilities
 
-__all__ = ["Ag2Orchestrator"]
+__all__ = [
+    "Ag2Orchestrator",
+    # Remediation
+    "RemediationAgent",
+    "RemediationMode",
+    "RemediationResult",
+    "get_remediation_agent",
+    # Sentinel
+    "SentinelAgent",
+    "SentinelStatus",
+    "HealthCheck",
+    "CheckResult",
+    "Alert",
+    "AlertSeverity",
+    "get_sentinel_agent",
+]

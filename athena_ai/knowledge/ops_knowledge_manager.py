@@ -319,6 +319,171 @@ class OpsKnowledgeManager:
             self.patterns.record_match(source_id, success=helpful)
             logger.debug(f"Recorded pattern feedback: {source_id} -> {helpful}")
 
+    def get_remediation_for_incident(
+        self,
+        incident_id: str = None,
+        symptoms: List[str] = None,
+        service: str = None,
+        environment: str = None,
+        title: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get remediation suggestion for an incident.
+
+        This is the main self-healing interface that:
+        1. Finds similar past incidents
+        2. Matches patterns from learned resolutions
+        3. Returns actionable remediation steps
+
+        Can be called with:
+        - An existing incident_id to find remediation for it
+        - Symptoms/service/environment to find remediation proactively
+
+        Args:
+            incident_id: Optional existing incident ID
+            symptoms: Observed symptoms
+            service: Affected service
+            environment: Environment (prod, staging, dev)
+            title: Incident title or description
+
+        Returns:
+            Dict with:
+            - remediation: Recommended remediation steps
+            - commands: Suggested commands to execute
+            - confidence: Confidence score (0-1)
+            - source: Where suggestion came from (pattern|incident)
+            - source_id: ID of pattern or incident
+            - risk_level: Estimated risk (low, medium, high)
+            - auto_executable: Whether commands are safe for auto-execution
+        """
+        # If incident_id provided, load its details
+        if incident_id:
+            incident = self.storage.get_incident(incident_id)
+            if incident:
+                symptoms = symptoms or incident.get("symptoms", [])
+                service = service or incident.get("service")
+                environment = environment or incident.get("environment")
+                title = title or incident.get("title", "")
+
+        # First try pattern matching (faster, more reliable)
+        pattern_matches = self.patterns.match_patterns(
+            text=title,
+            symptoms=symptoms,
+            service=service,
+            environment=environment,
+            min_score=0.4,
+            limit=3,
+        )
+
+        if pattern_matches:
+            best_match = pattern_matches[0]
+            pattern = best_match.pattern
+
+            # Assess risk level based on commands
+            commands = pattern.suggested_commands or []
+            risk_level, auto_executable = self._assess_command_risk(commands)
+
+            return {
+                "remediation": pattern.suggested_solution,
+                "commands": commands,
+                "confidence": best_match.score,
+                "source": "pattern",
+                "source_id": pattern.id,
+                "source_name": pattern.name,
+                "matched_keywords": best_match.matched_keywords,
+                "matched_symptoms": best_match.matched_symptoms,
+                "risk_level": risk_level,
+                "auto_executable": auto_executable,
+            }
+
+        # Try incident memory
+        incident_suggestion = self.incidents.suggest_solution(
+            symptoms=symptoms,
+            service=service,
+            environment=environment,
+        )
+
+        if incident_suggestion and incident_suggestion.get("confidence", 0) >= 0.3:
+            commands = incident_suggestion.get("commands", [])
+            risk_level, auto_executable = self._assess_command_risk(commands)
+
+            return {
+                "remediation": incident_suggestion["solution"],
+                "commands": commands,
+                "confidence": incident_suggestion["confidence"],
+                "source": "incident",
+                "source_id": incident_suggestion["source_incident"],
+                "source_name": incident_suggestion["source_title"],
+                "root_cause": incident_suggestion.get("root_cause"),
+                "matching_features": incident_suggestion.get("matching_features", []),
+                "risk_level": risk_level,
+                "auto_executable": auto_executable,
+            }
+
+        return None
+
+    def _assess_command_risk(self, commands: List[str]) -> tuple:
+        """
+        Assess the risk level of a list of commands.
+
+        Returns:
+            (risk_level, auto_executable) tuple
+        """
+        if not commands:
+            return "low", True
+
+        # High risk patterns
+        high_risk_patterns = [
+            "rm -rf", "rm -r", "dd if=", "mkfs", "fdisk",
+            ":(){:|:&};:", "chmod -R 777", "> /dev/sd",
+            "DROP TABLE", "DROP DATABASE", "TRUNCATE",
+            "shutdown", "reboot", "halt", "init 0",
+            "kill -9", "pkill -9", "killall",
+        ]
+
+        # Medium risk patterns
+        medium_risk_patterns = [
+            "systemctl stop", "systemctl restart", "service stop",
+            "docker rm", "docker stop", "kubectl delete",
+            "rm ", "mv ", "cp ", "chmod", "chown",
+            "apt remove", "yum remove", "pip uninstall",
+            "UPDATE ", "DELETE FROM",
+        ]
+
+        # Safe patterns (read-only, diagnostic)
+        safe_patterns = [
+            "systemctl status", "service status", "ps ", "top",
+            "df ", "du ", "ls ", "cat ", "grep ", "tail ",
+            "docker ps", "docker logs", "kubectl get",
+            "SELECT ", "SHOW ", "DESCRIBE ",
+            "ping ", "curl ", "wget ", "nc ",
+        ]
+
+        risk_level = "low"
+        auto_executable = True
+
+        for cmd in commands:
+            cmd_lower = cmd.lower()
+
+            # Check high risk
+            for pattern in high_risk_patterns:
+                if pattern.lower() in cmd_lower:
+                    return "high", False
+
+            # Check medium risk
+            for pattern in medium_risk_patterns:
+                if pattern.lower() in cmd_lower:
+                    risk_level = "medium"
+                    auto_executable = False
+
+            # Check if it's a known safe command
+            is_safe = any(pattern.lower() in cmd_lower for pattern in safe_patterns)
+            if not is_safe and risk_level == "low":
+                # Unknown command - treat as medium risk
+                risk_level = "medium"
+
+        return risk_level, auto_executable
+
     # =========================================================================
     # CVE Monitoring
     # =========================================================================

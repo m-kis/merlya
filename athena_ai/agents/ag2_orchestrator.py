@@ -19,6 +19,7 @@ from athena_ai.triage import (
     describe_behavior,
     get_behavior,
 )
+from athena_ai.utils.config import ConfigManager
 from athena_ai.utils.logger import logger
 
 try:
@@ -47,6 +48,7 @@ class Ag2Orchestrator(BaseOrchestrator):
     def __init__(self, env: str = "dev", language: str = "en"):
         super().__init__(env=env, language=language)
         self.console = Console()
+        self.config_manager = ConfigManager()
 
         if not HAS_AUTOGEN:
             raise ImportError("pyautogen is required for Ag2Orchestrator. Run 'pip install pyautogen'.")
@@ -72,8 +74,35 @@ class Ag2Orchestrator(BaseOrchestrator):
         # Initialize Agents
         self._init_agents()
 
+    def reload_agents(self):
+        """Reload agents with current configuration (e.g. after switching LLM)."""
+        logger.info("Reloading agents with new configuration...")
+        self.llm_config = self._get_llm_config()
+        self._init_agents()
+        logger.info("Agents reloaded.")
+
     def _get_llm_config(self) -> Dict[str, Any]:
         """Get LLM configuration for Autogen."""
+
+        # Check for local LLM preference
+        if self.config_manager.use_local_llm:
+            logger.info(f"Using Local LLM (Ollama): {self.config_manager.local_llm_model}")
+            # Ensure OPENAI_API_KEY is set to satisfy OpenAI client validation
+            # Use a dummy sk- key to pass potential format validation
+            dummy_key = "sk-1234567890abcdef1234567890abcdef"
+            if not os.environ.get("OPENAI_API_KEY"):
+                os.environ["OPENAI_API_KEY"] = dummy_key
+
+            return {
+                "config_list": [{
+                    "model": self.config_manager.local_llm_model,
+                    "api_key": dummy_key,
+                    "base_url": "http://localhost:11434/v1"
+                }],
+                "temperature": 0.1,
+                "timeout": 120,
+            }
+
         # Try to get config from environment or fallback to defaults
         api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
         model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-opus")

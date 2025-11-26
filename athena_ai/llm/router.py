@@ -5,23 +5,35 @@ from anthropic import Anthropic
 from openai import OpenAI
 
 from athena_ai.llm.model_config import ModelConfig
+from athena_ai.llm.ollama_client import OllamaClient, get_ollama_client
 from athena_ai.utils.logger import logger
 
 
 class LLMRouter:
-    def __init__(self, provider: Optional[str] = None):
+    def __init__(self, provider: Optional[str] = None, fallback_to_cloud: bool = True):
+        """
+        Initialize LLM Router.
+
+        Args:
+            provider: Explicit provider override
+            fallback_to_cloud: If True, fallback to cloud if Ollama unavailable
+        """
         # Use ModelConfig for flexible model management
         self.model_config = ModelConfig()
+        self.fallback_to_cloud = fallback_to_cloud
 
         # Provider can be overridden or use config
+        self._requested_provider = provider
         self.provider = provider or self._detect_provider()
 
         self.anthropic_client = None
         self.openai_client = None
         self.openrouter_client = None
-        self.ollama_client = None
+        self.ollama_openai_client = None  # OpenAI-compat client for Ollama
+        self.ollama_native_client: Optional[OllamaClient] = None  # Native Ollama client
 
         self._init_clients()
+        self._verify_ollama_if_needed()
 
     def _detect_provider(self) -> str:
         """Auto-detect provider from env vars or config."""
@@ -39,6 +51,7 @@ class LLMRouter:
         return self.model_config.get_provider()
 
     def _init_clients(self):
+        """Initialize API clients based on available credentials."""
         if os.getenv("ANTHROPIC_API_KEY"):
             self.anthropic_client = Anthropic()
         if os.getenv("OPENAI_API_KEY"):
@@ -49,12 +62,82 @@ class LLMRouter:
                 api_key=os.getenv("OPENROUTER_API_KEY")
             )
         if os.getenv("OLLAMA_HOST") or self.provider == "ollama":
-            # Ollama uses OpenAI compatible API
-            base_url = os.getenv("OLLAMA_HOST", "http://localhost:11434/v1")
-            self.ollama_client = OpenAI(
+            # Initialize both native client and OpenAI-compat client
+            self.ollama_native_client = get_ollama_client()
+            base_url = os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/v1"
+            self.ollama_openai_client = OpenAI(
                 base_url=base_url,
-                api_key="ollama" # Required but ignored
+                api_key="ollama"  # Required but ignored
             )
+
+    def _verify_ollama_if_needed(self):
+        """Verify Ollama is available and fallback if not."""
+        if self.provider != "ollama":
+            return
+
+        if self.ollama_native_client is None:
+            self.ollama_native_client = get_ollama_client()
+
+        if not self.ollama_native_client.is_available():
+            logger.warning("Ollama server not available at %s", self.ollama_native_client.base_url)
+
+            if self.fallback_to_cloud:
+                fallback = self._get_fallback_provider()
+                if fallback:
+                    logger.info(f"Falling back to cloud provider: {fallback}")
+                    self.provider = fallback
+                else:
+                    logger.error("No fallback provider available. LLM calls may fail.")
+            else:
+                logger.warning("Ollama not available and fallback disabled.")
+        else:
+            models = self.ollama_native_client.get_model_names()
+            logger.info(f"Ollama available with {len(models)} models: {', '.join(models[:3])}...")
+
+    def _get_fallback_provider(self) -> Optional[str]:
+        """Get first available cloud provider for fallback."""
+        if os.getenv("OPENROUTER_API_KEY"):
+            return "openrouter"
+        if os.getenv("ANTHROPIC_API_KEY"):
+            return "anthropic"
+        if os.getenv("OPENAI_API_KEY"):
+            return "openai"
+        return None
+
+    def is_ollama_available(self) -> bool:
+        """Check if Ollama is available."""
+        if self.ollama_native_client is None:
+            self.ollama_native_client = get_ollama_client()
+        return self.ollama_native_client.is_available()
+
+    def get_ollama_status(self) -> dict:
+        """Get Ollama status including models."""
+        if self.ollama_native_client is None:
+            self.ollama_native_client = get_ollama_client()
+        return self.ollama_native_client.get_status()
+
+    def switch_provider(self, provider: str, verify: bool = True) -> bool:
+        """
+        Switch to a different provider.
+
+        Args:
+            provider: Provider name (ollama, openrouter, anthropic, openai)
+            verify: Verify provider is available before switching
+
+        Returns:
+            True if switch successful
+        """
+        if provider == "ollama":
+            if verify and not self.is_ollama_available():
+                logger.error("Cannot switch to Ollama: server not available")
+                return False
+            self._init_clients()  # Re-init to ensure Ollama client is ready
+
+        old_provider = self.provider
+        self.provider = provider
+        self.model_config.set_provider(provider)
+        logger.info(f"Switched provider: {old_provider} -> {provider}")
+        return True
 
     def generate(self, prompt: str, system_prompt: str = "", model: Optional[str] = None, task: Optional[str] = None) -> str:
         """
@@ -77,7 +160,7 @@ class LLMRouter:
                 return self._call_openai(prompt, system_prompt, model)
             elif self.provider == "openrouter" and hasattr(self, 'openrouter_client') and self.openrouter_client:
                 return self._call_openrouter(prompt, system_prompt, model)
-            elif self.provider == "ollama" and hasattr(self, 'ollama_client') and self.ollama_client:
+            elif self.provider == "ollama" and self.ollama_openai_client:
                 return self._call_ollama(prompt, system_prompt, model)
             else:
                 # Fallback or mock
@@ -139,9 +222,9 @@ class LLMRouter:
         return response.choices[0].message.content
 
     def _call_ollama(self, prompt: str, system_prompt: str, model: str) -> str:
-        """Call Ollama API with configured model."""
+        """Call Ollama API with configured model via OpenAI-compatible client."""
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
-        response = self.ollama_client.chat.completions.create(
+        response = self.ollama_openai_client.chat.completions.create(
             model=model,
             messages=messages
         )

@@ -43,12 +43,12 @@ def main():
 
     # 3. Launch REPL
     try:
-        from athena_ai.repl import start_repl
-        
         # Determine environment (default to dev if not set)
         env = os.getenv("ATHENA_ENV", "dev")
-        
-        start_repl(env=env)
+
+        from athena_ai.repl import AthenaREPL
+        repl = AthenaREPL(env=env)
+        repl.start()
         
     except KeyboardInterrupt:
         console.print("\n[yellow]Goodbye! 👋[/yellow]")

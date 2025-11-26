@@ -28,6 +28,8 @@ class ConfigManager:
         return {
             "language": None,  # Will be set on first run
             "theme": "default",
+            "use_local_llm": False,
+            "local_llm_model": "llama3",
         }
 
     def _save_config(self):
@@ -56,3 +58,23 @@ class ConfigManager:
         if value not in ['en', 'fr']:
             raise ValueError("Language must be 'en' or 'fr'")
         self.set("language", value)
+
+    @property
+    def use_local_llm(self) -> bool:
+        """Get local LLM usage preference."""
+        return self.config.get("use_local_llm", False)
+
+    @use_local_llm.setter
+    def use_local_llm(self, value: bool):
+        """Set local LLM usage preference."""
+        self.set("use_local_llm", value)
+
+    @property
+    def local_llm_model(self) -> str:
+        """Get local LLM model name."""
+        return self.config.get("local_llm_model", "llama3")
+
+    @local_llm_model.setter
+    def local_llm_model(self, value: str):
+        """Set local LLM model name."""
+        self.set("local_llm_model", value)
