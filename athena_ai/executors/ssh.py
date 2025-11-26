@@ -17,9 +17,6 @@ class SSHManager:
     def __init__(self, use_connection_pool: bool = True):
         self.credentials = CredentialManager()
         self.use_pool = use_connection_pool
-    def __init__(self, use_connection_pool: bool = True):
-        self.credentials = CredentialManager()
-        self.use_pool = use_connection_pool
         self.pool = get_connection_pool() if use_connection_pool else None
         self.connectivity = ConnectivityPlanner()
 

@@ -14,6 +14,8 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from athena_ai import __version__
+
 console = Console()
 
 
@@ -98,6 +100,7 @@ def validate_and_fix_config() -> bool:
 
 
 @click.group(invoke_without_command=True)
+@click.version_option(version=__version__, prog_name="athena")
 @click.option('--env', '-e', default=None, help='Environment (dev/staging/prod)')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
 @click.option('--debug', '-d', is_flag=True, help='Enable debug output')
@@ -129,8 +132,8 @@ def cli(ctx, env, verbose, debug):
 
 def _launch_repl(env: str):
     """Launch the interactive REPL."""
-    console.print("\n[bold cyan]Athena[/bold cyan]")
-    console.print("[dim]AI-Powered Infrastructure Orchestration[/dim]\n")
+    console.print(f"\n[bold cyan]Athena[/bold cyan] [dim]v{__version__}[/dim]")
+    console.print("[dim]Type /help for commands, /exit to quit[/dim]\n")
 
     # Validate configuration
     if not validate_and_fix_config():

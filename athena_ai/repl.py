@@ -327,8 +327,9 @@ class AthenaREPL:
 
         elif cmd == '/scan':
             full = '--full' in args
-            console.print("[cyan]Scanning infrastructure...[/cyan]")
-            context = self.context_manager.discover_environment(scan_remote=full)
+            scan_msg = "Scanning infrastructure (SSH)..." if full else "Scanning infrastructure..."
+            with console.status(f"[cyan]{scan_msg}[/cyan]", spinner="dots"):
+                context = self.context_manager.discover_environment(scan_remote=full)
 
             local = context.get('local', {})
             inventory = context.get('inventory', {})
@@ -345,9 +346,9 @@ class AthenaREPL:
             return True
 
         elif cmd == '/refresh':
-            console.print("[cyan]Force refreshing all context...[/cyan]")
-            self.context_manager.discover_environment(scan_remote=False, force=True)
-            console.print("[green]✓ Context force refreshed (cache cleared)[/green]")
+            with console.status("[cyan]Force refreshing context...[/cyan]", spinner="dots"):
+                self.context_manager.discover_environment(scan_remote=False, force=True)
+            console.print("[green]✓ Context refreshed (cache cleared)[/green]")
             return True
 
         elif cmd == '/cache-stats':
