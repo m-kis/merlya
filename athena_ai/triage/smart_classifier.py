@@ -8,6 +8,7 @@ Falls back to keyword-based classification if embeddings unavailable.
 """
 
 import hashlib
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
@@ -160,7 +161,7 @@ class PatternStore:
         confidence: float = 1.0,
     ) -> bool:
         """
-        Store a new triage pattern.
+        Store or update a triage pattern (upsert).
 
         Args:
             query: The user query text
@@ -181,18 +182,29 @@ class PatternStore:
             # Store embedding as comma-separated string (FalkorDB limitation)
             embedding_str = ",".join(map(str, embedding)) if embedding else ""
 
-            self._db.create_node(
-                "TriagePattern",
-                {
-                    "user_id": self._user_id,
-                    "query": normalized,
-                    "intent": intent.value,
-                    "priority": priority.name,
-                    "embedding": embedding_str,
-                    "confidence": confidence,
-                    "use_count": 1,
-                },
-            )
+            # Use MERGE to upsert: create if not exists, update if exists
+            cypher = """
+                MERGE (p:TriagePattern {user_id: $user_id, query: $query})
+                ON CREATE SET
+                    p.intent = $intent,
+                    p.priority = $priority,
+                    p.embedding = $embedding,
+                    p.confidence = $confidence,
+                    p.use_count = 1,
+                    p.created_at = $created_at
+                ON MATCH SET
+                    p.use_count = p.use_count + 1
+                RETURN p
+            """
+            self._db.query(cypher, {
+                "user_id": self._user_id,
+                "query": normalized,
+                "intent": intent.value,
+                "priority": priority.name,
+                "embedding": embedding_str,
+                "confidence": confidence,
+                "created_at": datetime.now().isoformat(),
+            })
             return True
 
         except Exception as e:
@@ -217,11 +229,13 @@ class PatternStore:
         self._ensure_schema()
         normalized = query.lower().strip()
 
-        # Validate limit to prevent injection (must be positive int)
+        # Validate and sanitize limit (Cypher doesn't support parameterized LIMIT)
+        # Safety: ensure it's an int in valid range before string interpolation
         limit = max(1, min(int(limit), 100))
 
         try:
             # Build params dict - use parameters to prevent Cypher injection
+            # Note: LIMIT cannot be parameterized in Cypher, but we validated it above
             params = {"user_id": self._user_id, "query": normalized}
 
             # Build WHERE clause with optional intent filter
@@ -646,16 +660,26 @@ _smart_classifiers: Dict[Tuple[int, str], SmartTriageClassifier] = {}
 def get_smart_classifier(
     db_client=None,
     user_id: str = "default",
+    force_new: bool = False,
 ) -> SmartTriageClassifier:
     """
     Get or create a smart classifier instance.
 
     Creates separate instances for different db_client/user_id combinations.
+    Reuses existing instances for the same combination unless force_new=True.
+
+    Args:
+        db_client: FalkorDB client for pattern storage
+        user_id: User identifier for personalized patterns
+        force_new: If True, create a new instance even if one exists
+
+    Returns:
+        SmartTriageClassifier instance
     """
     # Use id(db_client) to distinguish different client instances
     cache_key = (id(db_client) if db_client else 0, user_id)
 
-    if cache_key not in _smart_classifiers:
+    if force_new or cache_key not in _smart_classifiers:
         _smart_classifiers[cache_key] = SmartTriageClassifier(
             db_client=db_client,
             user_id=user_id,
@@ -664,7 +688,19 @@ def get_smart_classifier(
     return _smart_classifiers[cache_key]
 
 
-def reset_smart_classifier() -> None:
-    """Reset all cached classifier instances. Useful for testing."""
+def reset_smart_classifier(user_id: Optional[str] = None) -> None:
+    """
+    Reset cached classifier instances.
+
+    Args:
+        user_id: If provided, only reset instances for this user.
+                 If None, reset all instances.
+    """
     global _smart_classifiers
-    _smart_classifiers.clear()
+    if user_id is None:
+        _smart_classifiers.clear()
+    else:
+        # Remove only instances matching user_id
+        keys_to_remove = [k for k in _smart_classifiers if k[1] == user_id]
+        for key in keys_to_remove:
+            del _smart_classifiers[key]
