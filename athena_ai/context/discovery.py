@@ -81,10 +81,14 @@ class Discovery:
                 pass
         return services
 
-    def scan_remote_hosts(self, inventory: Dict[str, str]) -> Dict[str, Any]:
+    def scan_remote_hosts(self, inventory: Dict[str, str], progress_callback=None) -> Dict[str, Any]:
         """
         Scan remote hosts via SSH to gather their system information.
         Returns a dict of {hostname: host_info}
+
+        Args:
+            inventory: Dict of hostname -> IP mappings
+            progress_callback: Optional callback(current, total, hostname) for progress updates
         """
         # Import here to avoid circular dependency
         from athena_ai.executors.ssh import SSHManager
@@ -92,17 +96,21 @@ class Discovery:
         hosts_info = {}
         ssh = SSHManager()
 
-        logger.info(f"Scanning {len(inventory)} hosts from inventory...")
+        # Filter out local/broadcast IPs first to get accurate count
+        skip_ips = ['127.0.0.1', '::1', 'localhost', '255.255.255.255', '0.0.0.0', 'ff02::1', 'ff02::2']
+        skip_hostnames = ['localhost', 'broadcasthost', 'ip6-localhost', 'ip6-loopback',
+                        'ip6-localnet', 'ip6-mcastprefix', 'ip6-allnodes', 'ip6-allrouters']
 
-        for hostname, ip in inventory.items():
-            # Skip localhost, broadcast, and special IPs
-            skip_ips = ['127.0.0.1', '::1', 'localhost', '255.255.255.255', '0.0.0.0', 'ff02::1', 'ff02::2']
-            skip_hostnames = ['localhost', 'broadcasthost', 'ip6-localhost', 'ip6-loopback',
-                            'ip6-localnet', 'ip6-mcastprefix', 'ip6-allnodes', 'ip6-allrouters']
+        scannable_hosts = {h: ip for h, ip in inventory.items()
+                         if ip not in skip_ips and h not in skip_hostnames}
+        total_hosts = len(scannable_hosts)
 
-            if ip in skip_ips or hostname in skip_hostnames:
-                logger.debug(f"Skipping {hostname} ({ip}) - local/broadcast IP")
-                continue
+        logger.info(f"Scanning {total_hosts} hosts from inventory...")
+
+        for idx, (hostname, ip) in enumerate(scannable_hosts.items()):
+            # Report progress
+            if progress_callback:
+                progress_callback(idx, total_hosts, hostname)
 
             logger.debug(f"Attempting to connect to {hostname} ({ip})")
 

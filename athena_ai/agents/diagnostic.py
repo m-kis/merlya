@@ -1,7 +1,10 @@
 from typing import Dict, Any
 from athena_ai.agents.base import BaseAgent
 from athena_ai.utils.logger import logger
+from rich.console import Console
 import json
+
+console = Console()
 
 class DiagnosticAgent(BaseAgent):
     def __init__(self, context_manager):
@@ -47,9 +50,9 @@ class DiagnosticAgent(BaseAgent):
 
         # Interactive Confirmation
         if not confirm:
-            print("\n[bold]Proposed Diagnostic Plan:[/bold]")
+            console.print("\n[bold]Proposed Diagnostic Plan:[/bold]")
             for i, cmd in enumerate(commands, 1):
-                print(f"{i}. {cmd}")
+                console.print(f"  {i}. [cyan]{cmd}[/cyan]")
             
             import click
             if not click.confirm("\nDo you want to execute these commands?", default=False):

@@ -116,7 +116,11 @@ def cli(ctx, env, verbose, debug):
     ctx.obj['verbose'] = verbose
     ctx.obj['debug'] = debug
 
-    # Set verbosity level
+    # Configure logging - must be called early to prevent console spam
+    from athena_ai.utils.logger import setup_logger
+    setup_logger(verbose=debug or verbose)
+
+    # Set verbosity level for UI components
     if debug or verbose:
         from athena_ai.utils.verbosity import get_verbosity, VerbosityLevel
         v = get_verbosity()

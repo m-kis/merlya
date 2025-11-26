@@ -436,12 +436,12 @@ Current Environment: {self.env}
         # If behavior allows auto-confirm for reads, enable it
         effective_auto_confirm = auto_confirm or self.current_behavior.auto_confirm_reads
 
-        self.console.print(f"[bold cyan]🤖 Ag2 Agent Active...[/bold cyan]")
-
         # Log priority for debugging
         logger.info(
             f"Request classified as {self.current_priority.priority.name} "
             f"(confidence: {self.current_priority.confidence:.0%})"
         )
 
+        # Execute - spinner is handled by REPL caller
+        # Callbacks display intermediate progress (Engineer, Tool, Result)
         return await self.chat_continue(user_query)

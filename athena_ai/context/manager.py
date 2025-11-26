@@ -16,13 +16,14 @@ class ContextManager:
         self.storage = MemoryStorage(env)
         self.cache = SmartCache()
 
-    def discover_environment(self, scan_remote: bool = True, force: bool = False) -> Dict[str, Any]:
+    def discover_environment(self, scan_remote: bool = True, force: bool = False, progress_callback=None) -> Dict[str, Any]:
         """
         Trigger a full discovery scan and force refresh all context.
 
         Args:
             scan_remote: If True, also SSH to remote hosts to gather their info
             force: If True, bypass cache and force refresh everything
+            progress_callback: Optional callback(current, total, hostname) for progress updates
         """
         logger.info("Force discovery scan requested")
 
@@ -45,7 +46,7 @@ class ContextManager:
 
         # Scan remote hosts via SSH
         if scan_remote and inventory:
-            remote_hosts = self.discovery.scan_remote_hosts(inventory)
+            remote_hosts = self.discovery.scan_remote_hosts(inventory, progress_callback=progress_callback)
             self.cache.cache["remote_hosts"] = {
                 "data": remote_hosts,
                 "timestamp": __import__('time').time()

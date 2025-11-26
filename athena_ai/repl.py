@@ -312,7 +312,7 @@ class AthenaREPL:
             # Add to conversation and process
             self.conversation_manager.add_user_message(prompt)
 
-            with console.status("[cyan]Agents working...[/cyan]", spinner="dots"):
+            with console.status("[cyan]🦉 Athena is thinking...[/cyan]", spinner="dots"):
                 response = asyncio.run(
                     self.orchestrator.process_request(user_query=prompt)
                 )
@@ -327,9 +327,34 @@ class AthenaREPL:
 
         elif cmd == '/scan':
             full = '--full' in args
-            scan_msg = "Scanning infrastructure (SSH)..." if full else "Scanning infrastructure..."
-            with console.status(f"[cyan]{scan_msg}[/cyan]", spinner="dots"):
-                context = self.context_manager.discover_environment(scan_remote=full)
+
+            if full:
+                # Full SSH scan with progress bar
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[cyan]{task.description}[/cyan]"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    TextColumn("[dim]{task.fields[host]}[/dim]"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Scanning hosts...", total=None, host="")
+
+                    def update_progress(current, total, hostname):
+                        progress.update(task, total=total, completed=current, host=hostname)
+
+                    context = self.context_manager.discover_environment(
+                        scan_remote=True,
+                        progress_callback=update_progress
+                    )
+                    # Mark complete
+                    progress.update(task, completed=progress.tasks[0].total or 0, host="done")
+            else:
+                # Quick scan without SSH
+                with console.status("[cyan]Scanning infrastructure...[/cyan]", spinner="dots"):
+                    context = self.context_manager.discover_environment(scan_remote=False)
 
             local = context.get('local', {})
             inventory = context.get('inventory', {})
@@ -1202,7 +1227,7 @@ class AthenaREPL:
                 # Process request with Ag2Orchestrator (async)
                 # Uses process_request which includes triage classification
                 # Note: Streaming callbacks in orchestrator display agent activity in real-time
-                with console.status("[cyan]🤖 Agents working...[/cyan]", spinner="dots"):
+                with console.status("[cyan]🦉 Athena is thinking...[/cyan]", spinner="dots"):
                     response = asyncio.run(
                         self.orchestrator.process_request(user_query=user_input)
                     )
