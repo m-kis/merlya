@@ -2,10 +2,12 @@
 Error Correction Service - DDD Domain Service.
 
 Analyzes command failures and generates intelligent corrections.
+Uses ErrorAnalyzer for semantic error classification.
 """
 import json
 from typing import Any, Dict, Optional
 
+from athena_ai.triage import ErrorType, get_error_analyzer
 from athena_ai.utils.logger import logger
 
 
@@ -13,11 +15,9 @@ class ErrorCorrectionService:
     """
     Domain Service for analyzing command errors and suggesting corrections.
 
-    Uses LLM-powered analysis to intelligently fix common error patterns:
-    - Permission denied → add sudo/su
-    - Command not found → suggest alternatives
-    - File not found → check paths
-    - Connection timeout → retry with backoff
+    Uses ErrorAnalyzer for semantic error classification, then:
+    - Quick fixes for known patterns (permission, command not found, etc.)
+    - LLM-powered analysis for complex errors
     """
 
     def __init__(self, llm_router):
@@ -28,6 +28,27 @@ class ErrorCorrectionService:
             llm_router: LLMRouter instance for intelligent error analysis
         """
         self.llm_router = llm_router
+        self._error_analyzer = None  # Lazy init
+
+    @property
+    def error_analyzer(self):
+        """Lazy load the error analyzer."""
+        if self._error_analyzer is None:
+            self._error_analyzer = get_error_analyzer()
+        return self._error_analyzer
+
+    def classify_error(self, error: str) -> tuple:
+        """
+        Classify an error using semantic analysis.
+
+        Args:
+            error: Error message
+
+        Returns:
+            (ErrorType, confidence, analysis) tuple
+        """
+        analysis = self.error_analyzer.analyze(error)
+        return analysis.error_type, analysis.confidence, analysis
 
     def analyze_and_correct(
         self,
@@ -81,7 +102,9 @@ class ErrorCorrectionService:
         context: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """
-        Try quick heuristic fixes for common error patterns.
+        Try quick heuristic fixes based on error classification.
+
+        Uses ErrorAnalyzer for semantic classification instead of hardcoded patterns.
 
         Args:
             command: Original command
@@ -92,37 +115,43 @@ class ErrorCorrectionService:
         Returns:
             Corrected command, or None
         """
-        error_lower = error.lower()
+        # Use ErrorAnalyzer for classification
+        error_type, confidence, _ = self.classify_error(error)
 
-        # Pattern 1: Permission denied (exit code 126 or error contains "permission denied")
-        if exit_code == 126 or "permission denied" in error_lower:
-            # Don't add sudo if already present
+        # Only act on confident classifications
+        if confidence < 0.6:
+            return None
+
+        # Permission error → add sudo
+        if error_type == ErrorType.PERMISSION:
             if not command.strip().startswith("sudo "):
                 logger.debug("Quick fix: Adding sudo for permission error")
                 return f"sudo {command}"
 
-        # Pattern 2: Command not found (exit code 127)
-        if exit_code == 127 or "command not found" in error_lower:
-            # Common alternatives
+        # Command not found → try alternatives
+        if error_type == ErrorType.NOT_FOUND and exit_code == 127:
             alternatives = {
                 "service": "systemctl",
                 "ifconfig": "ip addr",
                 "netstat": "ss",
                 "iptables-save": "nft list ruleset",
+                "mongo": "mongosh",
             }
-
             for old_cmd, new_cmd in alternatives.items():
                 if old_cmd in command:
                     logger.debug(f"Quick fix: Replacing {old_cmd} with {new_cmd}")
                     return command.replace(old_cmd, new_cmd)
 
-        # Pattern 3: No such file or directory - check common typos
-        if "no such file or directory" in error_lower:
-            # Try common path corrections
-            if "/var/log/syslog" in command and context:
-                # Maybe it's a Red Hat system (uses /var/log/messages)
-                logger.debug("Quick fix: Trying /var/log/messages instead of /var/log/syslog")
-                return command.replace("/var/log/syslog", "/var/log/messages")
+        # File not found → try path alternatives
+        if error_type == ErrorType.NOT_FOUND:
+            path_alternatives = {
+                "/var/log/syslog": "/var/log/messages",
+                "/var/log/auth.log": "/var/log/secure",
+            }
+            for old_path, new_path in path_alternatives.items():
+                if old_path in command:
+                    logger.debug(f"Quick fix: Trying {new_path} instead of {old_path}")
+                    return command.replace(old_path, new_path)
 
         return None
 
@@ -242,7 +271,9 @@ Examples:
 
     def should_retry(self, error: str, exit_code: int) -> bool:
         """
-        Determine if an error is worth retrying.
+        Determine if an error is worth retrying based on error classification.
+
+        Uses ErrorAnalyzer instead of hardcoded patterns.
 
         Args:
             error: Error message
@@ -251,24 +282,29 @@ Examples:
         Returns:
             True if retry makes sense
         """
+        error_type, confidence, _ = self.classify_error(error)
+
+        # Low confidence → don't retry (unknown error)
+        if confidence < 0.6:
+            return exit_code in [1, 126, 127]
+
         # Don't retry network/connectivity errors (no command fix can help)
-        no_retry_patterns = [
-            "connection timeout",
-            "connection refused",
-            "no route to host",
-            "network unreachable",
-            "host unreachable",
-        ]
+        if error_type in (ErrorType.CONNECTION, ErrorType.TIMEOUT):
+            return False
 
-        error_lower = error.lower()
-        for pattern in no_retry_patterns:
-            if pattern in error_lower:
-                return False
+        # Don't retry credential errors (need user input)
+        if error_type == ErrorType.CREDENTIAL:
+            return False
 
-        # Retry permission errors, command not found, file not found
-        return exit_code in [1, 126, 127] or any(
-            pattern in error_lower
-            for pattern in ["permission denied", "command not found", "no such file"]
+        # Don't retry resource errors (need system intervention)
+        if error_type == ErrorType.RESOURCE:
+            return False
+
+        # Retry permission, not found, configuration errors
+        return error_type in (
+            ErrorType.PERMISSION,
+            ErrorType.NOT_FOUND,
+            ErrorType.CONFIGURATION,
         )
 
     def generate_natural_language_error(
@@ -279,7 +315,9 @@ Examples:
         target: str
     ) -> str:
         """
-        Generate a user-friendly error message with troubleshooting suggestions.
+        Generate a user-friendly error message based on error classification.
+
+        Uses ErrorAnalyzer for classification instead of hardcoded patterns.
 
         Args:
             command: The command that failed
@@ -290,11 +328,12 @@ Examples:
         Returns:
             Natural language error message with suggestions
         """
-        error_lower = error.lower()
+        error_type, confidence, analysis = self.classify_error(error)
+        cmd_name = command.split()[0] if command else "unknown"
 
-        # Pattern 1: Permission denied
-        if exit_code == 126 or "permission denied" in error_lower:
-            return f"""
+        # Error messages by type
+        messages = {
+            ErrorType.PERMISSION: f"""
 ❌ **Permission refusée**
 
 La commande nécessite des privilèges élevés pour s'exécuter.
@@ -307,47 +346,35 @@ La commande nécessite des privilèges élevés pour s'exécuter.
 • Vérifiez que l'utilisateur dispose des droits sudo
 • Certaines commandes nécessitent l'accès root direct
 • Consultez les logs d'audit si nécessaire
-"""
+""",
+            ErrorType.CREDENTIAL: f"""
+❌ **Authentification requise**
 
-        # Pattern 2: Command not found
-        if exit_code == 127 or "command not found" in error_lower:
-            # Extract command name
-            cmd_name = command.split()[0] if command else "unknown"
-            return f"""
-❌ **Commande introuvable**
-
-La commande `{cmd_name}` n'est pas disponible sur ce serveur.
-
-**Serveur**: {target}
-**Erreur**: {error[:100]}
-
-**💡 Suggestions**:
-• Le package contenant cette commande n'est peut-être pas installé
-• Essayez une alternative (ex: `systemctl` au lieu de `service`)
-• Vérifiez le PATH si la commande existe dans un répertoire non standard
-• Le système tentera automatiquement des commandes alternatives
-"""
-
-        # Pattern 3: File not found
-        if "no such file or directory" in error_lower:
-            return f"""
-❌ **Fichier ou répertoire introuvable**
-
-Le fichier ou répertoire spécifié n'existe pas sur le serveur.
+L'accès nécessite des identifiants valides.
 
 **Serveur**: {target}
 **Erreur**: {error[:150]}
 
 **💡 Suggestions**:
-• Vérifiez le chemin d'accès (sensible à la casse)
-• Le fichier peut avoir été déplacé ou supprimé
-• Sur certains systèmes, les chemins peuvent varier (ex: /var/log/syslog vs /var/log/messages)
-• Utilisez `find` pour localiser le fichier
-"""
+• Vérifiez vos identifiants (utilisateur/mot de passe)
+• Le token ou la clé API peut être expiré
+• Utilisez /variables pour définir les credentials
+""",
+            ErrorType.NOT_FOUND: f"""
+❌ **Ressource introuvable**
 
-        # Pattern 4: Connection errors
-        if any(p in error_lower for p in ["connection timeout", "connection refused", "unreachable"]):
-            return f"""
+La commande `{cmd_name}` ou le fichier spécifié n'existe pas.
+
+**Serveur**: {target}
+**Erreur**: {error[:100]}
+
+**💡 Suggestions**:
+• Le package peut ne pas être installé
+• Vérifiez le chemin d'accès (sensible à la casse)
+• Sur certains systèmes, les chemins varient (ex: /var/log/syslog vs /var/log/messages)
+• Le système tentera des alternatives automatiquement
+""",
+            ErrorType.CONNECTION: f"""
 ❌ **Erreur de connexion**
 
 Impossible de se connecter au serveur.
@@ -358,11 +385,54 @@ Impossible de se connecter au serveur.
 **💡 Suggestions**:
 • Le serveur est peut-être hors ligne ou en maintenance
 • Vérifiez la connectivité réseau
-• Le pare-feu peut bloquer la connexion SSH
+• Le pare-feu peut bloquer la connexion
 • Vérifiez la résolution DNS du nom d'hôte
-"""
+""",
+            ErrorType.TIMEOUT: f"""
+❌ **Délai d'attente dépassé**
 
-        # Pattern 5: Generic error with troubleshooting
+L'opération a pris trop de temps.
+
+**Serveur**: {target}
+**Erreur**: {error[:150]}
+
+**💡 Suggestions**:
+• Le serveur peut être surchargé
+• Vérifiez la latence réseau
+• Augmentez le timeout si nécessaire
+""",
+            ErrorType.RESOURCE: f"""
+❌ **Ressources insuffisantes**
+
+Le système manque de ressources (disque, mémoire, etc.)
+
+**Serveur**: {target}
+**Erreur**: {error[:150]}
+
+**💡 Suggestions**:
+• Vérifiez l'espace disque disponible
+• Vérifiez l'utilisation mémoire
+• Libérez des ressources si nécessaire
+""",
+            ErrorType.CONFIGURATION: f"""
+❌ **Erreur de configuration**
+
+La commande contient une erreur de syntaxe ou de configuration.
+
+**Commande**: `{command}`
+**Erreur**: {error[:150]}
+
+**💡 Suggestions**:
+• Vérifiez la syntaxe de la commande
+• Consultez la documentation ou `man {cmd_name}`
+""",
+        }
+
+        # Return specific message or generic one
+        if error_type in messages and confidence >= 0.6:
+            return messages[error_type]
+
+        # Generic fallback
         return f"""
 ❌ **Erreur d'exécution**
 

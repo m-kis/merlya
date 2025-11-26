@@ -1,23 +1,59 @@
 """
 Auto-correction system for failed commands.
 Intelligent debugging loop that analyzes errors and fixes commands automatically.
-KISS + DRY implementation.
+Uses ErrorAnalyzer for semantic error classification.
 """
 from typing import Any, Dict, Optional, Tuple
 
+from athena_ai.triage import ErrorType, get_error_analyzer
 from athena_ai.utils.logger import logger
 
 
 class AutoCorrector:
     """
     Intelligent command auto-correction for DevOps tasks.
-    Analyzes errors and suggests fixes like an experienced SRE.
+    Uses ErrorAnalyzer for error classification before LLM correction.
     """
 
     def __init__(self, llm_router, executor, context_manager):
         self.llm = llm_router
         self.executor = executor
         self.context = context_manager
+        self._error_analyzer = None  # Lazy init
+
+    @property
+    def error_analyzer(self):
+        """Lazy load the error analyzer."""
+        if self._error_analyzer is None:
+            self._error_analyzer = get_error_analyzer()
+        return self._error_analyzer
+
+    def _should_skip_correction(self, error: str) -> tuple:
+        """
+        Check if error type should skip auto-correction.
+
+        Returns:
+            (should_skip, reason) tuple
+        """
+        analysis = self.error_analyzer.analyze(error)
+
+        # Skip credential errors - need user input, not command fix
+        if analysis.error_type == ErrorType.CREDENTIAL and analysis.confidence >= 0.6:
+            return True, "credential error requires user authentication"
+
+        # Skip connection errors - not fixable by command change
+        if analysis.error_type == ErrorType.CONNECTION and analysis.confidence >= 0.6:
+            return True, "connection error not fixable by command"
+
+        # Skip timeout errors
+        if analysis.error_type == ErrorType.TIMEOUT and analysis.confidence >= 0.6:
+            return True, "timeout error not fixable by command"
+
+        # Skip resource errors
+        if analysis.error_type == ErrorType.RESOURCE and analysis.confidence >= 0.6:
+            return True, "resource error requires system intervention"
+
+        return False, None
 
     def execute_with_retry(self, target: str, command: str,
                           action_context: Dict[str, Any],
@@ -83,14 +119,15 @@ class AutoCorrector:
                        target: str, context: Dict[str, Any]) -> str:
         """
         Ask AI to fix the failed command.
-        Fast, focused correction using haiku model.
+        Uses ErrorAnalyzer to skip unfixable errors.
         """
         # Get host context
         host_info = self._get_host_info(target)
 
-        # Don't try to fix sudo password prompts - elevation should handle this
-        if "password" in error.lower() and ("sudo" in error.lower() or "sudo" in failed):
-            logger.info("Skipping auto-correction for sudo password prompt (elevation issue, not command issue)")
+        # Check if error type should skip correction
+        should_skip, reason = self._should_skip_correction(error)
+        if should_skip:
+            logger.info(f"Skipping auto-correction: {reason}")
             return failed
 
         prompt = f"""FIX THIS COMMAND

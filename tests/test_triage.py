@@ -643,5 +643,119 @@ class TestIntegrationWithIntent:
         assert priority == Priority.P0  # "down" is P0 keyword
 
 
+class TestErrorAnalyzer:
+    """Tests for ErrorAnalyzer semantic error classification."""
+
+    def setup_method(self):
+        from athena_ai.triage import ErrorType, get_error_analyzer
+        self.analyzer = get_error_analyzer(force_new=True)
+        self.ErrorType = ErrorType
+
+    def test_analyzer_creation(self):
+        """ErrorAnalyzer should be creatable."""
+        assert self.analyzer is not None
+
+    def test_credential_error_detection(self):
+        """Should detect credential/authentication errors."""
+        credential_errors = [
+            "Permission denied (publickey,password)",
+            "Authentication failed",
+            "password authentication failed for user",
+            "Access denied for user 'admin'",
+            "Invalid API key",
+        ]
+        for error in credential_errors:
+            analysis = self.analyzer.analyze(error)
+            assert analysis.error_type == self.ErrorType.CREDENTIAL, f"Failed for: {error}"
+            assert analysis.needs_credentials is True
+            assert analysis.confidence >= 0.6
+
+    def test_connection_error_detection(self):
+        """Should detect connection/network errors."""
+        connection_errors = [
+            "Connection refused",
+            "Connection timed out",
+            "No route to host",
+            "Network is unreachable",
+            "Could not resolve hostname",
+        ]
+        for error in connection_errors:
+            analysis = self.analyzer.analyze(error)
+            assert analysis.error_type == self.ErrorType.CONNECTION, f"Failed for: {error}"
+            assert analysis.needs_credentials is False
+            assert analysis.confidence >= 0.6
+
+    def test_permission_error_detection(self):
+        """Should detect permission errors."""
+        permission_errors = [
+            "Permission denied",
+            "Operation not permitted",
+            "Insufficient privileges",
+            "403 Forbidden",
+        ]
+        for error in permission_errors:
+            analysis = self.analyzer.analyze(error)
+            assert analysis.error_type == self.ErrorType.PERMISSION, f"Failed for: {error}"
+            assert analysis.needs_credentials is False
+
+    def test_not_found_error_detection(self):
+        """Should detect not found errors."""
+        not_found_errors = [
+            "No such file or directory",
+            "File not found",
+            "Command not found",
+            "404 Not Found",
+        ]
+        for error in not_found_errors:
+            analysis = self.analyzer.analyze(error)
+            assert analysis.error_type == self.ErrorType.NOT_FOUND, f"Failed for: {error}"
+
+    def test_timeout_error_detection(self):
+        """Should detect timeout errors."""
+        timeout_errors = [
+            "Timed out",
+            "Operation timed out",
+            "Request timeout",
+            "504 Gateway Timeout",
+        ]
+        for error in timeout_errors:
+            analysis = self.analyzer.analyze(error)
+            assert analysis.error_type == self.ErrorType.TIMEOUT, f"Failed for: {error}"
+
+    def test_resource_error_detection(self):
+        """Should detect resource exhaustion errors."""
+        resource_errors = [
+            "No space left on device",
+            "Out of memory",
+            "Cannot allocate memory",
+            "Too many open files",
+        ]
+        for error in resource_errors:
+            analysis = self.analyzer.analyze(error)
+            assert analysis.error_type == self.ErrorType.RESOURCE, f"Failed for: {error}"
+
+    def test_empty_error_returns_unknown(self):
+        """Empty error should return UNKNOWN."""
+        analysis = self.analyzer.analyze("")
+        assert analysis.error_type == self.ErrorType.UNKNOWN
+        assert analysis.confidence == 0.0
+
+    def test_analysis_returns_suggested_action(self):
+        """Analysis should include suggested action."""
+        analysis = self.analyzer.analyze("Authentication failed")
+        assert analysis.suggested_action is not None
+        assert len(analysis.suggested_action) > 0
+
+    def test_needs_credentials_helper(self):
+        """needs_credentials() helper should work."""
+        assert self.analyzer.needs_credentials("Authentication failed") is True
+        assert self.analyzer.needs_credentials("Connection refused") is False
+
+    def test_get_error_type_helper(self):
+        """get_error_type() helper should work."""
+        error_type = self.analyzer.get_error_type("Permission denied (publickey)")
+        assert error_type == self.ErrorType.CREDENTIAL
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -14,6 +14,7 @@ from .classifier import PriorityClassifier, classify_priority, get_classifier
 from .priority import Intent, Priority, PriorityResult, TriageResult
 from .signals import SignalDetector
 from .smart_classifier import SmartTriageClassifier, get_smart_classifier, reset_smart_classifier
+from .error_analyzer import ErrorAnalyzer, ErrorAnalysis, ErrorType, get_error_analyzer
 
 __all__ = [
     # Priority & Intent
@@ -38,4 +39,9 @@ __all__ = [
     "BEHAVIOR_PROFILES",
     "get_behavior",
     "describe_behavior",
+    # Error Analyzer
+    "ErrorAnalyzer",
+    "ErrorAnalysis",
+    "ErrorType",
+    "get_error_analyzer",
 ]
