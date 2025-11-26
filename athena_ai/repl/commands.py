@@ -11,7 +11,7 @@ from athena_ai.repl.ui import console, print_error, print_message, print_success
 SLASH_COMMANDS = {
     '/help': 'Show available slash commands',
     '/scan': 'Scan infrastructure (--full for SSH scan)',
-    '/refresh': 'Force refresh all context',
+    '/refresh': 'Force refresh context (--full for SSH scan)',
     '/cache-stats': 'Show cache statistics',
     '/ssh-info': 'Show SSH configuration',
     '/permissions': 'Show permission capabilities [hostname]',
@@ -64,7 +64,7 @@ class CommandHandler:
         handlers = {
             '/help': self._show_help,
             '/scan': lambda: self._handle_scan(args),
-            '/refresh': self._handle_refresh,
+            '/refresh': lambda: self._handle_refresh(args),
             '/cache-stats': self._handle_cache_stats,
             '/ssh-info': self._handle_ssh_info,
             '/permissions': lambda: self._handle_permissions(args),
@@ -91,19 +91,24 @@ class CommandHandler:
 
     def _handle_custom_command(self, custom_cmd, args):
         """Execute a custom command loaded from markdown."""
-        prompt = self.repl.command_loader.expand(custom_cmd, args)
-        print_message(f"[cyan]Running /{custom_cmd.name}...[/cyan]\n")
+        try:
+            prompt = self.repl.command_loader.expand(custom_cmd, args)
+            print_message(f"[cyan]Running /{custom_cmd.name}...[/cyan]\n")
 
-        # Add to conversation and process
-        self.repl.conversation_manager.add_user_message(prompt)
+            # Add to conversation and process
+            self.repl.conversation_manager.add_user_message(prompt)
 
-        with console.status("[cyan]🦉 Athena is thinking...[/cyan]", spinner="dots"):
-            response = asyncio.run(
-                self.repl.orchestrator.process_request(user_query=prompt)
-            )
+            with console.status("[cyan]🦉 Athena is thinking...[/cyan]", spinner="dots"):
+                response = asyncio.run(
+                    self.repl.orchestrator.process_request(user_query=prompt)
+                )
 
-        self.repl.conversation_manager.add_assistant_message(response)
-        console.print(Markdown(response))
+            self.repl.conversation_manager.add_assistant_message(response)
+            console.print(Markdown(response))
+
+        except Exception as e:
+            print_error(f"Custom command failed: {e}")
+
         return True
 
     def _show_help(self):
@@ -118,7 +123,7 @@ class CommandHandler:
         help_text += "- **Local info**: Cached for 5 minutes\n"
         help_text += "- **Remote hosts**: Cached for 30 minutes\n"
         help_text += "- Use `/cache-stats` to see cache state\n"
-        help_text += "- Use `/refresh` to force update everything\n"
+        help_text += "- Use `/refresh` to force update (add `--full` to include SSH scan)\n"
 
         help_text += "\n## Model Configuration\n\n"
         help_text += "Athena supports multiple LLM providers and models:\n"
@@ -153,7 +158,8 @@ class CommandHandler:
         help_text += "- `what services are running on mongo-preprod-1`\n"
         help_text += "- `/scan --full` (scan all hosts via SSH)\n"
         help_text += "- `/cache-stats` (check cache status)\n"
-        help_text += "- `/refresh` (force refresh after infrastructure changes)\n"
+        help_text += "- `/refresh` (force refresh local context)\n"
+        help_text += "- `/refresh --full` (force refresh + SSH scan)\n"
         help_text += "- `/model list openrouter` (list OpenRouter models)\n"
         help_text += "- `/model set openrouter anthropic/claude-3-opus` (switch to Opus)\n"
 
@@ -185,100 +191,159 @@ class CommandHandler:
         return True
 
     def _handle_scan(self, args):
+        """Scan infrastructure. Use --full to scan remote hosts via SSH."""
         full = '--full' in args
 
-        if full:
-            # Full SSH scan with progress bar
-            from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+        try:
+            if full:
+                # Full SSH scan with progress bar
+                from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[cyan]{task.description}[/cyan]"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TextColumn("[dim]{task.fields[host]}[/dim]"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Scanning hosts...", total=None, host="")
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[cyan]{task.description}[/cyan]"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    TextColumn("[dim]{task.fields[host]}[/dim]"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Scanning hosts...", total=None, host="")
 
-                def update_progress(current, total, hostname):
-                    progress.update(task, total=total, completed=current, host=hostname)
+                    def update_progress(current, total, hostname):
+                        progress.update(task, total=total, completed=current, host=hostname)
 
-                context = self.repl.context_manager.discover_environment(
-                    scan_remote=True,
-                    progress_callback=update_progress
-                )
-                # Mark complete
-                progress.update(task, completed=progress.tasks[0].total or 0, host="done")
-        else:
-            # Quick scan without SSH
-            with console.status("[cyan]Scanning infrastructure...[/cyan]", spinner="dots"):
-                context = self.repl.context_manager.discover_environment(scan_remote=False)
+                    context = self.repl.context_manager.discover_environment(
+                        scan_remote=True,
+                        progress_callback=update_progress
+                    )
+                    # Mark complete
+                    progress.update(task, completed=progress.tasks[0].total or 0, host="done")
+            else:
+                # Quick scan without SSH
+                with console.status("[cyan]Scanning infrastructure...[/cyan]", spinner="dots"):
+                    context = self.repl.context_manager.discover_environment(scan_remote=False)
 
-        local = context.get('local', {})
-        inventory = context.get('inventory', {})
-        remote_hosts = context.get('remote_hosts', {})
+            local = context.get('local', {})
+            inventory = context.get('inventory', {})
+            remote_hosts = context.get('remote_hosts', {})
 
-        print_success("Scan complete")
-        console.print(f"  Local: {local.get('hostname')}")
-        console.print(f"  Inventory: {len(inventory)} hosts")
+            print_success("Scan complete")
+            console.print(f"  Local: {local.get('hostname')}")
+            console.print(f"  Inventory: {len(inventory)} hosts")
 
-        if remote_hosts:
-            accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-            console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible")
+            if remote_hosts:
+                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
+                console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible")
+
+        except Exception as e:
+            print_error(f"Scan failed: {e}")
 
         return True
 
-    def _handle_refresh(self):
-        with console.status("[cyan]Force refreshing context...[/cyan]", spinner="dots"):
-            self.repl.context_manager.discover_environment(scan_remote=False, force=True)
-        print_success("Context refreshed (cache cleared)")
+    def _handle_refresh(self, args):
+        """Force refresh context. Use --full to include SSH scan of remote hosts."""
+        full = '--full' in args
+
+        try:
+            if full:
+                # Full refresh with SSH scan (like /scan --full but with force=True)
+                from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[cyan]{task.description}[/cyan]"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    TextColumn("[dim]{task.fields[host]}[/dim]"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Refreshing (full)...", total=None, host="")
+
+                    def update_progress(current, total, hostname):
+                        progress.update(task, total=total, completed=current, host=hostname)
+
+                    context = self.repl.context_manager.discover_environment(
+                        scan_remote=True,
+                        force=True,
+                        progress_callback=update_progress
+                    )
+                    progress.update(task, completed=progress.tasks[0].total or 0, host="done")
+
+                remote_hosts = context.get('remote_hosts', {})
+                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
+                print_success(f"Full refresh complete (cache cleared, {accessible}/{len(remote_hosts)} hosts accessible)")
+            else:
+                # Quick refresh without SSH
+                with console.status("[cyan]Force refreshing context...[/cyan]", spinner="dots"):
+                    self.repl.context_manager.discover_environment(scan_remote=False, force=True)
+                print_success("Context refreshed (cache cleared)")
+                console.print("[dim]Use /refresh --full to also scan remote hosts via SSH[/dim]")
+
+        except Exception as e:
+            print_error(f"Refresh failed: {e}")
+
         return True
 
     def _handle_cache_stats(self):
-        stats = self.repl.context_manager.get_cache_stats()
-        table = Table(title="Cache Statistics")
-        table.add_column("Component", style="cyan")
-        table.add_column("Age", style="yellow")
-        table.add_column("TTL", style="blue")
-        table.add_column("Status", style="green")
-        table.add_column("Fingerprint", style="magenta")
+        """Show cache statistics."""
+        try:
+            stats = self.repl.context_manager.get_cache_stats()
 
-        for key, info in stats.items():
-            status = "✓ Valid" if info['valid'] else "✗ Expired"
-            status_style = "green" if info['valid'] else "red"
-            fingerprint = "Yes" if info.get('has_fingerprint') else "No"
+            if not stats:
+                print_warning("No cache data available yet")
+                return True
 
-            table.add_row(
-                key,
-                f"{info['age_seconds']}s",
-                f"{info['ttl_seconds']}s",
-                f"[{status_style}]{status}[/{status_style}]",
-                fingerprint
-            )
+            table = Table(title="Cache Statistics")
+            table.add_column("Component", style="cyan")
+            table.add_column("Age", style="yellow")
+            table.add_column("TTL", style="blue")
+            table.add_column("Status", style="green")
+            table.add_column("Fingerprint", style="magenta")
 
-        console.print(table)
-        console.print("\n[dim]Valid = Cache is fresh, Expired = Will auto-refresh on next access[/dim]")
+            for key, info in stats.items():
+                status = "✓ Valid" if info['valid'] else "✗ Expired"
+                status_style = "green" if info['valid'] else "red"
+                fingerprint = "Yes" if info.get('has_fingerprint') else "No"
+
+                table.add_row(
+                    key,
+                    f"{info['age_seconds']}s",
+                    f"{info['ttl_seconds']}s",
+                    f"[{status_style}]{status}[/{status_style}]",
+                    fingerprint
+                )
+
+            console.print(table)
+            console.print("\n[dim]Valid = Cache is fresh, Expired = Will auto-refresh on next access[/dim]")
+
+        except Exception as e:
+            print_error(f"Failed to get cache stats: {e}")
+
         return True
 
     def _handle_ssh_info(self):
-        console.print("\n[bold]SSH Configuration[/bold]\n")
+        """Show SSH configuration and available keys."""
+        try:
+            console.print("\n[bold]SSH Configuration[/bold]\n")
 
-        if self.repl.credentials.supports_agent():
-            agent_keys = self.repl.credentials.get_agent_keys()
-            if agent_keys:
-                console.print(f"[green]✓ ssh-agent: {len(agent_keys)} keys loaded[/green]")
+            if self.repl.credentials.supports_agent():
+                agent_keys = self.repl.credentials.get_agent_keys()
+                if agent_keys:
+                    console.print(f"[green]✓ ssh-agent: {len(agent_keys)} keys loaded[/green]")
+                else:
+                    print_warning("ssh-agent detected but no keys")
             else:
-                print_warning("ssh-agent detected but no keys")
-        else:
-            print_error("ssh-agent not available")
+                print_warning("ssh-agent not available")
 
-        keys = self.repl.credentials.get_ssh_keys()
-        console.print(f"\nSSH Keys: {len(keys)} available")
+            keys = self.repl.credentials.get_ssh_keys()
+            console.print(f"\nSSH Keys: {len(keys)} available")
 
-        default_key = self.repl.credentials.get_default_key()
-        if default_key:
-            console.print(f"Default: {default_key}\n")
+            default_key = self.repl.credentials.get_default_key()
+            if default_key:
+                console.print(f"Default: {default_key}\n")
+
+        except Exception as e:
+            print_error(f"Failed to get SSH info: {e}")
 
         return True
 
@@ -306,94 +371,112 @@ class CommandHandler:
         return True
 
     def _handle_context(self):
-        context = self.repl.context_manager.get_context()
-        local = context.get('local', {})
-        inventory = context.get('inventory', {})
-        remote_hosts = context.get('remote_hosts', {})
+        """Show current infrastructure context."""
+        try:
+            context = self.repl.context_manager.get_context()
+            local = context.get('local', {})
+            inventory = context.get('inventory', {})
+            remote_hosts = context.get('remote_hosts', {})
 
-        console.print("\n[bold]Current Context[/bold]")
-        console.print(f"  Local: {local.get('hostname')} ({local.get('os')})")
-        console.print(f"  Inventory: {len(inventory)} hosts")
+            console.print("\n[bold]Current Context[/bold]")
+            console.print(f"  Local: {local.get('hostname', 'unknown')} ({local.get('os', 'unknown')})")
+            console.print(f"  Inventory: {len(inventory)} hosts")
 
-        if remote_hosts:
-            accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-            console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible\n")
+            if remote_hosts:
+                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
+                console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible\n")
+
+        except Exception as e:
+            print_error(f"Failed to get context: {e}")
+
         return True
 
     def _handle_session(self, args):
-        if 'list' in args:
-            sessions = self.repl.session_manager.list_sessions(limit=5)
-            table = Table(title="Recent Sessions")
-            table.add_column("Session ID", style="cyan")
-            table.add_column("Started", style="green")
-            table.add_column("Queries", style="magenta")
+        """Show session information."""
+        try:
+            if 'list' in args:
+                sessions = self.repl.session_manager.list_sessions(limit=5)
+                table = Table(title="Recent Sessions")
+                table.add_column("Session ID", style="cyan")
+                table.add_column("Started", style="green")
+                table.add_column("Queries", style="magenta")
 
-            for s in sessions:
-                table.add_row(s['id'], s['started_at'], str(s['total_queries']))
+                for s in sessions:
+                    table.add_row(s['id'], s['started_at'], str(s['total_queries']))
 
-            console.print(table)
-        else:
-            console.print(f"Current session: {self.repl.session_manager.current_session_id}")
-            console.print("Use: /session list")
+                console.print(table)
+            else:
+                console.print(f"Current session: {self.repl.session_manager.current_session_id}")
+                console.print("Use: /session list")
+
+        except Exception as e:
+            print_error(f"Failed to get session info: {e}")
+
         return True
 
     def _handle_variables(self, args):
-        # Implementation delegated to the original method logic, adapted for class structure
-        # For brevity in this refactor, I'm copying the logic but assuming it calls back to self.repl.credentials
-
+        """Manage user variables and credentials."""
         if not args:
             print_warning("Usage: /variables set <key> <value> | list | delete <key> | clear")
             return True
 
         cmd = args[0]
 
-        if cmd == 'set':
-            if len(args) >= 3:
-                key = args[1]
-                value = ' '.join(args[2:])
-                self.repl.credentials.set_variable(key, value)
-                print_success(f"Variable '{key}' = '{value}'")
-                console.print(f"[dim]Use @{key} in your queries[/dim]")
-            else:
-                print_error("Missing key or value")
-
-        elif cmd in ['set-secret', 'secret']:
-            if len(args) >= 2:
-                key = args[1]
-                if self.repl.credentials.set_variable_secure(key):
-                    print_success(f"Secret variable '{key}' set securely")
+        try:
+            if cmd == 'set':
+                if len(args) >= 3:
+                    key = args[1]
+                    value = ' '.join(args[2:])
+                    self.repl.credentials.set_variable(key, value)
+                    print_success(f"Variable '{key}' = '{value}'")
+                    console.print(f"[dim]Use @{key} in your queries[/dim]")
                 else:
-                    print_warning("Secret variable not saved")
-            else:
-                print_error("Missing key")
+                    print_error("Missing key or value")
 
-        elif cmd == 'list':
-            variables = self.repl.credentials.list_variables()
-            if not variables:
-                print_warning("No credential variables defined")
-            else:
-                table = Table(title="Credential Variables")
-                table.add_column("Variable", style="cyan")
-                table.add_column("Value", style="green")
-
-                for key, value in sorted(variables.items()):
-                    # Masking logic (simplified for brevity)
-                    display_value = value if len(value) < 20 else value[:4] + "..." + value[-4:]
-                    table.add_row(f"@{key}", display_value)
-                console.print(table)
-
-        elif cmd in ['delete', 'del', 'remove']:
-            if len(args) >= 2:
-                key = args[1]
-                if self.repl.credentials.delete_variable(key):
-                    print_success(f"Variable '{key}' deleted")
+            elif cmd in ['set-secret', 'secret']:
+                if len(args) >= 2:
+                    key = args[1]
+                    if self.repl.credentials.set_variable_secure(key):
+                        print_success(f"Secret variable '{key}' set securely")
+                    else:
+                        print_warning("Secret variable not saved")
                 else:
-                    print_warning(f"Variable '{key}' not found")
+                    print_error("Missing key")
 
-        elif cmd == 'clear':
-            self.repl.credentials.clear_session_credentials()
-            self.repl.credentials.clear_variables()
-            print_success("All credentials and variables cleared")
+            elif cmd == 'list':
+                variables = self.repl.credentials.list_variables()
+                if not variables:
+                    print_warning("No credential variables defined")
+                else:
+                    table = Table(title="Credential Variables")
+                    table.add_column("Variable", style="cyan")
+                    table.add_column("Value", style="green")
+
+                    for key, value in sorted(variables.items()):
+                        # Masking logic (simplified for brevity)
+                        display_value = value if len(value) < 20 else value[:4] + "..." + value[-4:]
+                        table.add_row(f"@{key}", display_value)
+                    console.print(table)
+
+            elif cmd in ['delete', 'del', 'remove']:
+                if len(args) >= 2:
+                    key = args[1]
+                    if self.repl.credentials.delete_variable(key):
+                        print_success(f"Variable '{key}' deleted")
+                    else:
+                        print_warning(f"Variable '{key}' not found")
+
+            elif cmd == 'clear':
+                self.repl.credentials.clear_session_credentials()
+                self.repl.credentials.clear_variables()
+                print_success("All credentials and variables cleared")
+
+            else:
+                print_warning(f"Unknown subcommand: {cmd}")
+                print_warning("Usage: /variables set <key> <value> | list | delete <key> | clear")
+
+        except Exception as e:
+            print_error(f"Variable operation failed: {e}")
 
         return True
 
@@ -404,104 +487,105 @@ class CommandHandler:
             return True
 
         cmd = args[0]
-        model_config = self.repl.orchestrator.llm_router.model_config
 
-        if cmd == 'show':
-            # Show current configuration
-            config = model_config.get_current_config()
-            provider = config['provider']
-            model = config['model']
+        try:
+            model_config = self.repl.orchestrator.llm_router.model_config
 
-            console.print("\n[bold]Current Model Configuration[/bold]\n")
+            if cmd == 'show':
+                # Show current configuration
+                config = model_config.get_current_config()
+                provider = config['provider']
+                model = config['model']
 
-            # Provider & Model
-            is_local = provider == "ollama"
-            provider_display = f"[green]{provider}[/green]" if is_local else f"[cyan]{provider}[/cyan]"
-            console.print(f"  Provider: {provider_display}")
-            console.print(f"  Model: [green]{model}[/green]")
+                console.print("\n[bold]Current Model Configuration[/bold]\n")
 
-            # Show task-specific models if configured
-            if config.get('task_models'):
-                console.print("\n[bold]Task Models:[/bold]")
-                for task, model_alias in config['task_models'].items():
-                    console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
-            console.print()
+                # Provider & Model
+                is_local = provider == "ollama"
+                provider_display = f"[green]{provider}[/green]" if is_local else f"[cyan]{provider}[/cyan]"
+                console.print(f"  Provider: {provider_display}")
+                console.print(f"  Model: [green]{model}[/green]")
 
-        elif cmd == 'local':
-            # Shortcut for Ollama - maps to provider commands
-            if len(args) < 2:
-                print_error("Usage: /model local <on|off> [model_name]")
-                return True
+                # Show task-specific models if configured
+                if config.get('task_models'):
+                    console.print("\n[bold]Task Models:[/bold]")
+                    for task, model_alias in config['task_models'].items():
+                        console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
+                console.print()
 
-            subcmd = args[1].lower()
-            if subcmd in ['on', 'true', 'enable']:
-                # Switch to Ollama provider
-                model_config.set_provider("ollama")
-                if len(args) > 2:
-                    model_config.set_model("ollama", args[2])
-                current_model = model_config.get_model("ollama")
-                print_success(f"Switched to Ollama (Model: {current_model})")
-                self.repl.orchestrator.reload_agents()
+            elif cmd == 'local':
+                # Shortcut for Ollama - maps to provider commands
+                if len(args) < 2:
+                    print_error("Usage: /model local <on|off> [model_name]")
+                    return True
 
-            elif subcmd in ['off', 'false', 'disable']:
-                # Switch back to default cloud provider
-                model_config.set_provider("openrouter")
-                current_model = model_config.get_model("openrouter")
-                print_success(f"Switched to OpenRouter (Model: {current_model})")
-                self.repl.orchestrator.reload_agents()
-
-            elif subcmd == 'set' and len(args) > 2:
-                model_config.set_model("ollama", args[2])
-                print_success(f"Ollama model set to: {args[2]}")
-                if model_config.get_provider() == "ollama":
+                subcmd = args[1].lower()
+                if subcmd in ['on', 'true', 'enable']:
+                    # Switch to Ollama provider
+                    model_config.set_provider("ollama")
+                    if len(args) > 2:
+                        model_config.set_model("ollama", args[2])
+                    current_model = model_config.get_model("ollama")
+                    print_success(f"Switched to Ollama (Model: {current_model})")
                     self.repl.orchestrator.reload_agents()
-            else:
-                print_error("Invalid local command. Use: on, off, set <model>")
 
-        elif cmd == 'list':
-            # Delegate to existing logic for cloud models
-            provider = args[1] if len(args) > 1 else None
-            models = model_config.list_models(provider)
-            provider_name = provider or model_config.get_provider()
+                elif subcmd in ['off', 'false', 'disable']:
+                    # Switch back to default cloud provider
+                    model_config.set_provider("openrouter")
+                    current_model = model_config.get_model("openrouter")
+                    print_success(f"Switched to OpenRouter (Model: {current_model})")
+                    self.repl.orchestrator.reload_agents()
 
-            table = Table(title=f"Available Models - {provider_name}")
-            table.add_column("Model", style="cyan")
-            for model in models:
-                table.add_row(model)
-            console.print(table)
+                elif subcmd == 'set' and len(args) > 2:
+                    model_config.set_model("ollama", args[2])
+                    print_success(f"Ollama model set to: {args[2]}")
+                    if model_config.get_provider() == "ollama":
+                        self.repl.orchestrator.reload_agents()
+                else:
+                    print_error("Invalid local command. Use: on, off, set <model>")
 
-        elif cmd == 'set':
-            # Set model for provider
-            if len(args) == 2:
-                provider = model_config.get_provider()
-                model = args[1]
-            elif len(args) >= 3:
-                provider = args[1]
-                model = args[2]
-            else:
-                print_error("Usage: /model set <model> OR /model set <provider> <model>")
-                return True
+            elif cmd == 'list':
+                # Delegate to existing logic for cloud models
+                provider = args[1] if len(args) > 1 else None
+                models = model_config.list_models(provider)
+                provider_name = provider or model_config.get_provider()
 
-            try:
+                table = Table(title=f"Available Models - {provider_name}")
+                table.add_column("Model", style="cyan")
+                for model in models:
+                    table.add_row(model)
+                console.print(table)
+
+            elif cmd == 'set':
+                # Set model for provider
+                if len(args) == 2:
+                    provider = model_config.get_provider()
+                    model = args[1]
+                elif len(args) >= 3:
+                    provider = args[1]
+                    model = args[2]
+                else:
+                    print_error("Usage: /model set <model> OR /model set <provider> <model>")
+                    return True
+
                 model_config.set_model(provider, model)
                 print_success(f"Model for {provider} set to: {model}")
                 # Reload agents to apply the new model
                 self.repl.orchestrator.reload_agents()
-            except ValueError as e:
-                print_error(f"{e}")
 
-        elif cmd == 'provider' and len(args) >= 2:
-            provider = args[1]
-            try:
+            elif cmd == 'provider' and len(args) >= 2:
+                provider = args[1]
                 self.repl.orchestrator.llm_router.switch_provider(provider)
                 print_success(f"Provider set to: {provider}")
                 # Reload agents to apply the new provider
                 self.repl.orchestrator.reload_agents()
-            except ValueError as e:
-                print_error(f"{e}")
 
-        else:
-            self._show_model_help()
+            else:
+                self._show_model_help()
+
+        except ValueError as e:
+            print_error(f"Invalid value: {e}")
+        except Exception as e:
+            print_error(f"Model command failed: {e}")
 
         return True
 
