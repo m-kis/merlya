@@ -176,7 +176,12 @@ class ModelConfig:
 
         For OpenRouter: accepts ANY model ID (e.g., z-ai/glm-4.5-air:free)
         For other providers: validates against known models
+
+        Also clears any environment variable override for the model,
+        so config.json takes effect immediately.
         """
+        import os
+
         if provider not in self.AVAILABLE_MODELS:
             raise ValueError(f"Unknown provider: {provider}. Available: {', '.join(self.AVAILABLE_MODELS.keys())}")
 
@@ -190,6 +195,20 @@ class ModelConfig:
 
         self.config["models"][provider] = model
         self.save_config()
+
+        # Clear environment variable override so config.json takes effect
+        # This is important because env vars have priority in _create_model_client
+        env_var_map = {
+            "openrouter": "OPENROUTER_MODEL",
+            "anthropic": "ANTHROPIC_MODEL",
+            "openai": "OPENAI_MODEL",
+            "ollama": "OLLAMA_MODEL",
+        }
+        env_var = env_var_map.get(provider)
+        if env_var and os.environ.get(env_var):
+            logger.debug(f"Clearing {env_var} environment variable to apply config.json setting")
+            os.environ.pop(env_var, None)
+
         logger.info(f"Model for {provider} set to: {model}")
 
     def list_models(self, provider: Optional[str] = None) -> List[str]:

@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Any, Callable, List
 
 from rich.console import Console
 
@@ -9,10 +9,12 @@ try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
     from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
+    from autogen_agentchat.messages import FunctionExecutionResult
     from autogen_agentchat.teams import RoundRobinGroupChat, SelectorGroupChat
     HAS_AUTOGEN = True
 except ImportError:
     HAS_AUTOGEN = False
+    FunctionExecutionResult = None  # type: ignore
 
 class ExecutionPlanner:
     """Handles agent team creation and execution planning."""
@@ -210,19 +212,14 @@ Work together:
         outputs = []
 
         for msg in result.messages:
-            content = getattr(msg, 'content', '')
-            if not content:
+            raw_content = getattr(msg, 'content', '')
+            if not raw_content:
                 continue
 
-            # Handle list content
-            if isinstance(content, list):
-                content = "\n".join(
-                    str(c.get('text', c) if isinstance(c, dict) else c)
-                    for c in content
-                )
-
-            if not isinstance(content, str):
-                content = str(content)
+            # Extract actual string content from autogen objects
+            content = self._extract_content(raw_content)
+            if not content:
+                continue
 
             # Collect tool results
             if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
@@ -274,28 +271,67 @@ Provide your synthesis now:"""
 
         return "✅ Task completed."
 
+    def _extract_content(self, content: Any) -> str:
+        """
+        Extract string content from autogen message content.
+
+        Handles FunctionExecutionResult, lists, dicts, and strings.
+        """
+        if content is None:
+            return ""
+
+        # Handle FunctionExecutionResult (autogen 0.7+ tool results)
+        if FunctionExecutionResult and isinstance(content, FunctionExecutionResult):
+            return str(content.content) if content.content else ""
+
+        # Handle list of content items
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if FunctionExecutionResult and isinstance(item, FunctionExecutionResult):
+                    parts.append(str(item.content) if item.content else "")
+                elif isinstance(item, dict):
+                    parts.append(str(item.get('text', item)))
+                else:
+                    parts.append(str(item))
+            return "\n".join(parts)
+
+        # Handle dict content
+        if isinstance(content, dict):
+            return str(content.get('text', content))
+
+        # Already a string
+        if isinstance(content, str):
+            return content
+
+        # Fallback: convert to string
+        return str(content)
+
     def _extract_response(self, result: "TaskResult") -> str:
         """Extract response from TaskResult."""
+        from athena_ai.utils.logger import logger
+
         if not result.messages:
             return "✅ Task completed."
 
+        # Debug: Log all messages to understand structure
+        logger.debug(f"TaskResult has {len(result.messages)} messages")
+        for i, msg in enumerate(result.messages):
+            msg_type = type(msg).__name__
+            raw_content = getattr(msg, 'content', None)
+            content_type = type(raw_content).__name__ if raw_content else 'None'
+            logger.debug(f"  [{i}] {msg_type}: content_type={content_type}")
+
         # Get last message from the assistant (not tool results)
         for msg in reversed(result.messages):
-            content = getattr(msg, 'content', '')
-            if not content:
+            raw_content = getattr(msg, 'content', '')
+            if not raw_content:
                 continue
 
-            # Handle content as list (autogen can return list of content blocks)
-            if isinstance(content, list):
-                # Join text content blocks
-                content = "\n".join(
-                    str(c.get('text', c) if isinstance(c, dict) else c)
-                    for c in content
-                )
-
-            # Ensure content is string
-            if not isinstance(content, str):
-                content = str(content)
+            # Extract actual string content from autogen objects
+            content = self._extract_content(raw_content)
+            if not content:
+                continue
 
             # Skip tool call results (they start with SUCCESS/ERROR or are raw output)
             if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
