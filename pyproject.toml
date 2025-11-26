@@ -20,7 +20,7 @@ netmiko = "^4.4"
 # AI/LLM providers (stable 2025 versions)
 anthropic = "^0.70"
 openai = "^2.0"
-litellm = "^1.70"
+litellm = "^1.80"
 openai-agents = "^0.6.0"
 pyautogen = "^0.10.0"
 # Infrastructure
