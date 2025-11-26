@@ -13,12 +13,13 @@ Uses these patterns to:
 """
 
 import re
-from datetime import datetime
-from typing import Optional, Dict, Any, List, Tuple
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
+
 from .storage_manager import StorageManager
 
 
@@ -390,7 +391,6 @@ class PatternLearner:
 
     def _update_pattern_stats(self, pattern_id: int, success: bool):
         """Update pattern statistics."""
-        import json
 
         with self.storage._sqlite_connection() as conn:
             cursor = conn.cursor()

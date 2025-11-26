@@ -1,7 +1,9 @@
+from typing import Any, Dict
+
 import boto3
-from typing import Dict, Any, List
+
 from athena_ai.utils.logger import logger
-import os
+
 
 class AWSExecutor:
     def __init__(self, region: str = "us-east-1"):

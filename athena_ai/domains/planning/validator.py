@@ -8,8 +8,7 @@ Checks for:
 - Permission requirements
 - Risk assessment
 """
-from typing import List, Dict, Any, Set, Tuple, Optional
-from athena_ai.utils.logger import logger
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class ValidationError:

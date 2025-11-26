@@ -5,7 +5,8 @@ DRY: Single implementation of MCP stdio protocol communication.
 """
 import json
 import subprocess
-from typing import Dict, Any
+from typing import Any, Dict
+
 from athena_ai.utils.logger import logger
 
 

@@ -10,10 +10,10 @@ Following DDD principles, this domain handles:
 Like Claude Code, the orchestrator is intelligent and adaptive.
 """
 
-from athena_ai.domains.orchestration.request_processor import RequestProcessor
-from athena_ai.domains.orchestration.plan_manager import PlanManager
 from athena_ai.domains.orchestration.execution_coordinator import ExecutionCoordinator
 from athena_ai.domains.orchestration.intelligence_engine import IntelligenceEngine
+from athena_ai.domains.orchestration.plan_manager import PlanManager
+from athena_ai.domains.orchestration.request_processor import RequestProcessor
 
 __all__ = [
     'RequestProcessor',

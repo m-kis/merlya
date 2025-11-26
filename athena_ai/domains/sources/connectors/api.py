@@ -3,9 +3,11 @@ REST API connector for querying infrastructure data from APIs.
 
 Supports common infrastructure APIs like Netbox, Nautobot, etc.
 """
-import requests
 from typing import Any, Dict, List, Optional
-from athena_ai.domains.sources.connectors.base import BaseConnector, SourceMetadata, SourceType, ConnectorError
+
+import requests
+
+from athena_ai.domains.sources.connectors.base import BaseConnector, ConnectorError, SourceMetadata, SourceType
 from athena_ai.utils.logger import logger
 
 

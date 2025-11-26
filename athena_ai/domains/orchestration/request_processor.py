@@ -9,12 +9,12 @@ Responsibilities:
 - Extract entities and parameters
 - Determine optimal processing strategy
 """
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from athena_ai.utils.logger import logger
 from athena_ai.core import RequestComplexity
+from athena_ai.utils.logger import logger
 
 
 class RequestType(Enum):

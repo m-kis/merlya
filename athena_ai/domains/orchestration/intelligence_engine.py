@@ -9,16 +9,16 @@ Responsibilities:
 - Provide intelligent suggestions
 - Adapt to user preferences
 """
-from typing import Dict, Any, List, Optional
+import json
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from collections import defaultdict
-import json
 from pathlib import Path
+from typing import Any, Dict, List
 
-from athena_ai.domains.orchestration.request_processor import ProcessedRequest, RequestType
-from athena_ai.domains.orchestration.plan_manager import ExecutionPlan
 from athena_ai.domains.orchestration.execution_coordinator import ExecutionResult
+from athena_ai.domains.orchestration.plan_manager import ExecutionPlan
+from athena_ai.domains.orchestration.request_processor import ProcessedRequest, RequestType
 from athena_ai.utils.logger import logger
 
 

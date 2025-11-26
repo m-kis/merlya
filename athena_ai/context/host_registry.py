@@ -10,16 +10,13 @@ This module provides a STRICT host registry that:
 CRITICAL: This is a security-critical module. Never execute commands on unvalidated hosts.
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any
-import json
-import os
-import re
-import subprocess
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from athena_ai.utils.logger import logger
 
@@ -175,7 +172,7 @@ class HostRegistry:
             self._load_gcp_hosts()
 
         self._last_refresh = datetime.now()
-        loaded = len(self._hosts) - initial_count
+        len(self._hosts) - initial_count
 
         logger.info(f"Host registry loaded: {len(self._hosts)} total hosts from {len(self._loaded_sources)} sources")
         return len(self._hosts)
@@ -269,7 +266,7 @@ class HostRegistry:
                 ))
 
             self._loaded_sources.add(InventorySource.SSH_CONFIG)
-            logger.debug(f"Loaded hosts from SSH config")
+            logger.debug("Loaded hosts from SSH config")
 
         except Exception as e:
             logger.warning(f"Failed to load SSH config: {e}")
@@ -561,7 +558,7 @@ class HostRegistry:
         """Find similar hostnames using fuzzy matching."""
         matches = []
 
-        for hostname, host in self._hosts.items():
+        for _hostname, host in self._hosts.items():
             score = host.similarity(query)
             if score > 0.4:  # Minimum similarity threshold
                 matches.append((host.hostname, score))

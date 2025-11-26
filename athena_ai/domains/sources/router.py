@@ -7,11 +7,12 @@ This is the "intelligence" layer that decides:
 - How to translate the user query to the source's query language?
 """
 import re
-from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
-from athena_ai.domains.sources.registry import SourceRegistry
+from typing import Any, Dict, List, Optional, Tuple
+
+from athena_ai.domains.sources.connectors import SourceMetadata, SourceType
 from athena_ai.domains.sources.discovery import SourceDiscovery
-from athena_ai.domains.sources.connectors import SourceType, SourceMetadata, BaseConnector
+from athena_ai.domains.sources.registry import SourceRegistry
 from athena_ai.utils.logger import logger
 
 

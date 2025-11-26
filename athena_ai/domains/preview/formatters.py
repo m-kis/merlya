@@ -4,12 +4,11 @@ Formatters for rich diff visualization.
 Uses Rich library for beautiful terminal output.
 """
 from typing import List
+
 from rich.console import Console
-from rich.syntax import Syntax
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from athena_ai.utils.logger import logger
 
 
 class DiffFormatter:
@@ -81,6 +80,7 @@ class DiffFormatter:
 
         # Render to string
         from io import StringIO
+
         from rich.console import Console as RichConsole
         string_io = StringIO()
         console = RichConsole(file=string_io, force_terminal=True)
@@ -122,6 +122,7 @@ class DiffFormatter:
         # For simplicity, just stack them vertically
         # True side-by-side would need columns which is more complex
         from io import StringIO
+
         from rich.console import Console as RichConsole
         string_io = StringIO()
         console = RichConsole(file=string_io, force_terminal=True, width=120)

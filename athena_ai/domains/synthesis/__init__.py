@@ -7,8 +7,8 @@ Responsible for:
 - Generating recommendations
 - Synthesizing final output for users
 """
-from .synthesizer import ResultSynthesizer
-from .parsers import MetricsParser
 from .analyzers import MetricsAnalyzer
+from .parsers import MetricsParser
+from .synthesizer import ResultSynthesizer
 
 __all__ = ["ResultSynthesizer", "MetricsParser", "MetricsAnalyzer"]

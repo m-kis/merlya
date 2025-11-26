@@ -4,17 +4,18 @@ Source Registry - Stores and manages discovered data sources.
 Singleton registry that caches discovered sources to avoid repeated detection.
 """
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+
 from athena_ai.domains.sources.connectors import (
+    APIConnector,
     BaseConnector,
+    MongoDBConnector,
+    MySQLConnector,
+    PostgreSQLConnector,
     SourceMetadata,
     SourceType,
-    PostgreSQLConnector,
-    MySQLConnector,
-    MongoDBConnector,
-    APIConnector
 )
 from athena_ai.utils.logger import logger
 

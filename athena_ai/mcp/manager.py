@@ -12,7 +12,8 @@ Features:
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional
+
 from athena_ai.utils.logger import logger
 
 

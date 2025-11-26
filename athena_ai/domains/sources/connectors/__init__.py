@@ -7,16 +7,11 @@ Provides connectors for:
 - MongoDB
 - REST APIs (Netbox, Nautobot, etc.)
 """
-from athena_ai.domains.sources.connectors.base import (
-    BaseConnector,
-    SourceMetadata,
-    SourceType,
-    ConnectorError
-)
-from athena_ai.domains.sources.connectors.postgres import PostgreSQLConnector
-from athena_ai.domains.sources.connectors.mysql import MySQLConnector
-from athena_ai.domains.sources.connectors.mongodb import MongoDBConnector
 from athena_ai.domains.sources.connectors.api import APIConnector
+from athena_ai.domains.sources.connectors.base import BaseConnector, ConnectorError, SourceMetadata, SourceType
+from athena_ai.domains.sources.connectors.mongodb import MongoDBConnector
+from athena_ai.domains.sources.connectors.mysql import MySQLConnector
+from athena_ai.domains.sources.connectors.postgres import PostgreSQLConnector
 
 __all__ = [
     "BaseConnector",

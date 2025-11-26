@@ -8,11 +8,10 @@ Multi-layer detection:
 """
 
 import re
-from typing import Tuple, List, Set, Optional, Dict
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
 
 from .priority import Priority
-
 
 # ============================================================================
 # KEYWORD DICTIONARIES

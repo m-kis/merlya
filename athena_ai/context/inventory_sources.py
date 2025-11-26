@@ -7,9 +7,8 @@ Fonctionnalités:
 - Cache intelligent avec refresh
 - Merge de sources multiples
 """
-from typing import Dict, Optional, Tuple, List, Any
-from pathlib import Path
-import json
+from typing import Any, Dict, List, Optional, Tuple
+
 from athena_ai.utils.logger import logger
 
 

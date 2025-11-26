@@ -4,9 +4,11 @@ Code Generator for Infrastructure as Code.
 Uses Strategy Pattern for different IaC formats.
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
 from pathlib import Path
-from jinja2 import Environment, FileSystemLoader, Template
+from typing import Any, Dict, Optional
+
+from jinja2 import Environment, FileSystemLoader
+
 from athena_ai.utils.logger import logger
 
 
@@ -84,7 +86,7 @@ class TerraformGenerator(BaseGenerator):
         variables = spec.get("variables", {})
         outputs = spec.get("outputs", {})
 
-        template = self.env.get_template(f"terraform/main.tf.j2")
+        template = self.env.get_template("terraform/main.tf.j2")
 
         code = template.render(
             provider=provider,

@@ -4,9 +4,8 @@ Result Synthesizer - DDD Domain Service.
 Orchestrates the synthesis of execution results into final user-facing output.
 Uses MetricsParser and MetricsAnalyzer to generate comprehensive reports.
 """
-from typing import Any
-from .parsers import MetricsParser
 from .analyzers import MetricsAnalyzer
+from .parsers import MetricsParser
 
 
 class ResultSynthesizer:

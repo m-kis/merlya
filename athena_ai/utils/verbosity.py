@@ -19,11 +19,11 @@ Usage:
         # No console output in this block
         do_something()
 """
-from enum import IntEnum
-from typing import Optional, Dict, Set, Callable
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-import threading
+from enum import IntEnum
+from typing import Callable, Dict, Optional, Set
 
 from athena_ai.utils.logger import logger
 

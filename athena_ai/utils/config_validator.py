@@ -1,9 +1,9 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+
 from rich.console import Console
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 
 console = Console()
 
@@ -22,7 +22,7 @@ class ConfigValidator:
         Run all checks. Returns True if everything is ready, False otherwise.
         """
         console.print("[bold]🔍 Checking System Readiness...[/bold]")
-        
+
         checks = [
             self.check_config_dir,
             self.check_env_file,
@@ -30,17 +30,15 @@ class ConfigValidator:
             self.check_dependencies
         ]
 
-        all_passed = True
         for check in checks:
             if not check():
-                all_passed = False
                 # We stop at the first failure to guide the user step-by-step
-                # or we could continue to show all issues. 
+                # or we could continue to show all issues.
                 # For a "wizard" feel, stopping might be better to fix one thing at a time.
                 # But let's show all issues for now, or maybe return False immediately if critical?
                 # Let's return False immediately to trigger the fix flow for that specific issue.
                 return False
-        
+
         console.print("[green]✓ System is ready![/green]")
         return True
 
@@ -56,7 +54,7 @@ class ConfigValidator:
         if not self.env_file.exists():
             console.print(f"[yellow]⚠ Configuration file not found: {self.env_file}[/yellow]")
             return False
-        
+
         # Load env vars
         self._load_env()
         return True
@@ -75,16 +73,16 @@ class ConfigValidator:
         """Check if essential API keys are present."""
         # Check for at least one provider
         providers = ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OLLAMA_MODEL"]
-        
+
         # If OLLAMA_MODEL is set, we assume Ollama is used and key is not strictly required
         # ATHENA_PROVIDER can also be checked for provider configuration
-        
+
         has_key = any(os.getenv(k) for k in providers)
-        
+
         if not has_key:
             console.print("[yellow]⚠ No AI Provider configuration found.[/yellow]")
             return False
-            
+
         return True
 
     def check_dependencies(self) -> bool:
@@ -95,7 +93,7 @@ class ConfigValidator:
             console.print("[yellow]⚠ 'pyautogen' is not installed.[/yellow]")
             console.print("[dim]It is required for the Multi-Agent system.[/dim]")
             return False
-            
+
         return True
 
     def fix_issues(self) -> bool:
@@ -103,7 +101,7 @@ class ConfigValidator:
         Interactive wizard to fix issues.
         """
         console.print("\n[bold cyan]🛠  Auto-Fix Wizard[/bold cyan]")
-        
+
         # 1. Config Dir
         if not self.config_dir.exists():
             if Confirm.ask(f"Create config directory at {self.config_dir}?"):
@@ -137,5 +135,5 @@ class ConfigValidator:
             else:
                 console.print("[yellow]Skipping dependency installation. Ag2 features will be disabled.[/yellow]")
                 # We allow proceeding but warn
-        
+
         return True

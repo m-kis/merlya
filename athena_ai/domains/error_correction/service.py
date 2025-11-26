@@ -4,7 +4,8 @@ Error Correction Service - DDD Domain Service.
 Analyzes command failures and generates intelligent corrections.
 """
 import json
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional
+
 from athena_ai.utils.logger import logger
 
 

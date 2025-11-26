@@ -3,16 +3,14 @@ Smooth, fluid UI feedback for Athena.
 
 Provides real-time progress, status updates, and beautiful terminal output.
 """
-from typing import Optional, List, Dict, Any
+from contextlib import contextmanager
+from typing import Any, Dict, List, Optional
+
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-from rich.table import Table
-from rich.live import Live
-from rich.layout import Layout
-from rich.text import Text
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.syntax import Syntax
-from contextlib import contextmanager
+from rich.table import Table
 
 
 class SmoothDisplay:

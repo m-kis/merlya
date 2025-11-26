@@ -3,11 +3,12 @@ Smart caching system for infrastructure context.
 Auto-detects changes and refreshes only what's needed.
 Persists cache to disk to avoid unnecessary rescans.
 """
-import time
 import hashlib
 import json
-from typing import Dict, Any, Optional, Callable
+import time
 from pathlib import Path
+from typing import Any, Callable, Dict, Optional
+
 from athena_ai.utils.logger import logger
 
 

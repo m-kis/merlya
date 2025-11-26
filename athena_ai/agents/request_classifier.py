@@ -7,11 +7,12 @@ This classifier decides:
 - Whether to show thinking process
 - Whether prompt needs reformulation
 """
-from typing import Dict, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
-from athena_ai.utils.logger import logger
+from typing import Any, Dict, Tuple
+
 from athena_ai.core import RequestComplexity
+from athena_ai.utils.logger import logger
 
 
 class ExecutionStrategy(Enum):
@@ -323,7 +324,7 @@ class RequestClassifier:
         # Extract key components
         service = self._extract_service(original_lower)
         host = self._extract_host(original_lower)
-        action = self._extract_action(original_lower)
+        self._extract_action(original_lower)
 
         # Build reformulated prompt
         if complexity == RequestComplexity.COMPLEX:

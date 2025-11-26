@@ -3,7 +3,8 @@ Auto-correction system for failed commands.
 Intelligent debugging loop that analyzes errors and fixes commands automatically.
 KISS + DRY implementation.
 """
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
+
 from athena_ai.utils.logger import logger
 
 

@@ -9,14 +9,14 @@ Provides:
 - Unified knowledge management facade
 """
 
-from .schema import NodeType, RelationType, GRAPH_SCHEMA
+from .cve_monitor import CVE, CVEMonitor, VulnerabilityCheck
 from .falkordb_client import FalkorDBClient, FalkorDBConfig, get_falkordb_client
-from .storage_manager import StorageManager, AuditEntry, SessionRecord
-from .incident_memory import IncidentMemory, Incident, SimilarityMatch
-from .pattern_learner import PatternLearner, Pattern, PatternMatch
-from .cve_monitor import CVEMonitor, CVE, VulnerabilityCheck
+from .incident_memory import Incident, IncidentMemory, SimilarityMatch
 from .ops_knowledge_manager import OpsKnowledgeManager, get_knowledge_manager
-from .web_search import WebSearchEngine, SearchResult, SearchResponse, get_web_search_engine
+from .pattern_learner import Pattern, PatternLearner, PatternMatch
+from .schema import GRAPH_SCHEMA, NodeType, RelationType
+from .storage_manager import AuditEntry, SessionRecord, StorageManager
+from .web_search import SearchResponse, SearchResult, WebSearchEngine, get_web_search_engine
 
 __all__ = [
     # Schema

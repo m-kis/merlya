@@ -3,9 +3,8 @@ Preview Manager for infrastructure actions.
 
 Generates previews before executing critical operations.
 """
-from typing import Dict, Any, List, Optional
-from pathlib import Path
-from athena_ai.utils.logger import logger
+from typing import Any, Dict
+
 from .engine import DiffEngine
 from .formatters import DiffFormatter
 
@@ -140,7 +139,7 @@ class PreviewManager:
         if action == "edit_file":
             output = []
             output.append(f"\n{'='*60}")
-            output.append(f"📝 FILE EDIT PREVIEW")
+            output.append("📝 FILE EDIT PREVIEW")
             output.append(f"{'='*60}")
             output.append(f"Target: {preview['target']}")
             output.append(f"File: {preview['file_path']}")
@@ -156,7 +155,7 @@ class PreviewManager:
         elif action == "execute_command":
             output = []
             output.append(f"\n{'='*60}")
-            output.append(f"⚙️  COMMAND EXECUTION PREVIEW")
+            output.append("⚙️  COMMAND EXECUTION PREVIEW")
             output.append(f"{'='*60}")
             output.append(f"Target: {preview['target']}")
             output.append(f"Command: {preview['command']}")
@@ -166,14 +165,14 @@ class PreviewManager:
             output.append(f"{'='*60}")
 
             if preview['risk_level'] in ["MEDIUM", "HIGH"]:
-                output.append(f"⚠️  This command requires confirmation!")
+                output.append("⚠️  This command requires confirmation!")
 
             return "\n".join(output)
 
         elif action == "terraform_plan":
             output = []
             output.append(f"\n{'='*60}")
-            output.append(f"🏗️  TERRAFORM PLAN PREVIEW")
+            output.append("🏗️  TERRAFORM PLAN PREVIEW")
             output.append(f"{'='*60}")
             changes = preview['changes']
             output.append(f"Resources to add: [green]+{changes['to_add']}[/green]")

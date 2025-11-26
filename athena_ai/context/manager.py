@@ -1,8 +1,10 @@
+from typing import Any, Dict
+
 from athena_ai.context.discovery import Discovery
 from athena_ai.context.smart_cache import SmartCache
 from athena_ai.memory.storage import MemoryStorage
-from typing import Dict, Any
 from athena_ai.utils.logger import logger
+
 
 class ContextManager:
     """

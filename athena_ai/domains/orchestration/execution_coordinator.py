@@ -9,13 +9,13 @@ Responsibilities:
 - Provide real-time progress feedback
 - Adapt execution based on results
 """
-from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass, field
 import asyncio
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
+from athena_ai.core import StepStatus
 from athena_ai.domains.orchestration.plan_manager import ExecutionPlan, ExecutionStep
 from athena_ai.utils.logger import logger
-from athena_ai.core import StepStatus
 
 
 @dataclass
@@ -229,7 +229,7 @@ class ExecutionCoordinator:
             return "failed"
 
         completed = sum(1 for r in results if r.status == StepStatus.COMPLETED)
-        failed = sum(1 for r in results if r.status == StepStatus.FAILED)
+        sum(1 for r in results if r.status == StepStatus.FAILED)
         total = len(results)
 
         if completed == total:

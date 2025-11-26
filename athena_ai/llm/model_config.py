@@ -4,7 +4,8 @@ KISS approach: Simple JSON config with runtime overrides.
 """
 import json
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 

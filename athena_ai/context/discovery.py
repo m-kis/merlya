@@ -1,7 +1,7 @@
 import platform
 import subprocess
-import os
-from typing import Dict, Any
+from typing import Any, Dict
+
 from athena_ai.utils.logger import logger
 
 
@@ -28,7 +28,7 @@ class Discovery:
             cmd = ["ps", "-eo", "pid,comm,%cpu,%mem", "--sort=-%cpu"]
             if platform.system() == "Darwin":
                  cmd = ["ps", "-eo", "pid,comm,%cpu,%mem"] # macOS ps doesn't support --sort like GNU ps
-            
+
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 lines = result.stdout.splitlines()
@@ -59,7 +59,7 @@ class Discovery:
                             ip = parts[0]
                             for hostname in parts[1:]:
                                 hosts[hostname] = ip
-        except Exception as e:
+        except Exception:
             pass
         return hosts
 
@@ -76,7 +76,7 @@ class Discovery:
                         parts = line.split()
                         if parts:
                             services.append(parts[0])
-            except Exception as e:
+            except Exception:
                 # Log error in real implementation
                 pass
         return services

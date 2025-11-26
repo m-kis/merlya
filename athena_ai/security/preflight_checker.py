@@ -9,11 +9,9 @@ Validates commands BEFORE execution to:
 """
 
 import re
-from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-
-from athena_ai.utils.logger import logger
+from typing import List, Optional
 
 
 class CheckResult(Enum):
@@ -143,7 +141,6 @@ class PreflightChecker:
         """
         warnings = []
         suggestions = []
-        blocked_patterns = []
         risk_level = "low"
 
         # Check blocked patterns (always block these)

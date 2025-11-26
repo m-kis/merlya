@@ -1,7 +1,9 @@
-from typing import Dict, Any, List
-from athena_ai.llm.router import LLMRouter
+from typing import Any, Dict
+
 from athena_ai.context.manager import ContextManager
 from athena_ai.executors.action_executor import ActionExecutor
+from athena_ai.llm.router import LLMRouter
+
 
 class BaseAgent:
     def __init__(self, context_manager: ContextManager):

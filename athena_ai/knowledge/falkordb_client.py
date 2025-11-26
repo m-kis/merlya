@@ -4,12 +4,11 @@ FalkorDB Client for Knowledge Graph.
 Provides connection management, Docker auto-setup, and basic CRUD operations.
 """
 
-import os
-import time
 import subprocess
-from typing import Optional, Dict, Any, List, Union
+import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
 

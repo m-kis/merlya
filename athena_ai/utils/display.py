@@ -2,17 +2,12 @@
 Display Manager for Athena.
 Centralizes all UI/UX logic to ensure a clean, production-ready output.
 """
-from typing import Optional, Any
+from typing import Any
+
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
-from rich.syntax import Syntax
+from rich.panel import Panel
 from rich.theme import Theme
-from rich.live import Live
-from rich.spinner import Spinner
-from rich.text import Text
-import threading
-import time
 
 # Custom theme for semantic coloring
 athena_theme = Theme({
@@ -31,7 +26,7 @@ class DisplayManager:
     Singleton pattern to ensure consistent access.
     """
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(DisplayManager, cls).__new__(cls)
@@ -51,7 +46,7 @@ class DisplayManager:
         """Start a spinner for long-running tasks."""
         if self._spinner_active:
             return
-            
+
         self._spinner_active = True
         # We use a simple status for now, can be upgraded to Live later
         self.console.print(f"[thinking]🧠 {message}[/thinking]")
@@ -75,7 +70,7 @@ class DisplayManager:
                 renderable = content
         else:
             renderable = str(content)
-            
+
         if title:
             self.console.print(Panel(renderable, title=title, border_style="green"))
         else:
@@ -96,7 +91,7 @@ class DisplayManager:
             style = "warning"
         else:
             style = "info"
-            
+
         self.console.print(f"[{style}]{message}[/{style}]")
 
 # Global instance

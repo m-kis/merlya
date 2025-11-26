@@ -4,10 +4,12 @@ Info Request Service - DDD Domain Service.
 Responsible for executing INFO_REQUEST workflows.
 """
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 from rich.console import Console
-from athena_ai.utils.logger import logger
+
 from athena_ai.agents import autogen_tools
+from athena_ai.utils.logger import logger
 
 console = Console()
 

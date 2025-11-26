@@ -7,10 +7,10 @@ P2 = IMPORTANT: Performance issues, non-critical failures
 P3 = NORMAL: Maintenance, improvements, monitoring checks
 """
 
-from enum import IntEnum
 from dataclasses import dataclass, field
-from typing import List, Optional
 from datetime import datetime
+from enum import IntEnum
+from typing import List, Optional
 
 
 class Priority(IntEnum):

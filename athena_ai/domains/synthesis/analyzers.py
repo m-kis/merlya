@@ -6,7 +6,7 @@ Responsible for:
 - Generating human-readable status lines
 - Generating actionable recommendations
 """
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 
 class MetricsAnalyzer:

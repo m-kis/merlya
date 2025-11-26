@@ -7,6 +7,7 @@ while enabling agent behavior through AutoGen.
 """
 import os
 from typing import NamedTuple
+
 from athena_ai.llm.model_config import ModelConfig
 from athena_ai.utils.logger import logger
 

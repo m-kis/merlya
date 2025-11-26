@@ -8,14 +8,15 @@ Executes multi-step plans with:
 - Rollback on critical failures
 - Progress tracking
 """
-import time
 import asyncio
-from typing import List, Dict, Any, Optional, Set
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from athena_ai.utils.logger import logger
-from athena_ai.remediation.rollback import RollbackManager
+from typing import Any, Dict, List, Optional, Set
+
 from athena_ai.core import StepStatus
+from athena_ai.remediation.rollback import RollbackManager
+from athena_ai.utils.logger import logger
 
 
 @dataclass
@@ -201,7 +202,7 @@ class PlanExecutor:
                 ]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                for step, result in zip(parallel_steps, results):
+                for step, result in zip(parallel_steps, results, strict=False):
                     if isinstance(result, Exception):
                         result = StepResult(
                             step_id=step["id"],

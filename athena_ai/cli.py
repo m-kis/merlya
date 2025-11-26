@@ -7,8 +7,8 @@ This module provides:
 - Environment setup
 - REPL launch
 """
-import sys
 import os
+import sys
 from pathlib import Path
 
 import click
@@ -21,7 +21,7 @@ console = Console()
 
 def init_interactive():
     """Interactive configuration initialization wizard."""
-    from rich.prompt import Prompt, Confirm
+    from rich.prompt import Prompt
 
     config_dir = Path.home() / ".athena"
     env_file = config_dir / ".env"
@@ -93,7 +93,7 @@ def validate_and_fix_config() -> bool:
         return True
 
     except ImportError as e:
-        console.print(f"[red]Critical Error: Could not import Athena components.[/red]")
+        console.print("[red]Critical Error: Could not import Athena components.[/red]")
         console.print(f"Error: {e}")
         console.print("Ensure you are running this from the project root.")
         return False
@@ -122,7 +122,7 @@ def cli(ctx, env, verbose, debug):
 
     # Set verbosity level for UI components
     if debug or verbose:
-        from athena_ai.utils.verbosity import get_verbosity, VerbosityLevel
+        from athena_ai.utils.verbosity import VerbosityLevel, get_verbosity
         v = get_verbosity()
         if debug:
             v.set_level(VerbosityLevel.DEBUG)

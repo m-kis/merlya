@@ -1,7 +1,10 @@
-import ansible_runner
-from typing import Dict, Any, Optional
-from athena_ai.utils.logger import logger
 import os
+from typing import Any, Dict
+
+import ansible_runner
+
+from athena_ai.utils.logger import logger
+
 
 class AnsibleExecutor:
     def __init__(self):
@@ -12,7 +15,7 @@ class AnsibleExecutor:
         Run an Ansible playbook.
         """
         logger.info(f"Running playbook: {playbook_path}")
-        
+
         if not os.path.exists(playbook_path):
             return {"success": False, "error": f"Playbook not found: {playbook_path}"}
 
@@ -24,13 +27,13 @@ class AnsibleExecutor:
                 'extravars': extra_vars or {},
                 'quiet': True
             }
-            
+
             if inventory:
                 runner_config['inventory'] = inventory
-            
+
             # Run
             r = ansible_runner.run(**runner_config)
-            
+
             return {
                 "success": r.rc == 0,
                 "status": r.status,

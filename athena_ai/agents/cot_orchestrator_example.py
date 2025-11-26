@@ -4,12 +4,11 @@ Example of Chain of Thought Multi-Agent System.
 This demonstrates how the CoT system would handle:
 "make full analysis of mysql service on unifyqarcdb"
 """
+from typing import Any, Dict
+
 from athena_ai.agents.chain_of_thought import ChainOfThought, Step
 from athena_ai.agents.planner import PlannerAgent
-from athena_ai.agents import autogen_tools
 from athena_ai.utils.logger import logger
-from typing import Dict, Any
-import time
 
 
 class CoTOrchestrator:
@@ -72,36 +71,36 @@ class CoTOrchestrator:
             Thinking text
         """
         # Extract key info from context
-        host = context.get("target_host", "unknown")
-        service = context.get("target_service", "unknown")
+        context.get("target_host", "unknown")
+        context.get("target_service", "unknown")
 
         # Generate thinking based on step
         if step.id == 1:
-            return f"I need to verify that the host exists in the inventory and test SSH connectivity before proceeding with any analysis."
+            return "I need to verify that the host exists in the inventory and test SSH connectivity before proceeding with any analysis."
 
         elif step.id == 2:
-            return f"Now I'll scan the host to identify which MySQL variant is running (mysql/mysqld/mariadb) and check its current status."
+            return "Now I'll scan the host to identify which MySQL variant is running (mysql/mysqld/mariadb) and check its current status."
 
         elif step.id == 3:
-            return f"I'll retrieve the MySQL configuration file (my.cnf) and key server variables to understand the current setup."
+            return "I'll retrieve the MySQL configuration file (my.cnf) and key server variables to understand the current setup."
 
         elif step.id == 4:
-            return f"I'll analyze the error logs and slow query logs to identify any issues or performance problems."
+            return "I'll analyze the error logs and slow query logs to identify any issues or performance problems."
 
         elif step.id == 5:
-            return f"I'll check MySQL performance metrics like connections, queries per second, buffer pool usage, etc."
+            return "I'll check MySQL performance metrics like connections, queries per second, buffer pool usage, etc."
 
         elif step.id == 6:
-            return f"I'll list all databases and check their disk usage to identify any storage issues."
+            return "I'll list all databases and check their disk usage to identify any storage issues."
 
         elif step.id == 7:
-            return f"I'll check system resources (CPU, RAM, disk) to ensure the host has adequate capacity."
+            return "I'll check system resources (CPU, RAM, disk) to ensure the host has adequate capacity."
 
         elif step.id == 8:
-            return f"I'll verify when the last backup ran and whether it was successful."
+            return "I'll verify when the last backup ran and whether it was successful."
 
         elif step.id == 9:
-            return f"Now I'll synthesize all the collected data to create a comprehensive health report with findings and recommendations."
+            return "Now I'll synthesize all the collected data to create a comprehensive health report with findings and recommendations."
 
         return f"Processing step {step.id}: {step.description}"
 
@@ -194,7 +193,7 @@ class CoTOrchestrator:
 
     def _identify_service(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Identify MySQL service."""
-        host = context.get("target_host")
+        context.get("target_host")
 
         # In reality: execute_command(host, "systemctl status mysql")
 
@@ -204,7 +203,7 @@ class CoTOrchestrator:
 
         return {
             "success": True,
-            "message": f"MySQL 8.0.35 detected, service active",
+            "message": "MySQL 8.0.35 detected, service active",
             "output": {
                 "service": service,
                 "version": "8.0.35",

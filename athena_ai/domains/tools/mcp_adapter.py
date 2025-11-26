@@ -3,12 +3,14 @@ MCP Tool Adapter - Bridges MCP servers with the Tool Registry.
 
 Allows MCP-provided tools to be discovered and used as native Athena tools.
 """
-from typing import Dict, Any, List, Optional
-import subprocess
 import json
-from athena_ai.utils.logger import logger
+import subprocess
+from typing import Any, Dict, List, Optional
+
 from athena_ai.mcp.manager import MCPManager
-from .base import BaseTool, ToolMetadata, ToolParameter, ToolCategory
+from athena_ai.utils.logger import logger
+
+from .base import BaseTool, ToolCategory, ToolMetadata, ToolParameter
 
 
 class MCPToolAdapter(BaseTool):
@@ -102,7 +104,7 @@ class MCPToolAdapter(BaseTool):
             JSON-RPC response
         """
         if config.get("type") != "stdio":
-            raise ValueError(f"Only stdio MCP servers are supported")
+            raise ValueError("Only stdio MCP servers are supported")
 
         command = config.get("command")
         args = config.get("args", [])
@@ -271,7 +273,7 @@ class MCPToolDiscovery:
             JSON-RPC response
         """
         if config.get("type") != "stdio":
-            raise ValueError(f"Only stdio MCP servers are supported")
+            raise ValueError("Only stdio MCP servers are supported")
 
         command = config.get("command")
         args = config.get("args", [])

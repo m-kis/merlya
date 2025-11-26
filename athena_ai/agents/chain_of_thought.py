@@ -8,16 +8,17 @@ This module implements a step-by-step reasoning system that:
 4. Handles errors gracefully
 5. Provides real-time feedback
 """
-from typing import List, Dict, Any, Optional, Callable
-from dataclasses import dataclass, field
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
+
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from athena_ai.utils.logger import logger
+
 from athena_ai.core import StepStatus
+from athena_ai.utils.logger import logger
 
 console = Console()
 
@@ -355,7 +356,7 @@ class ChainOfThought:
             # Phase 1: Thinking
             step.status = StepStatus.THINKING
             if self.show_thinking:
-                self.console.print(f"[dim]💭 Thinking:[/dim]", end=" ")
+                self.console.print("[dim]💭 Thinking:[/dim]", end=" ")
 
             thinking = thinking_fn(step, context)
             step.thinking = thinking
@@ -372,7 +373,7 @@ class ChainOfThought:
             # Phase 2: Execution
             step.status = StepStatus.EXECUTING
             if self.show_actions:
-                self.console.print(f"[bold yellow]⚙️  Executing...[/bold yellow]")
+                self.console.print("[bold yellow]⚙️  Executing...[/bold yellow]")
 
             result = action_fn(step, thinking, context)
             step.result = result

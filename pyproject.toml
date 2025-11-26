@@ -98,6 +98,8 @@ exclude_lines = [
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -108,8 +110,16 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "E722",  # bare except (TODO: fix gradually)
+    "E741",  # ambiguous variable name (TODO: fix gradually)
+    "B007",  # loop control variable not used (TODO: fix gradually)
     "B008",  # function call in default arg
+    "B904",  # raise from err (TODO: fix gradually)
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.flake8-unused-arguments]
+ignore-variadic-names = true
+
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B", "C4"]
+"athena_ai/utils/config_validator.py" = ["F401"]  # import checks in try/except

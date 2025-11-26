@@ -5,30 +5,27 @@ This orchestrator uses a multi-agent system to solve complex infrastructure task
 It replaces the monolithic UnifiedOrchestrator when advanced autonomy is needed.
 """
 import os
-import asyncio
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Optional
+
 from rich.console import Console
 from rich.panel import Panel
-from rich.markdown import Markdown
 
-from athena_ai.agents.base_orchestrator import BaseOrchestrator
-from athena_ai.utils.logger import logger
 from athena_ai.agents import autogen_tools
+from athena_ai.agents.base_orchestrator import BaseOrchestrator
 
 # Triage System
 from athena_ai.triage import (
-    Priority,
-    PriorityResult,
-    PriorityClassifier,
     BehaviorProfile,
-    BEHAVIOR_PROFILES,
-    get_behavior,
+    PriorityClassifier,
+    PriorityResult,
     describe_behavior,
+    get_behavior,
 )
+from athena_ai.utils.logger import logger
 
 try:
     import autogen
-    from autogen import UserProxyAgent, AssistantAgent
+    from autogen import AssistantAgent, UserProxyAgent
     HAS_AUTOGEN = True
 except ImportError:
     HAS_AUTOGEN = False
@@ -70,26 +67,26 @@ class Ag2Orchestrator(BaseOrchestrator):
             error_correction=None,  # Can be injected if available
             credentials=self.credentials,  # For @variable resolution
         )
-        
+
         # Configure LLM
         self.llm_config = self._get_llm_config()
-        
+
         # Initialize Agents
         self._init_agents()
-        
+
     def _get_llm_config(self) -> Dict[str, Any]:
         """Get LLM configuration for Autogen."""
         # Try to get config from environment or fallback to defaults
         api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
         model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-opus")
         base_url = "https://openrouter.ai/api/v1" if os.getenv("OPENROUTER_API_KEY") else None
-        
+
         config_list = [{
             "model": model,
             "api_key": api_key,
             "base_url": base_url
         }]
-        
+
         return {
             "config_list": config_list,
             "temperature": 0.1,
@@ -166,7 +163,7 @@ CRITICAL: You MUST say "TERMINATE" (exactly this word, alone on the last line) w
 Never stop mid-task. Always complete the full request before terminating.
 """
         )
-        
+
         # 2. Engineer (The Doer)
         # Writes code and calls tools
         self.engineer = AssistantAgent(
@@ -223,16 +220,16 @@ DO NOT terminate mid-task. If a command fails, try to fix it or explain why.
 Current Environment: {self.env}
 """
         )
-        
+
         # 3. Register Tools
         self._register_tools()
 
         # 4. Setup streaming callbacks for message-by-message display
         self._setup_streaming_callbacks()
-        
+
     def _register_tools(self):
         """Register tools with agents."""
-        
+
         # Helper to register for both agents (caller and executor)
         def register(func):
             autogen.register_function(
@@ -303,7 +300,7 @@ Current Environment: {self.env}
             # Check if this is a tool call result
             if "function_call" in last_msg or last_msg.get("role") == "function":
                 # Tool execution - show brief status
-                self.console.print(f"[dim]⚙ Tool executed[/dim]")
+                self.console.print("[dim]⚙ Tool executed[/dim]")
             elif sender_name == "DevSecOps_Engineer":
                 # Engineer thinking/planning - show with context
                 if "TERMINATE" not in content:
@@ -336,10 +333,10 @@ Current Environment: {self.env}
     async def chat_continue(self, message: str) -> str:
         """
         Continue the conversation with the agents.
-        
+
         Args:
             message: User input
-            
+
         Returns:
             Agent response (summary or last message)
         """
@@ -348,10 +345,10 @@ Current Environment: {self.env}
             # But UserProxyAgent.initiate_chat usually starts a new flow.
             # For continuous chat, we might need to use send() if we were in a loop,
             # but here we are bridging sync/async in a REPL.
-            
+
             # The simplest way for Autogen 0.2+ to maintain state is to NOT reset agents
             # and call initiate_chat again. Autogen agents keep history by default unless reset.
-            
+
             # We use a custom summary method to get the last meaningful response
             chat_result = self.user_proxy.initiate_chat(
                 self.engineer,
@@ -359,10 +356,10 @@ Current Environment: {self.env}
                 clear_history=False,
                 summary_method="last_msg"
             )
-            
+
             # If the chat was just a one-off tool execution, we might want to return the output.
             # But usually we return the last message from the Assistant.
-            
+
             return chat_result.summary or "✅ Task completed."
 
         except Exception as e:
@@ -434,7 +431,6 @@ Current Environment: {self.env}
 
         # Step 4: Apply behavior-based auto-confirm
         # If behavior allows auto-confirm for reads, enable it
-        effective_auto_confirm = auto_confirm or self.current_behavior.auto_confirm_reads
 
         # Log priority for debugging
         logger.info(

@@ -5,8 +5,8 @@ Combines signal detection with context analysis to determine
 the appropriate priority level for a request.
 """
 
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 from .priority import Priority, PriorityResult
 from .signals import SignalDetector

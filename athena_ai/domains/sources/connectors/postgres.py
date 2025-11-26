@@ -5,7 +5,8 @@ Auto-detects PostgreSQL databases on localhost and queries them for
 infrastructure data.
 """
 from typing import Any, Dict, List, Optional
-from athena_ai.domains.sources.connectors.base import BaseConnector, SourceMetadata, SourceType, ConnectorError
+
+from athena_ai.domains.sources.connectors.base import BaseConnector, ConnectorError, SourceMetadata, SourceType
 from athena_ai.utils.logger import logger
 
 

@@ -1,8 +1,10 @@
-from typing import Dict, Any
+import json
+from typing import Any, Dict
+
+from rich.console import Console
+
 from athena_ai.agents.base import BaseAgent
 from athena_ai.utils.logger import logger
-from rich.console import Console
-import json
 
 console = Console()
 
@@ -13,25 +15,25 @@ class DiagnosticAgent(BaseAgent):
 
     def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
         logger.info(f"DiagnosticAgent starting task: {task} on {target}")
-        
+
         # 1. Gather Context
         context = self.context_manager.get_context()
         inventory = context.get("inventory", {})
         local_info = context.get("local", {})
-        
+
         # 2. Plan (via LLM)
         plan_prompt = f"""
         Task: {task}
         Target: {target}
-        Context: 
+        Context:
         - Local: {json.dumps(local_info, indent=2)}
         - Inventory: {json.dumps(inventory, indent=2)}
-        
-        Propose a list of diagnostic commands to run. 
+
+        Propose a list of diagnostic commands to run.
         Return ONLY a JSON list of strings, e.g. ["command1", "command2"].
         """
         system_prompt = "You are an expert infrastructure diagnostic agent. Return only raw JSON."
-        
+
         try:
             plan_response = self.llm.generate(plan_prompt, system_prompt)
             # Clean up response if needed (remove markdown blocks)
@@ -53,7 +55,7 @@ class DiagnosticAgent(BaseAgent):
             console.print("\n[bold]Proposed Diagnostic Plan:[/bold]")
             for i, cmd in enumerate(commands, 1):
                 console.print(f"  {i}. [cyan]{cmd}[/cyan]")
-            
+
             import click
             if not click.confirm("\nDo you want to execute these commands?", default=False):
                 logger.info("User cancelled execution.")
@@ -75,11 +77,11 @@ class DiagnosticAgent(BaseAgent):
         analysis_prompt = f"""
         Task: {task}
         Results: {json.dumps(results, indent=2)}
-        
+
         Analyze these results and provide a root cause and recommendations.
         """
         analysis = self.llm.generate(analysis_prompt, system_prompt)
-        
+
         return {
             "plan": commands,
             "results": results,

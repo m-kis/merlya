@@ -4,8 +4,9 @@ Diff Engine for file and configuration comparisons.
 Uses standard library difflib for simplicity (KISS principle).
 """
 import difflib
-from typing import List, Tuple, Optional
 from pathlib import Path
+from typing import List
+
 from athena_ai.utils.logger import logger
 
 

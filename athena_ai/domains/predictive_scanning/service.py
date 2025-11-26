@@ -4,9 +4,9 @@ Predictive Scanning Service - DDD Domain Service.
 Analyzes queries to predict likely target hosts and pre-scans them
 in background to reduce initial response latency.
 """
-import re
 import threading
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 

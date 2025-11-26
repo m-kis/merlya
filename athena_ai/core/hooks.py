@@ -11,13 +11,14 @@ Features:
 - Python API for programmatic hooks
 """
 
-from typing import Dict, List, Callable, Any, Optional
-from enum import Enum
-from dataclasses import dataclass, field
-from pathlib import Path
-import yaml
-import subprocess
 import re
+import subprocess
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+import yaml
 
 from athena_ai.utils.logger import logger
 
@@ -242,7 +243,7 @@ class HookManager:
             # Check match pattern
             if hook.match:
                 match_found = False
-                for key, value in ctx.data.items():
+                for _key, value in ctx.data.items():
                     if isinstance(value, str) and re.search(hook.match, value):
                         match_found = True
                         break

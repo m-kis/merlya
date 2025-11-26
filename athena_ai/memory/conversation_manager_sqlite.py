@@ -6,10 +6,11 @@ Replaces JSON-based storage for better performance and integration.
 """
 import sqlite3
 import time
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 
@@ -353,7 +354,7 @@ class ConversationManager:
 
             self._update_conversation_stats()
 
-            logger.info(f"Conversation compacted successfully")
+            logger.info("Conversation compacted successfully")
             return True
 
         except Exception as e:

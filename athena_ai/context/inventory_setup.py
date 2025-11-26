@@ -8,13 +8,13 @@ This module handles:
 4. Source validation
 """
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Callable
-from dataclasses import dataclass, asdict
+from typing import Any, Callable, Dict, List, Optional
 
-from athena_ai.utils.logger import logger
 # Reuse the InventorySource enum from host_registry (DRY principle)
 from athena_ai.context.host_registry import InventorySource
+from athena_ai.utils.logger import logger
 
 
 @dataclass
@@ -263,7 +263,7 @@ class InventorySetupWizard:
                     if line.startswith("["):
                         in_vars = ":vars" in line or ":children" in line
                         continue
-                    if not in_vars and line and not "=" in line.split()[0]:
+                    if not in_vars and line and "=" not in line.split()[0]:
                         count += 1
             return count
         except:
@@ -352,7 +352,7 @@ class InventorySetupWizard:
         self.console("📋 Detected inventory sources:\n")
         for i, source in enumerate(available, 1):
             status = "✓" if source['detected'] else "○"
-            count = source.get('host_count', '?')
+            source.get('host_count', '?')
             self.console(f"  {i}. [{status}] {source['name']}: {source['description']}")
 
         self.console("\n")

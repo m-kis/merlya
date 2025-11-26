@@ -8,12 +8,11 @@ Uses DuckDuckGo for free web searches to:
 - Stay updated on security advisories
 """
 
-import re
 import hashlib
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+import re
 from dataclasses import dataclass, field
-from urllib.parse import quote_plus
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 from athena_ai.utils.logger import logger
 

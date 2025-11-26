@@ -9,7 +9,7 @@ Provides plan generation, validation, optimization, and execution with:
 - State management between steps
 """
 from .executor import PlanExecutor
-from .validator import PlanValidator
 from .optimizer import PlanOptimizer
+from .validator import PlanValidator
 
 __all__ = ["PlanExecutor", "PlanValidator", "PlanOptimizer"]

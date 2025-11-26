@@ -13,10 +13,11 @@ HOOKS: All tool executions emit events via HookManager for extensibility.
 Configure hooks in ~/.athena/hooks.yaml or programmatically.
 """
 import os
-from typing import Annotated, Optional, List
+from typing import Annotated, Optional
+
+from athena_ai.context.host_registry import HostRegistry, get_host_registry
+from athena_ai.core.hooks import HookEvent, get_hook_manager
 from athena_ai.utils.logger import logger
-from athena_ai.context.host_registry import get_host_registry, HostRegistry
-from athena_ai.core.hooks import get_hook_manager, HookEvent
 
 # Global instances (injected by AutoGenOrchestrator at startup)
 _executor = None
@@ -165,7 +166,7 @@ def execute_command(
                     logger.info(f"Auto-elevating command with {permissions_info['elevation_method']}")
                     command = _permissions.elevate_command(command, target)
                 else:
-                    logger.warning(f"Command may require elevated privileges but no elevation method available")
+                    logger.warning("Command may require elevated privileges but no elevation method available")
     except Exception as e:
         logger.warning(f"Permission detection failed: {e}")
 
@@ -174,7 +175,7 @@ def execute_command(
     if _credentials and '@' in command:
         resolved_command = _credentials.resolve_variables(command, warn_missing=True)
         if resolved_command != command:
-            logger.debug(f"Resolved credential variables in command")
+            logger.debug("Resolved credential variables in command")
             command = resolved_command
 
     # Execute with auto-retry on failure
@@ -527,11 +528,11 @@ def scan_host(
                 _context_memory.save_host_fact(hostname, "os", info.get('os', 'unknown'))
                 _context_memory.save_host_fact(hostname, "kernel", info.get('kernel', 'unknown'))
                 _context_memory.save_host_fact(hostname, "ip", info.get('ip', 'unknown'))
-                
+
                 # Save services
                 if services:
                     _context_memory.save_host_fact(hostname, "services", services)
-                
+
                 # Record usage
                 _context_memory.record_host_usage(hostname)
                 logger.debug(f"Saved scan results for {hostname} to persistent memory")
@@ -571,7 +572,7 @@ def check_permissions(
         return f"❌ BLOCKED: Cannot check permissions on '{target}'\n\n{message}\n\n💡 Use list_hosts() to see available hosts."
 
     try:
-        capabilities = _permissions.detect_capabilities(target)
+        _permissions.detect_capabilities(target)
         summary = _permissions.format_capabilities_summary(target)
         return f"✅ Permission check completed for {target}\n\n{summary}"
     except Exception as e:
@@ -585,16 +586,16 @@ def add_route(
 ) -> str:
     """
     Teach the system a new network route.
-    
+
     Use this when you discover that a network segment is only reachable via a specific bastion.
     The system will remember this and automatically tunnel future connections.
-    
+
     Args:
         network_cidr: The target network (e.g. 10.0.0.0/8)
         gateway: The jump host to use
     """
     logger.info(f"AutoGen Tool: add_route {network_cidr} via {gateway}")
-    
+
     if _context_memory and _context_memory.knowledge_store:
         try:
             _context_memory.knowledge_store.add_route(network_cidr, gateway)
@@ -634,7 +635,7 @@ def audit_host(
         return f"❌ BLOCKED: Cannot audit '{target}'\n\n{message}\n\n💡 Use list_hosts() to see available hosts."
 
     report = [f"🔒 SECURITY AUDIT REPORT: {target}", ""]
-    
+
     # 1. Check Open Ports
     cmd_ports = "ss -tuln | grep LISTEN"
     res_ports = _executor.execute(target, cmd_ports)
@@ -652,47 +653,44 @@ def audit_host(
             report.append(f"   (... {len(lines)-10} more)")
     else:
         report.append(f"📡 Open Ports: ⚠️ Failed to list ({res_ports.get('stderr', '')[:50]})")
-        
+
     report.append("")
 
     # 2. Check SSH Config
     cmd_ssh = "grep -E '^(PermitRootLogin|PasswordAuthentication)' /etc/ssh/sshd_config"
     # Try to read config (might need sudo, auto-elevation handles it)
     res_ssh = _executor.execute(target, cmd_ssh)
-    
+
     report.append("🔑 SSH Configuration:")
     if res_ssh['success']:
         config_lines = res_ssh['stdout'].strip().split('\n')
-        has_issues = False
         for line in config_lines:
             if "PermitRootLogin yes" in line:
                 report.append(f"   ❌ {line} (High Risk!)")
-                has_issues = True
             elif "PasswordAuthentication yes" in line:
                 report.append(f"   ⚠️ {line} (Consider key-based auth)")
-                has_issues = True
             else:
                 report.append(f"   ✅ {line}")
-        
+
         if not config_lines:
             report.append("   ❓ No explicit config found (using defaults)")
     else:
         report.append("   ❓ Could not read sshd_config (permission denied or file missing)")
-        
+
     report.append("")
 
     # 3. Check Sudoers
     # Just check if current user has sudo, and list sudoers file if possible
     cmd_sudo = "grep -v '^#' /etc/sudoers | grep -v '^$'"
     res_sudo = _executor.execute(target, cmd_sudo)
-    
+
     report.append("🛡️ Privileged Access:")
     if res_sudo['success']:
         sudoers = res_sudo['stdout'].strip().split('\n')
         report.append(f"   Found {len(sudoers)} active lines in sudoers")
     else:
         report.append("   ℹ️  Cannot read /etc/sudoers (requires root)")
-        
+
     # Save facts to memory
     if _context_memory:
         try:
@@ -701,7 +699,7 @@ def audit_host(
                 _context_memory.save_host_fact(target, "open_ports", res_ports['stdout'][:200])
         except:
             pass
-            
+
     return "\n".join(report)
 
 
@@ -738,41 +736,41 @@ def analyze_security_logs(
     # Detect log file location
     check_cmd = "ls /var/log/auth.log 2>/dev/null || ls /var/log/secure 2>/dev/null"
     res_check = _executor.execute(target, check_cmd)
-    
+
     if not res_check['success'] or not res_check['stdout'].strip():
         return f"❌ Could not find auth.log or secure log on {target}"
-        
+
     log_file = res_check['stdout'].strip()
-    
+
     # Read last N lines
     cmd_read = f"tail -n {lines} {log_file}"
     res_read = _executor.execute(target, cmd_read)
-    
+
     if not res_read['success']:
         return f"❌ Failed to read logs: {res_read.get('stderr')}"
-        
+
     log_content = res_read['stdout']
-    
+
     # Simple heuristic analysis
     analysis = [f"📋 LOG ANALYSIS: {target} ({log_file})", ""]
-    
+
     failed_logins = log_content.count("Failed password")
     sudo_usage = log_content.count("sudo:")
     accepted_logins = log_content.count("Accepted publickey") + log_content.count("Accepted password")
-    
+
     analysis.append(f"📊 Summary (last {lines} lines):")
     analysis.append(f"   - Failed Logins: {failed_logins} " + ("⚠️ HIGH" if failed_logins > 5 else "✅"))
     analysis.append(f"   - Sudo Usage: {sudo_usage}")
     analysis.append(f"   - Successful Logins: {accepted_logins}")
     analysis.append("")
-    
+
     if failed_logins > 0:
         analysis.append("⚠️  Suspicious Activity:")
         # Extract failed IPs
         for line in log_content.split('\n'):
             if "Failed password" in line:
                 analysis.append(f"   - {line[:80]}...")
-                
+
     return "\n".join(analysis)
 
 

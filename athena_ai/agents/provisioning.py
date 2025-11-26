@@ -1,10 +1,11 @@
-from typing import Dict, Any, List
+import json
+from typing import Any, Dict
+
 from athena_ai.agents.base import BaseAgent
 from athena_ai.executors.ansible import AnsibleExecutor
 from athena_ai.executors.terraform import TerraformExecutor
 from athena_ai.utils.logger import logger
-import json
-import os
+
 
 class ProvisioningAgent(BaseAgent):
     def __init__(self, context_manager):
@@ -15,24 +16,24 @@ class ProvisioningAgent(BaseAgent):
 
     def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
         logger.info(f"ProvisioningAgent starting task: {task}")
-        
+
         # 1. Plan Provisioning
         plan_prompt = f"""
         Task: {task}
         Target: {target}
-        
+
         Determine if this is an Ansible or Terraform task.
-        
+
         If Ansible:
         Return JSON: {{ "tool": "ansible", "playbook": "/path/to/playbook.yml" }}
-        
+
         If Terraform:
         Return JSON: {{ "tool": "terraform", "dir": "/path/to/tf/dir", "action": "plan|apply" }}
-        
+
         If neither or unclear, return {{ "error": "Unclear task" }}
         """
         system_prompt = "You are an expert infrastructure provisioning agent. Return only raw JSON."
-        
+
         try:
             plan_response = self.llm.generate(plan_prompt, system_prompt)
             plan_response = plan_response.replace("```json", "").replace("```", "").strip()
@@ -50,20 +51,20 @@ class ProvisioningAgent(BaseAgent):
         # 2. Execute
         tool = plan.get("tool")
         result = {}
-        
+
         if tool == "ansible":
             playbook = plan.get("playbook")
-            # For MVP, we assume inventory is handled or passed. 
+            # For MVP, we assume inventory is handled or passed.
             # In real world, we'd generate it from context.
             if confirm: # Only run if confirmed for now, as playbooks are powerful
                 result = self.ansible.run_playbook(playbook)
             else:
                 return {"error": "Ansible execution requires confirmation"}
-                
+
         elif tool == "terraform":
             directory = plan.get("dir")
             action = plan.get("action")
-            
+
             if action == "plan":
                 result = self.terraform.plan(directory)
             elif action == "apply":
@@ -71,7 +72,7 @@ class ProvisioningAgent(BaseAgent):
                     result = self.terraform.apply(directory)
                 else:
                     return {"error": "Terraform apply requires confirmation"}
-        
+
         return {
             "plan": plan,
             "results": result

@@ -8,15 +8,13 @@ Uses OSV.dev API to:
 """
 
 import json
-import asyncio
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
-import urllib.request
 import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
-
 
 OSV_API_URL = "https://api.osv.dev/v1"
 

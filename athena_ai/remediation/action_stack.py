@@ -4,10 +4,11 @@ Action Stack for robust Undo/Redo operations.
 Implements Command Pattern for reversible actions.
 """
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Dict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 
@@ -119,7 +120,7 @@ class FileEditAction(Action):
                 # Use SFTP for safe remote write
                 # For MVP, use cat with heredoc
                 import shlex
-                safe_content = shlex.quote(self.new_content)
+                shlex.quote(self.new_content)
                 cmd = f"cat > {self.file_path} << 'ATHENA_EOF'\n{self.new_content}\nATHENA_EOF"
                 result = self.executor.execute(target, cmd)
 

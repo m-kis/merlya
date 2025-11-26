@@ -5,8 +5,8 @@ Follows Open/Closed Principle - tools can be added without modifying core.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Callable
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class ToolCategory(Enum):

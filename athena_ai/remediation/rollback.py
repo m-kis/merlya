@@ -1,12 +1,13 @@
+import json
 import shutil
 import time
-import json
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from datetime import datetime
-from athena_ai.utils.logger import logger
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from athena_ai.executors.action_executor import ActionExecutor
-from athena_ai.remediation.action_stack import ActionStack, FileEditAction, ActionMetadata
+from athena_ai.remediation.action_stack import ActionStack
+from athena_ai.utils.logger import logger
 
 
 class RollbackManager:

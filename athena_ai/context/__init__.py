@@ -10,24 +10,24 @@ Provides:
 """
 
 from .discovery import Discovery
-from .manager import ContextManager, get_context_manager
 from .host_registry import (
-    HostRegistry,
     Host,
+    HostRegistry,
     HostValidationResult,
     InventorySource,
     get_host_registry,
-    set_inventory_setup_callback,
     reset_host_registry,
+    set_inventory_setup_callback,
 )
-from .inventory_sources import InventorySourceManager, DataAvailability
 from .inventory_setup import (
-    InventorySetupWizard,
     InventoryConfig,
+    InventorySetupWizard,
     InventorySourceConfig,
-    get_inventory_wizard,
     ensure_inventory_configured,
+    get_inventory_wizard,
 )
+from .inventory_sources import DataAvailability, InventorySourceManager
+from .manager import ContextManager, get_context_manager
 from .smart_cache import SmartCache
 
 __all__ = [

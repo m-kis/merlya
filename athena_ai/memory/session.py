@@ -1,8 +1,9 @@
-import sqlite3
 import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 
@@ -658,7 +659,7 @@ class SessionManager:
         if existing:
             # Update existing host
             host_id = existing[0]
-            first_discovered = existing[1]
+            existing[1]
 
             cursor.execute("""
                 UPDATE hosts

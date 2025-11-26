@@ -28,10 +28,11 @@ Example command file (~/.athena/commands/incident.md):
     Priority: {{$2|P2}}
 """
 
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional
+
 import yaml
 
 from athena_ai.utils.logger import logger

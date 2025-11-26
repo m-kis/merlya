@@ -1,7 +1,10 @@
-from python_terraform import Terraform
-from typing import Dict, Any
-from athena_ai.utils.logger import logger
 import os
+from typing import Any, Dict
+
+from python_terraform import Terraform
+
+from athena_ai.utils.logger import logger
+
 
 class TerraformExecutor:
     def __init__(self):
@@ -10,14 +13,14 @@ class TerraformExecutor:
     def plan(self, working_dir: str) -> Dict[str, Any]:
         """Run terraform plan."""
         logger.info(f"Running terraform plan in {working_dir}")
-        
+
         if not os.path.exists(working_dir):
             return {"success": False, "error": f"Directory not found: {working_dir}"}
 
         try:
             tf = Terraform(working_dir=working_dir)
             return_code, stdout, stderr = tf.plan(capture_output=True)
-            
+
             return {
                 "success": return_code == 0 or return_code == 2, # 2 means changes present
                 "stdout": stdout,
@@ -31,14 +34,14 @@ class TerraformExecutor:
     def apply(self, working_dir: str) -> Dict[str, Any]:
         """Run terraform apply."""
         logger.info(f"Running terraform apply in {working_dir}")
-        
+
         if not os.path.exists(working_dir):
             return {"success": False, "error": f"Directory not found: {working_dir}"}
 
         try:
             tf = Terraform(working_dir=working_dir)
             return_code, stdout, stderr = tf.apply(skip_plan=True, capture_output=True)
-            
+
             return {
                 "success": return_code == 0,
                 "stdout": stdout,

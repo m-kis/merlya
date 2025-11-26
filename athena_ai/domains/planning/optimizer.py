@@ -7,7 +7,8 @@ Performs:
 - Verification step insertion
 - Token budget optimization
 """
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from athena_ai.utils.logger import logger
 
 
@@ -76,7 +77,7 @@ class PlanOptimizer:
             target = step.get("target")
             similar = []
 
-            for j, other_step in enumerate(steps[i + 1:], start=i + 1):
+            for _j, other_step in enumerate(steps[i + 1:], start=i + 1):
                 if other_step["id"] in skip_ids:
                     continue
 

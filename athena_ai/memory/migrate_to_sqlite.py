@@ -5,9 +5,10 @@ Migrates existing JSON-based conversations to the new SQLite-based storage.
 """
 import json
 import sqlite3
-from pathlib import Path
-from typing import List, Dict, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
+
 from athena_ai.utils.logger import logger
 
 

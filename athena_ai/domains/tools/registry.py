@@ -4,11 +4,12 @@ Dynamic Tool Registry.
 Central registry for discovering, registering, and managing tools.
 Follows Singleton pattern for global access.
 """
-from typing import Dict, List, Optional, Any, Callable
 import inspect
-from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
-from .base import BaseTool, ToolMetadata, ToolCategory
+
+from .base import BaseTool, ToolCategory, ToolMetadata
 
 
 class ToolRegistry:

@@ -1,9 +1,8 @@
-import os
 import getpass
+import os
 import re
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple
-import json
+from typing import Dict, List, Optional, Tuple
 
 
 class CredentialManager:
@@ -42,7 +41,7 @@ class CredentialManager:
                         key, value = line.split(maxsplit=1)
                         config[current_host][key.lower()] = value
 
-        except Exception as e:
+        except Exception:
             # If parsing fails, just return empty config
             pass
 
@@ -268,10 +267,9 @@ class CredentialManager:
 
         # Find all @variable references in the text
         variable_pattern = r'@([\w\-]+)'
-        referenced_vars = re.findall(variable_pattern, text)
+        re.findall(variable_pattern, text)
 
         # Track which variables were not found
-        missing_vars = []
 
         for key, value in self.credential_variables.items():
             # Replace @key with value

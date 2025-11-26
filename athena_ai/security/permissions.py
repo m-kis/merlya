@@ -2,7 +2,8 @@
 Permission and privilege management for command execution.
 Detects sudo availability, user groups, and handles privilege elevation intelligently.
 """
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 
@@ -241,7 +242,7 @@ class PermissionManager:
         Returns:
             List of strategies: [{'command': str, 'description': str, 'requires_elevation': bool}, ...]
         """
-        capabilities = self.detect_capabilities(target)
+        self.detect_capabilities(target)
         strategies = []
 
         # Parse goal to understand intent

@@ -1,7 +1,10 @@
-from kubernetes import client, config
-from typing import Dict, Any, List
-from athena_ai.utils.logger import logger
 import os
+from typing import Any, Dict
+
+from kubernetes import client, config
+
+from athena_ai.utils.logger import logger
+
 
 class K8sExecutor:
     def __init__(self, kubeconfig: str = None):
@@ -19,7 +22,7 @@ class K8sExecutor:
         """List pods in a namespace."""
         if not self.v1:
             return {"success": False, "error": "Kubeconfig not loaded"}
-            
+
         logger.info(f"Listing pods in namespace {namespace}")
         try:
             pods = self.v1.list_namespaced_pod(namespace)

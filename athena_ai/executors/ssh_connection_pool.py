@@ -3,10 +3,12 @@ SSH Connection Pool for managing persistent connections.
 Handles 2FA by reusing authenticated connections.
 Includes circuit breaker to prevent repeated failed connection attempts.
 """
-import paramiko
-import time
 import threading
-from typing import Dict, Optional, Tuple
+import time
+from typing import Dict, Optional
+
+import paramiko
+
 from athena_ai.utils.logger import logger
 
 

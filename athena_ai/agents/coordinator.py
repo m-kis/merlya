@@ -1,13 +1,15 @@
-from typing import Dict, Any
-from athena_ai.context.manager import ContextManager
+import json
+from typing import Any, Dict
+
+from athena_ai.agents.cloud import CloudAgent
 from athena_ai.agents.diagnostic import DiagnosticAgent
-from athena_ai.agents.remediation import RemediationAgent
 from athena_ai.agents.monitoring import MonitoringAgent
 from athena_ai.agents.provisioning import ProvisioningAgent
-from athena_ai.agents.cloud import CloudAgent
+from athena_ai.agents.remediation import RemediationAgent
+from athena_ai.context.manager import ContextManager
 from athena_ai.llm.router import LLMRouter
 from athena_ai.utils.logger import logger
-import json
+
 
 class AgentCoordinator:
     def __init__(self, context_manager: ContextManager):
@@ -24,21 +26,21 @@ class AgentCoordinator:
         Coordinate multiple agents to fulfill a request.
         """
         logger.info(f"Coordinating request: {user_query}")
-        
+
         # Get context to provide awareness of environment
         context = self.context_manager.get_context()
         inventory = context.get("inventory", {})
         local_info = context.get("local", {})
-        
+
         # 1. Decompose Task
         plan_prompt = f"""
         User Query: {user_query}
         Target: {target}
-        
+
         Environment Context:
         - Inventory (Hosts): {json.dumps(inventory, indent=2)}
         - Local System: {local_info.get('hostname')} ({local_info.get('os')})
-        
+
         Decide which agents to call and in what order.
         Available Agents:
         - DiagnosticAgent: For troubleshooting and finding root causes.
@@ -46,7 +48,7 @@ class AgentCoordinator:
         - MonitoringAgent: For checking health and metrics.
         - ProvisioningAgent: For Ansible playbooks and Terraform.
         - CloudAgent: For AWS and Kubernetes tasks.
-        
+
         Return a JSON plan:
         {{
             "steps": [
@@ -56,17 +58,17 @@ class AgentCoordinator:
         }}
         """
         system_prompt = "You are an expert agent coordinator. Return only raw JSON."
-        
+
         try:
             plan_response = self.llm.generate(plan_prompt, system_prompt)
             logger.debug(f"Raw LLM Plan Response: {plan_response}")
-            
+
             # Robust JSON extraction
             import re
             json_match = re.search(r'\{.*\}', plan_response, re.DOTALL)
             if json_match:
                 plan_response = json_match.group(0)
-            
+
             plan = json.loads(plan_response)
         except Exception as e:
             logger.error(f"Coordination planning failed: {e}. Response was: {plan_response if 'plan_response' in locals() else 'None'}")
@@ -76,9 +78,9 @@ class AgentCoordinator:
         for step in plan.get("steps", []):
             agent_name = step["agent"]
             task = step["task"]
-            
+
             logger.info(f"Dispatching to {agent_name}: {task}")
-            
+
             step_result = {}
             if agent_name == "DiagnosticAgent":
                 step_result = self.diagnostic_agent.run(task, target, confirm, dry_run)
@@ -90,13 +92,13 @@ class AgentCoordinator:
                 step_result = self.provisioning_agent.run(task, target, confirm, dry_run)
             elif agent_name == "CloudAgent":
                 step_result = self.cloud_agent.run(task, target, confirm, dry_run)
-            
+
             results.append({
                 "agent": agent_name,
                 "task": task,
                 "result": step_result
             })
-            
+
             # Simple logic: if diagnostic found no issue, maybe skip remediation?
             # For MVP, we just execute the plan linearly.
 

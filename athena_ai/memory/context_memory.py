@@ -8,11 +8,12 @@ Inspired by Zep but simplified for our use case:
 
 This prevents OpenRouter 500 errors from oversized prompts.
 """
-from typing import Dict, List, Set, Any
-from collections import defaultdict
 import re
-from athena_ai.utils.logger import logger
+from collections import defaultdict
+from typing import Any, Dict, List, Set
+
 from athena_ai.memory.persistent_store import KnowledgeStore
+from athena_ai.utils.logger import logger
 
 
 class ContextMemory:
@@ -45,7 +46,7 @@ class ContextMemory:
 
         # Persistent knowledge store
         self.knowledge_store = KnowledgeStore()
-        
+
         # Load initial context from persistence if available
         self._load_from_persistence()
 

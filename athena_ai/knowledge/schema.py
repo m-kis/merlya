@@ -5,9 +5,9 @@ Defines node types, relationship types, and indexes for the
 infrastructure knowledge graph.
 """
 
-from enum import Enum
-from typing import Dict, List, Any
 from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List
 
 
 class NodeType(str, Enum):
@@ -321,7 +321,7 @@ def get_create_index_queries(graph_name: str = "ops_knowledge") -> List[str]:
     """Generate Cypher queries to create indexes for all indexed properties."""
     queries = []
 
-    for node_type, schema in GRAPH_SCHEMA["nodes"].items():
+    for _node_type, schema in GRAPH_SCHEMA["nodes"].items():
         for prop in schema.indexes:
             # FalkorDB index syntax
             query = f"CREATE INDEX FOR (n:{schema.label}) ON (n.{prop})"
@@ -335,14 +335,14 @@ def get_schema_description() -> str:
     lines = ["# Knowledge Graph Schema\n"]
 
     lines.append("## Node Types\n")
-    for node_type, schema in GRAPH_SCHEMA["nodes"].items():
+    for _node_type, schema in GRAPH_SCHEMA["nodes"].items():
         lines.append(f"### {schema.label}")
         lines.append(f"Properties: {', '.join(schema.properties.keys())}")
         lines.append(f"Indexes: {', '.join(schema.indexes) if schema.indexes else 'none'}")
         lines.append("")
 
     lines.append("## Relationship Types\n")
-    for rel_type, schema in GRAPH_SCHEMA["relationships"].items():
+    for _rel_type, schema in GRAPH_SCHEMA["relationships"].items():
         lines.append(f"### {schema.type}")
         lines.append(f"From: {', '.join(schema.from_labels)} -> To: {', '.join(schema.to_labels)}")
         if schema.properties:

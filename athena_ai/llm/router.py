@@ -1,9 +1,12 @@
 import os
-from typing import List, Dict, Any, Optional
+from typing import Optional
+
 from anthropic import Anthropic
 from openai import OpenAI
-from athena_ai.utils.logger import logger
+
 from athena_ai.llm.model_config import ModelConfig
+from athena_ai.utils.logger import logger
+
 
 class LLMRouter:
     def __init__(self, provider: Optional[str] = None):

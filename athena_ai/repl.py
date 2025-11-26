@@ -1,31 +1,32 @@
 """
 Interactive REPL for Athena - AI-Powered Infrastructure Orchestration.
 """
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from prompt_toolkit.completion import WordCompleter
-from pathlib import Path
-from rich.console import Console
-from rich.panel import Panel
-from rich.markdown import Markdown
-# Using Ag2 Multi-Agent Orchestrator
-from athena_ai.agents.ag2_orchestrator import Ag2Orchestrator as Orchestrator
-# Using SQLite-based ConversationManager for unified storage
-from athena_ai.memory.conversation_manager_sqlite import ConversationManager
-# Triage system for automatic priority classification
-from athena_ai.triage import classify_priority, get_behavior, describe_behavior
-from athena_ai.context.manager import ContextManager
-from athena_ai.security.credentials import CredentialManager
-from athena_ai.memory.session import SessionManager
-from athena_ai.mcp.manager import MCPManager
-from athena_ai.commands import get_command_loader
-from athena_ai.utils.logger import logger
-from athena_ai.utils.config import ConfigManager
-import sys
+import asyncio
 import json
 import os
-import asyncio
+from pathlib import Path
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+
+# Using Ag2 Multi-Agent Orchestrator
+from athena_ai.agents.ag2_orchestrator import Ag2Orchestrator as Orchestrator
+from athena_ai.commands import get_command_loader
+from athena_ai.mcp.manager import MCPManager
+
+# Using SQLite-based ConversationManager for unified storage
+from athena_ai.memory.conversation_manager_sqlite import ConversationManager
+from athena_ai.memory.session import SessionManager
+
+# Triage system for automatic priority classification
+from athena_ai.triage import classify_priority, describe_behavior, get_behavior
+from athena_ai.utils.config import ConfigManager
+from athena_ai.utils.logger import logger
 
 console = Console()
 
@@ -219,7 +220,7 @@ class AthenaREPL:
             "[yellow]This tool is in early development. Use for debugging/testing only, NOT production.[/yellow]\n\n"
             "[bold]Tips for best results:[/bold]\n"
             "• Be specific in your requests\n"
-            "• Always specify the target server name\n"
+            "• Specify the target server name or ip if possible \n"
             "• Provide context (service name, error message, etc.)\n\n"
             "[dim]Issues? → https://github.com/m-kis/athena/issues[/dim]",
             title="⚠️  Warning",
@@ -344,7 +345,7 @@ class AthenaREPL:
 
             if full:
                 # Full SSH scan with progress bar
-                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+                from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
                 with Progress(
                     SpinnerColumn(),
@@ -374,7 +375,7 @@ class AthenaREPL:
             inventory = context.get('inventory', {})
             remote_hosts = context.get('remote_hosts', {})
 
-            console.print(f"\n[green]✓ Scan complete[/green]")
+            console.print("\n[green]✓ Scan complete[/green]")
             console.print(f"  Local: {local.get('hostname')}")
             console.print(f"  Inventory: {len(inventory)} hosts")
 
@@ -426,9 +427,9 @@ class AthenaREPL:
                 if agent_keys:
                     console.print(f"[green]✓ ssh-agent: {len(agent_keys)} keys loaded[/green]")
                 else:
-                    console.print(f"[yellow]⚠ ssh-agent detected but no keys[/yellow]")
+                    console.print("[yellow]⚠ ssh-agent detected but no keys[/yellow]")
             else:
-                console.print(f"[red]✗ ssh-agent not available[/red]")
+                console.print("[red]✗ ssh-agent not available[/red]")
 
             keys = self.credentials.get_ssh_keys()
             console.print(f"\nSSH Keys: {len(keys)} available")
@@ -450,7 +451,7 @@ class AthenaREPL:
                     console.print("[dim]Run commands on hosts to detect permissions automatically.[/dim]")
                 else:
                     console.print("\n[bold]Permission Capabilities (Cached)[/bold]\n")
-                    for target, caps in self.orchestrator.permissions.capabilities_cache.items():
+                    for target, _caps in self.orchestrator.permissions.capabilities_cache.items():
                         console.print(f"[cyan]{target}[/cyan]:")
                         console.print(self.orchestrator.permissions.format_capabilities_summary(target))
                         console.print()
@@ -459,7 +460,7 @@ class AthenaREPL:
                 target = args[0]
                 console.print(f"\n[bold]Detecting permissions on {target}...[/bold]\n")
                 try:
-                    caps = self.orchestrator.permissions.detect_capabilities(target)
+                    self.orchestrator.permissions.detect_capabilities(target)
                     console.print(self.orchestrator.permissions.format_capabilities_summary(target))
                 except Exception as e:
                     console.print(f"[red]Error: {e}[/red]")
@@ -472,7 +473,7 @@ class AthenaREPL:
             inventory = context.get('inventory', {})
             remote_hosts = context.get('remote_hosts', {})
 
-            console.print(f"\n[bold]Current Context[/bold]")
+            console.print("\n[bold]Current Context[/bold]")
             console.print(f"  Local: {local.get('hostname')} ({local.get('os')})")
             console.print(f"  Inventory: {len(inventory)} hosts")
 
@@ -570,7 +571,7 @@ class AthenaREPL:
                     console.print(f"[green]✓ Secret variable '{key}' set securely[/green]")
                     console.print(f"[dim]Use @{key} in your queries[/dim]")
                 else:
-                    console.print(f"[yellow]Secret variable not saved[/yellow]")
+                    console.print("[yellow]Secret variable not saved[/yellow]")
             else:
                 console.print("[red]Error: Missing key[/red]")
                 console.print("[yellow]Usage: /variables set-secret <key>[/yellow]")
@@ -663,12 +664,12 @@ class AthenaREPL:
             config = model_config.get_current_config()
             from rich.table import Table
 
-            console.print(f"\n[bold]Current Model Configuration[/bold]\n")
+            console.print("\n[bold]Current Model Configuration[/bold]\n")
             console.print(f"  Provider: [cyan]{config['provider']}[/cyan]")
             console.print(f"  Model: [green]{config['model']}[/green]")
 
             # Show task-specific models
-            console.print(f"\n[bold]Task Models:[/bold]")
+            console.print("\n[bold]Task Models:[/bold]")
             for task, model_alias in config['task_models'].items():
                 console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
 
@@ -1013,7 +1014,7 @@ class AthenaREPL:
         priority = result.priority
         color = priority.color
 
-        console.print(f"\n[bold]🎯 Triage Result[/bold]\n")
+        console.print("\n[bold]🎯 Triage Result[/bold]\n")
 
         # Priority with color
         console.print(Panel(
@@ -1025,7 +1026,7 @@ class AthenaREPL:
 
         # Signals detected
         if result.signals:
-            console.print(f"\n[bold]Signals detected:[/bold]")
+            console.print("\n[bold]Signals detected:[/bold]")
             for signal in result.signals:
                 console.print(f"  • {signal}")
 
@@ -1039,16 +1040,16 @@ class AthenaREPL:
             context_parts.append(f"Host: {result.host_detected}")
 
         if context_parts:
-            console.print(f"\n[bold]Context:[/bold]")
+            console.print("\n[bold]Context:[/bold]")
             for part in context_parts:
                 console.print(f"  • {part}")
 
         # Reasoning
-        console.print(f"\n[bold]Reasoning:[/bold]")
+        console.print("\n[bold]Reasoning:[/bold]")
         console.print(f"  {result.reasoning}")
 
         # Behavior profile
-        console.print(f"\n[bold]Behavior Profile:[/bold]")
+        console.print("\n[bold]Behavior Profile:[/bold]")
         console.print(f"  Mode: {describe_behavior(priority)}")
         console.print(f"  Auto-confirm reads: {'Yes' if behavior.auto_confirm_reads else 'No'}")
         console.print(f"  Auto-confirm writes: {'Yes' if behavior.auto_confirm_writes else 'No'}")
@@ -1056,8 +1057,8 @@ class AthenaREPL:
 
         # Escalation warning
         if result.escalation_required:
-            console.print(f"\n[bold red]⚠️  ESCALATION REQUIRED[/bold red]")
-            console.print(f"[dim]This issue requires immediate attention![/dim]")
+            console.print("\n[bold red]⚠️  ESCALATION REQUIRED[/bold red]")
+            console.print("[dim]This issue requires immediate attention![/dim]")
 
         console.print()
         return True
@@ -1147,9 +1148,9 @@ class AthenaREPL:
         if self.conversation_manager.compact_conversation():
             new_tokens = self.conversation_manager.get_current_tokens()
 
-            console.print(f"[green]✅ Conversation compacted[/green]")
+            console.print("[green]✅ Conversation compacted[/green]")
             console.print(f"[dim]Reduced from {old_tokens:,} tokens to {new_tokens:,} tokens[/dim]")
-            console.print(f"[dim]💡 Started new conversation with summary[/dim]\n")
+            console.print("[dim]💡 Started new conversation with summary[/dim]\n")
         else:
             console.print("[red]❌ Failed to compact conversation[/red]")
 
@@ -1179,9 +1180,9 @@ class AthenaREPL:
             confirm = input("Confirm [y/N]: ").strip().lower()
             if confirm == 'y':
                 if self.conversation_manager.delete_conversation(conv_id):
-                    console.print(f"[green]✅ Conversation deleted[/green]")
+                    console.print("[green]✅ Conversation deleted[/green]")
                 else:
-                    console.print(f"[red]❌ Failed to delete conversation[/red]")
+                    console.print("[red]❌ Failed to delete conversation[/red]")
             else:
                 console.print("[dim]Cancelled[/dim]")
         except (KeyboardInterrupt, EOFError):

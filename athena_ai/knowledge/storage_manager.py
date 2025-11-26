@@ -8,16 +8,17 @@ Combines:
 If FalkorDB is not available, gracefully degrades to SQLite-only mode.
 """
 
-import sqlite3
 import json
-from pathlib import Path
-from datetime import datetime
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, asdict
+import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
-from .falkordb_client import FalkorDBClient, FalkorDBConfig, get_falkordb_client
+
+from .falkordb_client import FalkorDBClient, FalkorDBConfig
 
 
 @dataclass

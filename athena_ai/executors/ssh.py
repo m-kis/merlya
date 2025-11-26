@@ -1,9 +1,11 @@
-import paramiko
 import socket
 from typing import Optional, Tuple
-from athena_ai.security.credentials import CredentialManager
-from athena_ai.executors.ssh_connection_pool import get_connection_pool
+
+import paramiko
+
 from athena_ai.executors.connectivity import ConnectivityPlanner
+from athena_ai.executors.ssh_connection_pool import get_connection_pool
+from athena_ai.security.credentials import CredentialManager
 from athena_ai.utils.logger import logger
 
 
@@ -25,35 +27,35 @@ class SSHManager:
         Establish a connection to target_host via jump_host.
         """
         logger.info(f"Initiating jump connection: Local -> {jump_host} -> {target_host}")
-        
+
         # 1. Connect to Jump Host
         # We reuse the execute logic recursively, but here we need the raw client
         # For simplicity, we'll create a direct client to the jump host
         jump_client = paramiko.SSHClient()
         jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        
+
         # Get jump host credentials
         jump_user = self.credentials.get_user_for_host(jump_host) or user
         jump_key = self.credentials.get_key_for_host(jump_host) or self.credentials.get_default_key()
-        
+
         jump_kwargs = connect_kwargs.copy()
         if jump_key:
             jump_kwargs["key_filename"] = jump_key
-            
+
         jump_client.connect(jump_host, username=jump_user, **jump_kwargs)
-        
+
         # 2. Create Channel
         transport = jump_client.get_transport()
         dest_addr = (target_host, 22)
         local_addr = ('127.0.0.1', 0) # Source doesn't matter much
         channel = transport.open_channel("direct-tcpip", dest_addr, local_addr)
-        
+
         # 3. Connect to Target through Channel
         target_client = paramiko.SSHClient()
         target_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        
+
         target_client.connect(target_host, username=user, sock=channel, **connect_kwargs)
-        
+
         return target_client
 
     def execute(self, host: str, command: str, user: Optional[str] = None, key_path: Optional[str] = None, timeout: int = 60) -> Tuple[int, str, str]:
@@ -103,9 +105,9 @@ class SSHManager:
             target_ip = socket.gethostbyname(host)
         except:
             pass
-            
+
         strategy = self.connectivity.get_connection_strategy(host, target_ip)
-        
+
         if strategy.method == 'jump':
             # JUMP HOST CONNECTION
             try:
@@ -165,7 +167,7 @@ class SSHManager:
 
         except socket.timeout:
             logger.error(f"SSH connection timed out on {host}")
-            return -1, "", f"SSH connection timed out"
+            return -1, "", "SSH connection timed out"
 
         except Exception as e:
             logger.error(f"Unexpected error connecting to {host}: {e}")

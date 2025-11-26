@@ -1,7 +1,9 @@
-from typing import Dict, Any, List
+import json
+from typing import Any, Dict
+
 from athena_ai.agents.base import BaseAgent
 from athena_ai.utils.logger import logger
-import json
+
 
 class MonitoringAgent(BaseAgent):
     def __init__(self, context_manager):
@@ -10,19 +12,19 @@ class MonitoringAgent(BaseAgent):
 
     def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
         logger.info(f"MonitoringAgent starting task: {task} on {target}")
-        
+
         # 1. Plan Monitoring
         plan_prompt = f"""
         Task: {task}
         Target: {target}
-        
+
         Propose a list of monitoring commands to check health/status.
         Focus on read-only commands (e.g. top, df, systemctl status).
-        
+
         Return ONLY a JSON list of strings.
         """
         system_prompt = "You are an expert infrastructure monitoring agent. Return only raw JSON."
-        
+
         try:
             plan_response = self.llm.generate(plan_prompt, system_prompt)
             plan_response = plan_response.replace("```json", "").replace("```", "").strip()
@@ -44,7 +46,7 @@ class MonitoringAgent(BaseAgent):
         analysis_prompt = f"""
         Task: {task}
         Results: {json.dumps(results, indent=2)}
-        
+
         Analyze these results. Is the system healthy?
         Return a JSON object:
         {{
@@ -53,7 +55,7 @@ class MonitoringAgent(BaseAgent):
             "metrics": {{ "cpu": "...", "disk": "..." }}
         }}
         """
-        
+
         try:
             analysis_response = self.llm.generate(analysis_prompt, system_prompt)
             analysis_response = analysis_response.replace("```json", "").replace("```", "").strip()

@@ -4,10 +4,10 @@ Enhanced Conversation History with Persistence.
 Tracks conversation context across sessions with disk persistence.
 """
 import json
-import os
-from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from athena_ai.utils.logger import logger
 
 

@@ -8,15 +8,15 @@ This orchestrator uses:
 4. Learning from past interactions
 """
 import os
-import asyncio
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Optional
+
 from rich.console import Console
 from rich.panel import Panel
 
+from athena_ai.agents import autogen_tools
 from athena_ai.agents.base_orchestrator import BaseOrchestrator
 from athena_ai.utils.logger import logger
-from athena_ai.agents import autogen_tools
-from athena_ai.utils.verbosity import get_verbosity, VerbosityLevel
+from athena_ai.utils.verbosity import VerbosityLevel, get_verbosity
 
 # FalkorDB integration
 try:
@@ -27,20 +27,18 @@ except ImportError:
 
 # Triage System
 from athena_ai.triage import (
-    Priority,
-    PriorityResult,
     PriorityClassifier,
+    PriorityResult,
     get_behavior,
-    describe_behavior,
 )
 
 try:
     import autogen
     from autogen import (
-        UserProxyAgent,
         AssistantAgent,
         GroupChat,
         GroupChatManager,
+        UserProxyAgent,
     )
     HAS_AUTOGEN = True
 except ImportError:
@@ -488,7 +486,7 @@ ask to store it in the knowledge base for future reference.
 
         # Step 1: Classify priority
         self.current_priority = self.priority_classifier.classify(user_query)
-        behavior = get_behavior(self.current_priority.priority)
+        get_behavior(self.current_priority.priority)
 
         # Step 2: Display triage (if verbose)
         if self.verbosity.should_output(VerbosityLevel.NORMAL):

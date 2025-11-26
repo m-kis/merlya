@@ -11,11 +11,12 @@ We NEVER return a hostname that doesn't exist in real inventory.
 This prevents LLM hallucination attacks.
 """
 
-import re
 import json
-from typing import Dict, Any, Optional, List
+import re
+from typing import Any, Dict, List, Optional
+
+from athena_ai.context.host_registry import get_host_registry
 from athena_ai.utils.logger import logger
-from athena_ai.context.host_registry import get_host_registry, HostValidationResult
 
 
 class EntityExtractor:

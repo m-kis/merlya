@@ -7,7 +7,8 @@ Orchestrates system analysis by:
 - Executing diagnostic commands
 - Collecting and formatting results
 """
-from typing import Dict, Any, Callable
+from typing import Any, Callable, Dict
+
 from athena_ai.utils.logger import logger
 
 
@@ -183,7 +184,7 @@ class AnalysisService:
             List of result dicts with command and result
         """
         results = []
-        for command, reason in zip(commands_list, reasons):
+        for command, reason in zip(commands_list, reasons, strict=False):
             logger.info(f"Executing analysis command: {command}")
             result = command_executor(
                 target=target_host,

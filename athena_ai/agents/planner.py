@@ -4,8 +4,8 @@ PlannerAgent: Decomposes complex tasks into executable steps.
 The planner analyzes user requests and creates structured execution plans
 that minimize context size and maximize clarity.
 """
-from typing import List, Dict, Any
-import json
+from typing import Any, Dict, List
+
 from athena_ai.utils.logger import logger
 
 

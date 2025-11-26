@@ -3,8 +3,7 @@ Validators for generated IaC code.
 
 Provides syntax and semantic validation.
 """
-from typing import Optional, List, Dict, Any
-from athena_ai.utils.logger import logger
+from typing import List
 
 
 class ValidationResult:
@@ -21,7 +20,7 @@ class ValidationResult:
     def __str__(self) -> str:
         if self.valid:
             return "✓ Validation passed"
-        return f"✗ Validation failed:\n" + "\n".join(f"  - {e}" for e in self.errors)
+        return "✗ Validation failed:\n" + "\n".join(f"  - {e}" for e in self.errors)
 
 
 class TerraformValidator:

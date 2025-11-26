@@ -8,8 +8,7 @@ Responsible for parsing command outputs into structured metrics:
 - Process information (Correction 11: improved parsing)
 """
 import re
-from typing import Dict, Any
-from athena_ai.utils.logger import logger
+from typing import Any, Dict
 
 
 class MetricsParser:
