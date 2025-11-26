@@ -109,8 +109,8 @@ class AITriageClassifier:
 
     async def _call_llm(self, query: str) -> Optional[Dict[str, Any]]:
         """Call LLM for classification using user's router."""
-        # No router = skip LLM, use keyword fallback
-        if not self._llm_router:
+        # No router or router without generate method = skip LLM
+        if not self._llm_router or not hasattr(self._llm_router, 'generate'):
             return None
 
         try:
@@ -123,7 +123,11 @@ class AITriageClassifier:
                 task="triage",  # Use fast model for triage
             )
 
-            content = response.strip() if response else ""
+            # Handle None or non-string response
+            if not response or not isinstance(response, str):
+                return None
+
+            content = response.strip()
 
             # Parse JSON response
             # Handle markdown code blocks
