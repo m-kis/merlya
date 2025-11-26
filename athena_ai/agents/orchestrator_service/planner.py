@@ -115,9 +115,17 @@ Return only the agent name.""",
         )
 
     def _get_engineer_prompt(self) -> str:
-        """Get system prompt for Engineer."""
-        return f"""You are an expert DevSecOps Engineer.
-Your goal is to FULLY COMPLETE infrastructure tasks using the provided tools.
+        """Get system prompt for Engineer - Expert DevSecOps/Linux Engineer."""
+        return f"""You are a SENIOR DevSecOps/Linux Engineer with 15+ years of experience.
+You have deep expertise in: Linux systems, databases (MongoDB, PostgreSQL, MySQL),
+Kubernetes, Docker, networking, security, and infrastructure automation.
+
+YOUR ROLE:
+- You are NOT just a command executor
+- You THINK like an expert engineer: analyze, understand root causes, propose solutions
+- You EXPLAIN technical concepts clearly
+- You RECOMMEND best practices and alternatives
+- You GUIDE users through complex problems
 
 Available Tools:
 CORE: list_hosts(), scan_host(hostname), execute_command(target, command, reason), check_permissions(target)
@@ -126,20 +134,36 @@ SYSTEM: disk_info(host), memory_info(host), process_list(host), network_connecti
 SERVICES: service_control(host, service, action)
 CONTAINERS: docker_exec(container, command, host), kubectl_exec(namespace, pod, command)
 
-Rules:
-1. Use list_hosts() FIRST to verify hosts exist
-2. ALWAYS scan a host before acting on it
-3. If a command fails, try an alternative approach
-4. Be EFFICIENT: Only run necessary commands, avoid redundant checks
-5. ALWAYS end with a clear, human-readable summary explaining your findings
+HOW TO RESPOND:
+1. **Understand first**: What is the user REALLY trying to solve?
+2. **Investigate**: Gather relevant information (logs, configs, status)
+3. **Analyze**: Identify root cause or explain current state
+4. **Recommend**: Propose solutions with clear explanations
+5. **Execute if asked**: Only execute after explaining what you'll do
 
-IMPORTANT: Your FINAL message must be a clear summary for the user, NOT raw command output.
-Format your final response in markdown with:
-- Brief answer to the user's question
-- Key findings (if applicable)
-- Any recommendations
+RESPONSE FORMAT (Markdown):
+## Analysis
+[What you found and what it means]
 
-Say "TERMINATE" at the END of your final summary message.
+## Root Cause / Explanation
+[Technical explanation in clear terms]
+
+## Recommendations
+[Concrete solutions with example commands]
+```bash
+# Example command with explanation
+command here
+```
+
+## Next Steps
+[What the user should do next]
+
+IMPORTANT RULES:
+- Use list_hosts() FIRST to verify hosts exist
+- ALWAYS scan a host before acting on it
+- EXPLAIN your reasoning, don't just execute blindly
+- For complex issues, ASK if the user wants you to execute fixes
+- Say "TERMINATE" at the END of your final summary
 
 Environment: {self.env}"""
 
@@ -176,11 +200,37 @@ Environment: {self.env}"""
 
         return "\n".join(context_parts)
 
+    def _get_intent_guidance(self, intent: str) -> str:
+        """Get intent-specific guidance to inject into the task."""
+        if intent == "analysis":
+            return """
+🔍 **MODE: ANALYSIS** - Your focus is to INVESTIGATE and RECOMMEND.
+- Dig deep: check logs, configs, status
+- EXPLAIN what you find in clear terms
+- PROPOSE solutions with example commands
+- Ask before executing any fixes
+- This is a teaching moment: educate the user"""
+
+        elif intent == "query":
+            return """
+📋 **MODE: QUERY** - Your focus is to GATHER and PRESENT information.
+- Collect the requested information efficiently
+- Present results clearly and organized
+- This is READ-ONLY: avoid making changes"""
+
+        else:  # action
+            return """
+⚡ **MODE: ACTION** - Your focus is to EXECUTE safely.
+- Verify targets before acting
+- Execute the requested task
+- Report results clearly"""
+
     async def execute_basic(
         self,
         user_query: str,
         conversation_history: List[dict] = None,
         allowed_tools: List[str] = None,
+        intent: str = "action",
     ) -> str:
         """Process with single engineer agent."""
         if self.engineer is None:
@@ -188,6 +238,10 @@ Environment: {self.env}"""
 
         # Build task with conversation context
         task = self._build_task_with_context(user_query, conversation_history)
+
+        # Add intent-specific guidance
+        intent_guidance = self._get_intent_guidance(intent)
+        task = f"{intent_guidance}\n\n{task}"
 
         # Add tool restrictions if specified
         if allowed_tools:
@@ -214,6 +268,7 @@ Environment: {self.env}"""
         priority_name: str,
         conversation_history: List[dict] = None,
         allowed_tools: List[str] = None,
+        intent: str = "action",
     ) -> str:
         """Process with multi-agent team."""
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
@@ -221,12 +276,17 @@ Environment: {self.env}"""
         # Build base task with context
         base_task = self._build_task_with_context(user_query, conversation_history)
 
+        # Add intent-specific guidance
+        intent_guidance = self._get_intent_guidance(intent)
+
         # Add tool restrictions if specified
         tool_restriction = ""
         if allowed_tools:
             tool_restriction = f"\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
 
-        task = f"""{base_task}
+        task = f"""{intent_guidance}
+
+{base_task}
 
 Priority: {priority_name}
 Environment: {self.env}
@@ -234,7 +294,7 @@ Environment: {self.env}
 Work together:
 1. Planner: Create step-by-step plan
 2. Security_Expert: Review for security concerns
-3. DevSecOps_Engineer: Execute the plan
+3. DevSecOps_Engineer: Investigate, recommend, then execute if approved
 """
 
         # Run the team

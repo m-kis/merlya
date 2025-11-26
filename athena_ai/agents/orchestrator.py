@@ -383,7 +383,7 @@ class Orchestrator(BaseOrchestrator):
         # Step 3: Get conversation history for context
         conversation_history = kwargs.get("conversation_history", [])
 
-        # Step 4: Execute based on mode (with tool restrictions if specified)
+        # Step 4: Execute based on mode (with tool restrictions and intent)
         try:
             allowed_tools = triage_context.allowed_tools
             if self.mode == OrchestratorMode.ENHANCED:
@@ -392,12 +392,14 @@ class Orchestrator(BaseOrchestrator):
                     priority_name,  # Already extracted with defensive access above
                     conversation_history,
                     allowed_tools=allowed_tools,
+                    intent=intent_value,  # Pass intent for behavior adaptation
                 )
             else:
                 result = await self.planner.execute_basic(
                     user_query,
                     conversation_history,
                     allowed_tools=allowed_tools,
+                    intent=intent_value,  # Pass intent for behavior adaptation
                 )
 
             # Step 5: Implicit positive feedback - classification was used successfully
