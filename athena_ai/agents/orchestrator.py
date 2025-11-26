@@ -20,6 +20,7 @@ from athena_ai.agents import autogen_tools, knowledge_tools
 from athena_ai.agents.base_orchestrator import BaseOrchestrator
 from athena_ai.agents.orchestrator_service.intent import IntentParser
 from athena_ai.agents.orchestrator_service.planner import ExecutionPlanner
+from athena_ai.llm.model_config import ModelConfig
 from athena_ai.utils.config import ConfigManager
 from athena_ai.utils.logger import logger
 
@@ -136,10 +137,19 @@ class Orchestrator(BaseOrchestrator):
     # =========================================================================
 
     def _create_model_client(self) -> "OpenAIChatCompletionClient":
-        """Create OpenAI-compatible model client."""
+        """Create OpenAI-compatible model client.
+
+        Priority: Environment variables > Config file > Defaults
+        """
+        # Load model config from ~/.athena/config.json
+        model_config = ModelConfig()
+        config_provider = model_config.get_provider()
+        config_model = model_config.get_model(config_provider)
+
         # Check for local LLM (Ollama) - via config or env var
         use_ollama = (
             self.config_manager.use_local_llm or
+            config_provider == "ollama" or
             os.getenv("ATHENA_PROVIDER", "").lower() == "ollama" or
             os.getenv("OLLAMA_MODEL")
         )
@@ -147,14 +157,14 @@ class Orchestrator(BaseOrchestrator):
         if use_ollama:
             model = (
                 os.getenv("OLLAMA_MODEL") or
+                model_config.get_model("ollama") or
                 self.config_manager.local_llm_model or
                 "llama3.2"
             )
             logger.info(f"Using Local LLM (Ollama): {model}")
-            # Ollama models require model_info since they're not recognized by default
             return OpenAIChatCompletionClient(
                 model=model,
-                api_key="ollama",  # Ollama doesn't need a real key
+                api_key="ollama",
                 base_url="http://localhost:11434/v1",
                 model_info={
                     "vision": False,
@@ -165,14 +175,14 @@ class Orchestrator(BaseOrchestrator):
                 },
             )
 
-        # Cloud LLM (OpenRouter, Anthropic, OpenAI)
-        provider = os.getenv("ATHENA_PROVIDER", "").lower()
+        # Cloud LLM - priority: env var > config file
+        provider = os.getenv("ATHENA_PROVIDER", "").lower() or config_provider
 
         if provider == "openrouter" or os.getenv("OPENROUTER_API_KEY"):
             api_key = os.getenv("OPENROUTER_API_KEY")
             if not api_key:
                 raise ValueError("OPENROUTER_API_KEY not set.")
-            model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3.5-sonnet")
+            model = os.getenv("OPENROUTER_MODEL") or config_model
             logger.info(f"Using OpenRouter: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
@@ -191,7 +201,7 @@ class Orchestrator(BaseOrchestrator):
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
                 raise ValueError("ANTHROPIC_API_KEY not set.")
-            model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+            model = os.getenv("ANTHROPIC_MODEL") or config_model
             logger.info(f"Using Anthropic: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
@@ -210,9 +220,8 @@ class Orchestrator(BaseOrchestrator):
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError("OPENAI_API_KEY not set.")
-            model = os.getenv("OPENAI_MODEL", "gpt-4o")
+            model = os.getenv("OPENAI_MODEL") or config_model
             logger.info(f"Using OpenAI: {model}")
-            # OpenAI models are recognized, no need for model_info
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
