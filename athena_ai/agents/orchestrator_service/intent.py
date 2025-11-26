@@ -12,6 +12,8 @@ from athena_ai.triage import (
     describe_behavior,
     get_behavior,
 )
+from athena_ai.triage.ai_classifier import AITriageClassifier, get_ai_classifier
+from athena_ai.utils.logger import logger
 from athena_ai.utils.verbosity import VerbosityLevel
 
 
@@ -28,11 +30,18 @@ class TriageContext:
 class IntentParser:
     """Handles intent classification and priority display."""
 
-    def __init__(self, console: Console, verbosity=None):
+    def __init__(self, console: Console, verbosity=None, use_ai: bool = True):
         self.console = console
         self.verbosity = verbosity
         self.classifier = PriorityClassifier()
         self.signal_detector = SignalDetector()
+        self._use_ai = use_ai
+        self._ai_classifier: Optional[AITriageClassifier] = None
+        if use_ai:
+            try:
+                self._ai_classifier = get_ai_classifier()
+            except Exception as e:
+                logger.debug(f"AI classifier unavailable: {e}")
 
     def classify(self, user_query: str, system_state=None) -> PriorityResult:
         """Classify the user query (legacy, returns PriorityResult only)."""
@@ -40,14 +49,68 @@ class IntentParser:
         _ = get_behavior(result.priority)
         return result
 
+    async def classify_full_async(self, user_query: str, system_state=None) -> TriageContext:
+        """
+        Full classification using AI (async).
+
+        Uses LLM for intelligent intent/priority detection with keyword fallback.
+        """
+        if self._ai_classifier:
+            try:
+                ai_result = await self._ai_classifier.classify(user_query)
+
+                # Build PriorityResult from AI classification
+                priority_result = PriorityResult(
+                    priority=ai_result.priority,
+                    confidence=0.9 if not ai_result.from_cache else 0.95,
+                    signals=[f"ai:{ai_result.intent.value}"],
+                    reasoning=ai_result.reasoning,
+                    escalation_required=ai_result.priority.value == 0,
+                )
+
+                return TriageContext(
+                    priority_result=priority_result,
+                    intent=ai_result.intent,
+                    intent_confidence=0.9,
+                    intent_signals=[f"ai:{ai_result.reasoning[:50]}"],
+                    allowed_tools=ai_result.intent.allowed_tools,
+                )
+
+            except Exception as e:
+                logger.debug(f"AI classification failed, using fallback: {e}")
+
+        # Fallback to keyword-based
+        return self.classify_full(user_query, system_state)
+
     def classify_full(self, user_query: str, system_state=None) -> TriageContext:
         """
-        Full classification including intent detection.
+        Full classification including intent detection (sync, keyword-based).
+
+        For AI-powered classification, use classify_full_async().
 
         Returns:
             TriageContext with priority, intent, and allowed tools
         """
-        # Priority classification
+        # Try sync AI classification (cache only, no LLM call)
+        if self._ai_classifier:
+            cached = self._ai_classifier._get_from_cache(user_query)
+            if cached:
+                priority_result = PriorityResult(
+                    priority=cached.priority,
+                    confidence=0.95,
+                    signals=[f"ai_cached:{cached.intent.value}"],
+                    reasoning=cached.reasoning,
+                    escalation_required=cached.priority.value == 0,
+                )
+                return TriageContext(
+                    priority_result=priority_result,
+                    intent=cached.intent,
+                    intent_confidence=0.95,
+                    intent_signals=["cached"],
+                    allowed_tools=cached.intent.allowed_tools,
+                )
+
+        # Keyword-based classification
         priority_result = self.classifier.classify(user_query, system_state=system_state)
 
         # Intent detection

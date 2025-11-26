@@ -350,10 +350,10 @@ class Orchestrator(BaseOrchestrator):
         if dry_run:
             return f"🔍 Dry run: Would process in {self.mode.value} mode"
 
-        # Step 1: Full classification (priority + intent)
+        # Step 1: Full classification (priority + intent) - use AI when available
         system_state = kwargs.get("system_state")
         try:
-            triage_context = self.intent_parser.classify_full(user_query, system_state)
+            triage_context = await self.intent_parser.classify_full_async(user_query, system_state)
         except Exception as e:
             logger.error(f"Classification failed: {e}", exc_info=True)
             # Fallback: process without triage context
