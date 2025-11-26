@@ -1,6 +1,8 @@
 """
 Configuration manager for Athena user preferences.
-Stores settings like language preference in ~/.athena/config.json
+
+Stores non-LLM settings in ~/.athena/config.json
+For LLM/model configuration, use ModelConfig from athena_ai.llm.model_config
 """
 import json
 from pathlib import Path
@@ -8,7 +10,12 @@ from typing import Any, Optional
 
 
 class ConfigManager:
-    """Manage user configuration and preferences."""
+    """
+    Manage user configuration and preferences (non-LLM settings).
+
+    For LLM configuration (provider, models), use ModelConfig instead.
+    This class handles: language, theme, and other UI preferences.
+    """
 
     def __init__(self):
         self.config_dir = Path.home() / ".athena"
@@ -24,12 +31,10 @@ class ConfigManager:
             except Exception:
                 pass
 
-        # Default config
+        # Default config (non-LLM settings only)
         return {
             "language": None,  # Will be set on first run
             "theme": "default",
-            "use_local_llm": False,
-            "local_llm_model": "llama3",
         }
 
     def _save_config(self):
@@ -60,21 +65,11 @@ class ConfigManager:
         self.set("language", value)
 
     @property
-    def use_local_llm(self) -> bool:
-        """Get local LLM usage preference."""
-        return self.config.get("use_local_llm", False)
+    def theme(self) -> str:
+        """Get UI theme."""
+        return self.config.get("theme", "default")
 
-    @use_local_llm.setter
-    def use_local_llm(self, value: bool):
-        """Set local LLM usage preference."""
-        self.set("use_local_llm", value)
-
-    @property
-    def local_llm_model(self) -> str:
-        """Get local LLM model name."""
-        return self.config.get("local_llm_model", "llama3")
-
-    @local_llm_model.setter
-    def local_llm_model(self, value: str):
-        """Set local LLM model name."""
-        self.set("local_llm_model", value)
+    @theme.setter
+    def theme(self, value: str):
+        """Set UI theme."""
+        self.set("theme", value)

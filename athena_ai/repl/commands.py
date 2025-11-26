@@ -405,55 +405,58 @@ class CommandHandler:
 
         cmd = args[0]
         model_config = self.repl.orchestrator.llm_router.model_config
-        config_manager = self.repl.orchestrator.config_manager
 
         if cmd == 'show':
-            # Show current config (Cloud + Local)
-            from rich.table import Table
+            # Show current configuration
+            config = model_config.get_current_config()
+            provider = config['provider']
+            model = config['model']
+
             console.print("\n[bold]Current Model Configuration[/bold]\n")
 
-            # Local Status
-            local_status = "[green]ON[/green]" if config_manager.use_local_llm else "[dim]OFF[/dim]"
-            console.print(f"  Local Mode: {local_status}")
-            if config_manager.use_local_llm:
-                 console.print(f"  Local Model: [cyan]{config_manager.local_llm_model}[/cyan]")
+            # Provider & Model
+            is_local = provider == "ollama"
+            provider_display = f"[green]{provider}[/green]" if is_local else f"[cyan]{provider}[/cyan]"
+            console.print(f"  Provider: {provider_display}")
+            console.print(f"  Model: [green]{model}[/green]")
 
-            # Cloud Status
-            config = model_config.get_current_config()
-            console.print(f"  Cloud Provider: [cyan]{config['provider']}[/cyan]")
-            console.print(f"  Cloud Model: [green]{config['model']}[/green]")
-
-            # Show task-specific models
-            console.print("\n[bold]Task Models (Cloud):[/bold]")
-            for task, model_alias in config['task_models'].items():
-                console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
+            # Show task-specific models if configured
+            if config.get('task_models'):
+                console.print("\n[bold]Task Models:[/bold]")
+                for task, model_alias in config['task_models'].items():
+                    console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
             console.print()
 
         elif cmd == 'local':
+            # Shortcut for Ollama - maps to provider commands
             if len(args) < 2:
                 print_error("Usage: /model local <on|off> [model_name]")
                 return True
 
             subcmd = args[1].lower()
             if subcmd in ['on', 'true', 'enable']:
-                config_manager.use_local_llm = True
+                # Switch to Ollama provider
+                model_config.set_provider("ollama")
                 if len(args) > 2:
-                    config_manager.local_llm_model = args[2]
-                print_success(f"Local mode ENABLED (Model: {config_manager.local_llm_model})")
+                    model_config.set_model("ollama", args[2])
+                current_model = model_config.get_model("ollama")
+                print_success(f"Switched to Ollama (Model: {current_model})")
                 self.repl.orchestrator.reload_agents()
 
             elif subcmd in ['off', 'false', 'disable']:
-                config_manager.use_local_llm = False
-                print_success("Local mode DISABLED")
+                # Switch back to default cloud provider
+                model_config.set_provider("openrouter")
+                current_model = model_config.get_model("openrouter")
+                print_success(f"Switched to OpenRouter (Model: {current_model})")
                 self.repl.orchestrator.reload_agents()
 
             elif subcmd == 'set' and len(args) > 2:
-                config_manager.local_llm_model = args[2]
-                print_success(f"Local model set to: {config_manager.local_llm_model}")
-                if config_manager.use_local_llm:
+                model_config.set_model("ollama", args[2])
+                print_success(f"Ollama model set to: {args[2]}")
+                if model_config.get_provider() == "ollama":
                     self.repl.orchestrator.reload_agents()
             else:
-                print_error("Invalid local command. Use: on, off, set")
+                print_error("Invalid local command. Use: on, off, set <model>")
 
         elif cmd == 'list':
             # Delegate to existing logic for cloud models

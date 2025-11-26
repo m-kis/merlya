@@ -140,28 +140,20 @@ class Orchestrator(BaseOrchestrator):
         """Create OpenAI-compatible model client.
 
         Priority: Environment variables > Config file > Defaults
+        Provider is determined solely by ModelConfig (unified config).
         """
         # Load model config from ~/.athena/config.json
         model_config = ModelConfig()
         config_provider = model_config.get_provider()
         config_model = model_config.get_model(config_provider)
 
-        # Check for local LLM (Ollama) - via config or env var
-        use_ollama = (
-            self.config_manager.use_local_llm or
-            config_provider == "ollama" or
-            os.getenv("ATHENA_PROVIDER", "").lower() == "ollama" or
-            os.getenv("OLLAMA_MODEL")
-        )
+        # Determine provider: env var overrides config
+        provider = os.getenv("ATHENA_PROVIDER", "").lower() or config_provider
 
-        if use_ollama:
-            model = (
-                os.getenv("OLLAMA_MODEL") or
-                model_config.get_model("ollama") or
-                self.config_manager.local_llm_model or
-                "llama3.2"
-            )
-            logger.info(f"Using Local LLM (Ollama): {model}")
+        # Ollama (local LLM)
+        if provider == "ollama" or os.getenv("OLLAMA_MODEL"):
+            model = os.getenv("OLLAMA_MODEL") or model_config.get_model("ollama")
+            logger.info(f"Using Ollama: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key="ollama",
@@ -174,9 +166,6 @@ class Orchestrator(BaseOrchestrator):
                     "structured_output": True,
                 },
             )
-
-        # Cloud LLM - priority: env var > config file
-        provider = os.getenv("ATHENA_PROVIDER", "").lower() or config_provider
 
         if provider == "openrouter" or os.getenv("OPENROUTER_API_KEY"):
             api_key = os.getenv("OPENROUTER_API_KEY")
