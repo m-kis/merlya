@@ -21,11 +21,12 @@ def ask_user(
     Returns:
         User's response
     """
+    ctx = get_tool_context()
     logger.info(f"Tool: ask_user '{question}'")
 
-    print(f"\n❓ [bold cyan]Athena asks:[/bold cyan] {question}")
+    ctx.console.print(f"\n❓ [bold cyan]Athena asks:[/bold cyan] {question}")
     try:
-        response = input("   > ")
+        response = ctx.console.input("   > ")
         return f"User response: {response}"
     except (KeyboardInterrupt, EOFError):
         return "User cancelled input."
@@ -153,10 +154,10 @@ def request_elevation(
         f"Do you want me to retry with elevated privileges? (yes/no)"
     )
 
-    # Ask the user
-    print(f"\n❓ [bold cyan]Athena asks:[/bold cyan] {question}")
+    # Ask the user using Rich console (handles spinner context)
+    ctx.console.print(f"\n❓ [bold cyan]Athena asks:[/bold cyan] {question}")
     try:
-        response = input("   > ").strip().lower()
+        response = ctx.console.input("   > ").strip().lower()
     except (KeyboardInterrupt, EOFError):
         return "❌ Elevation cancelled by user."
 

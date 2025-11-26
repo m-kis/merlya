@@ -26,6 +26,7 @@ class ToolContext:
     credentials: Any = None
     host_registry: Optional[HostRegistry] = None
     hooks: Any = None
+    console: Any = None  # Rich console for user interaction
 
     def __post_init__(self):
         """Initialize optional dependencies."""
@@ -33,6 +34,9 @@ class ToolContext:
             self.host_registry = get_host_registry()
         if not self.hooks:
             self.hooks = get_hook_manager()
+        if not self.console:
+            from rich.console import Console
+            self.console = Console()
 
 
 # Global context (for backward compatibility with AutoGen registration)
