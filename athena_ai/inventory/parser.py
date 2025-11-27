@@ -258,7 +258,7 @@ class InventoryParser:
             return "ini"
 
         # /etc/hosts format
-        if re.match(r"^\d+\.\d+\.\d+\.\d+\s+\S+", content_stripped, re.MULTILINE):
+        if re.search(r"^\d+\.\d+\.\d+\.\d+\s+\S+", content_stripped, re.MULTILINE):
             return "etc_hosts"
 
         # SSH config format
