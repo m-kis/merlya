@@ -2,15 +2,15 @@
 Data models for local scanner.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 
 # Sentinel for unknown/invalid scan timestamps.
 # Using Unix epoch (1970-01-01) as it's recognizable, always triggers rescan
 # checks (any TTL comparison will treat it as stale), and is clearly distinct
-# from valid recent timestamps.
-UNKNOWN_SCAN_TIME = datetime(1970, 1, 1)
+# from valid recent timestamps. Using UTC timezone for consistency.
+UNKNOWN_SCAN_TIME = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 @dataclass
@@ -23,7 +23,7 @@ class LocalContext:
     processes: List[Dict[str, Any]] = field(default_factory=list)
     etc_files: Dict[str, Any] = field(default_factory=dict)
     resources: Dict[str, Any] = field(default_factory=dict)
-    scanned_at: datetime = field(default_factory=datetime.now)
+    scanned_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -73,8 +73,31 @@ class LocalContext:
         """
         if self.scanned_at == UNKNOWN_SCAN_TIME:
             return True
-        age = (datetime.now() - self.scanned_at).total_seconds()
+        # Normalize scanned_at to UTC-aware datetime for consistent comparison
+        scanned_at_utc = _ensure_utc_aware(self.scanned_at)
+        now_utc = datetime.now(timezone.utc)
+        age = (now_utc - scanned_at_utc).total_seconds()
         return age > max_age_seconds
+
+
+def _ensure_utc_aware(dt: datetime) -> datetime:
+    """Ensure datetime is UTC-aware.
+
+    If dt is naive, assume it's UTC and attach timezone.
+    If dt is aware, convert to UTC.
+
+    Args:
+        dt: The datetime to normalize.
+
+    Returns:
+        UTC-aware datetime.
+    """
+    if dt.tzinfo is None:
+        # Naive datetime - assume UTC
+        return dt.replace(tzinfo=timezone.utc)
+    else:
+        # Aware datetime - convert to UTC
+        return dt.astimezone(timezone.utc)
 
 
 def _unwrap_value(data: Any) -> Any:

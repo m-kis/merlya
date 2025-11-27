@@ -9,7 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.inventory.parser import get_inventory_parser, ParsedHost
+from athena_ai.inventory.parser import get_inventory_parser
 
 def verify_parser():
     print("🧪 Verifying InventoryParser...")
@@ -41,6 +41,7 @@ def verify_parser():
     result = parser.parse(yaml_content, format_hint="yaml")
     assert result.success
     assert result.hosts[0].hostname == "test-yaml"
+    assert result.hosts[0].ip_address == "1.2.3.6"
     assert result.hosts[0].ssh_port == 2222
     print("   ✅ YAML passed")
     

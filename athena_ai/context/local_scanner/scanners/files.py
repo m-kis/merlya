@@ -63,8 +63,9 @@ def _parse_etc_hosts(content: str) -> Dict[str, Any]:
     """Parse /etc/hosts file."""
     hosts = []
     for line in content.splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
+        # Remove inline comments
+        line = line.split('#', 1)[0].strip()
+        if line:
             parts = line.split()
             if len(parts) >= 2:
                 ip = parts[0]

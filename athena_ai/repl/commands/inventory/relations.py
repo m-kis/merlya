@@ -103,14 +103,22 @@ class RelationsHandler:
             # Accept ALL suggestions, not just displayed ones
             indices = list(range(total_count))
         else:
-            try:
-                indices = [int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()]
-            except ValueError:
-                print_error("Invalid input")
+            # Validate all tokens first and provide clear feedback
+            tokens = [x.strip() for x in choice.split(",") if x.strip()]
+            if not tokens:
+                print_warning("No relations saved")
                 return True
 
-        # Save validated relations
+            invalid_tokens = [t for t in tokens if not t.isdigit()]
+            if invalid_tokens:
+                print_error(f"Invalid input: {', '.join(invalid_tokens)}")
+                return True
+
+            indices = [int(t) - 1 for t in tokens]
+
+        # Save validated relations, tracking out-of-range indices
         saved = 0
+        invalid_indices = []
         for i in indices:
             if 0 <= i < len(suggestions):
                 s = suggestions[i]
@@ -123,7 +131,11 @@ class RelationsHandler:
                     metadata=s.metadata,
                 )
                 saved += 1
+            else:
+                invalid_indices.append(i + 1)  # Convert back to 1-indexed for display
 
+        if invalid_indices:
+            print_warning(f"Ignored out-of-range indices: {', '.join(map(str, invalid_indices))}")
         print_success(f"Saved {saved} relations")
         return True
 

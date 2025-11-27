@@ -59,7 +59,7 @@ class ContextCommandHandler:
                 progress_callback=update_progress
             )
             # Mark complete
-            progress.update(task, completed=progress.tasks[0].total or 0, host="done")
+            progress.update(task, completed=task.total or 0, host="done")
 
         self._display_scan_results(context, is_full=True)
 
@@ -127,7 +127,7 @@ class ContextCommandHandler:
                 force=True,
                 progress_callback=update_progress
             )
-            progress.update(task, completed=progress.tasks[0].total or 0, host="done")
+            progress.update(task, completed=task.total or 0, host="done")
 
         remote_hosts = context.get('remote_hosts', {})
         accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))

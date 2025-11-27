@@ -95,8 +95,12 @@ def scan_resources() -> Dict[str, Any]:
                 if result2.returncode == 0:
                     total_bytes = int(result2.stdout.strip())
                     free_bytes = stats.get("Pages free", 0)
+                    inactive_bytes = stats.get("Pages inactive", 0)
+                    # Include inactive pages as they can be quickly reclaimed
+                    available_bytes = free_bytes + inactive_bytes
                     resources["memory"] = {
                         "total_gb": round(total_bytes / 1024 / 1024 / 1024, 2),
+                        "available_gb": round(available_bytes / 1024 / 1024 / 1024, 2),
                         "free_gb": round(free_bytes / 1024 / 1024 / 1024, 2),
                     }
 

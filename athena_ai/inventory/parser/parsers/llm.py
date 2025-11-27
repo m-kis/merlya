@@ -32,7 +32,24 @@ LLM_COMPLIANCE_ACKNOWLEDGED = os.getenv("ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED", "f
 # Default timeout for LLM generate calls (in seconds)
 # Can be overridden via ATHENA_LLM_TIMEOUT environment variable
 DEFAULT_LLM_TIMEOUT = 60
-LLM_TIMEOUT = int(os.getenv("ATHENA_LLM_TIMEOUT", str(DEFAULT_LLM_TIMEOUT)))
+
+
+def _parse_llm_timeout() -> int:
+    """Safely parse LLM_TIMEOUT from environment variable."""
+    env_value = os.getenv("ATHENA_LLM_TIMEOUT")
+    if env_value is None:
+        return DEFAULT_LLM_TIMEOUT
+    try:
+        return int(env_value)
+    except ValueError:
+        logger.warning(
+            f"Invalid ATHENA_LLM_TIMEOUT value '{env_value}'; "
+            f"must be an integer. Using default: {DEFAULT_LLM_TIMEOUT}"
+        )
+        return DEFAULT_LLM_TIMEOUT
+
+
+LLM_TIMEOUT = _parse_llm_timeout()
 
 
 def sanitize_inventory_content(content: str) -> str:

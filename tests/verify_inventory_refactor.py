@@ -94,7 +94,7 @@ def verify_inventory_repository():
 
 
 def verify_bulk_add_hosts():
-    """Test bulk host import with transaction rollback."""
+    """Test bulk host import with successful import."""
     print("\n🧪 Verifying bulk_add_hosts...")
 
     from athena_ai.memory.persistence.repositories import HostData
@@ -127,6 +127,84 @@ def verify_bulk_add_hosts():
         assert len(all_hosts) == 3, f"Expected 3 hosts in DB, got {len(all_hosts)}"
 
         print("✅ Bulk import verification passed!")
+    finally:
+        # Cleanup: reset singleton and remove temp DB
+        InventoryRepository.reset_instance()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
+
+def verify_bulk_add_hosts_rollback():
+    """Test bulk host import transaction rollback on failure.
+
+    Verifies that when bulk_add_hosts fails partway through, no partial
+    inserts remain in the database (atomic transaction semantics).
+    """
+    print("\n🧪 Verifying bulk_add_hosts rollback...")
+
+    from unittest.mock import patch
+    import sqlite3
+    from athena_ai.memory.persistence.repositories import HostData
+    from athena_ai.core.exceptions import PersistenceError
+
+    # Use a cross-platform temporary DB with guaranteed cleanup
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    db_path = tmp_file.name
+    tmp_file.close()
+
+    try:
+        InventoryRepository.reset_instance()
+        repo = InventoryRepository(db_path=db_path)
+
+        # Create a source
+        source_id = repo.add_source("bulk_source", "file")
+
+        # Verify DB is empty before test
+        initial_hosts = repo.search_hosts()
+        assert len(initial_hosts) == 0, "DB should be empty before rollback test"
+
+        # Test rollback on failure by patching _add_host_internal to fail after 2 hosts
+        print("1. Testing transaction rollback on failure...")
+        hosts = [
+            HostData(hostname="host1", ip_address="10.0.0.1", environment="prod"),
+            HostData(hostname="host2", ip_address="10.0.0.2", environment="prod"),
+            HostData(hostname="host3", ip_address="10.0.0.3", environment="staging"),
+        ]
+
+        call_count = 0
+        original_add_host_internal = repo._add_host_internal
+
+        def failing_add_host_internal(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 3:
+                # Simulate a database error on the 3rd host
+                raise sqlite3.IntegrityError("Simulated failure on third host")
+            return original_add_host_internal(*args, **kwargs)
+
+        # Patch the method and verify rollback behavior
+        with patch.object(repo, '_add_host_internal', side_effect=failing_add_host_internal):
+            exception_raised = False
+            try:
+                repo.bulk_add_hosts(hosts, source_id=source_id, changed_by="test")
+            except PersistenceError as e:
+                exception_raised = True
+                assert "hosts_before_failure" in e.details
+                assert e.details["hosts_before_failure"] == 2
+                print(f"   ✅ PersistenceError raised as expected: {e.reason}")
+
+            assert exception_raised, "Expected PersistenceError to be raised"
+
+        # Verify no partial inserts - DB should still be empty
+        print("2. Verifying no partial inserts remain...")
+        hosts_after_failure = repo.search_hosts()
+        assert len(hosts_after_failure) == 0, (
+            f"Expected 0 hosts after rollback, found {len(hosts_after_failure)}. "
+            "Transaction rollback failed - partial inserts remain!"
+        )
+        print("   ✅ No partial inserts - rollback successful")
+
+        print("✅ Bulk import rollback verification passed!")
     finally:
         # Cleanup: reset singleton and remove temp DB
         InventoryRepository.reset_instance()
@@ -235,5 +313,6 @@ def verify_search_with_limit():
 if __name__ == "__main__":
     verify_inventory_repository()
     verify_bulk_add_hosts()
+    verify_bulk_add_hosts_rollback()
     verify_local_context()
     verify_search_with_limit()

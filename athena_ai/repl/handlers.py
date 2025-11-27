@@ -21,7 +21,8 @@ from athena_ai.repl.commands.help import SLASH_COMMANDS
 class CommandResult(Enum):
     """Result type for command handling."""
     EXIT = auto()       # User requested to exit the REPL
-    HANDLED = auto()    # Command was recognized and handled
+    HANDLED = auto()    # Command was recognized and handled successfully
+    FAILED = auto()     # Command was recognized but failed during execution
     NOT_HANDLED = auto()  # Command was not recognized
 
 
@@ -190,7 +191,9 @@ class CommandHandler:
             console.print(Markdown(response))
 
         except Exception as e:
+            logger.exception("Custom command failed")
             print_error(f"Custom command failed: {e}")
+            return CommandResult.FAILED
 
         return CommandResult.HANDLED
 

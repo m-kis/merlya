@@ -102,15 +102,15 @@ class SourceRepositoryMixin:
             Source dictionary or None if not found.
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM inventory_sources WHERE name = ?", (name,))
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return self._row_to_dict(row)
-        return None
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM inventory_sources WHERE name = ?", (name,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+        finally:
+            conn.close()
 
     def get_source_by_id(self, source_id: int) -> Optional[Dict[str, Any]]:
         """Get an inventory source by ID.
@@ -209,6 +209,10 @@ class SourceRepositoryMixin:
 
             # Delete the source (hosts cascade-deleted via FK constraint)
             cursor.execute("DELETE FROM inventory_sources WHERE id = ?", (source_id,))
+
+            if cursor.rowcount == 0:
+                logger.debug(f"Source '{name}' (id={source_id}) was already deleted")
+                return False
 
             conn.commit()
             logger.info(f"Deleted source '{name}' (id={source_id})")

@@ -87,38 +87,55 @@ class RelationRepositoryMixin:
         if not (0.0 <= confidence <= 1.0):
             raise ValueError("confidence must be between 0.0 and 1.0")
 
-        source_host = self.get_host_by_name(source_hostname)
-        target_host = self.get_host_by_name(target_hostname)
-
-        if not source_host or not target_host:
-            return None
-
         now = datetime.now().isoformat()
         metadata_json = json.dumps(metadata or {})
         validated_int = 1 if validated else 0
+        source_hostname_lower = source_hostname.lower()
+        target_hostname_lower = target_hostname.lower()
 
         with self._connection(commit=True) as conn:
             cursor = conn.cursor()
 
-            cursor.execute("""
-                INSERT INTO host_relations
-                (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source_host_id, target_host_id, relation_type) DO UPDATE SET
-                    confidence = excluded.confidence,
-                    validated_by_user = excluded.validated_by_user,
-                    metadata = excluded.metadata,
-                    updated_at = ?
-            """, (
-                source_host["id"],
-                target_host["id"],
-                relation_type,
-                confidence,
-                validated_int,
-                metadata_json,
-                now,
-                now,  # updated_at for the ON CONFLICT case
-            ))
+            # Look up hosts inside the transaction to avoid TOCTOU race condition
+            cursor.execute(
+                "SELECT id FROM hosts_v2 WHERE hostname = ?", (source_hostname_lower,)
+            )
+            source_row = cursor.fetchone()
+            if not source_row:
+                return None
+            source_host_id = source_row[0]
+
+            cursor.execute(
+                "SELECT id FROM hosts_v2 WHERE hostname = ?", (target_hostname_lower,)
+            )
+            target_row = cursor.fetchone()
+            if not target_row:
+                return None
+            target_host_id = target_row[0]
+
+            try:
+                cursor.execute("""
+                    INSERT INTO host_relations
+                    (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source_host_id, target_host_id, relation_type) DO UPDATE SET
+                        confidence = excluded.confidence,
+                        validated_by_user = excluded.validated_by_user,
+                        metadata = excluded.metadata,
+                        updated_at = ?
+                """, (
+                    source_host_id,
+                    target_host_id,
+                    relation_type,
+                    confidence,
+                    validated_int,
+                    metadata_json,
+                    now,
+                    now,  # updated_at for the ON CONFLICT case
+                ))
+            except sqlite3.IntegrityError:
+                # Foreign key violation - host was deleted between lookup and insert
+                return None
 
             # Get the id - either newly inserted or existing row that was updated
             if cursor.lastrowid:
@@ -128,7 +145,7 @@ class RelationRepositoryMixin:
                 cursor.execute("""
                     SELECT id FROM host_relations
                     WHERE source_host_id = ? AND target_host_id = ? AND relation_type = ?
-                """, (source_host["id"], target_host["id"], relation_type))
+                """, (source_host_id, target_host_id, relation_type))
                 row = cursor.fetchone()
                 relation_id = row[0] if row else None
 

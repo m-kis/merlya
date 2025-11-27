@@ -139,9 +139,9 @@ class ToolContext:
                     # - sqlite3.Error: database connection or schema errors
                     logger.warning(f"Failed to initialize inventory repository: {type(e).__name__}: {e}")
                 except Exception as e:
-                    # Unexpected errors - log and re-raise to avoid silent failures
+                    # Unexpected errors - log at error level but continue since inventory is optional
                     logger.error(f"Unexpected error initializing inventory repository: {type(e).__name__}: {e}")
-                    raise
+                    self.inventory_repo = None
 
     def get_user_input(self, prompt: str = "> ") -> str:
         """

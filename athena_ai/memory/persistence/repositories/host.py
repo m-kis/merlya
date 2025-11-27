@@ -412,7 +412,16 @@ class HostRepositoryMixin:
         # Check SQLite version for json_each support (added in 3.9.0)
         cursor.execute("SELECT sqlite_version()")
         version_str = cursor.fetchone()[0]
-        version_parts = [int(p) for p in version_str.split(".")[:3]]
+        # Parse version safely: pad to 3 parts, handle non-numeric components
+        raw_parts = version_str.split(".")[:3]
+        while len(raw_parts) < 3:
+            raw_parts.append("0")
+        version_parts = []
+        for p in raw_parts:
+            try:
+                version_parts.append(int(p))
+            except ValueError:
+                version_parts.append(0)
         sqlite_version = version_parts[0] * 1000000 + version_parts[1] * 1000 + version_parts[2]
 
         if sqlite_version >= 3009000:

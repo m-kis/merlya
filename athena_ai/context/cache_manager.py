@@ -515,9 +515,11 @@ class CacheManager:
             try:
                 cached = self.repo.get_scan_cache_by_hostname(hostname, data_type)
                 if cached:
-                    # Re-populate memory cache
-                    self.set(key, cached.get("data"), data_type)
-                    return cached.get("data")
+                    data_value = cached.get("data")
+                    # Only cache if data is not None to avoid caching malformed entries
+                    if data_value is not None:
+                        self.set(key, data_value, data_type)
+                        return data_value
             except Exception:
                 pass
 

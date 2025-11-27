@@ -6,7 +6,10 @@ from typing import List
 
 from rich.table import Table
 
+from athena_ai.core.exceptions import PersistenceError
+from athena_ai.memory.persistence.repositories import HostData
 from athena_ai.repl.ui import console, print_error, print_success, print_warning
+from athena_ai.utils.logger import logger
 
 
 class InventoryImporter:
@@ -35,6 +38,10 @@ class InventoryImporter:
 
         if not path.exists():
             print_error(f"File not found: {file_path}")
+            return True
+
+        if not path.is_file():
+            print_error(f"Path is not a file: {file_path}")
             return True
 
         console.print(f"\n[cyan]Parsing {path.name}...[/cyan]")
@@ -112,10 +119,6 @@ class InventoryImporter:
         )
 
         # Convert parsed hosts to HostData for bulk import
-        from athena_ai.core.exceptions import PersistenceError
-        from athena_ai.memory.persistence.repositories import HostData
-        from athena_ai.utils.logger import logger
-
         host_data_list = [
             HostData(
                 hostname=host.hostname,

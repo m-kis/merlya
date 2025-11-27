@@ -19,7 +19,7 @@ class LocalContextRepositoryMixin:
 
     This mixin requires the following methods from the including class
     (typically provided by BaseRepository):
-        - _get_connection() -> sqlite3.Connection
+        - _connection(commit: bool = False) -> ContextManager[sqlite3.Connection]
         - _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]
 
     Data Model:

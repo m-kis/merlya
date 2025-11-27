@@ -63,9 +63,10 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 key = key.lower()
 
                 if key in ["ansible_host", "ip"]:
-                    if not _is_ip(value):
+                    if _is_ip(value):
+                        host.ip_address = value
+                    else:
                         errors.append(f"Line {line_num}: Invalid IP address '{value}' for host '{hostname}'")
-                    host.ip_address = value
                 elif key == "ansible_port":
                     try:
                         host.ssh_port = int(value)

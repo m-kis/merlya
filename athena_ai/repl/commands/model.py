@@ -95,7 +95,7 @@ class ModelCommandHandler:
             default_provider = model_config.config.get("provider", "openrouter")
             # If default is ollama, fall back to openrouter
             if default_provider == "ollama":
-                default_provider = llm_router._get_fallback_provider() or "openrouter"
+                default_provider = "openrouter"
             if not llm_router.switch_provider(default_provider, verify=False):
                 print_error(f"Failed to switch to {default_provider}")
                 return
@@ -165,7 +165,6 @@ class ModelCommandHandler:
         """Show help for /model command."""
         console.print("[yellow]Usage:[/yellow]")
         console.print("  /model show - Show current configuration")
-        console.print("  /model local <on|off> [model] - Enable/Disable local LLM (Ollama)")
         console.print("  /model local <on|off|set> [model] - Enable/Disable/Configure local LLM (Ollama)")
         console.print("  /model set <model> - Set cloud model")
         console.print("  /model provider <provider> - Switch cloud provider")

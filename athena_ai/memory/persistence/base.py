@@ -9,12 +9,15 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional
+from typing import Any, ClassVar, Dict, Generator, Optional, Set, Type
 
 from athena_ai.utils.logger import logger
 
 # Thread-safe singleton lock
 _repository_lock = threading.Lock()
+
+# Default SQLite connection timeout (seconds) to prevent indefinite blocking
+_DEFAULT_TIMEOUT = 5.0
 
 
 class BaseRepository:
@@ -22,31 +25,37 @@ class BaseRepository:
     Base repository handling database connection and singleton pattern.
 
     This class provides:
-    - Thread-safe singleton instantiation
+    - Thread-safe singleton instantiation (per-subclass)
     - SQLite connection management with Row factory
     - Foreign key constraint enforcement
     - Table initialization orchestration for mixins
+
+    Note:
+        The singleton pattern maintains separate instances per subclass.
+        Each subclass gets its own singleton instance, allowing multiple
+        repository types to coexist without sharing state.
     """
 
-    _instance: Optional["BaseRepository"] = None
-    _initialized: bool = False
+    # Class-level storage for per-subclass singletons
+    _instances: ClassVar[Dict[Type["BaseRepository"], "BaseRepository"]] = {}
+    _initialized_classes: ClassVar[Set[Type["BaseRepository"]]] = set()
 
     def __new__(cls, db_path: Optional[str] = None):
-        """Thread-safe singleton pattern for repository.
+        """Thread-safe singleton pattern for repository (per-subclass).
 
         Args:
             db_path: Optional database path. Only used on first instantiation.
 
         Returns:
-            The singleton instance.
+            The singleton instance for this specific class.
         """
-        if cls._instance is None:
+        if cls not in cls._instances:
             with _repository_lock:
                 # Double-check locking pattern
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._initialized = False
-        return cls._instance
+                if cls not in cls._instances:
+                    instance = super().__new__(cls)
+                    cls._instances[cls] = instance
+        return cls._instances[cls]
 
     def __init__(self, db_path: Optional[str] = None):
         """Initialize repository with database path.
@@ -55,8 +64,9 @@ class BaseRepository:
             db_path: Optional database path. If not provided, uses
                 ~/.athena/inventory.db as default.
         """
+        cls = type(self)
         with _repository_lock:
-            if type(self)._initialized:
+            if cls in cls._initialized_classes:
                 # Warn if trying to use different db_path after initialization
                 if db_path and db_path != self.db_path:
                     logger.warning(
@@ -73,7 +83,7 @@ class BaseRepository:
                 self.db_path = str(athena_dir / "inventory.db")
 
             self._init_tables()
-            type(self)._initialized = True
+            cls._initialized_classes.add(cls)
             logger.debug(f"Repository initialized at {self.db_path}")
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -81,8 +91,12 @@ class BaseRepository:
 
         Returns:
             SQLite connection with Row factory and foreign keys enabled.
+
+        Note:
+            Uses a 5-second timeout to prevent indefinite blocking if the
+            database is locked by another process or thread.
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=_DEFAULT_TIMEOUT)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
@@ -170,11 +184,13 @@ class BaseRepository:
 
     @classmethod
     def reset_instance(cls) -> None:
-        """Reset singleton instance (for testing).
+        """Reset singleton instance for this class (for testing).
 
         This allows tests to create fresh instances with different
-        database paths.
+        database paths. Only resets the instance for the specific class
+        on which it's called, not all subclasses.
         """
         with _repository_lock:
-            cls._instance = None
-            cls._initialized = False
+            if cls in cls._instances:
+                del cls._instances[cls]
+            cls._initialized_classes.discard(cls)

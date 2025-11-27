@@ -587,8 +587,10 @@ Some commands respect environment variables:
 | `ATHENA_LANGUAGE` | Default language (en/fr) |
 | `ATHENA_MODEL` | Default LLM model |
 | `ATHENA_PROVIDER` | Default LLM provider |
-| `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing fallback (default: false). Set to "true" only after reviewing privacy implications. |
-| `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Acknowledge that your LLM provider meets data protection requirements (GDPR, SOC2, HIPAA). Required when LLM fallback is enabled. |
+| `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing fallback. Set to `"true"` to enable (default: `"false"`). Only enable after reviewing privacy implications below. |
+| `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Set to `"true"` to confirm your LLM provider meets your organization's data protection requirements (e.g., GDPR, SOC2, HIPAA). Required when `ATHENA_ENABLE_LLM_FALLBACK=true`. |
+
+**LLM Fallback Privacy Notice:** When enabled, inventory content is sent to your configured LLM provider for parsing. This may include hostnames, IP addresses, environment names, and metadata. Athena sanitizes content before sending (redacting IPs and sensitive patterns), but you should verify your LLM provider's data handling policies meet your compliance requirements. Both variables must be set to `"true"` together.
 
 ---
 

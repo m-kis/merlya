@@ -156,7 +156,7 @@ class AthenaREPL:
                     result = asyncio.run(self.command_handler.handle_command(user_input))
                     if result == CommandResult.EXIT:
                         break
-                    if result == CommandResult.HANDLED:
+                    if result in (CommandResult.HANDLED, CommandResult.FAILED):
                         continue
 
                 # Process natural language query

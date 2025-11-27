@@ -80,7 +80,20 @@ class LocalScanner:
 
                         if age_hours < ttl:
                             logger.debug(f"Using cached local context (age: {age_hours:.1f}h)")
-                            return LocalContext.from_dict(existing)
+                            try:
+                                return LocalContext.from_dict(existing)
+                            except Exception as e:
+                                # Cached data is corrupted - log, invalidate, and treat as cache miss
+                                logger.warning(
+                                    f"Failed to deserialize cached local context: {e}. "
+                                    "Invalidating cache and rescanning..."
+                                )
+                                try:
+                                    # Invalidate corrupted cache by clearing it
+                                    self.repo.save_local_context({})
+                                except Exception:
+                                    logger.debug("Failed to clear corrupted cache", exc_info=True)
+                                # Fall through to rescan
 
                         logger.info(f"Local context expired ({age_hours:.1f}h > {ttl}h), rescanning...")
                     except (ValueError, TypeError):

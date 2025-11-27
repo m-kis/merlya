@@ -35,9 +35,6 @@ class ScanCacheRepositoryMixin:
             )
         """)
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_scan_cache_host ON scan_cache(host_id, scan_type)
-        """)
-        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_scan_cache_expires ON scan_cache(expires_at)
         """)
 
@@ -55,7 +52,8 @@ class ScanCacheRepositoryMixin:
             cursor = conn.cursor()
             try:
                 cursor.execute("""
-                    SELECT * FROM scan_cache
+                    SELECT id, host_id, scan_type, data, ttl_seconds, created_at, expires_at
+                    FROM scan_cache
                     WHERE host_id = ? AND scan_type = ? AND expires_at > ?
                 """, (host_id, scan_type, datetime.now(timezone.utc).isoformat()))
                 row = cursor.fetchone()
@@ -125,7 +123,7 @@ class ScanCacheRepositoryMixin:
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     host_id,
-                    scan_type,
+                    scan_type_stripped,
                     json.dumps(data),
                     ttl_seconds,
                     now.isoformat(),
@@ -136,7 +134,7 @@ class ScanCacheRepositoryMixin:
                 conn.rollback()
                 logger.error(
                     "Failed to save scan cache for host_id=%s, scan_type=%s: %s",
-                    host_id, scan_type, e
+                    host_id, scan_type_stripped, e
                 )
                 raise
             finally:
