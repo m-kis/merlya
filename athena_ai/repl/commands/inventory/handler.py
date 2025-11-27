@@ -5,6 +5,7 @@ Delegates to specific sub-handlers.
 from typing import TYPE_CHECKING, List, Optional
 
 from athena_ai.repl.ui import console, print_error
+from athena_ai.utils.logger import logger
 
 if TYPE_CHECKING:
     from athena_ai.repl.core import AthenaREPL
@@ -113,9 +114,13 @@ class InventoryCommandHandler:
         if handler:
             try:
                 handler(cmd_args)
-            except RuntimeError as e:
-                # Gracefully handle lazy-load failures from sub-handlers
-                print_error(str(e))
+            except (KeyboardInterrupt, SystemExit):
+                # Re-raise critical exceptions - don't suppress user interrupts or exits
+                raise
+            except Exception as e:
+                # Log full traceback for debugging, show concise message to user
+                logger.exception(f"Error executing inventory command '{cmd}': {e}")
+                print_error(f"Command failed: {e}")
             return True
 
         print_error(f"Unknown inventory command: {cmd}")

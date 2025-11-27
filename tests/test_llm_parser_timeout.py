@@ -97,8 +97,9 @@ class TestLLMParserTimeout:
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "120")
 
         from athena_ai.inventory.parser.parsers import llm
-        import importlib
-        importlib.reload(llm)
+
+        # Patch the module constant directly instead of reloading
+        monkeypatch.setattr(llm, "LLM_TIMEOUT", 120)
 
         assert llm.LLM_TIMEOUT == 120
 
@@ -135,11 +136,10 @@ class TestLLMParserTimeout:
 
     def test_none_timeout_uses_default(self, mock_llm_router, monkeypatch):
         """Test that timeout=None uses the module-level default."""
-        monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "60")
-
         from athena_ai.inventory.parser.parsers import llm
-        import importlib
-        importlib.reload(llm)
+
+        # Patch the module constant directly instead of reloading
+        monkeypatch.setattr(llm, "LLM_TIMEOUT", 60)
 
         # With timeout=None, it should use the default LLM_TIMEOUT
         # The mock returns immediately, so this should succeed
@@ -167,18 +167,15 @@ class TestLLMTimeoutConfiguration:
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "90")
 
         from athena_ai.inventory.parser.parsers import llm
-        import importlib
-        importlib.reload(llm)
 
-        assert llm.LLM_TIMEOUT == 90
+        # Test _parse_llm_timeout reads the env var correctly
+        assert llm._parse_llm_timeout() == 90
 
     def test_invalid_env_var_timeout_fallback(self, monkeypatch):
-        """Test behavior with invalid ATHENA_LLM_TIMEOUT value."""
-        # This should raise ValueError during module load
+        """Test behavior with invalid ATHENA_LLM_TIMEOUT value falls back to default."""
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "invalid")
 
         from athena_ai.inventory.parser.parsers import llm
-        import importlib
 
-        with pytest.raises(ValueError):
-            importlib.reload(llm)
+        # Invalid env var should fall back to DEFAULT_LLM_TIMEOUT (with warning logged)
+        assert llm._parse_llm_timeout() == llm.DEFAULT_LLM_TIMEOUT

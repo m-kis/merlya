@@ -98,10 +98,13 @@ def scan_resources() -> Dict[str, Any]:
                     inactive_bytes = stats.get("Pages inactive", 0)
                     # Include inactive pages as they can be quickly reclaimed
                     available_bytes = free_bytes + inactive_bytes
+                    used_bytes = total_bytes - available_bytes
                     resources["memory"] = {
                         "total_gb": round(total_bytes / 1024 / 1024 / 1024, 2),
                         "available_gb": round(available_bytes / 1024 / 1024 / 1024, 2),
                         "free_gb": round(free_bytes / 1024 / 1024 / 1024, 2),
+                        "used_gb": round(used_bytes / 1024 / 1024 / 1024, 2),
+                        "percent_used": round(used_bytes / total_bytes * 100, 2) if total_bytes else 0,
                     }
 
     except Exception as e:

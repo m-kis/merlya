@@ -2,12 +2,17 @@
 Repository Mixins for InventoryRepository.
 
 This package provides modular mixins that implement specific repository concerns:
-- SourceRepositoryMixin: Inventory source management
-- HostRepositoryMixin: Host CRUD with versioning
-- RelationRepositoryMixin: Host relationships
-- ScanCacheRepositoryMixin: Scan result caching with TTL
-- LocalContextRepositoryMixin: Local machine context
-- SnapshotRepositoryMixin: Point-in-time snapshots
+
+Mixins:
+    - SourceRepositoryMixin: Inventory source management
+    - HostRepositoryMixin: Host CRUD with versioning
+    - RelationRepositoryMixin: Host relationships
+    - ScanCacheRepositoryMixin: Scan result caching with TTL
+    - LocalContextRepositoryMixin: Local machine context
+    - SnapshotRepositoryMixin: Point-in-time snapshots
+
+Data Types:
+    - HostData: Dataclass for host information used in bulk imports
 """
 
 from athena_ai.memory.persistence.repositories.host import HostData, HostRepositoryMixin

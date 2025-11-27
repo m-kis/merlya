@@ -156,14 +156,14 @@ class ScanCacheRepositoryMixin:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             try:
-                if host_id and scan_type:
+                if host_id is not None and scan_type is not None:
                     cursor.execute(
                         "DELETE FROM scan_cache WHERE host_id = ? AND scan_type = ?",
                         (host_id, scan_type)
                     )
-                elif host_id:
+                elif host_id is not None:
                     cursor.execute("DELETE FROM scan_cache WHERE host_id = ?", (host_id,))
-                elif scan_type:
+                elif scan_type is not None:
                     cursor.execute("DELETE FROM scan_cache WHERE scan_type = ?", (scan_type,))
                 else:
                     cursor.execute("DELETE FROM scan_cache")

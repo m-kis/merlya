@@ -77,15 +77,18 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 else:
                     host.metadata[key] = value
 
-        # Detect environment from group name
+        # Detect environment from group name using word boundary matching
+        # Split on common delimiters to avoid false positives (e.g., "provider" matching "prod")
         group_lower = current_group.lower()
-        if "prod" in group_lower:
+        group_parts = set(group_lower.replace('-', '_').split('_'))
+
+        if group_parts & {'prod', 'production'}:
             host.environment = "production"
-        elif "staging" in group_lower or "stage" in group_lower:
+        elif group_parts & {'staging', 'stage'}:
             host.environment = "staging"
-        elif "dev" in group_lower:
+        elif group_parts & {'dev', 'development'}:
             host.environment = "development"
-        elif "test" in group_lower:
+        elif group_parts & {'test', 'testing'}:
             host.environment = "testing"
 
         hosts.append(host)

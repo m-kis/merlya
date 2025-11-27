@@ -590,7 +590,26 @@ Some commands respect environment variables:
 | `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing fallback. Set to `"true"` to enable (default: `"false"`). Only enable after reviewing privacy implications below. |
 | `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Set to `"true"` to confirm your LLM provider meets your organization's data protection requirements (e.g., GDPR, SOC2, HIPAA). Required when `ATHENA_ENABLE_LLM_FALLBACK=true`. |
 
-**LLM Fallback Privacy Notice:** When enabled, inventory content is sent to your configured LLM provider for parsing. This may include hostnames, IP addresses, environment names, and metadata. Athena sanitizes content before sending (redacting IPs and sensitive patterns), but you should verify your LLM provider's data handling policies meet your compliance requirements. Both variables must be set to `"true"` together.
+**LLM Fallback Privacy Notice:** When enabled, inventory content is sent to your configured LLM provider for parsing. This may include hostnames, IP addresses, environment names, and metadata. Athena sanitizes content before sending, but you should verify your LLM provider's data handling policies meet your compliance requirements. Both variables must be set to `"true"` together.
+
+**Sanitization Details:** Before sending to the LLM provider, Athena redacts:
+
+- IPv4 and IPv6 addresses → `[IP_REDACTED]`, `[IPV6_REDACTED]`
+- MAC addresses → `[MAC_REDACTED]`
+- AWS account IDs, instance IDs, ARNs → `[AWS_ACCOUNT_REDACTED]`, `[INSTANCE_ID_REDACTED]`, `[ARN_REDACTED]`
+- GCP project IDs → `[PROJECT_REDACTED]`
+- Azure subscription IDs (UUIDs) → `[UUID_REDACTED]`
+- Email addresses → `[EMAIL_REDACTED]`
+- Sensitive metadata keys (passwords, tokens, API keys, credentials)
+- Domain portions of FQDNs → `[DOMAIN_REDACTED]`
+
+**Compliance Verification Checklist:**
+
+- Review provider's data retention policy (how long is data stored?)
+- Confirm encryption in transit (TLS 1.2+) and at rest
+- Verify compliance certifications (SOC2, GDPR, HIPAA as applicable)
+- Confirm data is not used for model training
+- Consider using on-premise LLM (Ollama) for sensitive environments
 
 ---
 

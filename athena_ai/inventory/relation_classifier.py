@@ -334,6 +334,13 @@ class HostRelationClassifier:
         if not self.llm:
             return suggestions
 
+        # Build map of lowercase -> original hostname for preserving casing
+        original_hostnames: Dict[str, str] = {}
+        for host in hosts:
+            hostname = host.get("hostname", "")
+            if hostname:
+                original_hostnames[hostname.lower()] = hostname
+
         # Prepare host summary for LLM
         host_summary = []
         for host in hosts[:50]:  # Limit to 50 hosts
@@ -379,9 +386,14 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
                         if relation_type not in self.RELATION_TYPES:
                             logger.debug(f"Invalid relation type from LLM: {relation_type}, defaulting to related_service")
                             relation_type = "related_service"
+                        # Preserve original hostname casing using the map
+                        source = item["source"]
+                        target = item["target"]
+                        source_hostname = original_hostnames.get(source.lower(), source)
+                        target_hostname = original_hostnames.get(target.lower(), target)
                         suggestions.append(RelationSuggestion(
-                            source_hostname=item["source"].lower(),
-                            target_hostname=item["target"].lower(),
+                            source_hostname=source_hostname,
+                            target_hostname=target_hostname,
                             relation_type=relation_type,
                             confidence=min(float(item.get("confidence", 0.5)), 0.75),  # Cap LLM confidence
                             reason=item.get("reason", "LLM suggestion"),

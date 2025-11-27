@@ -84,11 +84,8 @@ def setup_logger(verbose: bool = False):
         try:
             record["message"] = redact_sensitive_info(record["message"])
         except Exception:
-            # Don't break logging if redaction fails - use safe fallback
-            try:
-                record["message"] = str(record.get("message", ""))
-            except Exception:
-                record["message"] = "[message redaction failed]"
+            # Don't leak original data if redaction fails
+            record["message"] = "[REDACTED]"
 
         # Redact sensitive info from extra fields
         if "extra" in record and record["extra"]:
@@ -97,11 +94,11 @@ def setup_logger(verbose: bool = False):
                     try:
                         record["extra"][key] = _redact_value(record["extra"][key])
                     except Exception:
-                        # Leave individual field untouched if redaction fails
-                        pass
+                        # Don't leak field data if redaction fails
+                        record["extra"][key] = "[REDACTED]"
             except Exception:
-                # Don't break logging if extra redaction fails
-                pass
+                # Don't leak any extra data if outer loop fails
+                record["extra"] = {"_redacted": "[REDACTED]"}
 
         return True
 

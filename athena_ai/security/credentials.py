@@ -461,8 +461,13 @@ class CredentialManager:
                 host = repo.get_host_by_name(var)
                 if host:
                     # Replace @hostname with the actual hostname
-                    replacement = host["hostname"]
-                    text = re.sub(f'@{re.escape(var)}\\b', replacement, text)
+                    # If there's an IP, use 'hostname (IP)'
+                    ip = host.get("ip")
+                    if ip:
+                        replacement = f'{host["hostname"]} ({ip})'
+                    else:
+                        replacement = host["hostname"]
+                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', replacement, text)
                     logger.debug(f"Resolved @{var} to inventory host: {replacement}")
 
         except ImportError:

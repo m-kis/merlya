@@ -18,7 +18,7 @@ class LocalScanner:
     """
     Scanner for the local machine.
 
-    Stored in BDD, re-scanned only if:
+    Stored in database, re-scanned only if:
     - No scan exists
     - Scan is older than TTL (default: 12h)
     """

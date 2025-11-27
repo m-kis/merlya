@@ -1,11 +1,14 @@
 """
 Handles relation management commands.
 """
+import logging
 from typing import List
 
 from rich.table import Table
 
 from athena_ai.repl.ui import console, print_error, print_success, print_warning
+
+logger = logging.getLogger(__name__)
 
 
 class RelationsHandler:
@@ -49,7 +52,12 @@ class RelationsHandler:
         console.print("\n[cyan]Analyzing host relationships...[/cyan]")
 
         existing = self.repo.get_relations()
-        suggestions = self.classifier.suggest_relations(hosts, existing)
+        try:
+            suggestions = self.classifier.suggest_relations(hosts, existing)
+        except Exception as e:
+            logger.debug("Classifier error while suggesting relations: %s", e, exc_info=True)
+            print_error("Failed to analyze relations. Please try again later.")
+            return True
 
         if not suggestions:
             print_warning("No relation suggestions found")

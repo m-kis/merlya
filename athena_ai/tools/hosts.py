@@ -244,7 +244,11 @@ def search_inventory(
             ip_info = f" ({host.get('ip_address')})" if host.get('ip_address') else ""
             env_info = f" [{host.get('environment')}]" if host.get('environment') else ""
             groups = host.get('groups', [])
-            groups_info = f" groups: {', '.join(groups[:3])}" if groups else ""
+            if groups:
+                groups_display = ', '.join(groups[:3])
+                groups_info = f" groups: {groups_display}" + (" ..." if len(groups) > 3 else "")
+            else:
+                groups_info = ""
             lines.append(f"  • {host.get('hostname', 'unknown')}{ip_info}{env_info}{groups_info}")
 
         lines.append("")
@@ -317,9 +321,12 @@ def get_host_details(
             if relations:
                 lines.append(f"\n  Relations (showing {min(len(relations), 5)} of {len(relations)}):")
                 for rel in relations[:5]:
-                    direction = "→" if rel['source_hostname'] == hostname else "←"
-                    other = rel['target_hostname'] if rel['source_hostname'] == hostname else rel['source_hostname']
-                    lines.append(f"    {direction} {other} ({rel['relation_type']})")
+                    source = rel.get('source_hostname', 'unknown')
+                    target = rel.get('target_hostname', 'unknown')
+                    rel_type = rel.get('relation_type', 'unknown')
+                    direction = "→" if source == hostname else "←"
+                    other = target if source == hostname else source
+                    lines.append(f"    {direction} {other} ({rel_type})")
                 if len(relations) > 5:
                     lines.append(f"    ... and {len(relations) - 5} more")
         except Exception as e:

@@ -47,7 +47,22 @@ class SnapshotRepositoryMixin:
 
         Returns:
             Snapshot ID.
+
+        Raises:
+            PersistenceError: If snapshot limit is reached or serialization fails.
         """
+        # Enforce snapshot limit to prevent unbounded storage growth
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM inventory_snapshots")
+            count = cursor.fetchone()[0]
+            if count >= MAX_SNAPSHOT_LIMIT:
+                raise PersistenceError(
+                    operation="create_snapshot",
+                    reason=f"Maximum snapshot limit ({MAX_SNAPSHOT_LIMIT}) reached",
+                    details={"current_count": count},
+                )
+
         hosts = self.get_all_hosts()
         relations = self.get_relations()
 

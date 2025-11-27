@@ -229,14 +229,15 @@ class InventoryParser:
                 return "yaml"
             elif ext == ".ini":
                 return "ini"
-            # Match /etc/hosts or files named exactly "hosts" (not "myhosts.txt")
+            # Match /etc/hosts or files named exactly "hosts" or "etc_hosts"
             filename = Path(file_path).name.lower()
-            if filename == "hosts" or file_path.lower().endswith("/etc/hosts"):
+            if filename in ("hosts", "etc_hosts"):
                 return "etc_hosts"
             # Match ssh_config, .ssh/config, or config files in .ssh directory
-            if (
-                filename == "config" and ".ssh" in file_path.lower()
-            ) or filename == "ssh_config":
+            # Use path parts to avoid false positives like ".sshkeys" or ".ssh_backup"
+            path_parts = Path(file_path).parts
+            in_ssh_dir = ".ssh" in path_parts
+            if (filename == "config" and in_ssh_dir) or filename == "ssh_config":
                 return "ssh_config"
 
         # Check content patterns

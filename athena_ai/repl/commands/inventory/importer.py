@@ -162,7 +162,17 @@ class InventoryImporter:
             return False
 
         # Update source host count
-        self.repo.update_source_host_count(source_id, added)
+        try:
+            self.repo.update_source_host_count(source_id, added)
+        except PersistenceError as e:
+            logger.warning(
+                "Failed to update source host count for source_id %s: %s",
+                source_id,
+                e.reason,
+                exc_info=True,
+            )
+            # Hosts were added successfully, so we still report success
+            # but log the inconsistency for monitoring
 
         print_success(f"Imported {added} hosts from '{source_name}'")
         console.print("[dim]Use @hostname to reference these hosts in prompts[/dim]")

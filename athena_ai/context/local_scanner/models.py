@@ -69,7 +69,7 @@ class LocalContext:
             max_age_seconds: Maximum age in seconds before rescan needed.
 
         Returns:
-            True if scanned_at is unknown or older than max_age.
+            True if scanned_at is unknown, in the future, or older than max_age.
         """
         if self.scanned_at == UNKNOWN_SCAN_TIME:
             return True
@@ -77,6 +77,9 @@ class LocalContext:
         scanned_at_utc = _ensure_utc_aware(self.scanned_at)
         now_utc = datetime.now(timezone.utc)
         age = (now_utc - scanned_at_utc).total_seconds()
+        # Negative age means future timestamp - treat as needing rescan
+        if age < 0:
+            return True
         return age > max_age_seconds
 
 
