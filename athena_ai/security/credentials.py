@@ -406,10 +406,14 @@ class CredentialManager:
         """
         resolved = text
 
+        # Track secret variable names to exclude from inventory resolution
+        secret_var_names = set()
+
         # Replace all known user variables first (higher priority)
         for key, (value, var_type) in self._variables.items():
             # Skip secrets if resolve_secrets is False
             if var_type == VariableType.SECRET and not resolve_secrets:
+                secret_var_names.add(key)
                 continue
             resolved = re.sub(f'@{re.escape(key)}\\b', value, resolved)
 
@@ -417,9 +421,12 @@ class CredentialManager:
         variable_pattern = r'@([\w\-]+)'
         remaining = re.findall(variable_pattern, resolved)
 
-        # Try to resolve from inventory
+        # Try to resolve from inventory (but exclude secret variable names)
         if remaining:
-            resolved = self._resolve_inventory_hosts(resolved, remaining)
+            # Filter out secret variable names to prevent inventory from resolving them
+            remaining_for_inventory = [v for v in remaining if v not in secret_var_names]
+            if remaining_for_inventory:
+                resolved = self._resolve_inventory_hosts(resolved, remaining_for_inventory)
 
         # Check for still unresolved variables
         if warn_missing:
@@ -452,7 +459,6 @@ class CredentialManager:
                 host = repo.get_host_by_name(var)
                 if host:
                     # Replace @hostname with the actual hostname
-                    # If there's an IP, use "hostname (IP)" format for clarity
                     replacement = host["hostname"]
                     text = re.sub(f'@{re.escape(var)}\\b', replacement, text)
                     logger.debug(f"Resolved @{var} to inventory host: {replacement}")
