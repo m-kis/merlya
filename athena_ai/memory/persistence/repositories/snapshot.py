@@ -10,6 +10,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 
+MAX_SNAPSHOT_LIMIT = 1000
+
+
 class SnapshotRepositoryMixin:
     """Mixin for inventory snapshot operations."""
 
@@ -43,54 +46,79 @@ class SnapshotRepositoryMixin:
         hosts = self.get_all_hosts()
         relations = self.get_relations()
 
+        now = datetime.now()
+        timestamp = now.isoformat()
         snapshot_data = {
             "hosts": hosts,
             "relations": relations,
-            "created_at": datetime.now().isoformat(),
+            "created_at": timestamp,
         }
 
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            INSERT INTO inventory_snapshots (name, description, host_count, snapshot_data, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            name or f"snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            description,
-            len(hosts),
-            json.dumps(snapshot_data),
-            datetime.now().isoformat(),
-        ))
+            cursor.execute("""
+                INSERT INTO inventory_snapshots (name, description, host_count, snapshot_data, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                name or f"snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+                description,
+                len(hosts),
+                json.dumps(snapshot_data),
+                timestamp,
+            ))
 
-        snapshot_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-
-        return snapshot_id
+            snapshot_id = cursor.lastrowid
+            conn.commit()
+            return snapshot_id
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def list_snapshots(self, limit: int = 20) -> List[Dict[str, Any]]:
         """List inventory snapshots.
 
         Args:
-            limit: Maximum number of snapshots to return.
+            limit: Maximum number of snapshots to return (1 to MAX_SNAPSHOT_LIMIT).
 
         Returns:
             List of snapshot dictionaries (without full data).
+
+        Raises:
+            ValueError: If limit is not a positive integer.
         """
+        # Coerce to int if possible, reject non-numeric types
+        if not isinstance(limit, int):
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                raise ValueError(f"limit must be an integer, got {type(limit).__name__}")
+
+        # Reject non-positive values
+        if limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit}")
+
+        # Clamp to maximum allowed value
+        limit = min(limit, MAX_SNAPSHOT_LIMIT)
+
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT id, name, description, host_count, created_at
-            FROM inventory_snapshots
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (limit,))
-        rows = cursor.fetchall()
-        conn.close()
+            cursor.execute("""
+                SELECT id, name, description, host_count, created_at
+                FROM inventory_snapshots
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
 
-        return [self._row_to_dict(row) for row in rows]
+            return [self._row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
 
     def get_snapshot(self, snapshot_id: int) -> Optional[Dict[str, Any]]:
         """Get a snapshot by ID.
@@ -102,17 +130,19 @@ class SnapshotRepositoryMixin:
             Snapshot dictionary with parsed data, or None if not found.
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM inventory_snapshots WHERE id = ?", (snapshot_id,))
-        row = cursor.fetchone()
-        conn.close()
+            cursor.execute("SELECT * FROM inventory_snapshots WHERE id = ?", (snapshot_id,))
+            row = cursor.fetchone()
 
-        if row:
-            result = self._row_to_dict(row)
-            result["snapshot_data"] = json.loads(result["snapshot_data"])
-            return result
-        return None
+            if row:
+                result = self._row_to_dict(row)
+                result["snapshot_data"] = json.loads(result["snapshot_data"])
+                return result
+            return None
+        finally:
+            conn.close()
 
     def delete_snapshot(self, snapshot_id: int) -> bool:
         """Delete a snapshot.
@@ -124,11 +154,16 @@ class SnapshotRepositoryMixin:
             True if deleted, False if not found.
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM inventory_snapshots WHERE id = ?", (snapshot_id,))
-        deleted = cursor.rowcount > 0
+            cursor.execute("DELETE FROM inventory_snapshots WHERE id = ?", (snapshot_id,))
+            deleted = cursor.rowcount > 0
 
-        conn.commit()
-        conn.close()
-        return deleted
+            conn.commit()
+            return deleted
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()

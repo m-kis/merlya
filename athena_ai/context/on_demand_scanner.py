@@ -138,12 +138,15 @@ class OnDemandScanner:
 
         Args:
             config: Scanner configuration (uses defaults if not provided)
+
+        Note:
+            Uses a shared module-level RateLimiter to enforce global rate limits.
+            Multiple OnDemandScanner instances will share the same token bucket,
+            preventing rate limit bypass through multiple instantiation.
         """
         self.config = config or ScanConfig()
-        self.rate_limiter = RateLimiter(
-            self.config.requests_per_second,
-            self.config.burst_size
-        )
+        # Use shared rate limiter to enforce global limits across all instances
+        self.rate_limiter = _get_shared_rate_limiter(self.config)
         self._executor = None
         self._repo = None
 
@@ -340,12 +343,25 @@ class OnDemandScanner:
             "scanned_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Resolve hostname to IP (non-blocking)
+        # Resolve hostname to IP (non-blocking, supports IPv4 and IPv6)
         try:
             loop = asyncio.get_event_loop()
-            ip = await loop.run_in_executor(None, socket.gethostbyname, hostname)
-            data["ip"] = ip
-            data["dns_resolved"] = True
+            # getaddrinfo returns list of (family, type, proto, canonname, sockaddr)
+            # sockaddr is (ip, port) for IPv4 or (ip, port, flow, scope) for IPv6
+            addrinfo = await loop.run_in_executor(
+                None,
+                lambda: socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            )
+            if addrinfo:
+                # Extract IP from first result's sockaddr (index 4), IP is always index 0
+                data["ip"] = addrinfo[0][4][0]
+                # Store all resolved addresses for completeness
+                all_ips = list({info[4][0] for info in addrinfo})
+                if len(all_ips) > 1:
+                    data["all_ips"] = all_ips
+                data["dns_resolved"] = True
+            else:
+                data["dns_resolved"] = False
         except socket.gaierror:
             data["dns_resolved"] = False
 
@@ -363,15 +379,26 @@ class OnDemandScanner:
         return data
 
     async def _check_connectivity(self, hostname: str, port: int = 22) -> bool:
-        """Check if host is reachable on SSH port."""
+        """Check if host is reachable on SSH port (supports IPv4 and IPv6)."""
         loop = asyncio.get_event_loop()
 
         def check():
             try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                    sock.settimeout(self.config.connect_timeout)
-                    result = sock.connect_ex((hostname, port))
-                    return result == 0
+                # Use getaddrinfo to support both IPv4 and IPv6
+                addrinfo = socket.getaddrinfo(
+                    hostname, port, socket.AF_UNSPEC, socket.SOCK_STREAM
+                )
+                # Try each address until one connects
+                for family, socktype, proto, _, sockaddr in addrinfo:
+                    try:
+                        with socket.socket(family, socktype, proto) as sock:
+                            sock.settimeout(self.config.connect_timeout)
+                            result = sock.connect_ex(sockaddr)
+                            if result == 0:
+                                return True
+                    except Exception:
+                        continue
+                return False
             except Exception:
                 return False
 
@@ -419,12 +446,15 @@ class OnDemandScanner:
                 known_hosts_loaded = True
             except FileNotFoundError:
                 # known_hosts file doesn't exist - common on fresh systems
-                logger.debug("System known_hosts file not found, host verification limited")
+                logger.warning(
+                    "System known_hosts file not found. "
+                    "Set ATHENA_SSH_AUTO_ADD_HOSTS=1 to allow connections without host verification."
+                )
             except PermissionError as e:
-                # Can't read known_hosts - security concern, log warning
+                # Can't read known_hosts - security concern
                 logger.warning(
                     f"Permission denied reading known_hosts: {e}. "
-                    "Host key verification will be limited. Check file permissions."
+                    "Set ATHENA_SSH_AUTO_ADD_HOSTS=1 to allow connections without host verification."
                 )
             except paramiko.ssh_exception.SSHException as e:
                 # Parsing error in known_hosts file - this is a real problem
@@ -432,15 +462,13 @@ class OnDemandScanner:
                     f"Failed to parse known_hosts file: {e}. "
                     "The file may be corrupted. Using RejectPolicy for safety."
                 )
-                # Force reject policy when known_hosts is corrupted
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())
                 raise  # Re-raise so caller can handle
 
             # Set host key policy based on configuration
-            if policy_name == "reject":
-                client.set_missing_host_key_policy(paramiko.RejectPolicy())
-                logger.debug("SSH host key policy: RejectPolicy (strictest)")
-            elif policy_name == "auto_add":
+            # Security: When known_hosts couldn't be loaded, default to RejectPolicy
+            # unless explicitly configured to allow unknown hosts
+            if policy_name == "auto_add":
                 if env_auto_add:
                     logger.warning(
                         "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
@@ -452,9 +480,18 @@ class OnDemandScanner:
                         "This is insecure and should only be used for testing."
                     )
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            elif policy_name == "reject" or not known_hosts_loaded:
+                # Use RejectPolicy if explicitly configured OR if known_hosts unavailable
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                if not known_hosts_loaded and policy_name != "reject":
+                    logger.debug(
+                        "SSH host key policy: RejectPolicy (no known_hosts available)"
+                    )
+                else:
+                    logger.debug("SSH host key policy: RejectPolicy (strictest)")
             else:
                 # Default: WarningPolicy - logs warning but connects
-                # This is safer than AutoAddPolicy but still allows new hosts
+                # Only used when known_hosts is available for verification
                 client.set_missing_host_key_policy(paramiko.WarningPolicy())
                 logger.debug("SSH host key policy: WarningPolicy (default)")
 
@@ -662,17 +699,34 @@ class OnDemandScanner:
             logger.debug(f"Failed to cache result for {result.hostname}: {e}")
 
 
-# Thread-safe singleton
+# Module-level shared RateLimiter to enforce global rate limits across all instances.
+# This ensures that even if multiple OnDemandScanner instances are created,
+# they share the same token bucket for rate limiting.
+_shared_rate_limiter: Optional[RateLimiter] = None
+
+
+def _get_shared_rate_limiter(config: ScanConfig) -> RateLimiter:
+    """Get or create the shared rate limiter."""
+    global _shared_rate_limiter
+    if _shared_rate_limiter is None:
+        _shared_rate_limiter = RateLimiter(config.requests_per_second, config.burst_size)
+    return _shared_rate_limiter
+
+
+# Singleton instance (GIL protects against data races in check-then-create)
 _scanner: Optional[OnDemandScanner] = None
-_scanner_lock = asyncio.Lock()
 
 
 def get_on_demand_scanner() -> OnDemandScanner:
-    """Get the on-demand scanner singleton (thread-safe)."""
+    """
+    Get the on-demand scanner singleton.
+
+    IMPORTANT: Always use this function instead of instantiating OnDemandScanner
+    directly. Multiple scanner instances share a global RateLimiter, but creating
+    unnecessary instances wastes resources and may cause confusion. The GIL
+    protects against data races in the singleton check.
+    """
     global _scanner
     if _scanner is None:
-        # Simple check-then-create pattern is safe here because:
-        # 1. Python GIL protects against data races
-        # 2. Creating duplicate instances is harmless (idempotent)
         _scanner = OnDemandScanner()
     return _scanner
