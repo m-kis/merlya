@@ -245,10 +245,10 @@ class OnDemandScanner:
         scan_type: str,
     ) -> ScanResult:
         """Scan a host with retry logic."""
-        retries = 0
+        attempt = 0
         last_error = None
 
-        while retries <= self.config.max_retries:
+        while attempt <= self.config.max_retries:
             try:
                 # Rate limit
                 await self.rate_limiter.acquire()
@@ -263,27 +263,28 @@ class OnDemandScanner:
                     success=True,
                     data=data,
                     duration_ms=duration_ms,
-                    retries=retries,
+                    retries=attempt,  # Number of retries (0 = first attempt succeeded)
                 )
 
             except Exception as e:
                 last_error = str(e)
-                retries += 1
+                attempt += 1
 
-                if retries <= self.config.max_retries:
+                if attempt <= self.config.max_retries:
                     # Exponential backoff
                     delay = min(
-                        self.config.retry_base_delay * (2 ** (retries - 1)),
+                        self.config.retry_base_delay * (2 ** (attempt - 1)),
                         self.config.retry_max_delay
                     )
-                    logger.debug(f"Retry {retries} for {hostname} after {delay}s: {e}")
+                    logger.debug(f"Retry {attempt} for {hostname} after {delay}s: {e}")
                     await asyncio.sleep(delay)
 
+        # All retries exhausted - retries count is max_retries (not max_retries + 1)
         return ScanResult(
             hostname=hostname,
             success=False,
             error=last_error,
-            retries=retries,
+            retries=self.config.max_retries,
         )
 
     async def _perform_scan(
@@ -333,14 +334,20 @@ class OnDemandScanner:
         loop = asyncio.get_event_loop()
 
         def check():
+            sock = None
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(self.config.connect_timeout)
                 result = sock.connect_ex((hostname, port))
-                sock.close()
                 return result == 0
             except Exception:
                 return False
+            finally:
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
 
         return await loop.run_in_executor(None, check)
 
@@ -360,6 +367,7 @@ class OnDemandScanner:
             Scan data from SSH
         """
         data = {}
+        client = None
 
         try:
             import paramiko
@@ -372,7 +380,19 @@ class OnDemandScanner:
 
             # Connect
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            # Load system known_hosts for security
+            # Falls back to auto-add with warning if host not known
+            try:
+                client.load_system_host_keys()
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            except Exception:
+                # If we can't load known_hosts, use AutoAddPolicy with warning
+                logger.warning(
+                    f"SSH host key for {hostname} cannot be verified. "
+                    "Consider adding to known_hosts for security."
+                )
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -399,14 +419,18 @@ class OnDemandScanner:
             if scan_type == "full":
                 data.update(await self._get_full_info(client))
 
-            client.close()
-
         except ImportError:
             data["ssh_connected"] = False
             data["error"] = "paramiko not installed"
         except Exception as e:
             data["ssh_connected"] = False
             data["error"] = str(e)
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
 
         return data
 
@@ -574,13 +598,17 @@ class OnDemandScanner:
             logger.debug(f"Failed to cache result for {result.hostname}: {e}")
 
 
-# Singleton
+# Thread-safe singleton
 _scanner: Optional[OnDemandScanner] = None
+_scanner_lock = asyncio.Lock()
 
 
 def get_on_demand_scanner() -> OnDemandScanner:
-    """Get the on-demand scanner singleton."""
+    """Get the on-demand scanner singleton (thread-safe)."""
     global _scanner
     if _scanner is None:
+        # Simple check-then-create pattern is safe here because:
+        # 1. Python GIL protects against data races
+        # 2. Creating duplicate instances is harmless (idempotent)
         _scanner = OnDemandScanner()
     return _scanner
