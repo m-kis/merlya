@@ -69,7 +69,7 @@ async def ssh_scan(
                 "The file may be corrupted. Using RejectPolicy for safety."
             )
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            raise  # Re-raise so caller can handle
+            # Continue with RejectPolicy - connection will only succeed if host key is already known
 
         # Set host key policy based on configuration
         if policy_name == "auto_add":
@@ -195,31 +195,97 @@ async def _get_services_info(client, config: ScanConfig) -> Dict[str, Any]:
         logger.debug(f"Failed to get services: {e}")
 
     # Check common ports
-    data["open_ports"] = await _check_common_ports(client)
+    data["open_ports"] = await _check_common_ports(client, config)
 
     return data
 
 
-async def _check_common_ports(client) -> List[int]:
-    """Check common service ports."""
-    loop = asyncio.get_event_loop()
-    common_ports = [22, 80, 443, 3306, 5432, 6379, 27017, 8080, 9000]
-    open_ports = []
+async def _check_common_ports(client, config: ScanConfig) -> List[int]:
+    """
+    Check common service ports on the remote host.
 
+    Uses multiple fallback methods for portability:
+    1. ss command (modern Linux, most reliable)
+    2. netstat command (older systems, BSD)
+    3. /proc/net/tcp parsing (Linux fallback)
+
+    Returns:
+        List of open ports from the common ports list.
+    """
+    loop = asyncio.get_event_loop()
+    common_ports = {22, 80, 443, 3306, 5432, 6379, 27017, 8080, 9000}
+    open_ports = set()
+
+    # Method 1: Try ss (modern Linux)
     try:
-        ports_str = ' '.join(str(p) for p in common_ports)
-        cmd = f"for p in {ports_str}; do (echo >/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done"
-        _, stdout, _ = await loop.run_in_executor(
+        _, stdout, stderr = await loop.run_in_executor(
             None,
-            lambda: client.exec_command(f"bash -c '{cmd}'", timeout=10)
+            lambda: client.exec_command(
+                "ss -tlnH 2>/dev/null | awk '{print $4}' | grep -oE '[0-9]+$'",
+                timeout=config.command_timeout
+            )
         )
         result = stdout.read().decode().strip()
         if result:
-            open_ports = [int(p) for p in result.split('\n') if p.strip()]
-    except Exception:
-        pass
+            for line in result.split('\n'):
+                line = line.strip()
+                if line.isdigit():
+                    port = int(line)
+                    if port in common_ports:
+                        open_ports.add(port)
+            if open_ports:
+                return sorted(open_ports)
+    except Exception as e:
+        logger.debug(f"ss command failed: {e}")
 
-    return open_ports
+    # Method 2: Try netstat (older Linux, BSD, macOS)
+    try:
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(
+                "netstat -tlnp 2>/dev/null | awk 'NR>2 {print $4}' | grep -oE '[0-9]+$' || "
+                "netstat -an 2>/dev/null | grep LISTEN | awk '{print $4}' | grep -oE '[0-9]+$'",
+                timeout=config.command_timeout
+            )
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            for line in result.split('\n'):
+                line = line.strip()
+                if line.isdigit():
+                    port = int(line)
+                    if port in common_ports:
+                        open_ports.add(port)
+            if open_ports:
+                return sorted(open_ports)
+    except Exception as e:
+        logger.debug(f"netstat command failed: {e}")
+
+    # Method 3: Parse /proc/net/tcp directly (Linux fallback, doesn't require ss/netstat)
+    try:
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(
+                "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk 'NR>1 && $4==\"0A\" {print $2}' | cut -d: -f2",
+                timeout=config.command_timeout
+            )
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            for line in result.split('\n'):
+                line = line.strip()
+                if line:
+                    try:
+                        # /proc/net/tcp ports are in hex
+                        port = int(line, 16)
+                        if port in common_ports:
+                            open_ports.add(port)
+                    except ValueError:
+                        continue
+    except Exception as e:
+        logger.debug(f"/proc/net/tcp parsing failed: {e}")
+
+    return sorted(open_ports)
 
 
 async def _get_full_info(client, config: ScanConfig) -> Dict[str, Any]:

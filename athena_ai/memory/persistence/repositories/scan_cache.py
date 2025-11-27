@@ -117,10 +117,15 @@ class ScanCacheRepositoryMixin:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             try:
+                # Use ON CONFLICT to preserve created_at on updates
+                # (INSERT OR REPLACE would reset created_at and id)
                 cursor.execute("""
-                    INSERT OR REPLACE INTO scan_cache
-                    (host_id, scan_type, data, ttl_seconds, created_at, expires_at)
+                    INSERT INTO scan_cache (host_id, scan_type, data, ttl_seconds, created_at, expires_at)
                     VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(host_id, scan_type) DO UPDATE SET
+                        data = excluded.data,
+                        ttl_seconds = excluded.ttl_seconds,
+                        expires_at = excluded.expires_at
                 """, (
                     host_id,
                     scan_type_stripped,

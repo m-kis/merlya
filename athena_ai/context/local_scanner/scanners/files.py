@@ -13,6 +13,13 @@ from typing import Any, Dict
 # - /etc/sudoers (privilege escalation rules)
 # - /etc/fstab (may contain mount credentials for NFS/CIFS)
 # - /etc/crontab (reveals operational patterns and scheduled tasks)
+#
+# PRIVACY NOTE: The included files may still expose organizational information:
+# - /etc/hosts may contain internal hostnames (project names, network topology)
+# - /etc/hostname exposes machine identity
+# - /etc/resolv.conf reveals internal DNS infrastructure
+# This data is collected locally for the user's own context and is not transmitted
+# externally. Users should review their organization's data handling policies.
 ETC_FILES_TO_SCAN = [
     "/etc/hosts",
     "/etc/hostname",

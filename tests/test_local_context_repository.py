@@ -8,7 +8,6 @@ Verifies:
 - Type preservation (bool, int, float, None, dict, list)
 """
 
-import json
 import os
 import tempfile
 from datetime import datetime

@@ -89,7 +89,7 @@ class OnDemandScanner:
                 else:
                     to_scan.append(hostname)
         else:
-            to_scan = hostnames
+            to_scan = list(hostnames)
 
         # Report cached results
         if progress_callback:
@@ -239,7 +239,7 @@ class OnDemandScanner:
 
         # Resolve hostname to IP (non-blocking, supports IPv4 and IPv6)
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             # getaddrinfo returns list of (family, type, proto, canonname, sockaddr)
             # sockaddr is (ip, port) for IPv4 or (ip, port, flow, scope) for IPv6
             addrinfo = await loop.run_in_executor(
@@ -274,7 +274,7 @@ class OnDemandScanner:
 
     async def _check_connectivity(self, hostname: str, port: int = 22) -> bool:
         """Check if host is reachable on SSH port (supports IPv4 and IPv6)."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def check():
             try:

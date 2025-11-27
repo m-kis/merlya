@@ -123,6 +123,9 @@ class RelationsHandler:
                 return True
 
             indices = [int(t) - 1 for t in tokens]
+            # Remove duplicates while preserving order
+            seen = set()
+            indices = [i for i in indices if not (i in seen or seen.add(i))]
 
             # Validate indices against displayed_count (not total_count)
             invalid_indices = [i + 1 for i in indices if not (0 <= i < displayed_count)]
@@ -176,12 +179,14 @@ class RelationsHandler:
         table.add_column("Confidence", style="magenta")
 
         for rel in relations:
+            confidence = rel.get("confidence")
+            confidence_display = f"{confidence:.0%}" if confidence is not None else "N/A"
             table.add_row(
                 rel.get("source_hostname", "?"),
                 "→",
                 rel.get("target_hostname", "?"),
                 rel.get("relation_type", "?"),
-                f"{rel.get('confidence', 1.0):.0%}",
+                confidence_display,
             )
 
         console.print(table)

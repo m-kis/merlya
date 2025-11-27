@@ -1,6 +1,8 @@
 """
 Handles management commands (remove, export, snapshot).
 """
+import csv
+import json
 from pathlib import Path
 from typing import List
 
@@ -65,12 +67,10 @@ class InventoryManager:
 
         try:
             if ext == ".json":
-                import json
                 with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(hosts, f, indent=2, default=str, ensure_ascii=False)
 
             elif ext == ".csv":
-                import csv
                 with open(file_path, "w", encoding="utf-8", newline="") as f:
                     writer = csv.DictWriter(f, fieldnames=[
                         "hostname", "ip_address", "environment", "groups", "role", "service"

@@ -203,14 +203,15 @@ def validate_llm_response(response: str) -> Tuple[List[ParsedHost], List[str]]:
         if groups is None:
             groups = []
         elif isinstance(groups, str):
-            # Wrap single string value in a list
-            groups = [groups] if groups.strip() else []
+            # Wrap single string value in a list (stripped, only if non-empty after strip)
+            stripped = groups.strip()
+            groups = [stripped] if stripped else []
         elif not isinstance(groups, list):
             errors.append(f"LLM_INVALID_GROUPS: Item at index {idx} has non-array groups type {type(groups).__name__}, using empty")
             groups = []
         else:
-            # Filter to only non-empty string group names
-            groups = [g for g in groups if isinstance(g, str) and g.strip()]
+            # Filter to only non-empty string group names, stripped
+            groups = [g.strip() for g in groups if isinstance(g, str) and g.strip()]
 
         metadata = item.get("metadata")
 
@@ -224,8 +225,8 @@ def validate_llm_response(response: str) -> Tuple[List[ParsedHost], List[str]]:
         # Create validated host
         host = ParsedHost(
             hostname=hostname.lower().strip(),
-            ip_address=ip_address.strip() if ip_address else None,
-            environment=environment.strip() if environment else None,
+            ip_address=ip_address.strip() if (ip_address and ip_address.strip()) else None,
+            environment=environment.strip() if (environment and environment.strip()) else None,
             groups=groups,
             metadata=metadata,
         )

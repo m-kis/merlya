@@ -2,6 +2,7 @@
 Network scanner.
 """
 import ipaddress
+import json
 import platform
 import socket
 import subprocess
@@ -67,8 +68,19 @@ def scan_network() -> Dict[str, Any]:
             finally:
                 socket.setdefaulttimeout(old_timeout)
     except (socket.gaierror, socket.timeout, OSError):
-        hostname = socket.gethostname()  # Basic call without FQDN resolution
-        fqdn = hostname
+        # Fallback with timeout protection for consistency
+        try:
+            with _socket_timeout_lock:
+                old_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(5.0)
+                try:
+                    hostname = socket.gethostname()
+                finally:
+                    socket.setdefaulttimeout(old_timeout)
+            fqdn = hostname
+        except Exception:
+            hostname = "unknown"
+            fqdn = "unknown"
 
     info = {
         "hostname": hostname,
@@ -100,7 +112,6 @@ def scan_network() -> Dict[str, Any]:
                 timeout=10,
             )
             if result.returncode == 0:
-                import json
                 interfaces = json.loads(result.stdout)
                 for iface in interfaces:
                     iface_info = {

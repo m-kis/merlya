@@ -109,8 +109,34 @@ def parse_with_llm(
     # Apply prompt injection sanitization
     sanitized_content, injection_detections = sanitize_prompt_injection(sanitized_content)
     if injection_detections:
+        # Log safe summary only (count + detection types) - avoid leaking raw content fragments
+        detection_count = len(injection_detections)
+        # Extract unique detection types from placeholders like "[INJECTION_BLOCKED:type]"
+        detection_types = set()
+        for detection in injection_detections:
+            # Detection strings are in format "Pattern detected: <fragment>..."
+            # We only log the count and types, not the actual content
+            if "instruction_override" in str(detection).lower():
+                detection_types.add("instruction_override")
+            elif "output_manipulation" in str(detection).lower():
+                detection_types.add("output_manipulation")
+            elif "role_manipulation" in str(detection).lower():
+                detection_types.add("role_manipulation")
+            elif "delimiter_escape" in str(detection).lower():
+                detection_types.add("delimiter_escape")
+            elif "json_injection" in str(detection).lower():
+                detection_types.add("json_injection")
+            elif "new_instructions" in str(detection).lower():
+                detection_types.add("new_instructions")
+            elif "system_prompt" in str(detection).lower():
+                detection_types.add("system_prompt")
+            else:
+                detection_types.add("unknown")
+
+        types_summary = ", ".join(sorted(detection_types)) if detection_types else "unclassified"
         logger.warning(
-            f"Prompt injection patterns detected and neutralized: {injection_detections}"
+            f"Prompt injection patterns detected and neutralized: "
+            f"count={detection_count}, types=[{types_summary}]"
         )
         warnings.append(
             f"INJECTION_PATTERNS_DETECTED: {len(injection_detections)} potential prompt "

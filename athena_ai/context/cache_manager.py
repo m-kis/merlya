@@ -352,9 +352,6 @@ class CacheManager:
         del self._cache[lru_key]
         self.stats.record_eviction()
 
-    # Sentinel for distinguishing None values from missing values
-    _MISSING = object()
-
     def get_or_set(
         self,
         key: str,

@@ -19,7 +19,14 @@ def _parse_llm_timeout() -> int:
     if env_value is None:
         return DEFAULT_LLM_TIMEOUT
     try:
-        return int(env_value)
+        timeout = int(env_value)
+        if timeout <= 0:
+            logger.warning(
+                f"Invalid ATHENA_LLM_TIMEOUT value '{env_value}'; "
+                f"must be positive. Using default: {DEFAULT_LLM_TIMEOUT}"
+            )
+            return DEFAULT_LLM_TIMEOUT
+        return timeout
     except ValueError:
         logger.warning(
             f"Invalid ATHENA_LLM_TIMEOUT value '{env_value}'; "

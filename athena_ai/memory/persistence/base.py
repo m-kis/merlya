@@ -76,7 +76,10 @@ class BaseRepository:
                 return
 
             if db_path:
-                self.db_path = db_path
+                # Ensure parent directory exists for custom paths
+                db_path_obj = Path(db_path)
+                db_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                self.db_path = str(db_path_obj)
             else:
                 athena_dir = Path.home() / ".athena"
                 athena_dir.mkdir(parents=True, exist_ok=True)

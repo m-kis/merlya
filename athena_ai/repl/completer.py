@@ -29,6 +29,10 @@ class AthenaCompleter(Completer):
     - Service names in relevant contexts
     """
 
+    # Track which errors have been logged at warning level (log once, then debug)
+    # This prevents log flooding since completers run on every keystroke
+    _logged_warnings: set = set()
+
     # Common services for completion
     SERVICES = [
         "mysql", "mariadb", "postgres", "postgresql", "mongodb", "mongo",
@@ -160,6 +164,17 @@ class AthenaCompleter(Completer):
                     display_meta="service"
                 )
 
+    def _log_completion_error(self, error_key: str, message: str, error: Exception) -> None:
+        """Log completion error - warning on first occurrence, debug thereafter.
+
+        This prevents log flooding since completers run on every keystroke.
+        """
+        if error_key not in self._logged_warnings:
+            self._logged_warnings.add(error_key)
+            logger.warning("%s: %s", message, error)
+        else:
+            logger.debug("%s: %s", message, error)
+
     def _get_hosts(self) -> List[str]:
         """Get list of hostnames from context manager."""
         if self.context_manager:
@@ -168,7 +183,9 @@ class AthenaCompleter(Completer):
                 inventory = context.get('inventory', {})
                 return list(inventory.keys())
             except Exception as e:
-                logger.debug("Failed to get hosts from context manager: %s", e)
+                self._log_completion_error(
+                    "context_hosts", "Failed to get hosts from context manager", e
+                )
         return self._cached_hosts
 
     def _get_variables(self) -> List[str]:
@@ -178,7 +195,9 @@ class AthenaCompleter(Completer):
                 variables = self.credentials_manager.list_variables()
                 return list(variables.keys())
             except Exception as e:
-                logger.debug("Failed to get variables from credentials manager: %s", e)
+                self._log_completion_error(
+                    "credentials_variables", "Failed to get variables from credentials manager", e
+                )
         return self._cached_variables
 
     def _get_inventory_hosts(self) -> List[str]:
@@ -194,7 +213,9 @@ class AthenaCompleter(Completer):
                 self._cached_inventory_hosts = hosts
                 return hosts
             except Exception as e:
-                logger.debug("Failed to list hosts from credentials manager: %s", e)
+                self._log_completion_error(
+                    "credentials_inventory", "Failed to list hosts from credentials manager", e
+                )
 
         # Direct fallback to inventory repository
         try:
@@ -205,7 +226,9 @@ class AthenaCompleter(Completer):
             self._cached_inventory_hosts = result
             return result
         except Exception as e:
-            logger.debug("Failed to list hosts from inventory repository: %s", e)
+            self._log_completion_error(
+                "repository_inventory", "Failed to list hosts from inventory repository", e
+            )
             # Don't cache on error - allow retry on next call
             return []
 

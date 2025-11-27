@@ -77,7 +77,13 @@ class SnapshotRepositoryMixin:
 
         # Perform count check and insert atomically within a single transaction
         # using BEGIN IMMEDIATE to acquire write lock immediately and prevent
-        # race conditions where concurrent workers could exceed MAX_SNAPSHOT_LIMIT
+        # race conditions where concurrent workers could exceed MAX_SNAPSHOT_LIMIT.
+        #
+        # Note: We use manual transaction control (BEGIN/COMMIT/ROLLBACK) rather than
+        # the context manager's commit=True parameter because:
+        # 1. BEGIN IMMEDIATE is needed to acquire write lock immediately
+        # 2. The context manager without commit=True only closes the connection
+        # 3. Manual control allows early ROLLBACK before raising PersistenceError
         with self._connection() as conn:
             cursor = conn.cursor()
             try:

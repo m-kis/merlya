@@ -159,7 +159,10 @@ class CommandHandler:
 
         handler = handlers.get(cmd)
         if handler:
-            handler()
+            result = handler()
+            # If handler returns a coroutine, await it
+            if hasattr(result, '__await__'):
+                await result
             return CommandResult.HANDLED
 
         return CommandResult.NOT_HANDLED

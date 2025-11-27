@@ -52,7 +52,7 @@ def sanitize_inventory_content(content: str) -> str:
         sanitized
     )
     sanitized = re.sub(
-        r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:\b',  # IPv6 with trailing ::
+        r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:(?:[0-9a-fA-F]{1,4})?\b',  # IPv6 with ::
         '[IPV6_REDACTED]',
         sanitized
     )
@@ -61,6 +61,8 @@ def sanitize_inventory_content(content: str) -> str:
         '[IPV6_REDACTED]',
         sanitized
     )
+    # IPv6 loopback ::1
+    sanitized = re.sub(r'\b::1\b', '[IPV6_REDACTED]', sanitized)
 
     # 4. Generalize hostnames - keep structure but redact identifying parts
     # Pattern matches common hostname formats: server01.prod.company.com
@@ -74,8 +76,14 @@ def sanitize_inventory_content(content: str) -> str:
     )
 
     # 5. Redact AWS-style identifiers (account IDs, instance IDs, etc.)
-    # AWS account ID (12 digits)
-    sanitized = re.sub(r'\b\d{12}\b', '[AWS_ACCOUNT_REDACTED]', sanitized)
+    # AWS account ID (12 digits) - only in common AWS contexts to avoid false positives
+    # (bare 12-digit numbers could be timestamps, serial numbers, etc.)
+    sanitized = re.sub(
+        r'(?:account[_-]?(?:id)?|arn:aws:[^:]*:[^:]*:)\s*[:=]?\s*(\d{12})\b',
+        lambda m: m.group(0).replace(m.group(1), '[AWS_ACCOUNT_REDACTED]'),
+        sanitized,
+        flags=re.IGNORECASE
+    )
     # EC2 instance IDs: i-xxxxxxxxxxxxxxxxx
     sanitized = re.sub(r'\bi-[0-9a-f]{8,17}\b', '[INSTANCE_ID_REDACTED]', sanitized)
     # AWS ARNs

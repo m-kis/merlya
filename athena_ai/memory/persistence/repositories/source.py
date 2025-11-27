@@ -72,6 +72,9 @@ class SourceRepositoryMixin:
             conn.commit()
             return source_id
         except sqlite3.IntegrityError as e:
+            # Rollback immediately to clear the failed transaction state
+            conn.rollback()
+
             error_msg = str(e)
             # Only treat as name collision if it's specifically the UNIQUE constraint on name
             # SQLite format: "UNIQUE constraint failed: inventory_sources.name"
@@ -81,6 +84,7 @@ class SourceRepositoryMixin:
             )
             if is_name_unique_violation:
                 # Source with this name already exists, return existing ID
+                # Now safe to query after rollback cleared the failed transaction
                 cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
                 row = cursor.fetchone()
                 if row:
@@ -211,7 +215,8 @@ class SourceRepositoryMixin:
             cursor.execute("DELETE FROM inventory_sources WHERE id = ?", (source_id,))
 
             if cursor.rowcount == 0:
-                logger.debug(f"Source '{name}' (id={source_id}) was already deleted")
+                conn.rollback()
+                logger.debug(f"Source '{name}' (id={source_id}) was concurrently deleted")
                 return False
 
             conn.commit()

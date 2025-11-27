@@ -1,7 +1,7 @@
 """
 Session and conversation command handlers.
 
-Handles: /session, /conversations, /new, /load, /compact, /delete
+Handles: /session, /conversations, /new, /load, /compact, /delete, /reset
 """
 
 import logging

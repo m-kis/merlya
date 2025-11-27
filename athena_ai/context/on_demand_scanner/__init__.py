@@ -1,9 +1,12 @@
+import threading
+
 from .config import ScanConfig
 from .models import ScanResult
 from .scanner import OnDemandScanner
 
-# Singleton instance (GIL protects against data races in check-then-create)
+# Singleton instance with thread-safe initialization
 _scanner = None
+_scanner_lock = threading.Lock()
 
 
 def get_on_demand_scanner() -> OnDemandScanner:
@@ -12,12 +15,15 @@ def get_on_demand_scanner() -> OnDemandScanner:
 
     IMPORTANT: Always use this function instead of instantiating OnDemandScanner
     directly. Multiple scanner instances share a global RateLimiter, but creating
-    unnecessary instances wastes resources and may cause confusion. The GIL
-    protects against data races in the singleton check.
+    unnecessary instances wastes resources and may cause confusion.
+
+    Thread-safe via double-checked locking pattern.
     """
     global _scanner
     if _scanner is None:
-        _scanner = OnDemandScanner()
+        with _scanner_lock:
+            if _scanner is None:
+                _scanner = OnDemandScanner()
     return _scanner
 
 __all__ = ["OnDemandScanner", "ScanConfig", "ScanResult", "get_on_demand_scanner"]

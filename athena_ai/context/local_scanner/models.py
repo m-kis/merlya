@@ -52,13 +52,22 @@ class LocalContext:
             scanned_at_value = data.get("scanned_at")
         scanned_at = _parse_scanned_at(scanned_at_value)
 
+        # Defend against explicit None values for fields
+        # (allows wrapped values like {"_value": ...} to pass through)
+        raw_os_info = data.get("os_info")
+        raw_network = data.get("network")
+        raw_services = data.get("services")
+        raw_processes = data.get("processes")
+        raw_etc_files = data.get("etc_files")
+        raw_resources = data.get("resources")
+
         return cls(
-            os_info=_unwrap_value(data.get("os_info", {})),
-            network=_unwrap_value(data.get("network", {})),
-            services=_unwrap_value(data.get("services", {})),
-            processes=_unwrap_value(data.get("processes", [])),
-            etc_files=_unwrap_value(data.get("etc_files", {})),
-            resources=_unwrap_value(data.get("resources", {})),
+            os_info=_unwrap_value({} if raw_os_info is None else raw_os_info),
+            network=_unwrap_value({} if raw_network is None else raw_network),
+            services=_unwrap_value({} if raw_services is None else raw_services),
+            processes=_unwrap_value([] if raw_processes is None else raw_processes),
+            etc_files=_unwrap_value({} if raw_etc_files is None else raw_etc_files),
+            resources=_unwrap_value({} if raw_resources is None else raw_resources),
             scanned_at=scanned_at,
         )
 
