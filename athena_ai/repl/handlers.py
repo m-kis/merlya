@@ -2,12 +2,33 @@
 Slash command handlers for Athena REPL.
 """
 import asyncio
+from typing import Union
 
 from rich.markdown import Markdown
 from rich.table import Table
 
 from athena_ai.repl.ui import console, print_error, print_message, print_success, print_warning
 from athena_ai.tools.base import get_status_manager
+
+
+def _run_async(coro):
+    """
+    Run async coroutine safely, handling both sync and async contexts.
+
+    If already in an event loop, uses nest_asyncio or run_until_complete.
+    Otherwise, uses asyncio.run().
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop - safe to use asyncio.run()
+        return asyncio.run(coro)
+
+    # Already in an event loop - need alternative approach
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result()
 
 SLASH_COMMANDS = {
     '/help': 'Show available slash commands',
@@ -47,10 +68,14 @@ class CommandHandler:
         """
         self.repl = repl
 
-    def handle_command(self, command: str) -> bool:
+    def handle_command(self, command: str) -> Union[bool, str]:
         """
         Handle slash commands.
-        Returns True if command was handled, False otherwise.
+
+        Returns:
+            True if command was handled
+            False if command was not recognized
+            'exit' if the user requested to exit
         """
         parts = command.split()
         cmd = parts[0].lower()
@@ -110,7 +135,7 @@ class CommandHandler:
             status_manager.set_console(console)
             status_manager.start("[cyan]🦉 Athena is thinking...[/cyan]")
             try:
-                response = asyncio.run(
+                response = _run_async(
                     self.repl.orchestrator.process_request(user_query=prompt)
                 )
             finally:
