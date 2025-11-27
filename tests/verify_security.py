@@ -161,7 +161,7 @@ def credential_manager():
     cm = CredentialManager()
     yield cm
     # Cleanup: clear all variables to prevent test pollution
-    cm._variables.clear()
+    cm.clear_variables()
 
 
 def test_credential_resolution(credential_manager):

@@ -83,7 +83,8 @@ def scan_network() -> Dict[str, Any]:
             old_timeout = socket.getdefaulttimeout()
             socket.setdefaulttimeout(5.0)
             try:
-                info["all_ips"] = socket.gethostbyname_ex(socket.gethostname())[2]
+                # Reuse hostname from above to avoid extra system call and potential inconsistency
+                info["all_ips"] = socket.gethostbyname_ex(hostname)[2]
             finally:
                 socket.setdefaulttimeout(old_timeout)
     except (socket.gaierror, socket.timeout, OSError):

@@ -83,9 +83,9 @@ class LocalScanner:
                             try:
                                 return LocalContext.from_dict(existing)
                             except Exception as e:
-                                # Cached data is corrupted - log, invalidate, and treat as cache miss
+                                # Cached data is corrupted - log, invalidate, and rescan
                                 logger.warning(
-                                    f"Failed to deserialize cached local context: {e}. "
+                                    f"Cached local context corrupted: {e}. "
                                     "Invalidating cache and rescanning..."
                                 )
                                 try:
@@ -93,9 +93,9 @@ class LocalScanner:
                                     self.repo.save_local_context({})
                                 except Exception:
                                     logger.debug("Failed to clear corrupted cache", exc_info=True)
-                                # Fall through to rescan
-
-                        logger.info(f"Local context expired ({age_hours:.1f}h > {ttl}h), rescanning...")
+                                # Fall through to rescan below
+                        else:
+                            logger.info(f"Local context expired ({age_hours:.1f}h > {ttl}h), rescanning...")
                     except (ValueError, TypeError):
                         logger.warning("Invalid scanned_at timestamp, rescanning...")
 

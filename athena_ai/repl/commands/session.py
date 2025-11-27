@@ -95,12 +95,12 @@ class SessionCommandHandler:
         except Exception as e:
             logger.exception("Failed to create conversation: %s", e)
             print_error(f"Failed to create conversation: {e}")
-            return False
+            return True
 
         if not conv or not getattr(conv, 'id', None):
             logger.error("create_conversation returned invalid result: %r", conv)
             print_error("Failed to create conversation: invalid response")
-            return False
+            return True
 
         print_success(f"New conversation started: {conv.id}")
         if title:
@@ -192,8 +192,12 @@ class SessionCommandHandler:
 
         # Get updated conversation (may be new after compaction)
         conv = self.repl.conversation_manager.current_conversation
-        after_tokens = conv.token_count if conv else 0
-        after_messages = len(conv.messages) if conv else 0
+        if not conv:
+            print_warning("Compaction completed but conversation state unclear")
+            return True
+
+        after_tokens = conv.token_count
+        after_messages = len(conv.messages)
 
         print_success("Conversation compacted")
         console.print(f"  Messages: {before_messages} → {after_messages}")

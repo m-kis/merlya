@@ -30,8 +30,9 @@ def scan_etc_files() -> Dict[str, Any]:
         if path.exists() and path.is_file():
             try:
                 # Check file size to avoid reading huge files
-                if path.stat().st_size > 100 * 1024:  # 100KB limit
-                    files[file_path] = {"error": "file too large", "size": path.stat().st_size}
+                stat = path.stat()
+                if stat.st_size > 100 * 1024:  # 100KB limit
+                    files[file_path] = {"error": "file too large", "size": stat.st_size}
                     continue
 
                 # Check if readable

@@ -35,27 +35,19 @@ class TestLLMParserTimeout:
         monkeypatch.setenv("ATHENA_ENABLE_LLM_FALLBACK", "true")
         monkeypatch.setenv("ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED", "true")
 
-    def test_timeout_triggers_on_slow_llm(self, slow_llm_router, monkeypatch):
+    def test_timeout_triggers_on_slow_llm(self, slow_llm_router):
         """Test that timeout is triggered when LLM takes too long."""
-        # Need to reload module to pick up env var changes
-        monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "1")
+        from athena_ai.inventory.parser.parsers.llm import parse_with_llm
 
-        # Import after setting env vars
-        from athena_ai.inventory.parser.parsers import llm
-
-        # Reload to pick up new env var
-        import importlib
-        importlib.reload(llm)
-
-        hosts, errors, warnings = llm.parse_with_llm(
+        hosts, errors, warnings = parse_with_llm(
             content="test content",
             llm_router=slow_llm_router,
-            timeout=1,  # 1 second timeout
+            timeout=1,
         )
 
         assert len(hosts) == 0
         assert any("LLM_TIMEOUT" in err for err in errors)
-        assert any("timed out after 1 seconds" in err for err in errors)
+        assert any("timed out after 1 second" in err for err in errors)
 
     def test_explicit_timeout_parameter(self, slow_llm_router):
         """Test that explicit timeout parameter works."""

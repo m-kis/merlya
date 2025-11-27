@@ -7,7 +7,7 @@ Handles creation and retrieval of point-in-time inventory snapshots for backup/r
 import json
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from athena_ai.core.exceptions import PersistenceError
@@ -51,7 +51,7 @@ class SnapshotRepositoryMixin:
         hosts = self.get_all_hosts()
         relations = self.get_relations()
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
         snapshot_data = {
             "hosts": hosts,
@@ -151,7 +151,11 @@ class SnapshotRepositoryMixin:
                         snapshot_id,
                         e,
                     )
-                    result["snapshot_data"] = None
+                    raise PersistenceError(
+                        operation="get_snapshot",
+                        reason=f"Failed to deserialize snapshot data: {e}",
+                        details={"snapshot_id": snapshot_id},
+                    ) from e
                 return result
             return None
 

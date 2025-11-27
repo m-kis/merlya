@@ -1,7 +1,7 @@
 """
 Context-related command handlers.
 
-Handles: /scan, /refresh, /cache-stats, /context
+Handles: /scan, /refresh, /cache-stats, /context, /ssh-info, /permissions
 """
 
 from rich.table import Table
@@ -59,7 +59,8 @@ class ContextCommandHandler:
                 progress_callback=update_progress
             )
             # Mark complete
-            progress.update(task, completed=task.total or 0, host="done")
+            if task.total is not None:
+                progress.update(task, completed=task.total, host="done")
 
         self._display_scan_results(context, is_full=True)
 

@@ -116,26 +116,25 @@ class RelationsHandler:
 
             indices = [int(t) - 1 for t in tokens]
 
-        # Save validated relations, tracking out-of-range indices
-        saved = 0
-        invalid_indices = []
-        for i in indices:
-            if 0 <= i < len(suggestions):
-                s = suggestions[i]
-                self.repo.add_relation(
-                    source_hostname=s.source_hostname,
-                    target_hostname=s.target_hostname,
-                    relation_type=s.relation_type,
-                    confidence=s.confidence,
-                    validated=True,
-                    metadata=s.metadata,
-                )
-                saved += 1
-            else:
-                invalid_indices.append(i + 1)  # Convert back to 1-indexed for display
+            # Validate indices against displayed_count (not total_count)
+            invalid_indices = [i + 1 for i in indices if not (0 <= i < displayed_count)]
+            if invalid_indices:
+                print_error(f"Invalid selection(s): {', '.join(map(str, invalid_indices))}. Choose from 1-{displayed_count}.")
+                return True
 
-        if invalid_indices:
-            print_warning(f"Ignored out-of-range indices: {', '.join(map(str, invalid_indices))}")
+        # Save validated relations
+        saved = 0
+        for i in indices:
+            s = suggestions[i]
+            self.repo.add_relation(
+                source_hostname=s.source_hostname,
+                target_hostname=s.target_hostname,
+                relation_type=s.relation_type,
+                confidence=s.confidence,
+                validated=True,
+                metadata=s.metadata,
+            )
+            saved += 1
         print_success(f"Saved {saved} relations")
         return True
 

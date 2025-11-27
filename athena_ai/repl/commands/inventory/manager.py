@@ -81,7 +81,7 @@ class InventoryManager:
                             "hostname": host.get("hostname", ""),
                             "ip_address": host.get("ip_address", ""),
                             "environment": host.get("environment", ""),
-                            "groups": ",".join(host.get("groups", [])),
+                            "groups": ";".join(host.get("groups", [])),
                             "role": host.get("role", ""),
                             "service": host.get("service", ""),
                         })

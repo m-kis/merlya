@@ -111,7 +111,11 @@ class InventoryCommandHandler:
 
         handler = handlers.get(cmd)
         if handler:
-            handler(cmd_args)
+            try:
+                handler(cmd_args)
+            except RuntimeError as e:
+                # Gracefully handle lazy-load failures from sub-handlers
+                print_error(str(e))
             return True
 
         print_error(f"Unknown inventory command: {cmd}")

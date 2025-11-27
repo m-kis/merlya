@@ -188,14 +188,11 @@ class AthenaCompleter(Completer):
             return self._cached_inventory_hosts
 
         # Try credentials manager first (has get_inventory_hosts method)
-        if self.credentials_manager:
+        if self.credentials_manager and hasattr(self.credentials_manager, 'get_inventory_hosts'):
             try:
                 hosts = self.credentials_manager.get_inventory_hosts()
                 self._cached_inventory_hosts = hosts
                 return hosts
-            except AttributeError:
-                # credentials_manager doesn't have get_inventory_hosts method
-                logger.debug("Credentials manager lacks get_inventory_hosts method")
             except Exception:
                 logger.exception("Failed to list hosts from credentials manager")
 
@@ -209,7 +206,7 @@ class AthenaCompleter(Completer):
             return result
         except Exception:
             logger.exception("Failed to list hosts from inventory repository")
-            self._cached_inventory_hosts = []
+            # Don't cache on error - allow retry on next call
             return []
 
     def update_hosts(self, hosts: List[str]) -> None:

@@ -281,7 +281,7 @@ def get_host_details(
             # Search for similar hosts
             similar = ctx.inventory_repo.search_hosts(pattern=hostname, limit=5)
             if similar:
-                suggestions = ", ".join(h.get('hostname', 'unknown') for h in similar[:5])
+                suggestions = ", ".join(h.get('hostname', 'unknown') for h in similar)
                 return f"❌ Host '{hostname}' not found\n\n💡 Similar hosts: {suggestions}"
             return f"❌ Host '{hostname}' not found in inventory"
 
@@ -303,7 +303,7 @@ def get_host_details(
         # Metadata
         metadata = host.get('metadata', {})
         if metadata:
-            lines.append("  Metadata:")
+            lines.append(f"  Metadata{f' (showing 10 of {len(metadata)})' if len(metadata) > 10 else ''}:")
             for key, value in list(metadata.items())[:10]:
                 lines.append(f"    {key}: {value}")
 
@@ -315,13 +315,15 @@ def get_host_details(
         try:
             relations = ctx.inventory_repo.get_host_relations(hostname)
             if relations:
-                lines.append(f"\n  Relations ({len(relations)}):")
+                lines.append(f"\n  Relations (showing {min(len(relations), 5)} of {len(relations)}):")
                 for rel in relations[:5]:
                     direction = "→" if rel['source_hostname'] == hostname else "←"
                     other = rel['target_hostname'] if rel['source_hostname'] == hostname else rel['source_hostname']
                     lines.append(f"    {direction} {other} ({rel['relation_type']})")
-        except Exception:
-            pass
+                if len(relations) > 5:
+                    lines.append(f"    ... and {len(relations) - 5} more")
+        except Exception as e:
+            logger.warning(f"Failed to get relations for {hostname}: {e}")
 
         return "\n".join(lines)
 

@@ -1,6 +1,6 @@
 """
 Verification script for inventory parser refactoring.
-Tests all supported formats and edge cases.
+Tests all supported formats with valid input.
 """
 import os
 import sys

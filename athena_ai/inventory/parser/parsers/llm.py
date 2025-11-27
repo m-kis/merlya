@@ -679,19 +679,26 @@ OUTPUT (JSON array only):"""
     try:
         if effective_timeout is not None:
             # Use ThreadPoolExecutor to enforce timeout on synchronous LLM call
-            with ThreadPoolExecutor(max_workers=1) as executor:
+            # Note: We avoid context manager to control shutdown behavior on timeout
+            executor = ThreadPoolExecutor(max_workers=1)
+            try:
                 future = executor.submit(llm_router.generate, prompt, task="correction")
-                try:
-                    response = future.result(timeout=effective_timeout)
-                except FuturesTimeoutError:
-                    logger.error(
-                        f"LLM generation timed out after {effective_timeout} seconds"
-                    )
-                    errors.append(
-                        f"LLM_TIMEOUT: LLM generation timed out after {effective_timeout} seconds. "
-                        f"Consider increasing ATHENA_LLM_TIMEOUT or using a faster model."
-                    )
-                    return hosts, errors, warnings
+                response = future.result(timeout=effective_timeout)
+            except FuturesTimeoutError:
+                logger.error(
+                    f"LLM generation timed out after {effective_timeout} seconds"
+                )
+                errors.append(
+                    f"LLM_TIMEOUT: LLM generation timed out after {effective_timeout} seconds. "
+                    f"Consider increasing ATHENA_LLM_TIMEOUT or using a faster model."
+                )
+                # Use wait=False to avoid blocking on the timed-out thread
+                # cancel_futures=True attempts to cancel pending futures (Python 3.9+)
+                executor.shutdown(wait=False, cancel_futures=True)
+                return hosts, errors, warnings
+            finally:
+                # Non-blocking shutdown for normal completion path
+                executor.shutdown(wait=False)
         else:
             # No timeout - call directly (not recommended for production)
             response = llm_router.generate(prompt, task="correction")

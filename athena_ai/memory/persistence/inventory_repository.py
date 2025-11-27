@@ -95,12 +95,12 @@ class InventoryRepository(
             """)
             stats["by_environment"] = {row[0] or "unknown": row[1] for row in cursor.fetchall()}
 
-            # By source
+            # By source (group by name to match dict key)
             cursor.execute("""
                 SELECT s.name, COUNT(h.id)
                 FROM inventory_sources s
                 LEFT JOIN hosts_v2 h ON h.source_id = s.id
-                GROUP BY s.id
+                GROUP BY s.name
             """)
             stats["by_source"] = {row[0]: row[1] for row in cursor.fetchall()}
 
