@@ -2,6 +2,7 @@
 Pytest configuration and fixtures for Athena tests.
 """
 import os
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,6 +13,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: marks tests as slow (>30 seconds)")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "smoke: marks tests as smoke tests (quick sanity checks)")
+    config.addinivalue_line("markers", "unit: marks tests as unit tests")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -69,3 +71,56 @@ def sample_request():
         "dangerous": "rm -rf / on all servers",
         "french": "vérifie l'espace disque sur web-prod-1",
     }
+
+
+@pytest.fixture
+def mock_console():
+    """Provide a mock Rich console."""
+    console = MagicMock()
+    console.status.return_value = MagicMock()
+    return console
+
+
+@pytest.fixture
+def temp_athena_dir(tmp_path):
+    """Create temporary ~/.athena directory."""
+    athena_dir = tmp_path / ".athena"
+    athena_dir.mkdir()
+    return athena_dir
+
+
+@pytest.fixture
+def mock_tool_context(mock_console):
+    """Provide a mock ToolContext."""
+    from athena_ai.tools.base import ToolContext
+
+    return ToolContext(
+        executor=MagicMock(),
+        context_manager=MagicMock(),
+        permissions=MagicMock(),
+        console=mock_console,
+    )
+
+
+@pytest.fixture
+def sample_triage_queries():
+    """Sample queries for triage testing."""
+    return {
+        "p0_down": "production is down!",
+        "p0_breach": "we've been hacked, unauthorized access detected",
+        "p1_slow": "service is degraded and slow",
+        "p1_vuln": "CVE-2024-1234 vulnerability found",
+        "p2_perf": "need to optimize slow queries",
+        "p3_check": "check disk space on web-01",
+        "query_list": "what servers are available?",
+        "action_restart": "restart nginx on web-01",
+        "analysis_why": "why is mongodb slow on prod?",
+    }
+
+
+@pytest.fixture
+def mock_llm_router():
+    """Provide a mock LLM router."""
+    router = MagicMock()
+    router.generate.return_value = '{"intent": "action", "priority": "P3", "reasoning": "test"}'
+    return router

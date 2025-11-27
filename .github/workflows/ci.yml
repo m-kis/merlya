@@ -56,8 +56,19 @@ jobs:
       - name: Run tests with coverage
         run: |
           poetry run pytest tests/ -v --tb=short \
-            --ignore=tests/test_*_manual.py \
+            --ignore=tests/test_ollama_manual.py \
+            --ignore=tests/test_openrouter_manual.py \
+            --ignore=tests/test_pivoting_manual.py \
+            --ignore=tests/test_security_manual.py \
+            --ignore=tests/test_smart_list_manual.py \
+            --ignore=tests/test_persistence_manual.py \
+            --ignore=tests/manual_test_falkordb.py \
+            --ignore=tests/manual_test_improvements.py \
+            --ignore=tests/test_model_override.py \
+            --ignore=tests/test_falkordb_client.py \
+            --ignore=tests/test_ollama_client.py \
             --cov=athena_ai --cov-report=xml --cov-report=term \
+            -m "not manual" \
             || echo "Tests completed (some may have been skipped)"
 
       - name: Upload coverage

@@ -76,6 +76,7 @@ all = ["falkordb", "duckduckgo-search", "sentence-transformers"]
 pytest = "^8.0"
 pytest-cov = "^4.1"
 pytest-asyncio = "^0.23"
+pytest-mock = "^3.12"
 
 [tool.poetry.scripts]
 athena = "athena_ai.cli:main"
@@ -94,11 +95,15 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 markers = [
     "manual: marks tests as manual (deselect with '-m \"not manual\"')",
-    "slow: marks tests as slow",
+    "slow: marks tests as slow (>30 seconds)",
+    "integration: marks tests as integration tests",
+    "smoke: marks tests as smoke tests (quick sanity checks)",
+    "unit: marks tests as unit tests",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+asyncio_mode = "auto"
 
 # ============================================================================
 # COVERAGE CONFIGURATION
