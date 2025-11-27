@@ -188,10 +188,14 @@ class InventoryCommandHandler:
         source_name = path.stem
         existing_source = self.repo.get_source(source_name)
         if existing_source:
-            # Append number to make unique
+            # Append number to make unique (with safety limit)
             i = 2
-            while self.repo.get_source(f"{source_name}_{i}"):
+            max_attempts = 1000
+            while self.repo.get_source(f"{source_name}_{i}") and i < max_attempts:
                 i += 1
+            if i >= max_attempts:
+                print_error(f"Too many sources with name '{source_name}'")
+                return True
             source_name = f"{source_name}_{i}"
 
         source_id = self.repo.add_source(
@@ -493,11 +497,17 @@ class InventoryCommandHandler:
 
         console.print(table)
 
-        if len(suggestions) > 15:
-            console.print(f"[dim]... and {len(suggestions) - 15} more suggestions[/dim]")
+        displayed_count = min(len(suggestions), 15)
+        total_count = len(suggestions)
 
-        # Ask for validation
-        console.print("\n[yellow]Enter numbers to accept (e.g., '1,3,5'), 'all', or 'none':[/yellow]")
+        if total_count > displayed_count:
+            console.print(f"[dim]... and {total_count - displayed_count} more suggestions[/dim]")
+
+        # Ask for validation with clear options
+        if total_count > displayed_count:
+            console.print(f"\n[yellow]Enter numbers to accept (1-{displayed_count}), 'all' (all {total_count}), or 'none':[/yellow]")
+        else:
+            console.print("\n[yellow]Enter numbers to accept (e.g., '1,3,5'), 'all', or 'none':[/yellow]")
 
         try:
             choice = input("> ").strip().lower()
@@ -510,7 +520,8 @@ class InventoryCommandHandler:
             return True
 
         if choice == "all":
-            indices = list(range(min(len(suggestions), 15)))
+            # Accept ALL suggestions, not just displayed ones
+            indices = list(range(total_count))
         else:
             try:
                 indices = [int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()]

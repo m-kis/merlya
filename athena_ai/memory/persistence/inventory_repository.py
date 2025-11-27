@@ -53,6 +53,12 @@ class InventoryRepository:
     def __init__(self, db_path: Optional[str] = None):
         """Initialize repository with database path."""
         if self._initialized:
+            # Warn if trying to use different db_path after initialization
+            if db_path and db_path != self.db_path:
+                logger.warning(
+                    f"InventoryRepository already initialized with {self.db_path}, "
+                    f"ignoring requested path {db_path}"
+                )
             return
 
         if db_path:
@@ -247,8 +253,12 @@ class InventoryRepository:
             # Source with this name already exists, return existing ID
             cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
             row = cursor.fetchone()
-            source_id = row[0] if row else -1
-            logger.debug(f"Inventory source already exists: {name} (id: {source_id})")
+            if row:
+                source_id = row[0]
+                logger.debug(f"Inventory source already exists: {name} (id: {source_id})")
+            else:
+                # Concurrent delete occurred - reraise to let caller handle
+                raise ValueError(f"Source '{name}' was deleted during creation")
         finally:
             conn.close()
 
@@ -341,7 +351,7 @@ class InventoryRepository:
         groups: Optional[List[str]] = None,
         role: Optional[str] = None,
         service: Optional[str] = None,
-        ssh_port: int = 22,
+        ssh_port: Optional[int] = None,
         source_id: Optional[int] = None,
         metadata: Optional[Dict] = None,
         changed_by: str = "system",
@@ -402,7 +412,7 @@ class InventoryRepository:
                 self._add_host_version(cursor, host_id, changes, changed_by)
 
         else:
-            # Insert new host
+            # Insert new host (use default 22 for ssh_port if not specified)
             cursor.execute("""
                 INSERT INTO hosts_v2
                 (hostname, ip_address, aliases, environment, groups, role, service,
@@ -416,7 +426,7 @@ class InventoryRepository:
                 json.dumps(groups or []),
                 role,
                 service,
-                ssh_port,
+                ssh_port if ssh_port is not None else 22,
                 source_id,
                 json.dumps(metadata or {}),
                 now,
@@ -648,7 +658,18 @@ class InventoryRepository:
         relation_type: Optional[str] = None,
         validated_only: bool = False,
     ) -> List[Dict]:
-        """Get host relations."""
+        """Get host relations.
+
+        If hostname is provided but not found, returns empty list (not all relations).
+        """
+        # If hostname filter requested but host not found, return empty list
+        host_id = None
+        if hostname:
+            host = self.get_host_by_name(hostname)
+            if not host:
+                return []
+            host_id = host["id"]
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -661,11 +682,9 @@ class InventoryRepository:
         """
         params = []
 
-        if hostname:
-            host = self.get_host_by_name(hostname)
-            if host:
-                query += " AND (r.source_host_id = ? OR r.target_host_id = ?)"
-                params.extend([host["id"], host["id"]])
+        if host_id is not None:
+            query += " AND (r.source_host_id = ? OR r.target_host_id = ?)"
+            params.extend([host_id, host_id])
 
         if relation_type:
             query += " AND r.relation_type = ?"

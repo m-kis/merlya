@@ -237,7 +237,22 @@ class OnDemandScanner:
             self._scan_with_retry(hostname, scan_type)
             for hostname in hostnames
         ]
-        return await asyncio.gather(*tasks, return_exceptions=False)
+        # Use return_exceptions=True to preserve successful results on partial failure
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Convert exceptions to failed ScanResults
+        processed = []
+        for hostname, result in zip(hostnames, results):
+            if isinstance(result, Exception):
+                processed.append(ScanResult(
+                    hostname=hostname,
+                    success=False,
+                    error=str(result),
+                ))
+            else:
+                processed.append(result)
+
+        return processed
 
     async def _scan_with_retry(
         self,
@@ -308,9 +323,10 @@ class OnDemandScanner:
             "scanned_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Resolve hostname to IP
+        # Resolve hostname to IP (non-blocking)
         try:
-            ip = socket.gethostbyname(hostname)
+            loop = asyncio.get_event_loop()
+            ip = await loop.run_in_executor(None, socket.gethostbyname, hostname)
             data["ip"] = ip
             data["dns_resolved"] = True
         except socket.gaierror:
@@ -382,17 +398,15 @@ class OnDemandScanner:
             client = paramiko.SSHClient()
 
             # Load system known_hosts for security
-            # Falls back to auto-add with warning if host not known
             try:
                 client.load_system_host_keys()
-                client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            except Exception:
-                # If we can't load known_hosts, use AutoAddPolicy with warning
-                logger.warning(
-                    f"SSH host key for {hostname} cannot be verified. "
-                    "Consider adding to known_hosts for security."
-                )
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            except (OSError, IOError) as e:
+                # File not found or permission issue - log but continue
+                logger.debug(f"Could not load system host keys: {e}")
+
+            # Use WarningPolicy for unknown hosts (logs warning but connects)
+            # This is safer than AutoAddPolicy but still allows new hosts
+            client.set_missing_host_key_policy(paramiko.WarningPolicy())
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(

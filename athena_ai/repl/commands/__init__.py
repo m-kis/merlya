@@ -1,10 +1,26 @@
 """
 REPL command handlers.
 
-Re-exports from handlers.py for backward compatibility.
+This module provides modular command handlers for the Athena REPL.
 """
 
-from athena_ai.repl.handlers import SLASH_COMMANDS, CommandHandler
+from athena_ai.repl.commands.help import SLASH_COMMANDS, HelpCommandHandler
+from athena_ai.repl.commands.context import ContextCommandHandler
+from athena_ai.repl.commands.model import ModelCommandHandler
+from athena_ai.repl.commands.variables import VariablesCommandHandler
+from athena_ai.repl.commands.session import SessionCommandHandler
 from athena_ai.repl.commands.inventory import InventoryCommandHandler
 
-__all__ = ["SLASH_COMMANDS", "CommandHandler", "InventoryCommandHandler"]
+# Re-export CommandHandler from handlers.py for backward compatibility
+from athena_ai.repl.handlers import CommandHandler
+
+__all__ = [
+    "SLASH_COMMANDS",
+    "CommandHandler",
+    "HelpCommandHandler",
+    "ContextCommandHandler",
+    "ModelCommandHandler",
+    "VariablesCommandHandler",
+    "SessionCommandHandler",
+    "InventoryCommandHandler",
+]

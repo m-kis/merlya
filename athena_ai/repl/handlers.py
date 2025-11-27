@@ -1,21 +1,26 @@
 """
 Slash command handlers for Athena REPL.
+
+This module provides the main CommandHandler class that routes
+commands to specialized handler modules.
 """
 import asyncio
 from typing import Union
 
 from rich.markdown import Markdown
-from rich.table import Table
 
-from athena_ai.repl.ui import console, print_error, print_message, print_success, print_warning
+from athena_ai.repl.ui import console, print_error, print_message
 from athena_ai.tools.base import get_status_manager
+
+# Re-export SLASH_COMMANDS for backward compatibility
+from athena_ai.repl.commands.help import SLASH_COMMANDS
 
 
 def _run_async(coro):
     """
     Run async coroutine safely, handling both sync and async contexts.
 
-    If already in an event loop, uses nest_asyncio or run_until_complete.
+    If already in an event loop, uses a thread pool.
     Otherwise, uses asyncio.run().
     """
     try:
@@ -30,36 +35,13 @@ def _run_async(coro):
         future = pool.submit(asyncio.run, coro)
         return future.result()
 
-SLASH_COMMANDS = {
-    '/help': 'Show available slash commands',
-    '/scan': 'Scan infrastructure (--full for SSH scan)',
-    '/refresh': 'Force refresh context (--full for SSH scan)',
-    '/cache-stats': 'Show cache statistics',
-    '/ssh-info': 'Show SSH configuration',
-    '/permissions': 'Show permission capabilities [hostname]',
-    '/session': 'Session management (list, show, export)',
-    '/context': 'Show current context',
-    '/model': 'Model management (list, set, show)',
-    '/variables': 'Manage variables (hosts, credentials, etc.)',
-    '/credentials': 'Alias for /variables (backward compatibility)',
-    '/inventory': 'Manage host inventory (add, list, show, remove, export, relations)',
-    '/mcp': 'Manage MCP servers (add, list, delete, show)',
-    '/language': 'Change language (en/fr)',
-    '/triage': 'Test priority classification for a query',
-    '/feedback': 'Correct triage classification (intent/priority)',
-    '/triage-stats': 'Show learned triage patterns statistics',
-    '/conversations': 'List all conversations',
-    '/new': 'Start new conversation [title]',
-    '/load': 'Load conversation <id>',
-    '/compact': 'Compact current conversation',
-    '/delete': 'Delete conversation <id>',
-    '/reset': 'Reset Ag2 agents memory',
-    '/exit': 'Exit Athena',
-    '/quit': 'Exit Athena',
-}
 
 class CommandHandler:
-    """Handles slash commands for the REPL."""
+    """
+    Handles slash commands for the REPL.
+
+    Routes commands to specialized handler modules for better organization.
+    """
 
     def __init__(self, repl):
         """
@@ -67,6 +49,53 @@ class CommandHandler:
         This allows access to orchestrator, managers, etc.
         """
         self.repl = repl
+
+        # Lazy-loaded handlers
+        self._context_handler = None
+        self._model_handler = None
+        self._variables_handler = None
+        self._session_handler = None
+        self._help_handler = None
+
+    @property
+    def context_handler(self):
+        """Lazy load context handler."""
+        if self._context_handler is None:
+            from athena_ai.repl.commands.context import ContextCommandHandler
+            self._context_handler = ContextCommandHandler(self.repl)
+        return self._context_handler
+
+    @property
+    def model_handler(self):
+        """Lazy load model handler."""
+        if self._model_handler is None:
+            from athena_ai.repl.commands.model import ModelCommandHandler
+            self._model_handler = ModelCommandHandler(self.repl)
+        return self._model_handler
+
+    @property
+    def variables_handler(self):
+        """Lazy load variables handler."""
+        if self._variables_handler is None:
+            from athena_ai.repl.commands.variables import VariablesCommandHandler
+            self._variables_handler = VariablesCommandHandler(self.repl)
+        return self._variables_handler
+
+    @property
+    def session_handler(self):
+        """Lazy load session handler."""
+        if self._session_handler is None:
+            from athena_ai.repl.commands.session import SessionCommandHandler
+            self._session_handler = SessionCommandHandler(self.repl)
+        return self._session_handler
+
+    @property
+    def help_handler(self):
+        """Lazy load help handler."""
+        if self._help_handler is None:
+            from athena_ai.repl.commands.help import HelpCommandHandler
+            self._help_handler = HelpCommandHandler(self.repl)
+        return self._help_handler
 
     def handle_command(self, command: str) -> Union[bool, str]:
         """
@@ -90,30 +119,44 @@ class CommandHandler:
         if custom_cmd:
             return self._handle_custom_command(custom_cmd, args)
 
+        # Route to appropriate handler
         handlers = {
-            '/help': self._show_help,
-            '/scan': lambda: self._handle_scan(args),
-            '/refresh': lambda: self._handle_refresh(args),
-            '/cache-stats': self._handle_cache_stats,
-            '/ssh-info': self._handle_ssh_info,
-            '/permissions': lambda: self._handle_permissions(args),
-            '/context': self._handle_context,
-            '/session': lambda: self._handle_session(args),
-            '/model': lambda: self._handle_model(args),
-            '/variables': lambda: self._handle_variables(args),
-            '/credentials': lambda: self._handle_variables(args),
+            # Help
+            '/help': lambda: self.help_handler.show_help(),
+
+            # Context commands
+            '/scan': lambda: self.context_handler.handle_scan(args),
+            '/refresh': lambda: self.context_handler.handle_refresh(args),
+            '/cache-stats': lambda: self.context_handler.handle_cache_stats(),
+            '/ssh-info': lambda: self.context_handler.handle_ssh_info(),
+            '/permissions': lambda: self.context_handler.handle_permissions(args),
+            '/context': lambda: self.context_handler.handle_context(),
+
+            # Model commands
+            '/model': lambda: self.model_handler.handle(args),
+
+            # Variables commands
+            '/variables': lambda: self.variables_handler.handle(args),
+            '/credentials': lambda: self.variables_handler.handle(args),
+
+            # Session/conversation commands
+            '/session': lambda: self.session_handler.handle_session(args),
+            '/conversations': lambda: self.session_handler.handle_conversations(args),
+            '/new': lambda: self.session_handler.handle_new(args),
+            '/load': lambda: self.session_handler.handle_load(args),
+            '/compact': lambda: self.session_handler.handle_compact(args),
+            '/delete': lambda: self.session_handler.handle_delete(args),
+            '/reset': lambda: self.session_handler.handle_reset(),
+
+            # Inventory (already modularized)
             '/inventory': lambda: self._handle_inventory(args),
-            '/mcp': lambda: self._handle_mcp(args),
-            '/language': lambda: self._handle_language(args),
-            '/triage': lambda: self._handle_triage(args),
-            '/feedback': lambda: self._handle_feedback(args),
-            '/triage-stats': lambda: self._handle_triage_stats(args),
-            '/conversations': lambda: self._handle_conversations(args),
-            '/new': lambda: self._handle_new_conversation(args),
-            '/load': lambda: self._handle_load_conversation(args),
-            '/compact': lambda: self._handle_compact_conversation(args),
-            '/delete': lambda: self._handle_delete_conversation(args),
-            '/reset': self._handle_reset,
+
+            # Delegated to core.py (triage, mcp, language)
+            '/mcp': lambda: self.repl._handle_mcp_command(args),
+            '/language': lambda: self.repl._handle_language_command(args),
+            '/triage': lambda: self.repl._handle_triage_command(args),
+            '/feedback': lambda: self.repl._handle_feedback_command(args),
+            '/triage-stats': lambda: self.repl._handle_triage_stats_command(args),
         }
 
         handler = handlers.get(cmd)
@@ -126,7 +169,7 @@ class CommandHandler:
         """Execute a custom command loaded from markdown."""
         try:
             prompt = self.repl.command_loader.expand(custom_cmd, args)
-            print_message(f"[cyan]⚙️ Running /{custom_cmd.name}...[/cyan]\n")
+            print_message(f"[cyan]Running /{custom_cmd.name}...[/cyan]\n")
 
             # Add to conversation and process
             self.repl.conversation_manager.add_user_message(prompt)
@@ -134,7 +177,7 @@ class CommandHandler:
             # Use StatusManager so tools can pause spinner for user input
             status_manager = get_status_manager()
             status_manager.set_console(console)
-            status_manager.start("[cyan]🦉 Athena is thinking...[/cyan]")
+            status_manager.start("[cyan]Athena is thinking...[/cyan]")
             try:
                 response = _run_async(
                     self.repl.orchestrator.process_request(user_query=prompt)
@@ -154,568 +197,6 @@ class CommandHandler:
 
         return True
 
-    def _show_help(self):
-        """Show help message."""
-        help_text = "## Available Slash Commands\n\n"
-        for cmd, desc in SLASH_COMMANDS.items():
-            help_text += f"**{cmd}**: {desc}\n"
-
-        help_text += "\n## Smart Context System\n\n"
-        help_text += "Athena uses intelligent caching that auto-detects changes:\n"
-        help_text += "- **Inventory** (/etc/hosts): Auto-refreshes when file changes (1h TTL)\n"
-        help_text += "- **Local info**: Cached for 5 minutes\n"
-        help_text += "- **Remote hosts**: Cached for 30 minutes\n"
-        help_text += "- Use `/cache-stats` to see cache state\n"
-        help_text += "- Use `/refresh` to force update (add `--full` to include SSH scan)\n"
-
-        help_text += "\n## Model Configuration\n\n"
-        help_text += "Athena supports multiple LLM providers and models:\n"
-        help_text += "- `/model show` - Show current model configuration\n"
-        help_text += "- `/model list` - List available models for current provider\n"
-        help_text += "- `/model set <provider> <model>` - Set model for provider\n"
-        help_text += "- `/model provider <provider>` - Switch provider (openrouter, anthropic, openai, ollama)\n"
-        help_text += "- Task-specific models: Fast model for corrections, best model for complex planning\n"
-
-        help_text += "\n## Variables System (@variables)\n\n"
-        help_text += "Define reusable variables for hosts, credentials, and more:\n\n"
-        help_text += "**Host Aliases:**\n"
-        help_text += "- `/variables set preproddb db-qarc-1` - Define host alias\n"
-        help_text += "- `/variables set prodmongo mongo-preprod-1` - Another host\n"
-        help_text += "- Use: `check mysql on @preproddb`\n\n"
-        help_text += "**Credentials:**\n"
-        help_text += "- `/variables set mongo-user admin` - Username (visible)\n"
-        help_text += "- `/variables set-secret mongo-pass` - Password (secure input, hidden)\n"
-        help_text += "- Use: `check mongo on @preproddb using @mongo-user @mongo-pass`\n\n"
-        help_text += "**Other Variables:**\n"
-        help_text += "- `/variables set myenv production` - Context variables\n"
-        help_text += "- `/variables set region eu-west-1` - Any value you need\n\n"
-        help_text += "**Management:**\n"
-        help_text += "- `/variables list` - Show all variables (secrets masked)\n"
-        help_text += "- `/variables delete <key>` - Delete a variable\n"
-        help_text += "- `/variables clear` - Clear all variables\n"
-        help_text += "- Note: `/credentials` is an alias for `/variables`\n"
-
-        help_text += "\n## Inventory System\n\n"
-        help_text += "Manage your infrastructure hosts with `/inventory`:\n\n"
-        help_text += "**Commands:**\n"
-        help_text += "- `/inventory list` - List all hosts in inventory\n"
-        help_text += "- `/inventory add <file>` - Import hosts from file (CSV, JSON, YAML, INI, /etc/hosts, ~/.ssh/config)\n"
-        help_text += "- `/inventory show <hostname>` - Show host details\n"
-        help_text += "- `/inventory search <query>` - Search hosts by name, group, or IP\n"
-        help_text += "- `/inventory remove <hostname>` - Remove a host\n"
-        help_text += "- `/inventory export [format]` - Export inventory (json, csv, yaml)\n"
-        help_text += "- `/inventory relations [suggest]` - Show/suggest host relations\n"
-        help_text += "- `/inventory snapshot [name]` - Create/list inventory snapshots\n"
-        help_text += "- `/inventory stats` - Show inventory statistics\n\n"
-        help_text += "**Host References (@hostname):**\n"
-        help_text += "Reference any inventory host in your prompts using `@hostname`:\n"
-        help_text += "- `check nginx on @web-prod-01` - Target specific host\n"
-        help_text += "- `compare disk usage @db-master vs @db-replica`\n"
-        help_text += "- `restart service on @backend-01 @backend-02`\n\n"
-        help_text += "Auto-completion is available for inventory hosts.\n"
-
-        help_text += "\n## Examples\n\n"
-        help_text += "- `list mongo preprod IPs`\n"
-        help_text += "- `check if nginx is running on web-prod-001`\n"
-        help_text += "- `what services are running on mongo-preprod-1`\n"
-        help_text += "- `check redis on @cache-prod-01` (using inventory host)\n"
-        help_text += "- `/scan --full` (scan all hosts via SSH)\n"
-        help_text += "- `/cache-stats` (check cache status)\n"
-        help_text += "- `/refresh` (force refresh local context)\n"
-        help_text += "- `/refresh --full` (force refresh + SSH scan)\n"
-        help_text += "- `/model list openrouter` (list OpenRouter models)\n"
-        help_text += "- `/model set openrouter anthropic/claude-3-opus` (switch to Opus)\n"
-
-        help_text += "\n## MCP (Model Context Protocol)\n\n"
-        help_text += "MCP extends Athena with standardized external tools.\n\n"
-        help_text += "**Commands:**\n"
-        help_text += "- `/mcp list` - List configured servers\n"
-        help_text += "- `/mcp add` - Add a server (interactive)\n"
-        help_text += "- `/mcp delete <name>` - Remove a server\n"
-        help_text += "- `/mcp examples` - Show example configurations\n\n"
-        help_text += "**Popular MCP Servers:**\n"
-        help_text += "- `@modelcontextprotocol/server-filesystem` - File operations\n"
-        help_text += "- `@modelcontextprotocol/server-git` - Git operations\n"
-        help_text += "- `@modelcontextprotocol/server-postgres` - PostgreSQL queries\n"
-        help_text += "- `@modelcontextprotocol/server-brave-search` - Web search\n\n"
-        help_text += "**Usage:** MCP tools are auto-available to agents once configured.\n"
-        help_text += "Example: After adding filesystem server, say 'list files in /tmp'\n"
-
-        # Custom commands section
-        custom_commands = self.repl.command_loader.list_commands()
-        if custom_commands:
-            help_text += "\n## Custom Commands\n\n"
-            help_text += "Extensible commands loaded from markdown files:\n\n"
-            for name, desc in custom_commands.items():
-                help_text += f"- `/{name}`: {desc}\n"
-            help_text += "\n*Add your own in `~/.athena/commands/*.md`*\n"
-
-        console.print(Markdown(help_text))
-        return True
-
-    def _handle_scan(self, args):
-        """Scan infrastructure. Use --full to scan remote hosts via SSH."""
-        full = '--full' in args
-
-        try:
-            if full:
-                # Full SSH scan with progress bar
-                from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
-
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[cyan]{task.description}[/cyan]"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    TextColumn("[dim]{task.fields[host]}[/dim]"),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task("Scanning hosts...", total=None, host="")
-
-                    def update_progress(current, total, hostname):
-                        progress.update(task, total=total, completed=current, host=hostname)
-
-                    context = self.repl.context_manager.discover_environment(
-                        scan_remote=True,
-                        progress_callback=update_progress
-                    )
-                    # Mark complete
-                    progress.update(task, completed=progress.tasks[0].total or 0, host="done")
-            else:
-                # Quick scan without SSH
-                with console.status("[cyan]Scanning infrastructure...[/cyan]", spinner="dots"):
-                    context = self.repl.context_manager.discover_environment(scan_remote=False)
-
-            local = context.get('local', {})
-            inventory = context.get('inventory', {})
-            remote_hosts = context.get('remote_hosts', {})
-
-            print_success("Scan complete")
-            console.print(f"  Local: {local.get('hostname')}")
-            console.print(f"  Inventory: {len(inventory)} hosts")
-
-            if remote_hosts:
-                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-                console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible")
-
-        except Exception as e:
-            print_error(f"Scan failed: {e}")
-
-        return True
-
-    def _handle_refresh(self, args):
-        """Force refresh context. Use --full to include SSH scan of remote hosts."""
-        full = '--full' in args
-
-        try:
-            if full:
-                # Full refresh with SSH scan (like /scan --full but with force=True)
-                from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
-
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[cyan]{task.description}[/cyan]"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    TextColumn("[dim]{task.fields[host]}[/dim]"),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task("Refreshing (full)...", total=None, host="")
-
-                    def update_progress(current, total, hostname):
-                        progress.update(task, total=total, completed=current, host=hostname)
-
-                    context = self.repl.context_manager.discover_environment(
-                        scan_remote=True,
-                        force=True,
-                        progress_callback=update_progress
-                    )
-                    progress.update(task, completed=progress.tasks[0].total or 0, host="done")
-
-                remote_hosts = context.get('remote_hosts', {})
-                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-                print_success(f"Full refresh complete (cache cleared, {accessible}/{len(remote_hosts)} hosts accessible)")
-            else:
-                # Quick refresh without SSH
-                with console.status("[cyan]Force refreshing context...[/cyan]", spinner="dots"):
-                    self.repl.context_manager.discover_environment(scan_remote=False, force=True)
-                print_success("Context refreshed (cache cleared)")
-                console.print("[dim]Use /refresh --full to also scan remote hosts via SSH[/dim]")
-
-        except Exception as e:
-            print_error(f"Refresh failed: {e}")
-
-        return True
-
-    def _handle_cache_stats(self):
-        """Show cache statistics."""
-        try:
-            stats = self.repl.context_manager.get_cache_stats()
-
-            if not stats:
-                print_warning("No cache data available yet")
-                return True
-
-            table = Table(title="Cache Statistics")
-            table.add_column("Component", style="cyan")
-            table.add_column("Age", style="yellow")
-            table.add_column("TTL", style="blue")
-            table.add_column("Status", style="green")
-            table.add_column("Fingerprint", style="magenta")
-
-            for key, info in stats.items():
-                status = "✅ Valid" if info['valid'] else "❌ Expired"
-                status_style = "green" if info['valid'] else "red"
-                fingerprint = "Yes" if info.get('has_fingerprint') else "No"
-
-                table.add_row(
-                    key,
-                    f"{info['age_seconds']}s",
-                    f"{info['ttl_seconds']}s",
-                    f"[{status_style}]{status}[/{status_style}]",
-                    fingerprint
-                )
-
-            console.print(table)
-            console.print("\n[dim]Valid = Cache is fresh, Expired = Will auto-refresh on next access[/dim]")
-
-        except Exception as e:
-            print_error(f"Failed to get cache stats: {e}")
-
-        return True
-
-    def _handle_ssh_info(self):
-        """Show SSH configuration and available keys."""
-        try:
-            console.print("\n[bold]🔑 SSH Configuration[/bold]\n")
-
-            if self.repl.credentials.supports_agent():
-                agent_keys = self.repl.credentials.get_agent_keys()
-                if agent_keys:
-                    console.print(f"[green]✅ ssh-agent: {len(agent_keys)} keys loaded[/green]")
-                else:
-                    print_warning("ssh-agent detected but no keys")
-            else:
-                print_warning("ssh-agent not available")
-
-            keys = self.repl.credentials.get_ssh_keys()
-            console.print(f"\nSSH Keys: {len(keys)} available")
-
-            default_key = self.repl.credentials.get_default_key()
-            if default_key:
-                console.print(f"Default: {default_key}\n")
-
-        except Exception as e:
-            print_error(f"Failed to get SSH info: {e}")
-
-        return True
-
-    def _handle_permissions(self, args):
-        if not args:
-            # Show cached permission info for all hosts
-            if not self.repl.orchestrator.permissions.capabilities_cache:
-                print_warning("No permission data cached yet.")
-                console.print("[dim]Run commands on hosts to detect permissions automatically.[/dim]")
-            else:
-                console.print("\n[bold]🔒 Permission Capabilities (Cached)[/bold]\n")
-                for target, _caps in self.repl.orchestrator.permissions.capabilities_cache.items():
-                    console.print(f"[cyan]{target}[/cyan]:")
-                    console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
-                    console.print()
-        else:
-            # Show permissions for specific host
-            target = args[0]
-            console.print(f"\n[bold]🔍 Detecting permissions on {target}...[/bold]\n")
-            try:
-                self.repl.orchestrator.permissions.detect_capabilities(target)
-                console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
-            except Exception as e:
-                print_error(f"{e}")
-        return True
-
-    def _handle_context(self):
-        """Show current infrastructure context."""
-        try:
-            context = self.repl.context_manager.get_context()
-            local = context.get('local', {})
-            inventory = context.get('inventory', {})
-            remote_hosts = context.get('remote_hosts', {})
-
-            console.print("\n[bold]🖥️ Current Context[/bold]")
-            console.print(f"  Local: {local.get('hostname', 'unknown')} ({local.get('os', 'unknown')})")
-            console.print(f"  Inventory: {len(inventory)} hosts")
-
-            if remote_hosts:
-                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-                console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible\n")
-
-        except Exception as e:
-            print_error(f"Failed to get context: {e}")
-
-        return True
-
-    def _handle_session(self, args):
-        """Show session information."""
-        try:
-            if 'list' in args:
-                sessions = self.repl.session_manager.list_sessions(limit=5)
-                table = Table(title="Recent Sessions")
-                table.add_column("Session ID", style="cyan")
-                table.add_column("Started", style="green")
-                table.add_column("Queries", style="magenta")
-
-                for s in sessions:
-                    table.add_row(s['id'], s['started_at'], str(s['total_queries']))
-
-                console.print(table)
-            else:
-                console.print(f"Current session: {self.repl.session_manager.current_session_id}")
-                console.print("Use: /session list")
-
-        except Exception as e:
-            print_error(f"Failed to get session info: {e}")
-
-        return True
-
-    def _handle_variables(self, args):
-        """Manage user variables and credentials."""
-        from athena_ai.security.credentials import VariableType
-
-        if not args:
-            self._show_variables_help()
-            return True
-
-        cmd = args[0]
-
-        try:
-            if cmd == 'set':
-                # Generic set (defaults to CONFIG type)
-                if len(args) >= 3:
-                    key = args[1]
-                    value = ' '.join(args[2:])
-                    self.repl.credentials.set_variable(key, value, VariableType.CONFIG)
-                    print_success(f"Variable '{key}' = '{value}' [config]")
-                    console.print(f"[dim]Use @{key} in your queries (persisted)[/dim]")
-                else:
-                    print_error("Missing key or value")
-
-            elif cmd == 'set-host':
-                # Host alias (persisted)
-                if len(args) >= 3:
-                    key = args[1]
-                    value = ' '.join(args[2:])
-                    self.repl.credentials.set_host(key, value)
-                    print_success(f"Host alias '{key}' = '{value}' [host]")
-                    console.print(f"[dim]Use @{key} as hostname (persisted)[/dim]")
-                else:
-                    print_error("Missing key or value")
-
-            elif cmd in ['set-secret', 'secret']:
-                # Secret (NOT persisted)
-                if len(args) >= 2:
-                    key = args[1]
-                    if self.repl.credentials.set_variable_secure(key, VariableType.SECRET):
-                        print_success(f"Secret '{key}' set [secret]")
-                        console.print("[dim]Secret stored in memory only (not persisted)[/dim]")
-                    else:
-                        print_warning("Secret not saved")
-                else:
-                    print_error("Missing key")
-
-            elif cmd == 'list':
-                variables = self.repl.credentials.list_variables_typed()
-                if not variables:
-                    print_warning("No variables defined")
-                    console.print("[dim]Use /variables set <key> <value> to define one[/dim]")
-                else:
-                    table = Table(title="User Variables")
-                    table.add_column("Variable", style="cyan")
-                    table.add_column("Type", style="yellow")
-                    table.add_column("Value", style="green")
-                    table.add_column("Persisted", style="magenta")
-
-                    for key, (value, var_type) in sorted(variables.items()):
-                        # Mask secrets completely
-                        if var_type == VariableType.SECRET:
-                            display_value = "********"
-                        elif len(value) > 30:
-                            display_value = value[:15] + "..." + value[-10:]
-                        else:
-                            display_value = value
-
-                        persisted = "Yes" if var_type != VariableType.SECRET else "No"
-                        table.add_row(f"@{key}", var_type.value, display_value, persisted)
-
-                    console.print(table)
-                    console.print("\n[dim]HOST/CONFIG variables are persisted across sessions. SECRETS are memory-only.[/dim]")
-
-            elif cmd in ['delete', 'del', 'remove']:
-                if len(args) >= 2:
-                    key = args[1]
-                    if self.repl.credentials.delete_variable(key):
-                        print_success(f"Variable '{key}' deleted")
-                    else:
-                        print_warning(f"Variable '{key}' not found")
-                else:
-                    print_error("Missing key")
-
-            elif cmd == 'clear':
-                self.repl.credentials.clear_session_credentials()
-                self.repl.credentials.clear_variables()
-                print_success("All credentials and variables cleared")
-
-            elif cmd == 'clear-secrets':
-                self.repl.credentials.clear_secrets()
-                print_success("All secrets cleared (hosts and configs preserved)")
-
-            else:
-                print_warning(f"Unknown subcommand: {cmd}")
-                self._show_variables_help()
-
-        except Exception as e:
-            print_error(f"Variable operation failed: {e}")
-
-        return True
-
-    def _show_variables_help(self):
-        """Show help for /variables command."""
-        console.print("[yellow]Usage:[/yellow]")
-        console.print("  /variables list                    - List all variables")
-        console.print("  /variables set <key> <value>       - Set config variable (persisted)")
-        console.print("  /variables set-host <key> <value>  - Set host alias (persisted)")
-        console.print("  /variables set-secret <key>        - Set secret (secure input, NOT persisted)")
-        console.print("  /variables delete <key>            - Delete a variable")
-        console.print("  /variables clear                   - Clear all variables")
-        console.print("  /variables clear-secrets           - Clear only secrets")
-        console.print()
-        console.print("[yellow]Variable Types:[/yellow]")
-        console.print("  [cyan]host[/cyan]   - Host aliases (@proddb → db-prod-001) - persisted")
-        console.print("  [cyan]config[/cyan] - General values (@env, @region) - persisted")
-        console.print("  [cyan]secret[/cyan] - Passwords, tokens - memory only")
-        console.print()
-        console.print("[yellow]Example:[/yellow]")
-        console.print("  /variables set-host proddb db-prod-001")
-        console.print("  /variables set-secret dbpass")
-        console.print("  check mysql on @proddb using @dbpass")
-
-    def _handle_model(self, args):
-        """Handle /model command for model configuration."""
-        if not args:
-            self._show_model_help()
-            return True
-
-        cmd = args[0]
-
-        try:
-            model_config = self.repl.orchestrator.llm_router.model_config
-
-            if cmd == 'show':
-                # Show current configuration
-                config = model_config.get_current_config()
-                provider = config['provider']
-                model = config['model']
-
-                console.print("\n[bold]🤖 Current Model Configuration[/bold]\n")
-
-                # Provider & Model
-                is_local = provider == "ollama"
-                provider_display = f"[green]{provider}[/green]" if is_local else f"[cyan]{provider}[/cyan]"
-                console.print(f"  Provider: {provider_display}")
-                console.print(f"  Model: [green]{model}[/green]")
-
-                # Show task-specific models if configured
-                if config.get('task_models'):
-                    console.print("\n[bold]⚙️ Task Models:[/bold]")
-                    for task, model_alias in config['task_models'].items():
-                        console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
-                console.print()
-
-            elif cmd == 'local':
-                # Shortcut for Ollama - maps to provider commands
-                if len(args) < 2:
-                    print_error("Usage: /model local <on|off> [model_name]")
-                    return True
-
-                subcmd = args[1].lower()
-                if subcmd in ['on', 'true', 'enable']:
-                    # Switch to Ollama provider
-                    model_config.set_provider("ollama")
-                    if len(args) > 2:
-                        model_config.set_model("ollama", args[2])
-                    current_model = model_config.get_model("ollama")
-                    print_success(f"Switched to Ollama (Model: {current_model})")
-                    self.repl.orchestrator.reload_agents()
-
-                elif subcmd in ['off', 'false', 'disable']:
-                    # Switch back to default cloud provider
-                    model_config.set_provider("openrouter")
-                    current_model = model_config.get_model("openrouter")
-                    print_success(f"Switched to OpenRouter (Model: {current_model})")
-                    self.repl.orchestrator.reload_agents()
-
-                elif subcmd == 'set' and len(args) > 2:
-                    model_config.set_model("ollama", args[2])
-                    print_success(f"Ollama model set to: {args[2]}")
-                    if model_config.get_provider() == "ollama":
-                        self.repl.orchestrator.reload_agents()
-                else:
-                    print_error("Invalid local command. Use: on, off, set <model>")
-
-            elif cmd == 'list':
-                # Delegate to existing logic for cloud models
-                provider = args[1] if len(args) > 1 else None
-                models = model_config.list_models(provider)
-                provider_name = provider or model_config.get_provider()
-
-                table = Table(title=f"Available Models - {provider_name}")
-                table.add_column("Model", style="cyan")
-                for model in models:
-                    table.add_row(model)
-                console.print(table)
-
-            elif cmd == 'set':
-                # Set model for provider
-                if len(args) == 2:
-                    provider = model_config.get_provider()
-                    model = args[1]
-                elif len(args) >= 3:
-                    provider = args[1]
-                    model = args[2]
-                else:
-                    print_error("Usage: /model set <model> OR /model set <provider> <model>")
-                    return True
-
-                model_config.set_model(provider, model)
-                print_success(f"Model for {provider} set to: {model}")
-                # Reload agents to apply the new model
-                self.repl.orchestrator.reload_agents()
-
-            elif cmd == 'provider' and len(args) >= 2:
-                provider = args[1]
-                self.repl.orchestrator.llm_router.switch_provider(provider)
-                print_success(f"Provider set to: {provider}")
-                # Reload agents to apply the new provider
-                self.repl.orchestrator.reload_agents()
-
-            else:
-                self._show_model_help()
-
-        except ValueError as e:
-            print_error(f"Invalid value: {e}")
-        except Exception as e:
-            print_error(f"Model command failed: {e}")
-
-        return True
-
-    def _show_model_help(self):
-        console.print("[yellow]Usage:[/yellow]")
-        console.print("  /model show - Show current configuration")
-        console.print("  /model local <on|off> [model] - Enable/Disable local LLM (Ollama)")
-        console.print("  /model list [provider] - List available cloud models")
-        console.print("  /model set <model> - Set cloud model")
-        console.print("  /model provider <provider> - Switch cloud provider")
-
-
     def _handle_inventory(self, args):
         """Handle /inventory command for host inventory management."""
         try:
@@ -728,48 +209,3 @@ class CommandHandler:
         except Exception as e:
             print_error(f"Inventory command failed: {e}")
             return True
-
-    def _handle_mcp(self, args):
-        return self.repl._handle_mcp_command(args)
-
-    def _handle_language(self, args):
-        return self.repl._handle_language_command(args)
-
-    def _handle_triage(self, args):
-        return self.repl._handle_triage_command(args)
-
-    def _handle_feedback(self, args):
-        return self.repl._handle_feedback_command(args)
-
-    def _handle_triage_stats(self, args):
-        return self.repl._handle_triage_stats_command(args)
-
-    def _handle_conversations(self, args):
-        return self.repl._handle_conversations_command(args)
-
-    def _handle_new_conversation(self, args):
-        return self.repl._handle_new_conversation_command(args)
-
-    def _handle_load_conversation(self, args):
-        return self.repl._handle_load_conversation_command(args)
-
-    def _handle_compact_conversation(self, args):
-        return self.repl._handle_compact_conversation_command(args)
-
-    def _handle_delete_conversation(self, args):
-        return self.repl._handle_delete_conversation_command(args)
-
-    def _handle_reset(self):
-        """Reset Ag2 agents memory."""
-        try:
-            if hasattr(self.repl.orchestrator, 'reset_agents'):
-                self.repl.orchestrator.reset_agents()
-                print_success("Agents memory reset successfully")
-            elif hasattr(self.repl.orchestrator, 'reload_agents'):
-                self.repl.orchestrator.reload_agents()
-                print_success("Agents reloaded (memory cleared)")
-            else:
-                print_warning("Agent reset not available for current orchestrator")
-        except Exception as e:
-            print_error(f"Failed to reset agents: {e}")
-        return True
