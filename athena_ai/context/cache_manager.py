@@ -175,27 +175,32 @@ class CacheManager:
         return self._repo
 
     def start_cleanup_thread(self):
-        """Start background cleanup thread."""
-        if self._cleanup_thread is not None:
-            return
+        """Start background cleanup thread (thread-safe)."""
+        with self._lock:
+            if self._cleanup_thread is not None:
+                return
 
-        self._stop_cleanup.clear()
-        self._cleanup_thread = threading.Thread(
-            target=self._cleanup_loop,
-            daemon=True,
-            name="CacheCleanup"
-        )
-        self._cleanup_thread.start()
-        logger.debug("Cache cleanup thread started")
+            self._stop_cleanup.clear()
+            self._cleanup_thread = threading.Thread(
+                target=self._cleanup_loop,
+                daemon=True,
+                name="CacheCleanup"
+            )
+            self._cleanup_thread.start()
+            logger.debug("Cache cleanup thread started")
 
     def stop_cleanup_thread(self):
-        """Stop background cleanup thread."""
-        if self._cleanup_thread is None:
-            return
+        """Stop background cleanup thread (thread-safe)."""
+        with self._lock:
+            if self._cleanup_thread is None:
+                return
 
-        self._stop_cleanup.set()
-        self._cleanup_thread.join(timeout=5)
-        self._cleanup_thread = None
+            self._stop_cleanup.set()
+            thread = self._cleanup_thread
+            self._cleanup_thread = None
+
+        # Join outside lock to avoid deadlock if cleanup loop needs lock
+        thread.join(timeout=5)
         logger.debug("Cache cleanup thread stopped")
 
     def _cleanup_loop(self):
