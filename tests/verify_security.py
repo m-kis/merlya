@@ -35,10 +35,11 @@ def test_credential_resolution():
     
     # Test with resolve_secrets=True (default)
     resolved_full = cm.resolve_variables(query, resolve_secrets=True)
-    if "secret_password" in resolved_full:
-        print(f"✅ Full resolution works: {resolved_full}")
+    # Check resolution worked without printing actual secret value
+    if "secret_password" in resolved_full and "@db_pass" not in resolved_full:
+        print("✅ Full resolution works: secrets resolved correctly")
     else:
-        print(f"❌ Full resolution failed: {resolved_full}")
+        print("❌ Full resolution failed: secret not resolved")
         
     # Test with resolve_secrets=False (for LLM)
     resolved_safe = cm.resolve_variables(query, resolve_secrets=False)
