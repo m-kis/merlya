@@ -3802,6 +3802,24 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
 
 [[package]]
+name = "pytest-mock"
+version = "3.15.1"
+description = "Thin-wrapper around the mock package for easier use with pytest"
+optional = false
+python-versions = ">=3.9"
+groups = ["dev"]
+files = [
+    {file = "pytest_mock-3.15.1-py3-none-any.whl", hash = "sha256:0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d"},
+    {file = "pytest_mock-3.15.1.tar.gz", hash = "sha256:1849a238f6f396da19762269de72cb1814ab44416fa73a8686deac10b0d87a0f"},
+]
+
+[package.dependencies]
+pytest = ">=6.2.5"
+
+[package.extras]
+dev = ["pre-commit", "pytest-asyncio", "tox"]
+
+[[package]]
 name = "python-daemon"
 version = "3.1.2"
 description = "Library to implement a well-behaved Unix daemon process."
@@ -5606,4 +5624,4 @@ smart-triage = ["falkordb", "sentence-transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "caaff0aa37ca00a2fb467d73bdea7f8ccd1ae99d248c895e673f736f5104b789"
+content-hash = "e1ed7ce53761345477d212561dd6d1105a46e2ebee9c38e0f802e0a8956e88cc"
