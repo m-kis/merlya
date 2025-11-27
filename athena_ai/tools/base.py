@@ -123,8 +123,8 @@ class ToolContext:
             try:
                 from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
                 self.inventory_repo = get_inventory_repository()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to initialize inventory repository: {e}")
 
     def get_user_input(self, prompt: str = "> ") -> str:
         """
@@ -212,8 +212,8 @@ def validate_host(hostname: str) -> tuple[bool, str]:
             host = ctx.inventory_repo.get_host_by_name(hostname)
             if host:
                 return True, f"Host '{hostname}' found in inventory"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Inventory lookup failed for '{hostname}': {e}")
 
     # Fall back to legacy host registry
     if not ctx.host_registry:
