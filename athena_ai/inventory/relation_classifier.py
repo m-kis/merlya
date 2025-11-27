@@ -10,6 +10,7 @@ Suggests relations between hosts based on:
 Uses the same LLM as intent/triage (Ollama local by default).
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -83,24 +84,42 @@ class HostRelationClassifier:
         ("main", "backup"),
     ]
 
-    # Sentinel to distinguish "not initialized" from "initialization failed"
-    _LLM_NOT_INITIALIZED = object()
-
     def __init__(self, llm_router: Optional[Any] = None):
-        """Initialize classifier with optional LLM router."""
-        self._llm = llm_router if llm_router is not None else self._LLM_NOT_INITIALIZED
+        """Initialize classifier with optional LLM router.
+
+        Args:
+            llm_router: Optional pre-configured LLM router. If None, will be
+                        lazy-loaded on first access.
+
+        Internal state for _llm:
+            - None: Not yet initialized (will attempt lazy load)
+            - False: Initialization failed (won't retry)
+            - LLMRouter instance: Successfully initialized
+        """
+        self._llm: Any = llm_router  # None means "not initialized yet"
 
     @property
-    def llm(self):
-        """Lazy load LLM router (only attempts once on failure)."""
-        if self._llm is self._LLM_NOT_INITIALIZED:
+    def llm(self) -> Optional[Any]:
+        """Lazy load LLM router (only attempts initialization once).
+
+        Returns:
+            LLMRouter instance if available, None if initialization failed.
+        """
+        # False sentinel indicates prior initialization failure - don't retry
+        if self._llm is False:
+            return None
+
+        # None means not yet initialized - attempt lazy load
+        if self._llm is None:
             try:
                 from athena_ai.llm.router import LLMRouter
                 self._llm = LLMRouter()
             except Exception as e:
                 logger.warning(f"Could not initialize LLM router: {e}")
-                # Set to None to prevent repeated initialization attempts
-                self._llm = None
+                # Set False sentinel to prevent repeated initialization attempts
+                self._llm = False
+                return None
+
         return self._llm
 
     def suggest_relations(
@@ -317,10 +336,9 @@ Example:
 Return ONLY valid JSON, no explanations. Return empty array [] if no clear relationships found."""
 
         try:
-            response = self.llm.generate(prompt, task="correction")
+            response = self.llm.generate(prompt, task="synthesis")
 
-            # Extract JSON
-            import json
+            # Extract JSON from response
             json_match = re.search(r'\[.*\]', response, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
@@ -375,8 +393,9 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
                 rel.get("relation_type", ""),
             )
             existing_keys.add(key)
-            # Also add reverse for bidirectional
-            existing_keys.add((key[1], key[0], key[2]))
+            # Also add reverse for bidirectional relation types only
+            if rel.get("relation_type") in ["cluster_member", "load_balanced"]:
+                existing_keys.add((key[1], key[0], key[2]))
 
         return [
             s for s in suggestions

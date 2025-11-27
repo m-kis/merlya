@@ -25,8 +25,10 @@ class ModelCommandHandler:
         cmd = args[0]
 
         try:
+            if not hasattr(self.repl, 'orchestrator') or not hasattr(self.repl.orchestrator, 'llm_router'):
+                print_error("Model configuration not available")
+                return True
             model_config = self.repl.orchestrator.llm_router.model_config
-
             if cmd == 'show':
                 self._show_config(model_config)
             elif cmd == 'local':
@@ -71,13 +73,15 @@ class ModelCommandHandler:
     def _handle_local(self, args: list, model_config):
         """Handle /model local subcommand."""
         if not args:
-            print_error("Usage: /model local <on|off> [model_name]")
+            print_error("Usage: /model local <on|off|set> [model_name]")
             return
 
         subcmd = args[0].lower()
         if subcmd in ['on', 'true', 'enable']:
             # Switch to Ollama provider
             model_config.set_provider("ollama")
+            # Keep llm_router's cached provider in sync
+            self.repl.orchestrator.llm_router.provider = "ollama"
             if len(args) > 1:
                 model_config.set_model("ollama", args[1])
             current_model = model_config.get_model("ollama")
@@ -87,6 +91,8 @@ class ModelCommandHandler:
         elif subcmd in ['off', 'false', 'disable']:
             # Switch back to default cloud provider
             model_config.set_provider("openrouter")
+            # Keep llm_router's cached provider in sync
+            self.repl.orchestrator.llm_router.provider = "openrouter"
             current_model = model_config.get_model("openrouter")
             print_success(f"Switched to OpenRouter (Model: {current_model})")
             self.repl.orchestrator.reload_agents()
@@ -94,8 +100,7 @@ class ModelCommandHandler:
         elif subcmd == 'set' and len(args) > 1:
             model_config.set_model("ollama", args[1])
             print_success(f"Ollama model set to: {args[1]}")
-            if model_config.get_provider() == "ollama":
-                self.repl.orchestrator.reload_agents()
+            self.repl.orchestrator.reload_agents()
         else:
             print_error("Invalid local command. Use: on, off, set <model>")
 
@@ -130,7 +135,10 @@ class ModelCommandHandler:
 
     def _set_provider(self, provider: str):
         """Switch provider."""
-        self.repl.orchestrator.llm_router.switch_provider(provider)
+        model_config = self.repl.orchestrator.llm_router.model_config
+        model_config.set_provider(provider)
+        # Keep llm_router's cached provider in sync
+        self.repl.orchestrator.llm_router.provider = provider
         print_success(f"Provider set to: {provider}")
         # Reload agents to apply the new provider
         self.repl.orchestrator.reload_agents()
@@ -140,6 +148,6 @@ class ModelCommandHandler:
         console.print("[yellow]Usage:[/yellow]")
         console.print("  /model show - Show current configuration")
         console.print("  /model local <on|off> [model] - Enable/Disable local LLM (Ollama)")
-        console.print("  /model list [provider] - List available cloud models")
+        console.print("  /model local <on|off|set> [model] - Enable/Disable/Configure local LLM (Ollama)")
         console.print("  /model set <model> - Set cloud model")
         console.print("  /model provider <provider> - Switch cloud provider")

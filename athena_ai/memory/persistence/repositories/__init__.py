@@ -10,7 +10,7 @@ This package provides modular mixins that implement specific repository concerns
 - SnapshotRepositoryMixin: Point-in-time snapshots
 """
 
-from athena_ai.memory.persistence.repositories.host import HostRepositoryMixin
+from athena_ai.memory.persistence.repositories.host import HostData, HostRepositoryMixin
 from athena_ai.memory.persistence.repositories.local_context import (
     LocalContextRepositoryMixin,
 )
@@ -22,6 +22,7 @@ from athena_ai.memory.persistence.repositories.snapshot import SnapshotRepositor
 from athena_ai.memory.persistence.repositories.source import SourceRepositoryMixin
 
 __all__ = [
+    "HostData",
     "SourceRepositoryMixin",
     "HostRepositoryMixin",
     "RelationRepositoryMixin",

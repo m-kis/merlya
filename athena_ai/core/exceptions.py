@@ -101,6 +101,21 @@ class DatabaseConnectionError(ConnectionError):
     pass
 
 
+class PersistenceError(AthenaError):
+    """Database persistence operation failed (insert, update, delete).
+
+    Use this for transactional failures where data could not be saved.
+    """
+
+    def __init__(self, operation: str, reason: str, details: dict | None = None):
+        super().__init__(
+            f"Persistence error during {operation}: {reason}",
+            {"operation": operation, "reason": reason, **(details or {})}
+        )
+        self.operation = operation
+        self.reason = reason
+
+
 class APIConnectionError(ConnectionError):
     """External API connection failed."""
     pass

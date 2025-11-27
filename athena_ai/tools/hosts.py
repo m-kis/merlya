@@ -233,7 +233,7 @@ def search_inventory(
         return "❌ Inventory not available"
 
     try:
-        hosts = ctx.inventory_repo.search_hosts(query, limit=50)
+        hosts = ctx.inventory_repo.search_hosts(pattern=query, limit=50)
 
         if not hosts:
             return f"❌ No hosts found matching '{query}'\n\n💡 Try a different search term or use /inventory list"
@@ -241,12 +241,11 @@ def search_inventory(
         lines = [f"📋 INVENTORY SEARCH: {len(hosts)} hosts matching '{query}'", ""]
 
         for host in hosts:
-            hostname = host.get('hostname', 'unknown')
             ip_info = f" ({host.get('ip_address')})" if host.get('ip_address') else ""
             env_info = f" [{host.get('environment')}]" if host.get('environment') else ""
             groups = host.get('groups', [])
             groups_info = f" groups: {', '.join(groups[:3])}" if groups else ""
-            lines.append(f"  • {hostname}{ip_info}{env_info}{groups_info}")
+            lines.append(f"  • {host.get('hostname', 'unknown')}{ip_info}{env_info}{groups_info}")
 
         lines.append("")
         lines.append("💡 Use @hostname syntax to reference these hosts in prompts")
@@ -280,7 +279,7 @@ def get_host_details(
 
         if not host:
             # Search for similar hosts
-            similar = ctx.inventory_repo.search_hosts(hostname, limit=5)
+            similar = ctx.inventory_repo.search_hosts(pattern=hostname, limit=5)
             if similar:
                 suggestions = ", ".join(h.get('hostname', 'unknown') for h in similar[:5])
                 return f"❌ Host '{hostname}' not found\n\n💡 Similar hosts: {suggestions}"

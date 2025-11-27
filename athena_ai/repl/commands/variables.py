@@ -4,9 +4,14 @@ Variables and credentials command handlers.
 Handles: /variables, /credentials
 """
 
+import logging
+import traceback
+
 from rich.table import Table
 
 from athena_ai.repl.ui import console, print_error, print_success, print_warning
+
+logger = logging.getLogger(__name__)
 
 
 class VariablesCommandHandler:
@@ -46,7 +51,10 @@ class VariablesCommandHandler:
                 self._show_help()
 
         except Exception as e:
+            logger.exception("Variable operation failed: %s", e)
             print_error(f"Variable operation failed: {e}")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+            return False
 
         return True
 

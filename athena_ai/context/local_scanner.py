@@ -4,7 +4,7 @@ Local Scanner - Deep scan of the local machine.
 Scans:
 - OS/Kernel/Distribution
 - Network interfaces
-- Services (systemd, launchd, init.d, Docker)
+- Services (systemd, launchd, Docker)
 - Processes
 - Relevant /etc files
 - Resources (CPU, RAM, Disk)
@@ -19,7 +19,7 @@ import platform
 import socket
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -141,7 +141,12 @@ class LocalScanner:
                 if scanned_at_str:
                     try:
                         scanned_at = datetime.fromisoformat(scanned_at_str)
-                        age_hours = (datetime.now() - scanned_at).total_seconds() / 3600
+                        # Normalize to UTC for consistent age calculation
+                        if scanned_at.tzinfo is None:
+                            scanned_at = scanned_at.replace(tzinfo=timezone.utc)
+                        else:
+                            scanned_at = scanned_at.astimezone(timezone.utc)
+                        age_hours = (datetime.now(timezone.utc) - scanned_at).total_seconds() / 3600
 
                         if age_hours < ttl:
                             logger.debug(f"Using cached local context (age: {age_hours:.1f}h)")
@@ -229,10 +234,15 @@ class LocalScanner:
             "interfaces": [],
         }
 
-        # Get all IP addresses
+        # Get all IP addresses (with timeout to prevent indefinite blocking)
         try:
-            info["all_ips"] = socket.gethostbyname_ex(socket.gethostname())[2]
-        except socket.gaierror:
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(5.0)
+            try:
+                info["all_ips"] = socket.gethostbyname_ex(socket.gethostname())[2]
+            finally:
+                socket.setdefaulttimeout(old_timeout)
+        except (socket.gaierror, socket.timeout, OSError):
             info["all_ips"] = []
 
         # Get interface details
@@ -327,13 +337,11 @@ class LocalScanner:
         Methods:
         - systemd (Linux)
         - launchd (macOS)
-        - init.d (legacy Linux)
         - Docker containers
         """
         services = {
             "systemd": [],
             "launchd": [],
-            "initd": [],
             "docker": [],
         }
 
@@ -552,14 +560,17 @@ class LocalScanner:
                         parts = line.split(":")
                         if len(parts) == 2:
                             key = parts[0].strip()
-                            value = parts[1].strip().split()[0]
-                            meminfo[key] = int(value)
+                            value_parts = parts[1].strip().split()
+                            if value_parts:
+                                try:
+                                    meminfo[key] = int(value_parts[0])
+                                except ValueError:
+                                    # Skip non-numeric values
+                                    pass
 
                     total_kb = meminfo.get("MemTotal", 0)
                     free_kb = meminfo.get("MemFree", 0)
                     available_kb = meminfo.get("MemAvailable", free_kb)
-                    buffers_kb = meminfo.get("Buffers", 0)
-                    cached_kb = meminfo.get("Cached", 0)
 
                     resources["memory"] = {
                         "total_gb": round(total_kb / 1024 / 1024, 2),
@@ -586,8 +597,11 @@ class LocalScanner:
                         elif ":" in line:
                             parts = line.split(":")
                             key = parts[0].strip()
-                            value = int(parts[1].strip().rstrip("."))
-                            stats[key] = value * page_size
+                            try:
+                                value = int(parts[1].strip().rstrip("."))
+                                stats[key] = value * page_size
+                            except ValueError:
+                                pass
 
                     # Get total memory
                     result2 = subprocess.run(

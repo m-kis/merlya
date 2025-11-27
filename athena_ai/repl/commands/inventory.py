@@ -98,16 +98,19 @@ class InventoryCommandHandler:
     def _show_help(self) -> bool:
         """Show inventory command help."""
         console.print("\n[bold cyan]Inventory Commands[/bold cyan]\n")
-        console.print("  /inventory add <file>       Import hosts from file (CSV, JSON, YAML, etc.)")
-        console.print("  /inventory add /etc/hosts   Import from system file")
-        console.print("  /inventory list             List all inventory sources")
-        console.print("  /inventory show [source]    Show hosts (optionally from specific source)")
-        console.print("  /inventory search <pattern> Search hosts by name/IP")
-        console.print("  /inventory remove <source>  Remove an inventory source")
-        console.print("  /inventory export <file>    Export inventory to file")
-        console.print("  /inventory snapshot [name]  Create inventory snapshot")
-        console.print("  /inventory relations        Manage host relations")
-        console.print("  /inventory stats            Show inventory statistics")
+        console.print("  /inventory add <file>         Import hosts from file (CSV, JSON, YAML, etc.)")
+        console.print("  /inventory add /etc/hosts     Import from system file")
+        console.print("  /inventory list               List all inventory sources")
+        console.print("  /inventory show [source]      Show hosts (optionally from specific source)")
+        console.print("  /inventory search <pattern>   Search hosts by name/IP")
+        console.print("  /inventory remove <source>    Remove an inventory source")
+        console.print("  /inventory export <file>      Export inventory to file")
+        console.print("  /inventory snapshot [name]    Create inventory snapshot")
+        console.print("  /inventory relations          Manage host relations")
+        console.print("  /inventory stats              Show inventory statistics")
+        console.print()
+        console.print("[bold]Options:[/bold]")
+        console.print("  --limit N                     Limit results (default: show 100, search 50)")
         console.print()
         console.print("[bold]Supported Formats:[/bold]")
         console.print("  CSV, JSON, YAML, TXT, INI (Ansible), /etc/hosts, ~/.ssh/config")
@@ -205,32 +208,50 @@ class InventoryCommandHandler:
             import_method="manual",
         )
 
-        # Add hosts
-        added = 0
-        for host in result.hosts:
-            try:
-                self.repo.add_host(
-                    hostname=host.hostname,
-                    ip_address=host.ip_address,
-                    aliases=host.aliases,
-                    environment=host.environment,
-                    groups=host.groups,
-                    role=host.role,
-                    service=host.service,
-                    ssh_port=host.ssh_port,
-                    source_id=source_id,
-                    metadata=host.metadata,
-                    changed_by="user",
-                )
-                added += 1
-            except Exception as e:
-                print_warning(f"Could not add {host.hostname}: {e}")
+        # Convert parsed hosts to HostData for bulk import
+        from athena_ai.core.exceptions import PersistenceError
+        from athena_ai.memory.persistence.repositories import HostData
+        from athena_ai.utils.logger import logger
+
+        host_data_list = [
+            HostData(
+                hostname=host.hostname,
+                ip_address=host.ip_address,
+                aliases=host.aliases,
+                environment=host.environment,
+                groups=host.groups,
+                role=host.role,
+                service=host.service,
+                ssh_port=host.ssh_port,
+                metadata=host.metadata,
+            )
+            for host in result.hosts
+        ]
+
+        # Add hosts in a single transaction (all-or-nothing)
+        try:
+            added = self.repo.bulk_add_hosts(
+                hosts=host_data_list,
+                source_id=source_id,
+                changed_by="user",
+            )
+        except PersistenceError as e:
+            # Transaction was rolled back, no partial data persisted
+            logger.error(f"Host import failed: {e.reason}", exc_info=True)
+            print_error(f"Import failed: {e.reason}")
+            console.print(
+                f"[dim]Attempted {e.details.get('hosts_attempted', '?')} hosts, "
+                f"failed after {e.details.get('hosts_before_failure', '?')}[/dim]"
+            )
+            # Clean up the source since no hosts were added
+            self.repo.delete_source(source_name)
+            return False
 
         # Update source host count
         self.repo.update_source_host_count(source_id, added)
 
         print_success(f"Imported {added} hosts from '{source_name}'")
-        console.print(f"[dim]Use @hostname to reference these hosts in prompts[/dim]")
+        console.print("[dim]Use @hostname to reference these hosts in prompts[/dim]")
 
         return True
 
@@ -250,7 +271,7 @@ class InventoryCommandHandler:
         table.add_column("Added", style="dim")
 
         for source in sources:
-            # Safely extract date portion (handle None or short strings)
+            # Safely extract date portion
             created_at = source.get("created_at") or ""
             date_str = created_at[:10] if len(created_at) >= 10 else created_at or "-"
             table.add_row(
@@ -264,8 +285,30 @@ class InventoryCommandHandler:
         return True
 
     def _handle_show(self, args: List[str]) -> bool:
-        """Handle /inventory show [source]."""
-        source_name = args[0] if args else None
+        """Handle /inventory show [source] [--limit N]."""
+        source_name = None
+        default_limit = 100
+
+        # Parse --limit argument
+        limit = default_limit
+        remaining_args = []
+        i = 0
+        while i < len(args):
+            if args[i] == "--limit" and i + 1 < len(args):
+                try:
+                    limit = int(args[i + 1])
+                    if limit < 1:
+                        print_error("Limit must be a positive integer")
+                        return True
+                except ValueError:
+                    print_error(f"Invalid limit value: {args[i + 1]}")
+                    return True
+                i += 2
+            else:
+                remaining_args.append(args[i])
+                i += 1
+
+        source_name = remaining_args[0] if remaining_args else None
         source_id = None
 
         if source_name:
@@ -275,14 +318,25 @@ class InventoryCommandHandler:
                 return True
             source_id = source["id"]
 
-        hosts = self.repo.search_hosts(source_id=source_id, limit=100)
+        # Request one extra row to detect truncation
+        hosts = self.repo.search_hosts(source_id=source_id, limit=limit + 1)
 
         if not hosts:
             print_warning("No hosts found")
             return True
 
+        # Detect truncation and trim to display limit
+        truncated = len(hosts) > limit
+        if truncated:
+            hosts = hosts[:limit]
+
         title = f"Hosts from '{source_name}'" if source_name else "All Hosts"
-        table = Table(title=f"{title} ({len(hosts)} total)")
+        if truncated:
+            title_suffix = f"(showing first {limit} of >{limit})"
+        else:
+            title_suffix = f"({len(hosts)} total)"
+
+        table = Table(title=f"{title} {title_suffix}")
         table.add_column("Hostname", style="cyan")
         table.add_column("IP", style="green")
         table.add_column("Environment", style="yellow")
@@ -303,23 +357,62 @@ class InventoryCommandHandler:
             )
 
         console.print(table)
-        console.print(f"\n[dim]Use @hostname to reference these hosts[/dim]")
+        if truncated:
+            console.print(f"[yellow]Showing first {limit} of >{limit} matching hosts. Use --limit N to adjust.[/yellow]")
+        console.print("[dim]Use @hostname to reference these hosts[/dim]")
         return True
 
     def _handle_search(self, args: List[str]) -> bool:
-        """Handle /inventory search <pattern>."""
+        """Handle /inventory search <pattern> [--limit N]."""
         if not args:
-            print_error("Usage: /inventory search <pattern>")
+            print_error("Usage: /inventory search <pattern> [--limit N]")
             return True
 
-        pattern = " ".join(args)
-        hosts = self.repo.search_hosts(pattern=pattern, limit=50)
+        default_limit = 50
+
+        # Parse --limit argument
+        limit = default_limit
+        remaining_args = []
+        i = 0
+        while i < len(args):
+            if args[i] == "--limit" and i + 1 < len(args):
+                try:
+                    limit = int(args[i + 1])
+                    if limit < 1:
+                        print_error("Limit must be a positive integer")
+                        return True
+                except ValueError:
+                    print_error(f"Invalid limit value: {args[i + 1]}")
+                    return True
+                i += 2
+            else:
+                remaining_args.append(args[i])
+                i += 1
+
+        if not remaining_args:
+            print_error("Usage: /inventory search <pattern> [--limit N]")
+            return True
+
+        pattern = " ".join(remaining_args)
+
+        # Request one extra row to detect truncation
+        hosts = self.repo.search_hosts(pattern=pattern, limit=limit + 1)
 
         if not hosts:
             print_warning(f"No hosts matching '{pattern}'")
             return True
 
-        table = Table(title=f"Search results for '{pattern}'")
+        # Detect truncation and trim to display limit
+        truncated = len(hosts) > limit
+        if truncated:
+            hosts = hosts[:limit]
+
+        if truncated:
+            title = f"Search results for '{pattern}' (showing first {limit} of >{limit})"
+        else:
+            title = f"Search results for '{pattern}' ({len(hosts)} found)"
+
+        table = Table(title=title)
         table.add_column("Hostname", style="cyan")
         table.add_column("IP", style="green")
         table.add_column("Environment", style="yellow")
@@ -339,6 +432,8 @@ class InventoryCommandHandler:
             )
 
         console.print(table)
+        if truncated:
+            console.print(f"[yellow]Showing first {limit} of >{limit} matching hosts. Use --limit N to adjust.[/yellow]")
         return True
 
     def _handle_remove(self, args: List[str]) -> bool:
@@ -395,7 +490,7 @@ class InventoryCommandHandler:
             if ext == ".json":
                 import json
                 with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(hosts, f, indent=2, default=str)
+                    json.dump(hosts, f, indent=2, default=str, ensure_ascii=False)
 
             elif ext == ".csv":
                 import csv
@@ -421,11 +516,13 @@ class InventoryCommandHandler:
                     print_error("YAML export requires PyYAML: pip install pyyaml")
                     return True
                 with open(file_path, "w", encoding="utf-8") as f:
-                    yaml.dump(hosts, f, default_flow_style=False)
+                    yaml.dump(hosts, f, default_flow_style=False, allow_unicode=True)
 
             print_success(f"Exported {len(hosts)} hosts to {file_path}")
 
-        except Exception as e:
+        except PermissionError:
+            print_error(f"Permission denied: {file_path}")
+        except OSError as e:
             print_error(f"Export failed: {e}")
 
         return True
@@ -484,7 +581,8 @@ class InventoryCommandHandler:
         table.add_column("Confidence", style="magenta", width=10)
         table.add_column("Reason", style="dim")
 
-        for i, s in enumerate(suggestions[:15], 1):
+        displayed_count = min(len(suggestions), 15)
+        for i, s in enumerate(suggestions[:displayed_count], 1):
             table.add_row(
                 str(i),
                 s.source_hostname,
@@ -497,7 +595,6 @@ class InventoryCommandHandler:
 
         console.print(table)
 
-        displayed_count = min(len(suggestions), 15)
         total_count = len(suggestions)
 
         if total_count > displayed_count:

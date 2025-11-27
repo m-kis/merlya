@@ -17,7 +17,7 @@ from athena_ai.mcp.manager import MCPManager
 # Using unified ConversationManager
 from athena_ai.memory.conversation import ConversationManager
 from athena_ai.memory.session import SessionManager
-from athena_ai.repl.commands import CommandHandler
+from athena_ai.repl.commands import CommandHandler, CommandResult
 from athena_ai.repl.completer import create_completer
 from athena_ai.repl.ui import console, print_error, print_markdown, print_success, print_warning, show_welcome
 from athena_ai.tools.base import get_status_manager
@@ -154,9 +154,9 @@ class AthenaREPL:
                 # Handle slash commands
                 if user_input.startswith('/'):
                     result = self.command_handler.handle_command(user_input)
-                    if result == 'exit':
+                    if result == CommandResult.EXIT:
                         break
-                    if result:
+                    if result == CommandResult.HANDLED:
                         continue
 
                 # Process natural language query

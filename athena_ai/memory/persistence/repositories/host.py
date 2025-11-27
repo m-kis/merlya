@@ -6,8 +6,27 @@ Handles CRUD operations for hosts including version tracking for audit trails.
 
 import json
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from athena_ai.core.exceptions import PersistenceError
+from athena_ai.utils.logger import logger
+
+
+@dataclass
+class HostData:
+    """Data container for host bulk imports."""
+
+    hostname: str
+    ip_address: Optional[str] = None
+    aliases: Optional[List[str]] = None
+    environment: Optional[str] = None
+    groups: Optional[List[str]] = None
+    role: Optional[str] = None
+    service: Optional[str] = None
+    ssh_port: Optional[int] = None
+    metadata: Optional[Dict] = None
 
 
 class HostRepositoryMixin:
@@ -177,6 +196,182 @@ class HostRepositoryMixin:
 
         conn.commit()
         conn.close()
+
+        return host_id
+
+    def bulk_add_hosts(
+        self,
+        hosts: List[HostData],
+        source_id: Optional[int] = None,
+        changed_by: str = "system",
+    ) -> int:
+        """Add multiple hosts in a single transaction.
+
+        All hosts are inserted atomically - if any insert fails, the entire
+        transaction is rolled back and no hosts are persisted.
+
+        Args:
+            hosts: List of HostData objects to insert.
+            source_id: Optional inventory source ID for all hosts.
+            changed_by: Who made the change (for versioning).
+
+        Returns:
+            Number of hosts successfully added.
+
+        Raises:
+            PersistenceError: If any host insertion fails. The transaction
+                is rolled back and no partial data is persisted.
+        """
+        if not hosts:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        added = 0
+
+        try:
+            for host in hosts:
+                self._add_host_internal(
+                    cursor=cursor,
+                    hostname=host.hostname,
+                    ip_address=host.ip_address,
+                    aliases=host.aliases,
+                    environment=host.environment,
+                    groups=host.groups,
+                    role=host.role,
+                    service=host.service,
+                    ssh_port=host.ssh_port,
+                    source_id=source_id,
+                    metadata=host.metadata,
+                    changed_by=changed_by,
+                )
+                added += 1
+
+            conn.commit()
+            logger.debug(f"Bulk inserted {added} hosts in single transaction")
+            return added
+
+        except sqlite3.Error as e:
+            conn.rollback()
+            logger.error(f"Bulk host import failed after {added} hosts: {e}")
+            raise PersistenceError(
+                operation="bulk_add_hosts",
+                reason=str(e),
+                details={"hosts_attempted": len(hosts), "hosts_before_failure": added},
+            ) from e
+        finally:
+            conn.close()
+
+    def _add_host_internal(
+        self,
+        cursor: sqlite3.Cursor,
+        hostname: str,
+        ip_address: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+        environment: Optional[str] = None,
+        groups: Optional[List[str]] = None,
+        role: Optional[str] = None,
+        service: Optional[str] = None,
+        ssh_port: Optional[int] = None,
+        source_id: Optional[int] = None,
+        metadata: Optional[Dict] = None,
+        changed_by: str = "system",
+    ) -> int:
+        """Internal host add without commit (for transactional batching).
+
+        This is the core logic used by both add_host and bulk_add_hosts.
+        Does NOT commit - caller is responsible for transaction management.
+
+        Args:
+            cursor: Database cursor (from caller's transaction).
+            hostname: The hostname (will be lowercased).
+            ip_address: Optional IP address.
+            aliases: Optional list of hostname aliases.
+            environment: Optional environment name.
+            groups: Optional list of group names.
+            role: Optional role name.
+            service: Optional service name.
+            ssh_port: Optional SSH port.
+            source_id: Optional inventory source ID.
+            metadata: Optional metadata dictionary.
+            changed_by: Who made the change.
+
+        Returns:
+            The host ID (existing or newly created).
+        """
+        now = datetime.now().isoformat()
+        hostname_lower = hostname.lower()
+
+        # Serialize JSON fields
+        aliases_json = json.dumps(aliases) if aliases is not None else None
+        groups_json = json.dumps(groups) if groups is not None else None
+        metadata_json = json.dumps(metadata) if metadata is not None else None
+
+        # Defaults for new inserts
+        aliases_default = json.dumps([])
+        groups_default = json.dumps([])
+        metadata_default = json.dumps({})
+
+        # Get old data for versioning
+        cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname_lower,))
+        existing_row = cursor.fetchone()
+        old_data = self._host_row_to_dict(existing_row) if existing_row else None
+
+        # Atomic upsert
+        cursor.execute("""
+            INSERT INTO hosts_v2
+            (hostname, ip_address, aliases, environment, groups, role, service,
+             ssh_port, status, source_id, metadata, created_at, updated_at)
+            VALUES (?, ?, COALESCE(?, ?), ?, COALESCE(?, ?), ?, ?, COALESCE(?, 22), 'unknown', ?, COALESCE(?, ?), ?, ?)
+            ON CONFLICT(hostname) DO UPDATE SET
+                ip_address = COALESCE(excluded.ip_address, hosts_v2.ip_address),
+                aliases = COALESCE(?, hosts_v2.aliases),
+                environment = COALESCE(excluded.environment, hosts_v2.environment),
+                groups = COALESCE(?, hosts_v2.groups),
+                role = COALESCE(excluded.role, hosts_v2.role),
+                service = COALESCE(excluded.service, hosts_v2.service),
+                ssh_port = COALESCE(?, hosts_v2.ssh_port),
+                source_id = COALESCE(excluded.source_id, hosts_v2.source_id),
+                metadata = COALESCE(?, hosts_v2.metadata),
+                updated_at = excluded.updated_at
+            RETURNING id
+        """, (
+            hostname_lower,
+            ip_address,
+            aliases_json, aliases_default,
+            environment,
+            groups_json, groups_default,
+            role,
+            service,
+            ssh_port,
+            source_id,
+            metadata_json, metadata_default,
+            now,
+            now,
+            aliases_json,
+            groups_json,
+            ssh_port,
+            metadata_json,
+        ))
+
+        host_id = cursor.fetchone()[0]
+
+        # Record version
+        if old_data is None:
+            self._add_host_version(cursor, host_id, {"action": "created"}, changed_by)
+        else:
+            changes = self._compute_changes(old_data, {
+                "ip_address": ip_address,
+                "aliases": aliases,
+                "environment": environment,
+                "groups": groups,
+                "role": role,
+                "service": service,
+                "ssh_port": ssh_port,
+                "metadata": metadata,
+            })
+            if changes:
+                self._add_host_version(cursor, host_id, changes, changed_by)
 
         return host_id
 

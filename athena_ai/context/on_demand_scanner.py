@@ -10,6 +10,7 @@ Features:
 """
 
 import asyncio
+import os
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -40,6 +41,11 @@ class ScanConfig:
     # Timeouts
     connect_timeout: float = 10.0  # seconds
     command_timeout: float = 60.0  # seconds
+
+    # SSH host key policy: "reject", "warning", or "auto_add"
+    # "auto_add" should only be used in non-production/testing environments
+    # Can be overridden by ATHENA_SSH_AUTO_ADD_HOSTS=1 env var
+    ssh_host_key_policy: str = "warning"
 
     # Cache TTL (seconds)
     cache_ttl: Dict[str, int] = field(default_factory=lambda: {
@@ -98,10 +104,20 @@ class RateLimiter:
                 self.tokens -= 1
                 return
 
-            # Need to wait for token
+            # Need to wait for token - compute wait time and release lock before sleeping
             wait_time = (1 - self.tokens) / self.rate
-            await asyncio.sleep(wait_time)
-            self.tokens = 0
+
+        # Sleep outside the lock to allow other callers to proceed
+        await asyncio.sleep(wait_time)
+
+        # Reacquire lock and recompute tokens based on current time
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self.last_update
+            self.tokens = min(self.burst, self.tokens + elapsed * self.rate)
+            self.last_update = now
+            # Consume one token (may go slightly negative if contention, but that's fine)
+            self.tokens -= 1
 
 
 class OnDemandScanner:
@@ -294,12 +310,13 @@ class OnDemandScanner:
                     logger.debug(f"Retry {attempt} for {hostname} after {delay}s: {e}")
                     await asyncio.sleep(delay)
 
-        # All retries exhausted - retries count is max_retries (not max_retries + 1)
+        # All retries exhausted - attempt is max_retries + 1 here, so use attempt - 1
+        # to get the actual number of retries performed
         return ScanResult(
             hostname=hostname,
             success=False,
             error=last_error,
-            retries=self.config.max_retries,
+            retries=attempt - 1,
         )
 
     async def _perform_scan(
@@ -350,20 +367,13 @@ class OnDemandScanner:
         loop = asyncio.get_event_loop()
 
         def check():
-            sock = None
             try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(self.config.connect_timeout)
-                result = sock.connect_ex((hostname, port))
-                return result == 0
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(self.config.connect_timeout)
+                    result = sock.connect_ex((hostname, port))
+                    return result == 0
             except Exception:
                 return False
-            finally:
-                if sock is not None:
-                    try:
-                        sock.close()
-                    except Exception:
-                        pass
 
         return await loop.run_in_executor(None, check)
 
@@ -397,16 +407,56 @@ class OnDemandScanner:
             # Connect
             client = paramiko.SSHClient()
 
+            # Determine host key policy from config or environment
+            # Environment variable overrides config for testing/non-production
+            env_auto_add = os.environ.get("ATHENA_SSH_AUTO_ADD_HOSTS", "").lower() in ("1", "true", "yes")
+            policy_name = "auto_add" if env_auto_add else self.config.ssh_host_key_policy
+
             # Load system known_hosts for security
+            known_hosts_loaded = False
             try:
                 client.load_system_host_keys()
-            except (OSError, IOError) as e:
-                # File not found or permission issue - log but continue
-                logger.debug(f"Could not load system host keys: {e}")
+                known_hosts_loaded = True
+            except FileNotFoundError:
+                # known_hosts file doesn't exist - common on fresh systems
+                logger.debug("System known_hosts file not found, host verification limited")
+            except PermissionError as e:
+                # Can't read known_hosts - security concern, log warning
+                logger.warning(
+                    f"Permission denied reading known_hosts: {e}. "
+                    "Host key verification will be limited. Check file permissions."
+                )
+            except paramiko.ssh_exception.SSHException as e:
+                # Parsing error in known_hosts file - this is a real problem
+                logger.error(
+                    f"Failed to parse known_hosts file: {e}. "
+                    "The file may be corrupted. Using RejectPolicy for safety."
+                )
+                # Force reject policy when known_hosts is corrupted
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                raise  # Re-raise so caller can handle
 
-            # Use WarningPolicy for unknown hosts (logs warning but connects)
-            # This is safer than AutoAddPolicy but still allows new hosts
-            client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            # Set host key policy based on configuration
+            if policy_name == "reject":
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                logger.debug("SSH host key policy: RejectPolicy (strictest)")
+            elif policy_name == "auto_add":
+                if env_auto_add:
+                    logger.warning(
+                        "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
+                        "This should only be used in non-production environments."
+                    )
+                else:
+                    logger.warning(
+                        "SSH AutoAddPolicy enabled via config. "
+                        "This is insecure and should only be used for testing."
+                    )
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            else:
+                # Default: WarningPolicy - logs warning but connects
+                # This is safer than AutoAddPolicy but still allows new hosts
+                client.set_missing_host_key_policy(paramiko.WarningPolicy())
+                logger.debug("SSH host key policy: WarningPolicy (default)")
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(

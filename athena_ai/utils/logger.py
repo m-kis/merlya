@@ -38,13 +38,54 @@ def setup_logger(verbose: bool = False):
         )
 
     # 3. Global Redaction Filter
+    def _redact_value(value):
+        """Recursively redact sensitive info from a value."""
+        if isinstance(value, str):
+            return redact_sensitive_info(value)
+        elif isinstance(value, dict):
+            return {k: _redact_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [_redact_value(item) for item in value]
+        elif isinstance(value, tuple):
+            return tuple(_redact_value(item) for item in value)
+        else:
+            # For non-stringifiable objects, try to convert to string and redact
+            try:
+                str_val = str(value)
+                redacted = redact_sensitive_info(str_val)
+                # Only return redacted string if it changed (contains sensitive data)
+                # Otherwise return original object to preserve type
+                if redacted != str_val:
+                    return redacted
+                return value
+            except Exception:
+                # Can't stringify, return as-is
+                return value
+
     def redaction_filter(record):
         """Redact sensitive info from all logs."""
         try:
             record["message"] = redact_sensitive_info(record["message"])
         except Exception:
-            # Don't break logging if redaction fails
-            pass
+            # Don't break logging if redaction fails - use safe fallback
+            try:
+                record["message"] = str(record.get("message", ""))
+            except Exception:
+                record["message"] = "[message redaction failed]"
+
+        # Redact sensitive info from extra fields
+        if "extra" in record and record["extra"]:
+            try:
+                for key in list(record["extra"].keys()):
+                    try:
+                        record["extra"][key] = _redact_value(record["extra"][key])
+                    except Exception:
+                        # Leave individual field untouched if redaction fails
+                        pass
+            except Exception:
+                # Don't break logging if extra redaction fails
+                pass
+
         return True
 
     logger.configure(patcher=redaction_filter)

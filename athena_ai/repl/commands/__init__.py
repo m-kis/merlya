@@ -11,12 +11,13 @@ from athena_ai.repl.commands.variables import VariablesCommandHandler
 from athena_ai.repl.commands.session import SessionCommandHandler
 from athena_ai.repl.commands.inventory import InventoryCommandHandler
 
-# Re-export CommandHandler from handlers.py for backward compatibility
-from athena_ai.repl.handlers import CommandHandler
+# Re-export CommandHandler and CommandResult from handlers.py for backward compatibility
+from athena_ai.repl.handlers import CommandHandler, CommandResult
 
 __all__ = [
     "SLASH_COMMANDS",
     "CommandHandler",
+    "CommandResult",
     "HelpCommandHandler",
     "ContextCommandHandler",
     "ModelCommandHandler",

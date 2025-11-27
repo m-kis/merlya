@@ -74,7 +74,16 @@ class InventoryParser:
 
     Supports structured formats (CSV, JSON, YAML) and
     falls back to LLM for non-standard formats.
+
+    Configuration:
+        LLM_CONTENT_LIMIT: Maximum characters to send to LLM for parsing.
+            Set to None or 0 to disable truncation. Default: 8000.
+            When content exceeds this limit, a warning is added to the
+            ParseResult.warnings list with truncation details.
     """
+
+    # Maximum characters to send to LLM for parsing (None or 0 to disable)
+    LLM_CONTENT_LIMIT: Optional[int] = 8000
 
     SUPPORTED_FORMATS = [
         "csv",
@@ -190,8 +199,15 @@ class InventoryParser:
                 hosts, errors = self._parse_txt(content)
             else:
                 # Fallback to LLM
-                hosts, errors = self._parse_with_llm(content)
+                hosts, errors, warnings = self._parse_with_llm(content)
                 format_type = "llm_parsed"
+                return ParseResult(
+                    hosts=hosts,
+                    source_type=format_type,
+                    file_path=file_path,
+                    errors=errors,
+                    warnings=warnings,
+                )
 
             return ParseResult(
                 hosts=hosts,
@@ -257,8 +273,8 @@ class InventoryParser:
         if re.search(r"^\[[\w\-_]+\]", content_stripped, re.MULTILINE):
             return "ini"
 
-        # /etc/hosts format
-        if re.search(r"^\d+\.\d+\.\d+\.\d+\s+\S+", content_stripped, re.MULTILINE):
+        # /etc/hosts format (allow optional leading whitespace)
+        if re.search(r"^\s*\d+\.\d+\.\d+\.\d+\s+\S+", content_stripped, re.MULTILINE):
             return "etc_hosts"
 
         # SSH config format
@@ -365,6 +381,15 @@ class InventoryParser:
                 if not hostname:
                     continue
 
+                # Parse ssh_port with safe int conversion
+                raw_port = item.get("ssh_port", item.get("port"))
+                ssh_port = 22  # default
+                if raw_port is not None:
+                    try:
+                        ssh_port = int(raw_port)
+                    except (ValueError, TypeError):
+                        logger.debug(f"Invalid ssh_port value '{raw_port}' for host {hostname}, using default 22")
+
                 host = ParsedHost(
                     hostname=str(hostname).lower(),
                     ip_address=self._get_field(item, self.IP_FIELDS),
@@ -373,7 +398,7 @@ class InventoryParser:
                     aliases=item.get("aliases", []) if isinstance(item.get("aliases"), list) else [],
                     role=item.get("role"),
                     service=item.get("service"),
-                    ssh_port=item.get("ssh_port", item.get("port", 22)),
+                    ssh_port=ssh_port,
                     metadata={k: v for k, v in item.items()
                               if k not in ["hostname", "host", "ip", "ip_address", "environment", "env",
                                            "groups", "aliases", "role", "service", "ssh_port", "port"]},
@@ -559,11 +584,19 @@ class InventoryParser:
                     key = key.lower()
 
                     if key == "hostname":
-                        # Actual hostname/IP
+                        # HostName is the actual target (FQDN or IP)
+                        # Host (stored in current_host.hostname) is the alias
                         if self._is_ip(value):
                             current_host.ip_address = value
                         else:
-                            current_host.aliases.append(value.lower())
+                            # HostName is the real FQDN/hostname
+                            fqdn = value.lower()
+                            # Move the Host alias to aliases if different from FQDN
+                            if current_host.hostname and current_host.hostname != fqdn:
+                                if current_host.hostname not in current_host.aliases:
+                                    current_host.aliases.append(current_host.hostname)
+                            # Set the actual hostname to the FQDN
+                            current_host.hostname = fqdn
                     elif key == "port":
                         try:
                             current_host.ssh_port = int(value)
@@ -615,14 +648,44 @@ class InventoryParser:
 
         return hosts, errors
 
-    def _parse_with_llm(self, content: str) -> Tuple[List[ParsedHost], List[str]]:
-        """Use LLM to parse non-standard format."""
+    def _parse_with_llm(
+        self, content: str
+    ) -> Tuple[List[ParsedHost], List[str], List[str]]:
+        """Use LLM to parse non-standard format.
+
+        Returns:
+            Tuple of (hosts, errors, warnings)
+        """
         hosts = []
         errors = []
+        warnings = []
 
         if not self.llm:
             errors.append("LLM not available for parsing non-standard format")
-            return hosts, errors
+            return hosts, errors, warnings
+
+        # Apply truncation if configured
+        original_length = len(content)
+        content_to_parse = content
+        truncation_notice = ""
+
+        if self.LLM_CONTENT_LIMIT and original_length > self.LLM_CONTENT_LIMIT:
+            content_to_parse = content[: self.LLM_CONTENT_LIMIT]
+            truncation_notice = (
+                f"\n\nWARNING: CONTENT TRUNCATED - showing first "
+                f"{self.LLM_CONTENT_LIMIT:,} of {original_length:,} characters. "
+                f"Some hosts may be omitted from this excerpt.\n"
+            )
+            warnings.append(
+                f"LLM_CONTENT_TRUNCATED: Content was truncated from "
+                f"{original_length:,} to {self.LLM_CONTENT_LIMIT:,} characters. "
+                f"Some host entries may have been omitted. "
+                f"Adjust InventoryParser.LLM_CONTENT_LIMIT to change this limit."
+            )
+            logger.warning(
+                f"Inventory content truncated for LLM parsing: "
+                f"{original_length:,} -> {self.LLM_CONTENT_LIMIT:,} chars"
+            )
 
         prompt = f"""Analyze this inventory content and extract host information.
 Return ONLY a JSON array with objects containing these fields:
@@ -631,10 +694,10 @@ Return ONLY a JSON array with objects containing these fields:
 - environment (optional): prod/staging/dev if determinable
 - groups (optional): array of group names
 - metadata (optional): any other relevant info as key-value pairs
-
+{truncation_notice}
 Content to parse:
 ```
-{content[:3000]}
+{content_to_parse}
 ```
 
 Return ONLY valid JSON, no explanations."""
@@ -662,7 +725,7 @@ Return ONLY valid JSON, no explanations."""
         except Exception as e:
             errors.append(f"LLM parsing failed: {e}")
 
-        return hosts, errors
+        return hosts, errors, warnings
 
     def _find_field(self, fieldnames: List[str], candidates: List[str]) -> Optional[str]:
         """Find a field from a list of candidates."""

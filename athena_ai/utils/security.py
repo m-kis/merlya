@@ -9,9 +9,12 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
     Redact sensitive information (passwords, tokens, keys) from text for logging.
 
     Patterns redacted:
-    - -p 'password' or -p "password" or -p password
-    - --password='password' or --password="password" or --password password
-    - --pass, --passwd, --secret, --token, --api-key, etc.
+    - CLI flags: -p 'password', --password='value', --token=value, etc.
+    - Environment variables: PASSWORD=secret, export TOKEN=value, VAR="secret"
+    - URL query params: ?password=secret, &api_key=value, &token=abc
+    - JSON key-value pairs: "password": "secret", "token": "value"
+    - XML elements: <password>secret</password>, <token>value</token>
+    - Connection strings: mysql://user:password@host, //user:pass@host
     - Known secrets provided in extra_secrets
 
     Args:
@@ -33,25 +36,128 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
         for secret in sorted_secrets:
             if len(secret) < 3:  # Don't redact very short strings to avoid false positives
                 continue
-            redacted = redacted.replace(secret, "[REDACTED]")
+            # Use regex with word boundaries to avoid over-redaction
+            escaped_secret = re.escape(secret)
+            redacted = re.sub(rf'\b{escaped_secret}\b', '[REDACTED]', redacted)
 
     # 2. Redact command line flags
     
-    # Pattern 1: -p 'value' or -p "value" (single letter flags with quotes)
-    # Use backreference to ensure matching quotes (group 2 captures the quote type)
-    redacted = re.sub(r"(-p\s+)(['\"])([^'\"]+)\2", r"\1\2[REDACTED]\2", redacted)
-
-    # Pattern 2: -p value (single letter flags without quotes, stops at next flag or space)
-    redacted = re.sub(r"(-p\s+)(\S+)", r"\1[REDACTED]", redacted)
+    # Pattern 1: -p 'value' or -p "value" (quoted values for single letter flags)
+    # Uses negative lookahead to match any char except the opening quote
+    redacted = re.sub(r"(-p\s+)(['\"])(?:(?!\2).)+\2", r"\1[REDACTED]", redacted)
+    # Pattern 2: -p value (unquoted single letter flag)
+    redacted = re.sub(r"(-p\s+)(?!['\"])(\S+)", r"\1[REDACTED]", redacted)
 
     # Pattern 3: --password='value' or --password="value" (long flags with = and quotes)
     password_flags = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api-key', 
                      'apikey', 'auth', 'credential', 'key']
     
     for flag in password_flags:
-        # With quotes - use backreference to ensure matching quotes
-        redacted = re.sub(rf"(--{flag}[=\s]+)(['\"])([^'\"]+)\2", r"\1\2[REDACTED]\2", redacted, flags=re.IGNORECASE)
-        # Without quotes
-        redacted = re.sub(rf"(--{flag}[=\s]+)(\S+)", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
+        # Quoted values - uses backreference (\2) to match closing quote, allowing embedded opposite quotes and empty values
+        redacted = re.sub(rf"(--{flag}[=\s]+)(['\"])(.*?)(\2)", r"\1\2[REDACTED]\4", redacted, flags=re.IGNORECASE)
+        # Without quotes - negative lookahead ensures we don't match if a quote follows
+        redacted = re.sub(rf"(--{flag}[=\s]+)(?!['\"])(\S+)", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    # 3. Redact environment variable assignments
+    # Matches: VAR=secret, export VAR=secret, VAR="secret", VAR='secret'
+    # Only redacts values for sensitive variable names
+    # Requires word boundary before var name to avoid matching URL params like &password=
+    env_var_names = ['PASSWORD', 'PASSWD', 'PASS', 'PWD', 'SECRET', 'TOKEN', 'API_KEY',
+                     'APIKEY', 'AUTH', 'CREDENTIAL', 'KEY', 'DB_PASSWORD', 'DB_PASS',
+                     'MYSQL_PASSWORD', 'POSTGRES_PASSWORD', 'REDIS_PASSWORD',
+                     'AWS_SECRET_ACCESS_KEY', 'PRIVATE_KEY', 'ACCESS_TOKEN']
+
+    for var in env_var_names:
+        # export VAR="value" or export VAR='value'
+        # Use word boundary (\b) or start of line to avoid matching URL params
+        redacted = re.sub(
+            rf"((?:^|(?<=\s)|(?<=export\s))(?:export\s+)?{var}\s*=\s*)(['\"])(.{{4,}})(\2)",
+            r"\1\2[REDACTED]\4",
+            redacted,
+            flags=re.IGNORECASE | re.MULTILINE
+        )
+        # export VAR=value (unquoted, min 4 chars to avoid false positives)
+        # Require start of line, whitespace, or 'export' before var name
+        redacted = re.sub(
+            rf"((?:^|(?<=\s))(?:export\s+)?{var}\s*=\s*)([^\s'\"].{{3,}})(?=\s|$)",
+            r"\1[REDACTED]",
+            redacted,
+            flags=re.IGNORECASE | re.MULTILINE
+        )
+
+    # 4. Redact URL query parameters with sensitive keys
+    # Matches: ?password=secret, &api_key=secret, &token=abc123
+    url_param_keys = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api_key',
+                      'apikey', 'api-key', 'auth', 'key', 'access_token', 'refresh_token',
+                      'client_secret', 'private_key']
+
+    for key in url_param_keys:
+        # Match ?key=value or &key=value, stop at &, #, space, or end
+        # Use non-greedy match and explicit delimiter handling
+        redacted = re.sub(
+            rf"([?&]{key}=)([^&#\s]*?)(?=&|#|\s|$)",
+            r"\1[REDACTED]",
+            redacted,
+            flags=re.IGNORECASE
+        )
+
+    # 5. Redact JSON key-value pairs with sensitive keys
+    # Matches: "password": "value", "password": 'value', "password":"value"
+    json_keys = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api_key',
+                 'apikey', 'api-key', 'auth', 'key', 'access_token', 'refresh_token',
+                 'client_secret', 'private_key', 'credential', 'credentials']
+
+    for key in json_keys:
+        # "key": "value" or "key": 'value' (with optional whitespace)
+        # Use a function to preserve original key case
+        def json_quoted_replacer(match):
+            return f'{match.group(1)}{match.group(2)}{match.group(1)}: {match.group(3)}[REDACTED]{match.group(3)}'
+
+        redacted = re.sub(
+            rf'(["\'])({key})\1\s*:\s*(["\'])([^"\']+?)\3',
+            json_quoted_replacer,
+            redacted,
+            flags=re.IGNORECASE
+        )
+        # "key": value (unquoted value - numbers, booleans, etc.)
+        def json_unquoted_replacer(match):
+            return f'{match.group(1)}{match.group(2)}{match.group(1)}: [REDACTED]'
+
+        redacted = re.sub(
+            rf'(["\'])({key})\1\s*:\s*([^\s,\}}\]"\']+)',
+            json_unquoted_replacer,
+            redacted,
+            flags=re.IGNORECASE
+        )
+
+    # 6. Redact XML element content with sensitive tags
+    # Matches: <password>secret</password>, <token>abc</token>
+    xml_tags = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'apikey',
+                'api-key', 'auth', 'key', 'accesstoken', 'credential']
+
+    for tag in xml_tags:
+        # <tag>value</tag> or <tag attr="...">value</tag>
+        redacted = re.sub(
+            rf'(<{tag}(?:\s+[^>]*)?>)([^<]+?)(</{tag}>)',
+            r'\1[REDACTED]\3',
+            redacted,
+            flags=re.IGNORECASE
+        )
+
+    # 7. Redact credentials in connection strings (user:pass@host)
+    # Only replace password portion, preserve username and host
+    # Matches: scheme://user:password@host
+    # The pattern requires :// before user:pass@host to avoid matching other formats
+    redacted = re.sub(
+        r'(://[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.-]+)',
+        r'\1[REDACTED]\3',
+        redacted
+    )
+    # Also match //user:pass@host format (no scheme)
+    redacted = re.sub(
+        r'(//[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.-]+)',
+        r'\1[REDACTED]\3',
+        redacted
+    )
 
     return redacted

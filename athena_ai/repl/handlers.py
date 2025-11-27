@@ -5,22 +5,32 @@ This module provides the main CommandHandler class that routes
 commands to specialized handler modules.
 """
 import asyncio
-from typing import Union
+import logging
+from enum import Enum, auto
 
 from rich.markdown import Markdown
 
 from athena_ai.repl.ui import console, print_error, print_message
+
+logger = logging.getLogger(__name__)
 from athena_ai.tools.base import get_status_manager
 
 # Re-export SLASH_COMMANDS for backward compatibility
 from athena_ai.repl.commands.help import SLASH_COMMANDS
 
 
+class CommandResult(Enum):
+    """Result type for command handling."""
+    EXIT = auto()       # User requested to exit the REPL
+    HANDLED = auto()    # Command was recognized and handled
+    NOT_HANDLED = auto()  # Command was not recognized
+
+
 def _run_async(coro):
     """
     Run async coroutine safely, handling both sync and async contexts.
 
-    If already in an event loop, uses a thread pool.
+    If already in an event loop, submits to that loop via run_coroutine_threadsafe.
     Otherwise, uses asyncio.run().
     """
     try:
@@ -29,11 +39,9 @@ def _run_async(coro):
         # No running loop - safe to use asyncio.run()
         return asyncio.run(coro)
 
-    # Already in an event loop - need alternative approach
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result()
+    # Already in an event loop - submit to that loop
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()
 
 
 class CommandHandler:
@@ -97,21 +105,25 @@ class CommandHandler:
             self._help_handler = HelpCommandHandler(self.repl)
         return self._help_handler
 
-    def handle_command(self, command: str) -> Union[bool, str]:
+    def handle_command(self, command: str) -> CommandResult:
         """
         Handle slash commands.
 
         Returns:
-            True if command was handled
-            False if command was not recognized
-            'exit' if the user requested to exit
+            CommandResult.EXIT if the user requested to exit
+            CommandResult.HANDLED if command was recognized and handled
+            CommandResult.NOT_HANDLED if command was not recognized
         """
         parts = command.split()
         cmd = parts[0].lower()
         args = parts[1:] if len(parts) > 1 else []
 
+        # Validate that this is a slash command
+        if not cmd.startswith('/'):
+            return CommandResult.NOT_HANDLED
+
         if cmd in ['/exit', '/quit']:
-            return 'exit'
+            return CommandResult.EXIT
 
         # Check for extensible custom commands first
         cmd_name = cmd[1:]  # Remove leading /
@@ -161,11 +173,12 @@ class CommandHandler:
 
         handler = handlers.get(cmd)
         if handler:
-            return handler()
+            handler()
+            return CommandResult.HANDLED
 
-        return False
+        return CommandResult.NOT_HANDLED
 
-    def _handle_custom_command(self, custom_cmd, args):
+    def _handle_custom_command(self, custom_cmd, args) -> CommandResult:
         """Execute a custom command loaded from markdown."""
         try:
             prompt = self.repl.command_loader.expand(custom_cmd, args)
@@ -185,9 +198,10 @@ class CommandHandler:
             finally:
                 status_manager.stop()
 
-            # Handle None or empty response
-            if not response:
-                response = "*No response from assistant*"
+            # Skip adding/printing if response is None or empty
+            if response is None or response == "":
+                logger.warning("Received None or empty response from orchestrator")
+                return CommandResult.HANDLED
 
             self.repl.conversation_manager.add_assistant_message(response)
             console.print(Markdown(response))
@@ -195,7 +209,7 @@ class CommandHandler:
         except Exception as e:
             print_error(f"Custom command failed: {e}")
 
-        return True
+        return CommandResult.HANDLED
 
     def _handle_inventory(self, args):
         """Handle /inventory command for host inventory management."""

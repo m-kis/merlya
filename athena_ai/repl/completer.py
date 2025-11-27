@@ -7,12 +7,15 @@ Provides intelligent autocompletion for:
 - Variables (@variable_name)
 - Service names
 """
+import logging
 from typing import Iterable, List
 
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 
 from athena_ai.repl.commands import SLASH_COMMANDS
+
+logger = logging.getLogger(__name__)
 
 
 class AthenaCompleter(Completer):
@@ -49,6 +52,7 @@ class AthenaCompleter(Completer):
         self.credentials_manager = credentials_manager
         self._cached_hosts: List[str] = []
         self._cached_variables: List[str] = []
+        self._cached_inventory_hosts: List[str] | None = None
 
     def get_completions(
         self, document: Document, complete_event: CompleteEvent
@@ -163,8 +167,8 @@ class AthenaCompleter(Completer):
                 context = self.context_manager.get_context()
                 inventory = context.get('inventory', {})
                 return list(inventory.keys())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to get hosts from context manager: %s", e)
         return self._cached_hosts
 
     def _get_variables(self) -> List[str]:
@@ -173,28 +177,39 @@ class AthenaCompleter(Completer):
             try:
                 variables = self.credentials_manager.list_variables()
                 return list(variables.keys())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to get variables from credentials manager: %s", e)
         return self._cached_variables
 
     def _get_inventory_hosts(self) -> List[str]:
-        """Get list of hostnames from inventory."""
+        """Get list of hostnames from inventory (cached after first call)."""
+        # Return cached value if available
+        if self._cached_inventory_hosts is not None:
+            return self._cached_inventory_hosts
+
         # Try credentials manager first (has get_inventory_hosts method)
         if self.credentials_manager:
             try:
-                return self.credentials_manager.get_inventory_hosts()
+                hosts = self.credentials_manager.get_inventory_hosts()
+                self._cached_inventory_hosts = hosts
+                return hosts
             except AttributeError:
-                pass
-            except Exception:
-                pass
+                # credentials_manager doesn't have get_inventory_hosts method
+                logger.debug("Credentials manager lacks get_inventory_hosts method")
+            except Exception as e:
+                logger.exception("Failed to list hosts from credentials manager: %s", e)
 
         # Direct fallback to inventory repository
         try:
             from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
             repo = get_inventory_repository()
             hosts = repo.list_hosts()
-            return [h["hostname"] for h in hosts]
-        except Exception:
+            result = [h["hostname"] for h in hosts]
+            self._cached_inventory_hosts = result
+            return result
+        except Exception as e:
+            logger.exception("Failed to list hosts from inventory repository: %s", e)
+            self._cached_inventory_hosts = []
             return []
 
     def update_hosts(self, hosts: List[str]) -> None:
@@ -204,6 +219,14 @@ class AthenaCompleter(Completer):
     def update_variables(self, variables: List[str]) -> None:
         """Update cached variable list."""
         self._cached_variables = variables
+
+    def update_inventory_hosts(self, hosts: List[str] | None = None) -> None:
+        """Update or invalidate cached inventory host list.
+
+        Args:
+            hosts: New host list, or None to invalidate cache (force refresh on next access)
+        """
+        self._cached_inventory_hosts = hosts
 
 
 def create_completer(context_manager=None, credentials_manager=None) -> AthenaCompleter:
