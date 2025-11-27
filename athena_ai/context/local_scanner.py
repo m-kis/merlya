@@ -55,9 +55,15 @@ class LocalContext:
         """Create from dictionary."""
         scanned_at = data.get("scanned_at")
         if isinstance(scanned_at, str):
-            scanned_at = datetime.fromisoformat(scanned_at)
+            try:
+                scanned_at = datetime.fromisoformat(scanned_at)
+            except (ValueError, TypeError):
+                # Invalid timestamp - use sentinel to force rescan
+                scanned_at = datetime.min
         elif scanned_at is None:
-            scanned_at = datetime.now()
+            # Missing timestamp - use sentinel to indicate unknown scan time
+            # This will force a rescan rather than making old data appear fresh
+            scanned_at = datetime.min
 
         return cls(
             os_info=data.get("os_info", {}),
@@ -82,18 +88,17 @@ class LocalScanner:
     DEFAULT_TTL_HOURS = 12
 
     # /etc files to scan
+    # NOTE: Deliberately excludes sensitive security files:
+    # - /etc/passwd, /etc/group (PII - user identities)
+    # - /etc/ssh/* (SSH security configuration)
+    # - /etc/sudoers (privilege escalation rules)
     ETC_FILES_TO_SCAN = [
         "/etc/hosts",
         "/etc/hostname",
         "/etc/resolv.conf",
         "/etc/os-release",
-        "/etc/passwd",
-        "/etc/group",
-        "/etc/ssh/ssh_config",
-        "/etc/ssh/sshd_config",
         "/etc/fstab",
         "/etc/crontab",
-        "/etc/sudoers",
     ]
 
     def __init__(self, repo: Optional[Any] = None):
@@ -475,10 +480,6 @@ class LocalScanner:
                         files[file_path] = self._parse_etc_hosts(content)
                     elif file_path == "/etc/resolv.conf":
                         files[file_path] = self._parse_resolv_conf(content)
-                    elif file_path == "/etc/passwd":
-                        files[file_path] = self._parse_passwd(content)
-                    elif file_path == "/etc/group":
-                        files[file_path] = self._parse_group(content)
                     else:
                         # Store raw content (truncated)
                         files[file_path] = {
@@ -520,41 +521,6 @@ class LocalScanner:
                 search_domains.extend(parts[1:])
 
         return {"nameservers": nameservers, "search_domains": search_domains}
-
-    def _parse_passwd(self, content: str) -> Dict[str, Any]:
-        """Parse /etc/passwd file (users only)."""
-        users = []
-        for line in content.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 7:
-                uid = int(parts[2])
-                # Only include regular users (UID >= 1000) or system users with shells
-                if uid >= 1000 or parts[6] not in ["/sbin/nologin", "/usr/sbin/nologin", "/bin/false"]:
-                    users.append({
-                        "username": parts[0],
-                        "uid": uid,
-                        "gid": int(parts[3]),
-                        "home": parts[5],
-                        "shell": parts[6],
-                    })
-        return {"users": users, "count": len(users)}
-
-    def _parse_group(self, content: str) -> Dict[str, Any]:
-        """Parse /etc/group file."""
-        groups = []
-        for line in content.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 4:
-                gid = int(parts[2])
-                members = parts[3].split(",") if parts[3] else []
-                # Only include groups with members or common groups
-                if members or gid in [0, 4, 27, 100, 1000]:
-                    groups.append({
-                        "name": parts[0],
-                        "gid": gid,
-                        "members": members,
-                    })
-        return {"groups": groups, "count": len(groups)}
 
     def _scan_resources(self) -> Dict[str, Any]:
         """Scan system resources (CPU, RAM, Disk)."""
