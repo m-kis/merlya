@@ -770,6 +770,42 @@ class InventoryRepository:
         if deleted > 0:
             logger.debug(f"Cleaned up {deleted} expired cache entries")
 
+    # ==================== Hostname-based Cache Helpers ====================
+
+    def set_scan_cache(
+        self,
+        hostname: str,
+        scan_type: str,
+        data: Dict,
+        ttl_seconds: int,
+    ):
+        """Save scan cache by hostname (convenience method).
+
+        Only caches data for hosts that exist in the inventory.
+        For hosts not in inventory, the cache is memory-only (in CacheManager).
+        """
+        host = self.get_host_by_name(hostname)
+        if host:
+            self.save_scan_cache(host["id"], scan_type, data, ttl_seconds)
+        # If host not in inventory, skip persistent cache (use memory cache only)
+
+    def get_scan_cache_by_hostname(
+        self,
+        hostname: str,
+        scan_type: str,
+    ) -> Optional[Dict]:
+        """Get scan cache by hostname (convenience method)."""
+        host = self.get_host_by_name(hostname)
+        if host:
+            return self.get_scan_cache(host["id"], scan_type)
+        return None
+
+    def clear_host_cache(self, hostname: str):
+        """Clear all cached scan data for a hostname."""
+        host = self.get_host_by_name(hostname)
+        if host:
+            self.delete_scan_cache(host_id=host["id"])
+
     # ==================== Local Context ====================
 
     def get_local_context(self) -> Optional[Dict]:

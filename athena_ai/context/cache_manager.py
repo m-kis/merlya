@@ -93,11 +93,11 @@ class CacheStats:
         self.cleanups = 0
         self._lock = threading.Lock()
 
-    @property
-    def hit_rate(self) -> float:
-        """Calculate cache hit rate."""
-        total = self.hits + self.misses
-        return self.hits / total if total > 0 else 0.0
+    def get_hit_rate(self) -> float:
+        """Calculate cache hit rate (thread-safe)."""
+        with self._lock:
+            total = self.hits + self.misses
+            return self.hits / total if total > 0 else 0.0
 
     def record_hit(self):
         with self._lock:
@@ -120,14 +120,16 @@ class CacheStats:
             self.cleanups += 1
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "hits": self.hits,
-            "misses": self.misses,
-            "evictions": self.evictions,
-            "expirations": self.expirations,
-            "cleanups": self.cleanups,
-            "hit_rate": round(self.hit_rate, 3),
-        }
+        """Get statistics as dictionary (thread-safe snapshot)."""
+        with self._lock:
+            return {
+                "hits": self.hits,
+                "misses": self.misses,
+                "evictions": self.evictions,
+                "expirations": self.expirations,
+                "cleanups": self.cleanups,
+                "hit_rate": round(self.hits / (self.hits + self.misses), 3) if (self.hits + self.misses) > 0 else 0.0,
+            }
 
 
 class CacheManager:
@@ -345,6 +347,9 @@ class CacheManager:
         del self._cache[lru_key]
         self.stats.record_eviction()
 
+    # Sentinel for distinguishing None values from missing values
+    _MISSING = object()
+
     def get_or_set(
         self,
         key: str,
@@ -353,7 +358,7 @@ class CacheManager:
         ttl: Optional[int] = None,
     ) -> Any:
         """
-        Get value from cache or compute and cache it.
+        Get value from cache or compute and cache it (thread-safe).
 
         Args:
             key: Cache key
@@ -362,15 +367,59 @@ class CacheManager:
             ttl: Override TTL
 
         Returns:
-            Cached or computed value
+            Cached or computed value (can be None if factory returns None)
         """
-        value = self.get(key, data_type)
-        if value is not None:
-            return value
+        # Use sentinel to distinguish None from missing
+        with self._lock:
+            entry = self._cache.get(key)
 
+            if entry is not None and not entry.is_expired:
+                # Cache hit
+                entry.access_count += 1
+                entry.last_accessed = time.time()
+                self.stats.record_hit()
+                return entry.data
+
+            # Cache miss - need to compute
+            # Record miss stats
+            if entry is not None:
+                # Entry existed but expired
+                del self._cache[key]
+                self.stats.record_expiration()
+            self.stats.record_miss()
+
+        # Compute value outside lock to avoid blocking other threads
         value = factory()
-        if value is not None:
-            self.set(key, value, data_type, ttl)
+
+        # Re-acquire lock to set value
+        with self._lock:
+            # Double-check: another thread may have set it while we computed
+            entry = self._cache.get(key)
+            if entry is not None and not entry.is_expired:
+                # Another thread won - return their value
+                return entry.data
+
+            # We won - set our value
+            if ttl is None:
+                ttl = self.config.ttl_config.get(
+                    data_type,
+                    self.config.ttl_config.get("default", 300)
+                )
+
+            # Check if we need to evict
+            if len(self._cache) >= self.config.max_entries:
+                self._evict_lru()
+
+            new_entry = CacheEntry(
+                key=key,
+                data=value,
+                data_type=data_type,
+                created_at=time.time(),
+                ttl=ttl,
+                access_count=0,
+                last_accessed=time.time(),
+            )
+            self._cache[key] = new_entry
 
         return value
 
@@ -459,7 +508,7 @@ class CacheManager:
         # Try persistent cache if not in memory
         if data is None and self.repo:
             try:
-                cached = self.repo.get_scan_cache(hostname, data_type)
+                cached = self.repo.get_scan_cache_by_hostname(hostname, data_type)
                 if cached:
                     # Re-populate memory cache
                     self.set(key, cached.get("data"), data_type)
@@ -470,7 +519,7 @@ class CacheManager:
         return data
 
     def invalidate_host(self, hostname: str):
-        """Invalidate all cached data for a host."""
+        """Invalidate all cached data for a host (memory and persistent)."""
         with self._lock:
             to_delete = [
                 key for key in self._cache.keys()
@@ -478,6 +527,13 @@ class CacheManager:
             ]
             for key in to_delete:
                 del self._cache[key]
+
+        # Also clear persistent cache
+        if self.repo:
+            try:
+                self.repo.clear_host_cache(hostname)
+            except Exception as e:
+                logger.debug(f"Failed to clear persistent cache for {hostname}: {e}")
 
     def cache_inventory_search(
         self,
@@ -497,13 +553,17 @@ class CacheManager:
         return self.get(key, "inventory_search")
 
 
-# Singleton
+# Thread-safe singleton
 _cache_manager: Optional[CacheManager] = None
+_cache_manager_lock = threading.Lock()
 
 
 def get_cache_manager() -> CacheManager:
-    """Get the cache manager singleton."""
+    """Get the cache manager singleton (thread-safe)."""
     global _cache_manager
     if _cache_manager is None:
-        _cache_manager = CacheManager()
+        with _cache_manager_lock:
+            # Double-check locking pattern
+            if _cache_manager is None:
+                _cache_manager = CacheManager()
     return _cache_manager
