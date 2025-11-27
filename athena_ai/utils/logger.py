@@ -40,7 +40,11 @@ def setup_logger(verbose: bool = False):
     # 3. Global Redaction Filter
     def redaction_filter(record):
         """Redact sensitive info from all logs."""
-        record["message"] = redact_sensitive_info(record["message"])
+        try:
+            record["message"] = redact_sensitive_info(record["message"])
+        except Exception:
+            # Don't break logging if redaction fails
+            pass
         return True
 
     logger.configure(patcher=redaction_filter)
