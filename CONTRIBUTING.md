@@ -256,9 +256,59 @@ from rich.console import Console
 from athena_ai.utils.logger import logger
 ```
 
-### Logging
+### Logging & Visual Output
 
-Use `logger` from `athena_ai.utils.logger`:
+**Use emojis and colors for user-facing output.** This improves readability and helps users quickly identify issues.
+
+#### Emoji Convention
+
+| Category | Emoji | Usage |
+|----------|-------|-------|
+| Success | ✅ | Operation completed successfully |
+| Error | ❌ | Operation failed |
+| Warning | ⚠️ | Something unexpected but recoverable |
+| Info | ℹ️ | General information |
+| Thinking | 🧠 | AI processing/reasoning |
+| Executing | ⚡ | Command execution |
+| Security | 🔒 | Security-related messages |
+| Question | ❓ | Awaiting user input |
+| Host | 🖥️ | Host/server related |
+| Network | 🌐 | Network operations |
+| Database | 🗄️ | Database operations |
+| Time | ⏱️ | Timing/performance |
+| Critical | 🚨 | Critical alert (P0/P1) |
+
+#### Rich Console for User Output
+
+Use `DisplayManager` for all user-facing output:
+
+```python
+from athena_ai.utils.display import get_display_manager
+
+display = get_display_manager()
+
+# Success
+display.console.print("✅ [bold green]Command executed successfully[/bold green]")
+
+# Error
+display.console.print("❌ [bold red]Connection failed[/bold red]: timeout after 30s")
+
+# Warning
+display.console.print("⚠️ [yellow]Host not in registry, using direct connection[/yellow]")
+
+# Execution
+display.console.print("⚡ [blue]Executing on web-prod-01:[/blue] systemctl status nginx")
+
+# Security
+display.console.print("🔒 [cyan]Risk level:[/cyan] [bold red]critical[/bold red] - requires confirmation")
+
+# Critical alert
+display.console.print("🚨 [bold red]P0 ALERT:[/bold red] Production database unreachable!")
+```
+
+#### Logger for Debug/Internal Logs
+
+Use `logger` for internal/debug logs (not user-facing):
 
 ```python
 from athena_ai.utils.logger import logger
@@ -267,6 +317,39 @@ logger.debug("Detailed info for debugging")
 logger.info("General operational info")
 logger.warning("Something unexpected")
 logger.error("Error occurred")
+```
+
+#### Examples in Context
+
+```python
+# Good: Visual feedback with emoji and color
+def execute_command(target: str, command: str) -> dict:
+    display = get_display_manager()
+
+    display.console.print(f"⚡ [blue]Executing on {target}:[/blue] {command}")
+
+    result = executor.run(command)
+
+    if result["success"]:
+        display.console.print(f"✅ [green]Success[/green] (exit code: 0)")
+    else:
+        display.console.print(f"❌ [red]Failed[/red] (exit code: {result['exit_code']})")
+        display.console.print(f"   [dim]{result['stderr']}[/dim]")
+
+    return result
+
+# Good: Priority-based visual alerts
+def show_priority_alert(priority: str, message: str):
+    display = get_display_manager()
+
+    if priority == "P0":
+        display.console.print(f"🚨 [bold red]P0 CRITICAL:[/bold red] {message}")
+    elif priority == "P1":
+        display.console.print(f"⚠️ [bold yellow]P1 URGENT:[/bold yellow] {message}")
+    elif priority == "P2":
+        display.console.print(f"ℹ️ [blue]P2:[/blue] {message}")
+    else:
+        display.console.print(f"📋 [dim]P3:[/dim] {message}")
 ```
 
 ## Project Structure
