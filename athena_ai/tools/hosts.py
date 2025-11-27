@@ -241,11 +241,12 @@ def search_inventory(
         lines = [f"📋 INVENTORY SEARCH: {len(hosts)} hosts matching '{query}'", ""]
 
         for host in hosts:
-            ip_info = f" ({host['ip_address']})" if host.get('ip_address') else ""
-            env_info = f" [{host['environment']}]" if host.get('environment') else ""
+            hostname = host.get('hostname', 'unknown')
+            ip_info = f" ({host.get('ip_address')})" if host.get('ip_address') else ""
+            env_info = f" [{host.get('environment')}]" if host.get('environment') else ""
             groups = host.get('groups', [])
             groups_info = f" groups: {', '.join(groups[:3])}" if groups else ""
-            lines.append(f"  • {host['hostname']}{ip_info}{env_info}{groups_info}")
+            lines.append(f"  • {hostname}{ip_info}{env_info}{groups_info}")
 
         lines.append("")
         lines.append("💡 Use @hostname syntax to reference these hosts in prompts")
@@ -281,19 +282,19 @@ def get_host_details(
             # Search for similar hosts
             similar = ctx.inventory_repo.search_hosts(hostname, limit=5)
             if similar:
-                suggestions = ", ".join(h['hostname'] for h in similar[:5])
+                suggestions = ", ".join(h.get('hostname', 'unknown') for h in similar[:5])
                 return f"❌ Host '{hostname}' not found\n\n💡 Similar hosts: {suggestions}"
             return f"❌ Host '{hostname}' not found in inventory"
 
-        lines = [f"📋 HOST DETAILS: {host['hostname']}", ""]
+        lines = [f"📋 HOST DETAILS: {host.get('hostname', hostname)}", ""]
 
         # Basic info
         if host.get('ip_address'):
-            lines.append(f"  IP Address: {host['ip_address']}")
+            lines.append(f"  IP Address: {host.get('ip_address')}")
         if host.get('environment'):
-            lines.append(f"  Environment: {host['environment']}")
+            lines.append(f"  Environment: {host.get('environment')}")
         if host.get('os'):
-            lines.append(f"  OS: {host['os']}")
+            lines.append(f"  OS: {host.get('os')}")
 
         # Groups
         groups = host.get('groups', [])
@@ -351,19 +352,19 @@ def list_inventory_hosts(
     if not ctx.inventory_repo:
         return "❌ Inventory not available"
 
+    # Validate limit to prevent memory issues
+    limit = min(limit, 1000)
+
     try:
-        hosts = ctx.inventory_repo.list_hosts(limit=limit * 2)  # Get more to filter
+        # Use repository's built-in filtering for efficiency
+        env_filter = None if environment == "all" else environment
+        group_filter = group if group else None
 
-        # Filter by environment
-        if environment and environment != "all":
-            hosts = [h for h in hosts if h.get('environment', '').lower() == environment.lower()]
-
-        # Filter by group
-        if group:
-            hosts = [h for h in hosts if group.lower() in [g.lower() for g in h.get('groups', [])]]
-
-        # Apply limit
-        hosts = hosts[:limit]
+        hosts = ctx.inventory_repo.search_hosts(
+            environment=env_filter,
+            group=group_filter,
+            limit=limit
+        )
 
         if not hosts:
             filter_info = []
@@ -386,9 +387,10 @@ def list_inventory_hosts(
 
         for env, env_hosts in sorted(by_env.items()):
             lines.append(f"  [{env.upper()}]")
-            for host in sorted(env_hosts, key=lambda h: h['hostname']):
-                ip_info = f" ({host['ip_address']})" if host.get('ip_address') else ""
-                lines.append(f"    • {host['hostname']}{ip_info}")
+            for host in sorted(env_hosts, key=lambda h: h.get('hostname', '')):
+                hostname = host.get('hostname', 'unknown')
+                ip_info = f" ({host.get('ip_address')})" if host.get('ip_address') else ""
+                lines.append(f"    • {hostname}{ip_info}")
             lines.append("")
 
         lines.append("💡 Use @hostname syntax to reference hosts in prompts")

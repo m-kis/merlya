@@ -147,13 +147,11 @@ class InventoryParser:
             ParseResult with hosts and any errors
         """
         # Determine if source is a file path or raw content
-        is_file = False
         content = source
         file_path = None
 
         path = Path(source)
         if path.exists() and path.is_file():
-            is_file = True
             file_path = str(path.absolute())
             try:
                 content = path.read_text(errors="replace")
@@ -169,7 +167,8 @@ class InventoryParser:
         if format_hint:
             format_type = format_hint.lower()
         else:
-            format_type = self._detect_format(source if is_file else content, file_path)
+            # Always pass content (not source path) for content-based detection
+            format_type = self._detect_format(content, file_path)
 
         logger.debug(f"Detected format: {format_type}")
 
@@ -241,10 +240,10 @@ class InventoryParser:
 
         # YAML (but not JSON)
         if ":" in content and not content_stripped.startswith("{"):
-            # Check for YAML indicators
-            if re.match(r"^---\s*$", content_stripped, re.MULTILINE):
+            # Check for YAML indicators - use re.search for multiline matching
+            if re.search(r"^---\s*$", content_stripped, re.MULTILINE):
                 return "yaml"
-            if re.match(r"^\w+:\s*\n", content_stripped):
+            if re.search(r"^\w+:\s*\n", content_stripped, re.MULTILINE):
                 return "yaml"
 
         # CSV (has commas and looks tabular)
@@ -293,7 +292,7 @@ class InventoryParser:
             ip_field = self._find_field(reader.fieldnames, self.IP_FIELDS)
             env_field = self._find_field(reader.fieldnames, self.ENV_FIELDS)
 
-            for i, row in enumerate(reader, start=2):
+            for row in reader:
                 hostname = row.get(hostname_field, "").strip()
                 if not hostname:
                     continue
@@ -538,7 +537,13 @@ class InventoryParser:
                 if current_host and current_host.hostname:
                     hosts.append(current_host)
 
-                hostname = line.split(None, 1)[1].strip()
+                # Guard against malformed "Host " line with no hostname
+                parts = line.split(None, 1)
+                if len(parts) < 2 or not parts[1].strip():
+                    current_host = None
+                    continue
+
+                hostname = parts[1].strip()
 
                 # Skip wildcards
                 if "*" in hostname or "?" in hostname:
