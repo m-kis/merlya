@@ -83,19 +83,24 @@ class HostRelationClassifier:
         ("main", "backup"),
     ]
 
+    # Sentinel to distinguish "not initialized" from "initialization failed"
+    _LLM_NOT_INITIALIZED = object()
+
     def __init__(self, llm_router: Optional[Any] = None):
         """Initialize classifier with optional LLM router."""
-        self._llm = llm_router
+        self._llm = llm_router if llm_router is not None else self._LLM_NOT_INITIALIZED
 
     @property
     def llm(self):
-        """Lazy load LLM router."""
-        if self._llm is None:
+        """Lazy load LLM router (only attempts once on failure)."""
+        if self._llm is self._LLM_NOT_INITIALIZED:
             try:
                 from athena_ai.llm.router import LLMRouter
                 self._llm = LLMRouter()
             except Exception as e:
                 logger.warning(f"Could not initialize LLM router: {e}")
+                # Set to None to prevent repeated initialization attempts
+                self._llm = None
         return self._llm
 
     def suggest_relations(
@@ -372,7 +377,7 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
 
         return [
             s for s in suggestions
-            if (s.source_hostname, s.target_hostname, s.relation_type) not in existing_keys
+            if (s.source_hostname.lower(), s.target_hostname.lower(), s.relation_type) not in existing_keys
         ]
 
 
