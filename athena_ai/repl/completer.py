@@ -114,6 +114,10 @@ class AthenaCompleter(Completer):
         variables = self._get_variables()
         partial_lower = partial.lower()
 
+        # Pre-compute lowercase variable set for O(1) lookups
+        # This avoids O(n×m) complexity when filtering inventory hosts
+        variables_lower = {v.lower() for v in variables}
+
         # Complete user-defined variables
         for var in variables:
             if var.lower().startswith(partial_lower):
@@ -127,10 +131,11 @@ class AthenaCompleter(Completer):
         # Complete inventory hosts
         inventory_hosts = self._get_inventory_hosts()
         for host in inventory_hosts:
+            host_lower = host.lower()
             # Skip if already a user variable (user vars take priority)
-            if host.lower() in [v.lower() for v in variables]:
+            if host_lower in variables_lower:
                 continue
-            if host.lower().startswith(partial_lower):
+            if host_lower.startswith(partial_lower):
                 yield Completion(
                     f"@{host}",
                     start_position=-len(partial) - 1,  # Include @
