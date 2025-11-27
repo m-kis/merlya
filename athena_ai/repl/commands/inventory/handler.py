@@ -111,7 +111,8 @@ class InventoryCommandHandler:
 
         handler = handlers.get(cmd)
         if handler:
-            return handler(cmd_args)
+            handler(cmd_args)
+            return True
 
         print_error(f"Unknown inventory command: {cmd}")
         self._show_help()

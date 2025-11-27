@@ -27,7 +27,7 @@ class InventoryManager:
             return True
 
         # Confirm deletion
-        host_count = source["host_count"]
+        host_count = source.get("host_count", 0)
         try:
             confirm = input(f"Delete '{source_name}' and its {host_count} hosts? (y/N): ").strip().lower()
             if confirm != "y":
@@ -108,11 +108,14 @@ class InventoryManager:
         """Handle /inventory snapshot [name]."""
         name = args[0] if args else None
 
-        snapshot_id = self.repo.create_snapshot(name=name)
-        stats = self.repo.get_stats()
+        try:
+            snapshot_id = self.repo.create_snapshot(name=name)
+            stats = self.repo.get_stats()
 
-        print_success(f"Created snapshot #{snapshot_id}")
-        console.print(f"  Hosts: {stats['total_hosts']}")
-        console.print(f"  Relations: {stats['total_relations']}")
+            print_success(f"Created snapshot #{snapshot_id}")
+            console.print(f"  Hosts: {stats.get('total_hosts', 0)}")
+            console.print(f"  Relations: {stats.get('total_relations', 0)}")
+        except Exception as e:
+            print_error(f"Failed to create snapshot: {e}")
 
         return True

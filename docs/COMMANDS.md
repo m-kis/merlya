@@ -587,6 +587,8 @@ Some commands respect environment variables:
 | `ATHENA_LANGUAGE` | Default language (en/fr) |
 | `ATHENA_MODEL` | Default LLM model |
 | `ATHENA_PROVIDER` | Default LLM provider |
+| `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing fallback (default: false). Set to "true" only after reviewing privacy implications. |
+| `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Acknowledge that your LLM provider meets data protection requirements (GDPR, SOC2, HIPAA). Required when LLM fallback is enabled. |
 
 ---
 

@@ -66,6 +66,8 @@ def scan_services() -> Dict[str, Any]:
                             "name": parts[2],
                             "pid": parts[0] if parts[0] != "-" else None,
                         })
+        except FileNotFoundError:
+            logger.debug("launchctl not found")
         except Exception as e:
             logger.debug(f"Could not list launchd services: {e}")
 
@@ -129,13 +131,17 @@ def scan_processes() -> List[Dict[str, Any]]:
             for line in lines[:20]:  # Top 20 processes
                 parts = line.split(maxsplit=4)
                 if len(parts) >= 5:
-                    processes.append({
-                        "pid": int(parts[0]),
-                        "user": parts[1],
-                        "cpu_percent": float(parts[2]),
-                        "mem_percent": float(parts[3]),
-                        "command": parts[4],
-                    })
+                    try:
+                        processes.append({
+                            "pid": int(parts[0]),
+                            "user": parts[1],
+                            "cpu_percent": float(parts[2]),
+                            "mem_percent": float(parts[3]),
+                            "command": parts[4],
+                        })
+                    except (ValueError, IndexError, TypeError) as e:
+                        logger.debug(f"Skipping malformed process line: {line!r} ({e})")
+                        continue
 
     except Exception as e:
         logger.debug(f"Could not list processes: {e}")

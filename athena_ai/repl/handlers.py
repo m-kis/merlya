@@ -4,7 +4,6 @@ Slash command handlers for Athena REPL.
 This module provides the main CommandHandler class that routes
 commands to specialized handler modules.
 """
-import asyncio
 import logging
 from enum import Enum, auto
 
@@ -24,16 +23,6 @@ class CommandResult(Enum):
     EXIT = auto()       # User requested to exit the REPL
     HANDLED = auto()    # Command was recognized and handled
     NOT_HANDLED = auto()  # Command was not recognized
-
-
-async def _run_async(coro):
-    """
-    Await an async coroutine.
-
-    This function is async to avoid blocking the event loop. Callers must
-    await this function or use asyncio.run() from a sync context.
-    """
-    return await coro
 
 
 class CommandHandler:
@@ -97,7 +86,7 @@ class CommandHandler:
             self._help_handler = HelpCommandHandler(self.repl)
         return self._help_handler
 
-    def handle_command(self, command: str) -> CommandResult:
+    async def handle_command(self, command: str) -> CommandResult:
         """
         Handle slash commands.
 
@@ -106,11 +95,13 @@ class CommandHandler:
             CommandResult.HANDLED if command was recognized and handled
             CommandResult.NOT_HANDLED if command was not recognized
         """
-        parts = command.split()
-        if not parts:
+        command = command.strip()
+        if not command:
             return CommandResult.NOT_HANDLED
+
+        parts = command.split()
         cmd = parts[0].lower()
-        args = parts[1:] if len(parts) > 1 else []
+        args = parts[1:]
 
         # Validate that this is a slash command
         if not cmd.startswith('/'):
@@ -123,7 +114,7 @@ class CommandHandler:
         cmd_name = cmd[1:]  # Remove leading /
         custom_cmd = self.repl.command_loader.get(cmd_name)
         if custom_cmd:
-            return asyncio.run(self._handle_custom_command(custom_cmd, args))
+            return await self._handle_custom_command(custom_cmd, args)
 
         # Route to appropriate handler
         handlers = {
@@ -186,9 +177,7 @@ class CommandHandler:
             status_manager.set_console(console)
             status_manager.start("[cyan]Athena is thinking...[/cyan]")
             try:
-                response = await _run_async(
-                    self.repl.orchestrator.process_request(user_query=prompt)
-                )
+                response = await self.repl.orchestrator.process_request(user_query=prompt)
             finally:
                 status_manager.stop()
 
@@ -213,7 +202,5 @@ class CommandHandler:
             return handler.handle(args)
         except ImportError as e:
             print_error(f"Inventory module not available: {e}")
-            return True
         except Exception as e:
             print_error(f"Inventory command failed: {e}")
-            return True

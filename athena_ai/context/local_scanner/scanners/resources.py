@@ -16,6 +16,9 @@ def scan_resources() -> Dict[str, Any]:
     # CPU info
     try:
         cpu_count = os.cpu_count()
+        if cpu_count is None:
+            logger.debug("os.cpu_count() returned None, defaulting to 1")
+            cpu_count = 1
         resources["cpu"] = {
             "count": cpu_count,
         }
@@ -89,13 +92,13 @@ def scan_resources() -> Dict[str, Any]:
                     text=True,
                     timeout=5,
                 )
-                total_bytes = int(result2.stdout.strip()) if result2.returncode == 0 else 0
-
-                free_bytes = stats.get("Pages free", 0)
-                resources["memory"] = {
-                    "total_gb": round(total_bytes / 1024 / 1024 / 1024, 2),
-                    "free_gb": round(free_bytes / 1024 / 1024 / 1024, 2),
-                }
+                if result2.returncode == 0:
+                    total_bytes = int(result2.stdout.strip())
+                    free_bytes = stats.get("Pages free", 0)
+                    resources["memory"] = {
+                        "total_gb": round(total_bytes / 1024 / 1024 / 1024, 2),
+                        "free_gb": round(free_bytes / 1024 / 1024 / 1024, 2),
+                    }
 
     except Exception as e:
         logger.debug(f"Could not get memory info: {e}")

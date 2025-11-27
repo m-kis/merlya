@@ -13,7 +13,6 @@ _SECRET_SENTINEL = "<RESOLVED_SECRET_SENTINEL>"
     # CLI flag patterns (existing)
     ("mysql -u root -p 'secret123'", "mysql -u root -p [REDACTED]"),
     ("mysql -u root -p secret123", "mysql -u root -p [REDACTED]"),
-    ("curl --header 'Authorization: Bearer token123'", "curl --header 'Authorization: Bearer token123'"),  # Not redacted by default patterns
     ("app --password='super_secret'", "app --password='[REDACTED]'"),  # Preserves quotes
     ("app --api-key 123456", "app --api-key [REDACTED]"),
 ])
@@ -21,6 +20,23 @@ def test_redaction(input_str, expected):
     """Test CLI flag redaction patterns."""
     result = redact_sensitive_info(input_str)
     assert result == expected, f"Redaction failed: {input_str} -> {result} (Expected: {expected})"
+
+
+@pytest.mark.parametrize("input_str,expected", [
+    # Authorization header with Bearer token
+    ("curl --header 'Authorization: Bearer token123abc'", "curl --header 'Authorization: Bearer [REDACTED]'"),
+    ("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "Authorization: Bearer [REDACTED]"),
+    # Case insensitive
+    ("authorization: bearer mytoken123", "authorization: bearer [REDACTED]"),
+    # Standalone Bearer token (8+ chars to avoid false positives)
+    ("Bearer abc12345678", "Bearer [REDACTED]"),
+    # Short tokens (less than 8 chars) should NOT be redacted to avoid false positives
+    ("Bearer short", "Bearer short"),
+])
+def test_bearer_token_redaction(input_str, expected):
+    """Test Bearer token redaction - Bearer tokens are sensitive credentials."""
+    result = redact_sensitive_info(input_str)
+    assert result == expected, f"Bearer token redaction failed: {input_str} -> {result} (Expected: {expected})"
 
 
 @pytest.mark.parametrize("input_str,expected", [
@@ -79,8 +95,8 @@ def test_url_param_redaction(input_str, expected):
     ('{"api_key": "xyz789"}', '{"api_key": "[REDACTED]"}'),
     # With single quotes
     ("{'password': 'secret123'}", "{'password': '[REDACTED]'}"),
-    # No space after colon
-    ('{"password":"secret123"}', '{"password": "[REDACTED]"}'),
+    # No space after colon - preserves original formatting
+    ('{"password":"secret123"}', '{"password":"[REDACTED]"}'),
     # Multiple keys
     ('{"user": "john", "password": "secret", "role": "admin"}',
      '{"user": "john", "password": "[REDACTED]", "role": "admin"}'),
@@ -139,9 +155,18 @@ def test_connection_string_redaction(input_str, expected):
     result = redact_sensitive_info(input_str)
     assert result == expected, f"Connection string redaction failed: {input_str} -> {result} (Expected: {expected})"
 
-def test_credential_resolution():
-    """Test credential resolution with secrets and config variables."""
+@pytest.fixture
+def credential_manager():
+    """Create a fresh CredentialManager for each test."""
     cm = CredentialManager()
+    yield cm
+    # Cleanup: clear all variables to prevent test pollution
+    cm._variables.clear()
+
+
+def test_credential_resolution(credential_manager):
+    """Test credential resolution with secrets and config variables."""
+    cm = credential_manager
     # Use sentinel value instead of actual secret to avoid leaking secrets in tests
     cm.set_variable("db_pass", _SECRET_SENTINEL, VariableType.SECRET)
     cm.set_variable("db_host", "localhost", VariableType.CONFIG)

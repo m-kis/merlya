@@ -80,12 +80,16 @@ def _parse_resolv_conf(content: str) -> Dict[str, Any]:
 
     for line in content.splitlines():
         line = line.strip()
-        if line.startswith("nameserver"):
-            parts = line.split()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if not parts:
+            continue
+        directive = parts[0]
+        if directive == "nameserver":
             if len(parts) >= 2:
                 nameservers.append(parts[1])
-        elif line.startswith("search"):
-            parts = line.split()
+        elif directive == "search":
             search_domains.extend(parts[1:])
 
     return {"nameservers": nameservers, "search_domains": search_domains}

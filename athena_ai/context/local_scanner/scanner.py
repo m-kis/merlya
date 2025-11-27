@@ -58,7 +58,11 @@ class LocalScanner:
 
         if not force:
             # Check for existing scan
-            existing = self.repo.get_local_context()
+            try:
+                existing = self.repo.get_local_context()
+            except Exception:
+                logger.error("Failed to get local context from database, treating as cache-miss", exc_info=True)
+                existing = None
 
             if existing:
                 # Get scanned_at from _metadata (new structure) or root level (legacy)
@@ -87,8 +91,11 @@ class LocalScanner:
         context = self.scan_all()
 
         # Save to database
-        self.repo.save_local_context(context.to_dict())
-        logger.info(f"Local context saved (scanned at: {context.scanned_at})")
+        try:
+            self.repo.save_local_context(context.to_dict())
+            logger.info(f"Local context saved (scanned at: {context.scanned_at})")
+        except Exception:
+            logger.error("Failed to save local context to database", exc_info=True)
 
         return context
 

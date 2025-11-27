@@ -67,10 +67,10 @@ class SessionCommandHandler:
 
             for conv in conversations:
                 conv_id = conv.get('id', conv.get('conversation_id', 'N/A'))
-                title = conv.get('title', 'Untitled')[:30]
+                title = (conv.get('title') or 'Untitled')[:30]
                 msg_count = str(conv.get('message_count', 0))
                 tokens = str(conv.get('token_count', 0))
-                updated = conv.get('updated_at', '')[:16]
+                updated = (conv.get('updated_at') or '')[:16]
 
                 # Mark current conversation
                 if conv_id == current_id:

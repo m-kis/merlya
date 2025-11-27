@@ -27,7 +27,10 @@ class InventoryViewer:
         remaining_args = []
         i = 0
         while i < len(args):
-            if args[i] == "--limit" and i + 1 < len(args):
+            if args[i] == "--limit":
+                if i + 1 >= len(args):
+                    print_error("Missing value for --limit")
+                    return (0, [], True)
                 try:
                     limit = int(args[i + 1])
                     if limit < 1:

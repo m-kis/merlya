@@ -5,11 +5,14 @@ Handles creation and retrieval of point-in-time inventory snapshots for backup/r
 """
 
 import json
+import logging
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from athena_ai.core.exceptions import PersistenceError
+
+logger = logging.getLogger(__name__)
 
 
 MAX_SNAPSHOT_LIMIT = 1000
@@ -140,7 +143,15 @@ class SnapshotRepositoryMixin:
 
             if row:
                 result = self._row_to_dict(row)
-                result["snapshot_data"] = json.loads(result["snapshot_data"])
+                try:
+                    result["snapshot_data"] = json.loads(result["snapshot_data"])
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        "Failed to deserialize snapshot data for snapshot_id=%s: %s",
+                        snapshot_id,
+                        e,
+                    )
+                    result["snapshot_data"] = None
                 return result
             return None
 

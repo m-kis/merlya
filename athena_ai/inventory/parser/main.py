@@ -1,11 +1,13 @@
 """
 Main inventory parser module.
 """
+import ipaddress
 import json
 import re
 from pathlib import Path
 from typing import Any, Optional, Tuple, List
 
+from athena_ai.core.exceptions import LLMInitializationError
 from athena_ai.utils.logger import logger
 
 from .models import ParseResult
@@ -48,13 +50,25 @@ class InventoryParser:
 
     @property
     def llm(self):
-        """Lazy load LLM router."""
+        """Lazy load LLM router.
+
+        Returns:
+            LLMRouter: The initialized LLM router instance.
+
+        Raises:
+            LLMInitializationError: If the LLM router cannot be initialized.
+                Contains the original exception details for debugging.
+        """
         if self._llm is None:
             try:
                 from athena_ai.llm.router import LLMRouter
                 self._llm = LLMRouter()
             except Exception as e:
-                logger.warning(f"Could not initialize LLM router: {e}")
+                logger.error(f"Could not initialize LLM router: {e}")
+                raise LLMInitializationError(
+                    reason=str(e),
+                    original_error=e,
+                ) from e
         return self._llm
 
     def parse(
@@ -127,8 +141,22 @@ class InventoryParser:
                 hosts, errors = parse_txt(content)
             else:
                 # Fallback to LLM
+                try:
+                    llm_router = self.llm
+                except LLMInitializationError as e:
+                    logger.error(f"LLM fallback unavailable: {e}")
+                    return ParseResult(
+                        hosts=[],
+                        source_type="unknown",
+                        file_path=file_path,
+                        errors=[
+                            f"LLM_UNAVAILABLE: Could not initialize LLM for parsing "
+                            f"non-standard format: {e.reason}"
+                        ],
+                    )
+
                 hosts, errors, warnings = parse_with_llm(
-                    content, self.llm, self.LLM_CONTENT_LIMIT
+                    content, llm_router, self.LLM_CONTENT_LIMIT
                 )
                 format_type = "llm_parsed"
                 return ParseResult(
@@ -155,6 +183,39 @@ class InventoryParser:
                 errors=[f"Parsing failed: {e}"],
             )
 
+    def _is_etc_hosts_format(self, content: str) -> bool:
+        """
+        Check if content matches /etc/hosts format.
+
+        Validates that at least one non-comment line starts with a valid
+        IPv4 or IPv6 address followed by whitespace and a hostname.
+
+        Supports:
+            - IPv4: 192.168.1.1 hostname
+            - IPv6: ::1 localhost, fe80::1 hostname, 2001:db8::1 hostname
+            - IPv6 with zone ID: fe80::1%eth0 hostname (zone stripped for validation)
+        """
+        for line in content.splitlines():
+            line = line.strip()
+            # Skip empty lines and comments
+            if not line or line.startswith("#"):
+                continue
+            # Split on whitespace: first token should be IP, rest are hostnames
+            tokens = line.split()
+            if len(tokens) < 2:
+                continue
+            ip_candidate = tokens[0]
+            # Strip zone ID suffix for IPv6 (e.g., fe80::1%eth0 -> fe80::1)
+            if "%" in ip_candidate:
+                ip_candidate = ip_candidate.split("%")[0]
+            try:
+                ipaddress.ip_address(ip_candidate)
+                # Valid IP followed by at least one hostname
+                return True
+            except ValueError:
+                continue
+        return False
+
     def _detect_format(self, content: str, file_path: Optional[str] = None) -> str:
         """Auto-detect the format of the content."""
         # Check file extension first
@@ -168,9 +229,14 @@ class InventoryParser:
                 return "yaml"
             elif ext == ".ini":
                 return "ini"
-            elif "hosts" in file_path.lower():
+            # Match /etc/hosts or files named exactly "hosts" (not "myhosts.txt")
+            filename = Path(file_path).name.lower()
+            if filename == "hosts" or file_path.lower().endswith("/etc/hosts"):
                 return "etc_hosts"
-            elif "ssh" in file_path.lower() and "config" in file_path.lower():
+            # Match ssh_config, .ssh/config, or config files in .ssh directory
+            if (
+                filename == "config" and ".ssh" in file_path.lower()
+            ) or filename == "ssh_config":
                 return "ssh_config"
 
         # Check content patterns
@@ -203,8 +269,11 @@ class InventoryParser:
         if re.search(r"^\[[\w\-_]+\]", content_stripped, re.MULTILINE):
             return "ini"
 
-        # /etc/hosts format (allow optional leading whitespace)
-        if re.search(r"^\s*\d+\.\d+\.\d+\.\d+\s+\S+", content_stripped, re.MULTILINE):
+        # /etc/hosts format (allow optional leading whitespace, support IPv4 and IPv6)
+        # IPv4: 192.168.1.1 hostname
+        # IPv6: ::1 localhost, fe80::1 hostname, 2001:db8::1 hostname
+        # Use ipaddress module for robust validation of both address types
+        if self._is_etc_hosts_format(content_stripped):
             return "etc_hosts"
 
         # SSH config format

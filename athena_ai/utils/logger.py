@@ -38,16 +38,33 @@ def setup_logger(verbose: bool = False):
         )
 
     # 3. Global Redaction Filter
-    def _redact_value(value):
+    def _redact_value(value, _seen=None):
         """Recursively redact sensitive info from a value."""
+        if _seen is None:
+            _seen = set()
+
+        # Prevent infinite recursion on circular references
+        value_id = id(value)
+        if value_id in _seen:
+            return "[circular reference]"
+
         if isinstance(value, str):
             return redact_sensitive_info(value)
         elif isinstance(value, dict):
-            return {k: _redact_value(v) for k, v in value.items()}
+            _seen.add(value_id)
+            result = {k: _redact_value(v, _seen) for k, v in value.items()}
+            _seen.discard(value_id)
+            return result
         elif isinstance(value, list):
-            return [_redact_value(item) for item in value]
+            _seen.add(value_id)
+            result = [_redact_value(item, _seen) for item in value]
+            _seen.discard(value_id)
+            return result
         elif isinstance(value, tuple):
-            return tuple(_redact_value(item) for item in value)
+            _seen.add(value_id)
+            result = tuple(_redact_value(item, _seen) for item in value)
+            _seen.discard(value_id)
+            return result
         else:
             # For non-stringifiable objects, try to convert to string and redact
             try:

@@ -2,12 +2,18 @@
 Scan Cache Repository Mixin - Manages scan result caching.
 
 Handles caching of scan results (nmap, ports, services, etc.) with TTL support.
+
+Note: All timestamps (created_at, expires_at) are stored in UTC for consistency
+across timezone boundaries. Comparisons and generation use timezone-aware UTC.
 """
 
 import json
+import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ScanCacheRepositoryMixin:
@@ -45,22 +51,28 @@ class ScanCacheRepositoryMixin:
         Returns:
             Cache dictionary with parsed data, or None if not found/expired.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT * FROM scan_cache
-            WHERE host_id = ? AND scan_type = ? AND expires_at > ?
-        """, (host_id, scan_type, datetime.now().isoformat()))
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            result = self._row_to_dict(row)
-            result["data"] = json.loads(result["data"])
-            return result
-        return None
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT * FROM scan_cache
+                    WHERE host_id = ? AND scan_type = ? AND expires_at > ?
+                """, (host_id, scan_type, datetime.now(timezone.utc).isoformat()))
+                row = cursor.fetchone()
+                if row:
+                    result = self._row_to_dict(row)
+                    try:
+                        result["data"] = json.loads(result["data"])
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(
+                            "Failed to parse scan cache JSON for host_id=%s, scan_type=%s: %s",
+                            host_id, scan_type, e
+                        )
+                        result["data"] = None
+                    return result
+                return None
+            finally:
+                cursor.close()
 
     def save_scan_cache(
         self,
@@ -76,27 +88,59 @@ class ScanCacheRepositoryMixin:
             scan_type: Type of scan.
             data: Scan data dictionary.
             ttl_seconds: Time to live in seconds.
+
+        Raises:
+            ValueError: If any input parameter is invalid.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        now = datetime.now()
+        # Validate host_id
+        if not isinstance(host_id, int) or host_id <= 0:
+            raise ValueError(f"host_id must be a positive integer, got: {host_id!r}")
+
+        # Validate scan_type
+        if not isinstance(scan_type, str):
+            raise ValueError(f"scan_type must be a string, got: {type(scan_type).__name__}")
+        scan_type_stripped = scan_type.strip()
+        if not scan_type_stripped:
+            raise ValueError("scan_type must be a non-empty string after stripping whitespace")
+
+        # Validate data
+        if data is None:
+            raise ValueError("data must not be None")
+        if not isinstance(data, dict):
+            raise ValueError(f"data must be a dict/mapping, got: {type(data).__name__}")
+
+        # Validate ttl_seconds
+        if not isinstance(ttl_seconds, int) or ttl_seconds <= 0:
+            raise ValueError(f"ttl_seconds must be a positive integer, got: {ttl_seconds!r}")
+
+        now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl_seconds)
 
-        cursor.execute("""
-            INSERT OR REPLACE INTO scan_cache
-            (host_id, scan_type, data, ttl_seconds, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            host_id,
-            scan_type,
-            json.dumps(data),
-            ttl_seconds,
-            now.isoformat(),
-            expires_at.isoformat(),
-        ))
-
-        conn.commit()
-        conn.close()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO scan_cache
+                    (host_id, scan_type, data, ttl_seconds, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    host_id,
+                    scan_type,
+                    json.dumps(data),
+                    ttl_seconds,
+                    now.isoformat(),
+                    expires_at.isoformat(),
+                ))
+                conn.commit()
+            except sqlite3.Error as e:
+                conn.rollback()
+                logger.error(
+                    "Failed to save scan cache for host_id=%s, scan_type=%s: %s",
+                    host_id, scan_type, e
+                )
+                raise
+            finally:
+                cursor.close()
 
     def delete_scan_cache(
         self,
@@ -111,23 +155,24 @@ class ScanCacheRepositoryMixin:
 
         If neither argument provided, deletes all cache entries.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                if host_id and scan_type:
+                    cursor.execute(
+                        "DELETE FROM scan_cache WHERE host_id = ? AND scan_type = ?",
+                        (host_id, scan_type)
+                    )
+                elif host_id:
+                    cursor.execute("DELETE FROM scan_cache WHERE host_id = ?", (host_id,))
+                elif scan_type:
+                    cursor.execute("DELETE FROM scan_cache WHERE scan_type = ?", (scan_type,))
+                else:
+                    cursor.execute("DELETE FROM scan_cache")
 
-        if host_id and scan_type:
-            cursor.execute(
-                "DELETE FROM scan_cache WHERE host_id = ? AND scan_type = ?",
-                (host_id, scan_type)
-            )
-        elif host_id:
-            cursor.execute("DELETE FROM scan_cache WHERE host_id = ?", (host_id,))
-        elif scan_type:
-            cursor.execute("DELETE FROM scan_cache WHERE scan_type = ?", (scan_type,))
-        else:
-            cursor.execute("DELETE FROM scan_cache")
-
-        conn.commit()
-        conn.close()
+                conn.commit()
+            finally:
+                cursor.close()
 
     def cleanup_expired_cache(self) -> int:
         """Remove all expired cache entries.
@@ -135,14 +180,18 @@ class ScanCacheRepositoryMixin:
         Returns:
             Number of entries deleted.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM scan_cache WHERE expires_at < ?", (datetime.now().isoformat(),))
-        deleted = cursor.rowcount
-
-        conn.commit()
-        conn.close()
+        deleted = 0
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "DELETE FROM scan_cache WHERE expires_at < ?",
+                    (datetime.now(timezone.utc).isoformat(),)
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+            finally:
+                cursor.close()
 
         return deleted
 

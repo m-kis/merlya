@@ -73,8 +73,13 @@ class SourceRepositoryMixin:
             return source_id
         except sqlite3.IntegrityError as e:
             error_msg = str(e)
-            # Only treat as name collision if it's the UNIQUE constraint on inventory_sources.name
-            if "UNIQUE constraint failed" in error_msg or "inventory_sources.name" in error_msg:
+            # Only treat as name collision if it's specifically the UNIQUE constraint on name
+            # SQLite format: "UNIQUE constraint failed: inventory_sources.name"
+            is_name_unique_violation = (
+                "UNIQUE constraint failed" in error_msg
+                and "inventory_sources.name" in error_msg
+            )
+            if is_name_unique_violation:
                 # Source with this name already exists, return existing ID
                 cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
                 row = cursor.fetchone()
@@ -134,13 +139,13 @@ class SourceRepositoryMixin:
             List of source dictionaries, ordered by creation date (newest first).
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM inventory_sources ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [self._row_to_dict(row) for row in rows]
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM inventory_sources ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
 
     def update_source_host_count(self, source_id: int, count: int) -> None:
         """Update the host count for a source.

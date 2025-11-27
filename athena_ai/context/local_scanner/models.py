@@ -45,8 +45,11 @@ class LocalContext:
         Also handles _value wrapper for non-dict values stored in repository.
         """
         # Get scanned_at from _metadata (new) or root level (legacy)
+        # Use explicit None check to avoid issues with falsy but valid values
         metadata = data.get("_metadata", {})
-        scanned_at_value = metadata.get("scanned_at") or data.get("scanned_at")
+        scanned_at_value = metadata.get("scanned_at")
+        if scanned_at_value is None:
+            scanned_at_value = data.get("scanned_at")
         scanned_at = _parse_scanned_at(scanned_at_value)
 
         return cls(

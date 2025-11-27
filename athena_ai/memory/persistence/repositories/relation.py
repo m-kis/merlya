@@ -93,47 +93,44 @@ class RelationRepositoryMixin:
         if not source_host or not target_host:
             return None
 
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
         now = datetime.now().isoformat()
         metadata_json = json.dumps(metadata or {})
         validated_int = 1 if validated else 0
 
-        cursor.execute("""
-            INSERT INTO host_relations
-            (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(source_host_id, target_host_id, relation_type) DO UPDATE SET
-                confidence = excluded.confidence,
-                validated_by_user = excluded.validated_by_user,
-                metadata = excluded.metadata,
-                updated_at = ?
-        """, (
-            source_host["id"],
-            target_host["id"],
-            relation_type,
-            confidence,
-            validated_int,
-            metadata_json,
-            now,
-            now,  # updated_at for the ON CONFLICT case
-        ))
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
 
-        # Get the id - either newly inserted or existing row that was updated
-        if cursor.lastrowid:
-            relation_id = cursor.lastrowid
-        else:
-            # Row was updated, fetch the existing id
             cursor.execute("""
-                SELECT id FROM host_relations
-                WHERE source_host_id = ? AND target_host_id = ? AND relation_type = ?
-            """, (source_host["id"], target_host["id"], relation_type))
-            row = cursor.fetchone()
-            relation_id = row[0] if row else None
+                INSERT INTO host_relations
+                (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_host_id, target_host_id, relation_type) DO UPDATE SET
+                    confidence = excluded.confidence,
+                    validated_by_user = excluded.validated_by_user,
+                    metadata = excluded.metadata,
+                    updated_at = ?
+            """, (
+                source_host["id"],
+                target_host["id"],
+                relation_type,
+                confidence,
+                validated_int,
+                metadata_json,
+                now,
+                now,  # updated_at for the ON CONFLICT case
+            ))
 
-        conn.commit()
-        conn.close()
+            # Get the id - either newly inserted or existing row that was updated
+            if cursor.lastrowid:
+                relation_id = cursor.lastrowid
+            else:
+                # Row was updated, fetch the existing id
+                cursor.execute("""
+                    SELECT id FROM host_relations
+                    WHERE source_host_id = ? AND target_host_id = ? AND relation_type = ?
+                """, (source_host["id"], target_host["id"], relation_type))
+                row = cursor.fetchone()
+                relation_id = row[0] if row else None
 
         return relation_id
 
@@ -163,9 +160,6 @@ class RelationRepositoryMixin:
                 return []
             host_id = host["id"]
 
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
         query = """
             SELECT r.*, s.hostname as source_hostname, t.hostname as target_hostname
             FROM host_relations r
@@ -173,7 +167,7 @@ class RelationRepositoryMixin:
             JOIN hosts_v2 t ON r.target_host_id = t.id
             WHERE 1=1
         """
-        params = []
+        params: list = []
 
         if host_id is not None:
             query += " AND (r.source_host_id = ? OR r.target_host_id = ?)"
@@ -186,9 +180,10 @@ class RelationRepositoryMixin:
         if validated_only:
             query += " AND r.validated_by_user = 1"
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
 
         results = []
         for row in rows:
@@ -203,17 +198,13 @@ class RelationRepositoryMixin:
         Args:
             relation_id: Relation ID to validate.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE host_relations
-            SET validated_by_user = 1
-            WHERE id = ?
-        """, (relation_id,))
-
-        conn.commit()
-        conn.close()
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE host_relations
+                SET validated_by_user = 1
+                WHERE id = ?
+            """, (relation_id,))
 
     def delete_relation(self, relation_id: int) -> bool:
         """Delete a relation.
@@ -224,12 +215,7 @@ class RelationRepositoryMixin:
         Returns:
             True if deleted, False if not found.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM host_relations WHERE id = ?", (relation_id,))
-        deleted = cursor.rowcount > 0
-
-        conn.commit()
-        conn.close()
-        return deleted
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM host_relations WHERE id = ?", (relation_id,))
+            return cursor.rowcount > 0

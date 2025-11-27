@@ -4,7 +4,7 @@ Structured format parsers (CSV, JSON, YAML).
 import csv
 import io
 import json
-from typing import List, Tuple, Optional, Dict
+from typing import Any, List, Tuple, Optional, Dict
 
 from athena_ai.utils.logger import logger
 from ..models import ParsedHost
@@ -19,6 +19,25 @@ HOSTNAME_FIELDS = [
     "node",
     "machine",
 ]
+
+# Fields that indicate a dict is likely a host object
+HOST_INDICATOR_FIELDS = set(
+    HOSTNAME_FIELDS + [
+        "ip",
+        "ip_address",
+        "ipaddress",
+        "address",
+        "ansible_host",
+        "ssh_port",
+        "port",
+        "groups",
+        "aliases",
+        "role",
+        "service",
+        "environment",
+        "env",
+    ]
+)
 
 IP_FIELDS = [
     "ip",
@@ -49,11 +68,26 @@ def _find_field(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
 
 
 def _get_field(item: Dict, candidates: List[str]) -> Optional[str]:
-    """Get a field value from a dict using candidate names."""
+    """Get a field value from a dict using candidate names (case-insensitive)."""
+    # Build a lowercase-key mapping for case-insensitive lookup
+    lower_map = {k.lower(): v for k, v in item.items()}
     for candidate in candidates:
-        if candidate in item:
-            return str(item[candidate])
+        if candidate.lower() in lower_map:
+            return str(lower_map[candidate.lower()])
     return None
+
+
+def _looks_like_host(item: Any) -> bool:
+    """Check if an item looks like a host object.
+
+    A valid host object must be a dict and contain at least one
+    field that indicates it's a host (hostname, ip, etc.).
+    """
+    if not isinstance(item, dict):
+        return False
+    # Check if any key in the dict matches known host indicator fields
+    item_keys_lower = {k.lower() for k in item.keys()}
+    return bool(item_keys_lower & HOST_INDICATOR_FIELDS)
 
 
 def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
@@ -133,9 +167,23 @@ def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
         elif isinstance(data, dict):
             if "hosts" in data:
                 items = data["hosts"]
+            elif _looks_like_host(data):
+                # Single host object
+                items = [data]
             else:
-                # Single host or dict of hosts
-                items = [data] if "hostname" in data or "host" in data else list(data.values())
+                # Possibly a dict-of-hosts (e.g., {"web1": {...}, "web2": {...}})
+                # Validate that values look like host objects before processing
+                potential_hosts = list(data.values())
+                if potential_hosts and all(_looks_like_host(v) for v in potential_hosts):
+                    items = potential_hosts
+                else:
+                    # Not a recognized host structure, skip with warning
+                    logger.warning(
+                        "JSON dict does not contain 'hosts' key and values do not appear "
+                        "to be host objects. Skipping. Keys found: %s",
+                        list(data.keys())[:10]  # Limit to first 10 keys for readability
+                    )
+                    return hosts, errors
         else:
             errors.append("Invalid JSON structure")
             return hosts, errors

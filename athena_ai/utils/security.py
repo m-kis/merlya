@@ -108,22 +108,26 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
 
     for key in json_keys:
         # "key": "value" or "key": 'value' (with optional whitespace)
-        # Use a function to preserve original key case
+        # Use a function to preserve original key case and spacing
         def json_quoted_replacer(match):
-            return f'{match.group(1)}{match.group(2)}{match.group(1)}: {match.group(3)}[REDACTED]{match.group(3)}'
+            # match.group(1) = key quote char, match.group(2) = key name,
+            # match.group(3) = colon+whitespace, match.group(4) = value quote char
+            return f'{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}{match.group(4)}[REDACTED]{match.group(4)}'
 
         redacted = re.sub(
-            rf'(["\'])({key})\1\s*:\s*(["\'])([^"\']*?)\3',
+            rf'(["\'])({key})\1(:\s*)(["\'])([^"\']*?)\4',
             json_quoted_replacer,
             redacted,
             flags=re.IGNORECASE
         )
         # "key": value (unquoted value - numbers, booleans, etc.)
         def json_unquoted_replacer(match):
-            return f'{match.group(1)}{match.group(2)}{match.group(1)}: [REDACTED]'
+            # match.group(1) = key quote char, match.group(2) = key name,
+            # match.group(3) = colon+whitespace
+            return f'{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}[REDACTED]'
 
         redacted = re.sub(
-            rf'(["\'])({key})\1\s*:\s*([^\s,\}}\]"\']+)',
+            rf'(["\'])({key})\1(:\s*)([^\s,\}}\]"\']+)',
             json_unquoted_replacer,
             redacted,
             flags=re.IGNORECASE
@@ -157,6 +161,24 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
         r'(//[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.-]+)',
         r'\1[REDACTED]\3',
         redacted
+    )
+
+    # 8. Redact Authorization Bearer tokens
+    # Matches: Authorization: Bearer <token>, Bearer <token>
+    # Bearer tokens are sensitive credentials that grant access
+    # Token pattern: alphanumeric, dash, underscore, dot (common JWT/OAuth chars)
+    redacted = re.sub(
+        r'(Authorization:\s*Bearer\s+)([a-zA-Z0-9_.-]+)',
+        r'\1[REDACTED]',
+        redacted,
+        flags=re.IGNORECASE
+    )
+    # Standalone Bearer token (8+ chars to avoid false positives like "Bearer short")
+    redacted = re.sub(
+        r'(Bearer\s+)([a-zA-Z0-9_.-]{8,})',
+        r'\1[REDACTED]',
+        redacted,
+        flags=re.IGNORECASE
     )
 
     return redacted

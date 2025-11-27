@@ -1,21 +1,19 @@
 """
 Text-based format parsers (INI, TXT, etc_hosts, ssh_config).
 """
-import re
+import ipaddress
 from typing import List, Tuple
 
 from ..models import ParsedHost
 
 
 def _is_ip(value: str) -> bool:
-    """Check if value looks like an IP address."""
-    # IPv4
-    if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", value):
+    """Check if value is a valid IP address (IPv4 or IPv6)."""
+    try:
+        ipaddress.ip_address(value)
         return True
-    # IPv6 (simplified check)
-    if ":" in value and not "://" in value:
-        return True
-    return False
+    except ValueError:
+        return False
 
 
 def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
@@ -24,7 +22,7 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
     errors = []
     current_group = "ungrouped"
 
-    for line in content.splitlines():
+    for line_num, line in enumerate(content.splitlines(), 1):
         line = line.strip()
 
         # Skip empty lines and comments
@@ -34,6 +32,9 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
         # Group header
         if line.startswith("[") and line.endswith("]"):
             group_name = line[1:-1].strip()
+            if not group_name:
+                errors.append(f"Line {line_num}: Empty group name")
+                continue
             # Skip special Ansible groups
             if ":" not in group_name:
                 current_group = group_name
@@ -62,12 +63,14 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 key = key.lower()
 
                 if key in ["ansible_host", "ip"]:
+                    if not _is_ip(value):
+                        errors.append(f"Line {line_num}: Invalid IP address '{value}' for host '{hostname}'")
                     host.ip_address = value
                 elif key == "ansible_port":
                     try:
                         host.ssh_port = int(value)
                     except ValueError:
-                        pass
+                        errors.append(f"Line {line_num}: Invalid port '{value}' for host '{hostname}'")
                 elif key in ["ansible_user", "user"]:
                     host.metadata["ssh_user"] = value
                 else:
@@ -98,7 +101,7 @@ def parse_etc_hosts(content: str) -> Tuple[List[ParsedHost], List[str]]:
     skip_ips = {"127.0.0.1", "::1", "255.255.255.255", "0.0.0.0"}
     skip_hosts = {"localhost", "broadcasthost", "ip6-localhost", "ip6-loopback"}
 
-    for line in content.splitlines():
+    for line_num, line in enumerate(content.splitlines(), 1):
         line = line.strip()
 
         # Skip empty lines and comments
@@ -107,10 +110,16 @@ def parse_etc_hosts(content: str) -> Tuple[List[ParsedHost], List[str]]:
 
         parts = line.split()
         if len(parts) < 2:
+            errors.append(f"Line {line_num}: Malformed entry, expected 'IP hostname'")
             continue
 
         ip = parts[0]
         hostnames = parts[1:]
+
+        # Validate IP address
+        if not _is_ip(ip):
+            errors.append(f"Line {line_num}: Invalid IP address '{ip}'")
+            continue
 
         # Skip local/special entries
         if ip in skip_ips:
@@ -138,8 +147,9 @@ def parse_ssh_config(content: str) -> Tuple[List[ParsedHost], List[str]]:
     hosts = []
     errors = []
     current_host = None
+    current_host_line = 0
 
-    for line in content.splitlines():
+    for line_num, line in enumerate(content.splitlines(), 1):
         line = line.strip()
 
         # Skip empty lines and comments
@@ -155,6 +165,7 @@ def parse_ssh_config(content: str) -> Tuple[List[ParsedHost], List[str]]:
             # Guard against malformed "Host " line with no hostname
             parts = line.split(None, 1)
             if len(parts) < 2 or not parts[1].strip():
+                errors.append(f"Line {line_num}: Empty Host directive")
                 current_host = None
                 continue
 
@@ -166,6 +177,7 @@ def parse_ssh_config(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 continue
 
             current_host = ParsedHost(hostname=hostname.lower())
+            current_host_line = line_num
 
         elif current_host:
             # Parse host options
@@ -191,7 +203,7 @@ def parse_ssh_config(content: str) -> Tuple[List[ParsedHost], List[str]]:
                     try:
                         current_host.ssh_port = int(value)
                     except ValueError:
-                        pass
+                        errors.append(f"Line {line_num}: Invalid port '{value}' for host at line {current_host_line}")
                 elif key == "user":
                     current_host.metadata["ssh_user"] = value
                 elif key == "identityfile":
@@ -209,7 +221,7 @@ def parse_txt(content: str) -> Tuple[List[ParsedHost], List[str]]:
     hosts = []
     errors = []
 
-    for line in content.splitlines():
+    for line_num, line in enumerate(content.splitlines(), 1):
         line = line.strip()
 
         # Skip empty lines and comments
@@ -218,6 +230,9 @@ def parse_txt(content: str) -> Tuple[List[ParsedHost], List[str]]:
 
         # Try to extract hostname and optional IP
         parts = line.split()
+
+        if not parts:
+            continue
 
         if len(parts) >= 2 and _is_ip(parts[0]):
             # Format: IP hostname
@@ -231,6 +246,10 @@ def parse_txt(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 hostname=parts[0].lower(),
                 ip_address=parts[1],
             )
+        elif len(parts) >= 2:
+            # Two parts but neither is a valid IP - report as warning
+            errors.append(f"Line {line_num}: Neither '{parts[0]}' nor '{parts[1]}' is a valid IP address")
+            host = ParsedHost(hostname=parts[0].lower())
         else:
             # Just hostname
             host = ParsedHost(hostname=parts[0].lower())

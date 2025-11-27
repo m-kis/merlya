@@ -231,3 +231,23 @@ class MissingAPIKeyError(ConfigurationError):
 class InvalidConfigError(ConfigurationError):
     """Invalid configuration value."""
     pass
+
+
+class LLMInitializationError(ConfigurationError):
+    """LLM router initialization failed.
+
+    Raised when the LLM router cannot be initialized, typically due to
+    missing API keys, network issues, or misconfiguration.
+    """
+
+    def __init__(self, reason: str, original_error: Exception | None = None):
+        details = {"reason": reason}
+        if original_error:
+            details["original_error"] = str(original_error)
+            details["original_error_type"] = type(original_error).__name__
+        super().__init__(
+            f"LLM router initialization failed: {reason}",
+            details
+        )
+        self.reason = reason
+        self.original_error = original_error

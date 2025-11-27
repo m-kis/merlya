@@ -187,19 +187,33 @@ class HostRelationClassifier:
                     break
 
         # Create relations for groups with multiple hosts
+        # Use star topology for large clusters to avoid O(n²) explosion
+        max_pairwise = 20  # Switch to star topology above this size
         for base_name, group_hosts in hostname_groups.items():
             if len(group_hosts) < 2:
                 continue
 
-            # Create pairwise relations
-            for i, host1 in enumerate(group_hosts):
-                for host2 in group_hosts[i + 1:]:
+            if len(group_hosts) <= max_pairwise:
+                # Small cluster: create pairwise relations
+                for i, host1 in enumerate(group_hosts):
+                    for host2 in group_hosts[i + 1:]:
+                        suggestions.append(RelationSuggestion(
+                            source_hostname=host1,
+                            target_hostname=host2,
+                            relation_type="cluster_member",
+                            confidence=0.85,
+                            reason=f"Same naming pattern: {base_name}-*",
+                        ))
+            else:
+                # Large cluster: use star topology (first host as hub)
+                hub = group_hosts[0]
+                for member in group_hosts[1:]:
                     suggestions.append(RelationSuggestion(
-                        source_hostname=host1,
-                        target_hostname=host2,
+                        source_hostname=hub,
+                        target_hostname=member,
                         relation_type="cluster_member",
-                        confidence=0.85,
-                        reason=f"Same naming pattern: {base_name}-*",
+                        confidence=0.8,  # Slightly lower confidence for star topology
+                        reason=f"Same naming pattern: {base_name}-* (star topology, {len(group_hosts)} members)",
                     ))
 
         return suggestions
@@ -213,8 +227,8 @@ class HostRelationClassifier:
             for hostname in hostnames:
                 # Check if hostname contains primary term
                 if primary_term in hostname.lower():
-                    # Look for corresponding replica
-                    potential_replica = hostname.lower().replace(primary_term, secondary_term)
+                    # Look for corresponding replica (replace only first occurrence)
+                    potential_replica = hostname.lower().replace(primary_term, secondary_term, 1)
 
                     for other_hostname in hostnames:
                         if other_hostname.lower() == potential_replica:
@@ -243,6 +257,8 @@ class HostRelationClassifier:
                 group_hosts[group].append(hostname)
 
         # Create relations for hosts in same group
+        # Use star topology for large groups to avoid O(n²) explosion
+        max_pairwise = 20  # Switch to star topology above this size
         for group, group_members in group_hosts.items():
             if len(group_members) < 2:
                 continue
@@ -251,14 +267,28 @@ class HostRelationClassifier:
             if group.lower() in ["all", "ungrouped", "servers", "hosts"]:
                 continue
 
-            for i, host1 in enumerate(group_members):
-                for host2 in group_members[i + 1:]:
+            if len(group_members) <= max_pairwise:
+                # Small group: create pairwise relations
+                for i, host1 in enumerate(group_members):
+                    for host2 in group_members[i + 1:]:
+                        suggestions.append(RelationSuggestion(
+                            source_hostname=host1,
+                            target_hostname=host2,
+                            relation_type="related_service",
+                            confidence=0.6,
+                            reason=f"Same group: {group}",
+                            metadata={"group": group},
+                        ))
+            else:
+                # Large group: use star topology (first host as hub)
+                hub = group_members[0]
+                for member in group_members[1:]:
                     suggestions.append(RelationSuggestion(
-                        source_hostname=host1,
-                        target_hostname=host2,
+                        source_hostname=hub,
+                        target_hostname=member,
                         relation_type="related_service",
-                        confidence=0.6,
-                        reason=f"Same group: {group}",
+                        confidence=0.55,  # Slightly lower confidence for star topology
+                        reason=f"Same group: {group} (star topology, {len(group_members)} members)",
                         metadata={"group": group},
                     ))
 
@@ -364,9 +394,8 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
         return suggestions
 
     def _deduplicate(self, suggestions: List[RelationSuggestion]) -> List[RelationSuggestion]:
-        """Remove duplicate suggestions."""
-        seen = set()
-        unique = []
+        """Remove duplicate suggestions, keeping the highest-confidence instance."""
+        best_by_key: Dict[tuple, RelationSuggestion] = {}
 
         for s in suggestions:
             # Create a normalized key (order-independent for bidirectional relations)
@@ -378,11 +407,11 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
             else:
                 key = (src_lower, tgt_lower, s.relation_type)
 
-            if key not in seen:
-                seen.add(key)
-                unique.append(s)
+            # Keep the suggestion with the highest confidence for each key
+            if key not in best_by_key or s.confidence > best_by_key[key].confidence:
+                best_by_key[key] = s
 
-        return unique
+        return list(best_by_key.values())
 
     def _filter_existing(
         self,

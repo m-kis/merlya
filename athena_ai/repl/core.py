@@ -153,7 +153,7 @@ class AthenaREPL:
 
                 # Handle slash commands
                 if user_input.startswith('/'):
-                    result = self.command_handler.handle_command(user_input)
+                    result = asyncio.run(self.command_handler.handle_command(user_input))
                     if result == CommandResult.EXIT:
                         break
                     if result == CommandResult.HANDLED:
