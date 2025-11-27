@@ -331,6 +331,11 @@ class HookManager:
         self._yaml_hooks.clear()
         self._initialized = False
 
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+
 
 # Singleton accessor
 _hook_manager: Optional[HookManager] = None
@@ -343,3 +348,10 @@ def get_hook_manager() -> HookManager:
         _hook_manager = HookManager()
         _hook_manager.initialize()
     return _hook_manager
+
+
+def reset_hook_manager() -> None:
+    """Reset the global HookManager (for testing)."""
+    global _hook_manager
+    HookManager.reset_instance()
+    _hook_manager = None

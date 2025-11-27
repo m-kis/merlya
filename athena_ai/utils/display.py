@@ -94,5 +94,23 @@ class DisplayManager:
 
         self.console.print(f"[{style}]{message}[/{style}]")
 
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+
+
 # Global instance
 display = DisplayManager()
+
+
+def get_display_manager() -> DisplayManager:
+    """Get the global DisplayManager instance."""
+    return display
+
+
+def reset_display_manager() -> None:
+    """Reset the global DisplayManager (for testing)."""
+    global display
+    DisplayManager.reset_instance()
+    display = DisplayManager()

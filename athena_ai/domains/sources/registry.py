@@ -167,6 +167,11 @@ class SourceRegistry:
             self.cache_file.unlink()
         logger.info("Source registry cleared")
 
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+
     def _save_cache(self):
         """Save registry to cache file."""
         try:

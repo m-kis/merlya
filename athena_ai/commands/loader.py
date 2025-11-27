@@ -243,6 +243,11 @@ class CommandLoader:
         """Force reload all commands."""
         self.load_all(force=True)
 
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+
 
 # Singleton accessor
 _command_loader: Optional[CommandLoader] = None
@@ -255,3 +260,10 @@ def get_command_loader() -> CommandLoader:
         _command_loader = CommandLoader()
         _command_loader.load_all()
     return _command_loader
+
+
+def reset_command_loader() -> None:
+    """Reset the global CommandLoader (for testing)."""
+    global _command_loader
+    CommandLoader.reset_instance()
+    _command_loader = None

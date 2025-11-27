@@ -1,5 +1,151 @@
 # Contributing to Athena
 
+This document outlines the development principles, architectural patterns, and workflow that all contributors must follow.
+
+## Development Principles
+
+### 1. SOLID Principles
+
+#### Single Responsibility Principle (SRP)
+Each class/module has one reason to change.
+
+```python
+# Good: Dedicated classes
+class RiskAssessor:    # Only assesses risk
+class AuditLogger:     # Only logs audit events
+class HostRegistry:    # Only manages host validation
+
+# Bad: God classes that do everything
+class ServerManager:   # Manages, executes, logs, validates...
+```
+
+#### Open/Closed Principle (OCP)
+Open for extension, closed for modification. Use the Registry pattern.
+
+```python
+# Good: Register new agents without modifying existing code
+from athena_ai.core.registry import get_registry
+
+registry = get_registry()
+registry.register("MyNewAgent", MyNewAgent)
+
+# Bad: Hard-coded if/elif chains
+if agent_type == "diagnostic":
+    return DiagnosticAgent()
+elif agent_type == "remediation":
+    return RemediationAgent()
+# Adding new agent requires modifying this code
+```
+
+#### Dependency Inversion Principle (DIP)
+Depend on abstractions, inject dependencies.
+
+```python
+# Good: Accept dependencies via constructor
+class BaseAgent:
+    def __init__(
+        self,
+        context_manager: ContextManager,
+        llm: Optional[LLMRouter] = None,
+        executor: Optional[ActionExecutor] = None,
+    ):
+        self.llm = llm if llm is not None else LLMRouter()
+        self.executor = executor if executor is not None else ActionExecutor()
+
+# Bad: Hard-coded instantiation
+class BadAgent:
+    def __init__(self):
+        self.llm = LLMRouter()  # Can't inject mocks for testing
+```
+
+### 2. Design Patterns
+
+#### Singleton Pattern
+Use for global services. **Always provide `reset_instance()` for testing.**
+
+```python
+class MyManager:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+```
+
+#### Registry Pattern
+Use for dynamic registration and lookup.
+
+```python
+# Register at startup
+registry.register("DiagnosticAgent", DiagnosticAgent)
+
+# Lookup dynamically
+agent = registry.get("DiagnosticAgent", context_manager=ctx)
+```
+
+### 3. Security-First Design
+
+**Never execute commands on unvalidated hosts.**
+
+```python
+# Always validate hosts
+from athena_ai.tools.base import validate_host
+
+is_valid, message = validate_host(hostname)
+if not is_valid:
+    return {"error": message}
+```
+
+**Always audit security-relevant operations.**
+
+```python
+from athena_ai.security.audit_logger import get_audit_logger
+
+audit = get_audit_logger()
+audit.log_command(command, target, result="success", risk_level="moderate")
+```
+
+### 4. Error Handling
+
+Use the unified exception hierarchy from `athena_ai.core.exceptions`:
+
+```python
+from athena_ai.core.exceptions import (
+    ValidationError,
+    ExecutionError,
+    SecurityError,
+    HostNotFoundError,
+)
+
+# Raise specific exceptions
+if not host_valid:
+    raise HostNotFoundError(f"Host '{hostname}' not found", details={"suggestions": suggestions})
+```
+
+### 5. Testing Requirements
+
+- Reset singletons between tests using `reset_instance()`
+- Mock external dependencies (SSH, APIs)
+- Test both success and failure paths
+- Use fixtures from `tests/conftest.py`
+
+```python
+@pytest.fixture(autouse=True)
+def reset_singletons():
+    from athena_ai.core.registry import AgentRegistry
+    AgentRegistry.reset_instance()
+    yield
+    AgentRegistry.reset_instance()
+```
+
+---
+
 ## Development Workflow
 
 ### Branch Strategy

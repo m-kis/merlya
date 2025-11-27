@@ -1,17 +1,24 @@
+"""
+Diagnostic Agent - Infrastructure problem investigation.
+
+Follows DIP: Uses injected console from DisplayManager singleton.
+"""
 import json
 from typing import Any, Dict
 
-from rich.console import Console
-
 from athena_ai.agents.base import BaseAgent
+from athena_ai.utils.display import get_display_manager
 from athena_ai.utils.logger import logger
 
-console = Console()
 
 class DiagnosticAgent(BaseAgent):
-    def __init__(self, context_manager):
-        super().__init__(context_manager)
+    """Agent for diagnosing infrastructure issues."""
+
+    def __init__(self, context_manager, **kwargs):
+        super().__init__(context_manager, **kwargs)
         self.name = "DiagnosticAgent"
+        # DIP: Use injected display manager instead of global Console
+        self._display = get_display_manager()
 
     def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
         logger.info(f"DiagnosticAgent starting task: {task} on {target}")
@@ -52,9 +59,9 @@ class DiagnosticAgent(BaseAgent):
 
         # Interactive Confirmation
         if not confirm:
-            console.print("\n[bold]Proposed Diagnostic Plan:[/bold]")
+            self._display.console.print("\n[bold]Proposed Diagnostic Plan:[/bold]")
             for i, cmd in enumerate(commands, 1):
-                console.print(f"  {i}. [cyan]{cmd}[/cyan]")
+                self._display.console.print(f"  {i}. [cyan]{cmd}[/cyan]")
 
             import click
             if not click.confirm("\nDo you want to execute these commands?", default=False):
