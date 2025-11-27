@@ -38,7 +38,8 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
     # 2. Redact command line flags
     
     # Pattern 1: -p 'value' or -p "value" (single letter flags with quotes)
-    redacted = re.sub(r"(-p\s+['\"])([^'\"]+)(['\"])", r"\1[REDACTED]\3", redacted)
+    # Use backreference to ensure matching quotes (group 2 captures the quote type)
+    redacted = re.sub(r"(-p\s+)(['\"])([^'\"]+)\2", r"\1\2[REDACTED]\2", redacted)
 
     # Pattern 2: -p value (single letter flags without quotes, stops at next flag or space)
     redacted = re.sub(r"(-p\s+)(\S+)", r"\1[REDACTED]", redacted)
@@ -48,8 +49,8 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
                      'apikey', 'auth', 'credential', 'key']
     
     for flag in password_flags:
-        # With quotes
-        redacted = re.sub(rf"(--{flag}[=\s]+['\"])([^'\"]+)(['\"])", r"\1[REDACTED]\3", redacted, flags=re.IGNORECASE)
+        # With quotes - use backreference to ensure matching quotes
+        redacted = re.sub(rf"(--{flag}[=\s]+)(['\"])([^'\"]+)\2", r"\1\2[REDACTED]\2", redacted, flags=re.IGNORECASE)
         # Without quotes
         redacted = re.sub(rf"(--{flag}[=\s]+)(\S+)", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
 
