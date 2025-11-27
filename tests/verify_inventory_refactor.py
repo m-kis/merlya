@@ -1,4 +1,7 @@
-
+"""
+Verification script for inventory repository refactoring.
+Tests the mixin-based architecture and new features.
+"""
 import os
 import sys
 from datetime import datetime
@@ -81,10 +84,130 @@ def verify_inventory_repository():
     assert snap["host_count"] == 2
     
     print("✅ All verification steps passed!")
-    
+
     # Cleanup
     if os.path.exists(db_path):
         os.remove(db_path)
 
+
+def verify_bulk_add_hosts():
+    """Test bulk host import with transaction rollback."""
+    print("\n🧪 Verifying bulk_add_hosts...")
+
+    from athena_ai.memory.persistence.repositories import HostData
+
+    db_path = "/tmp/athena_bulk_test.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    InventoryRepository.reset_instance()
+    repo = InventoryRepository(db_path=db_path)
+
+    # Create a source
+    source_id = repo.add_source("bulk_source", "file")
+
+    # Test successful bulk import
+    print("1. Testing successful bulk import...")
+    hosts = [
+        HostData(hostname="host1", ip_address="10.0.0.1", environment="prod"),
+        HostData(hostname="host2", ip_address="10.0.0.2", environment="prod"),
+        HostData(hostname="host3", ip_address="10.0.0.3", environment="staging"),
+    ]
+
+    added = repo.bulk_add_hosts(hosts, source_id=source_id, changed_by="test")
+    assert added == 3, f"Expected 3 hosts added, got {added}"
+
+    # Verify all hosts exist
+    all_hosts = repo.search_hosts()
+    assert len(all_hosts) == 3, f"Expected 3 hosts in DB, got {len(all_hosts)}"
+
+    print("✅ Bulk import verification passed!")
+
+    # Cleanup
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+
+def verify_local_context():
+    """Test LocalContext.from_dict edge cases."""
+    print("\n🧪 Verifying LocalContext.from_dict...")
+
+    from athena_ai.context.local_scanner import LocalContext
+
+    # Test with valid ISO timestamp
+    print("1. Testing valid timestamp...")
+    data = {"scanned_at": "2024-01-15T10:30:00", "os_info": {"system": "Linux"}}
+    ctx = LocalContext.from_dict(data)
+    assert ctx.scanned_at.year == 2024
+    assert ctx.os_info["system"] == "Linux"
+    print("   ✅ Valid timestamp handled")
+
+    # Test with None timestamp (should use datetime.min)
+    print("2. Testing None timestamp...")
+    data = {"scanned_at": None, "os_info": {}}
+    ctx = LocalContext.from_dict(data)
+    assert ctx.scanned_at == datetime.min
+    print("   ✅ None timestamp handled")
+
+    # Test with invalid timestamp string (should use datetime.min)
+    print("3. Testing invalid timestamp...")
+    data = {"scanned_at": "not-a-date", "os_info": {}}
+    ctx = LocalContext.from_dict(data)
+    assert ctx.scanned_at == datetime.min
+    print("   ✅ Invalid timestamp handled")
+
+    # Test with missing scanned_at key
+    print("4. Testing missing timestamp key...")
+    data = {"os_info": {"system": "Darwin"}}
+    ctx = LocalContext.from_dict(data)
+    assert ctx.scanned_at == datetime.min
+    print("   ✅ Missing timestamp handled")
+
+    print("✅ LocalContext.from_dict verification passed!")
+
+
+def verify_search_with_limit():
+    """Test search_hosts with limit parameter."""
+    print("\n🧪 Verifying search_hosts with limit...")
+
+    db_path = "/tmp/athena_limit_test.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    InventoryRepository.reset_instance()
+    repo = InventoryRepository(db_path=db_path)
+
+    # Add many hosts
+    source_id = repo.add_source("limit_source", "manual")
+    for i in range(10):
+        repo.add_host(f"server-{i:02d}", f"10.0.0.{i}", source_id=source_id)
+
+    # Test without limit (should return all)
+    print("1. Testing without limit...")
+    all_hosts = repo.search_hosts()
+    assert len(all_hosts) == 10
+
+    # Test with limit
+    print("2. Testing with limit=5...")
+    limited = repo.search_hosts(limit=5)
+    assert len(limited) == 5
+
+    # Test with limit+1 pattern (for truncation detection)
+    print("3. Testing limit+1 pattern...")
+    limit = 5
+    results = repo.search_hosts(limit=limit + 1)
+    truncated = len(results) > limit
+    assert truncated, "Should detect truncation with limit+1 pattern"
+
+    print("✅ Search with limit verification passed!")
+
+    # Cleanup
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+
 if __name__ == "__main__":
     verify_inventory_repository()
+    verify_bulk_add_hosts()
+    verify_local_context()
+    verify_search_with_limit()

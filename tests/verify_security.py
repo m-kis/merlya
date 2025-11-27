@@ -18,7 +18,7 @@ def test_redaction():
         ("mysql -u root -p 'secret123'", "mysql -u root -p [REDACTED]"),
         ("mysql -u root -p secret123", "mysql -u root -p [REDACTED]"),
         ("curl --header 'Authorization: Bearer token123'", "curl --header 'Authorization: Bearer token123'"), # Not redacted by default patterns
-        ("app --password='super_secret'", "app --password=[REDACTED]"),
+        ("app --password='super_secret'", "app --password='[REDACTED]'"),  # Preserves quotes
         ("app --api-key 123456", "app --api-key [REDACTED]"),
     ]
 
