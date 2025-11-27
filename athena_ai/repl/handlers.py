@@ -113,6 +113,7 @@ class CommandHandler:
             '/load': lambda: self._handle_load_conversation(args),
             '/compact': lambda: self._handle_compact_conversation(args),
             '/delete': lambda: self._handle_delete_conversation(args),
+            '/reset': self._handle_reset,
         }
 
         handler = handlers.get(cmd)
@@ -140,6 +141,10 @@ class CommandHandler:
                 )
             finally:
                 status_manager.stop()
+
+            # Handle None or empty response
+            if not response:
+                response = "*No response from assistant*"
 
             self.repl.conversation_manager.add_assistant_message(response)
             console.print(Markdown(response))
@@ -753,3 +758,18 @@ class CommandHandler:
 
     def _handle_delete_conversation(self, args):
         return self.repl._handle_delete_conversation_command(args)
+
+    def _handle_reset(self):
+        """Reset Ag2 agents memory."""
+        try:
+            if hasattr(self.repl.orchestrator, 'reset_agents'):
+                self.repl.orchestrator.reset_agents()
+                print_success("Agents memory reset successfully")
+            elif hasattr(self.repl.orchestrator, 'reload_agents'):
+                self.repl.orchestrator.reload_agents()
+                print_success("Agents reloaded (memory cleared)")
+            else:
+                print_warning("Agent reset not available for current orchestrator")
+        except Exception as e:
+            print_error(f"Failed to reset agents: {e}")
+        return True
