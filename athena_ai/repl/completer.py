@@ -196,8 +196,8 @@ class AthenaCompleter(Completer):
             except AttributeError:
                 # credentials_manager doesn't have get_inventory_hosts method
                 logger.debug("Credentials manager lacks get_inventory_hosts method")
-            except Exception as e:
-                logger.exception("Failed to list hosts from credentials manager: %s", e)
+            except Exception:
+                logger.exception("Failed to list hosts from credentials manager")
 
         # Direct fallback to inventory repository
         try:
@@ -207,8 +207,8 @@ class AthenaCompleter(Completer):
             result = [h["hostname"] for h in hosts]
             self._cached_inventory_hosts = result
             return result
-        except Exception as e:
-            logger.exception("Failed to list hosts from inventory repository: %s", e)
+        except Exception:
+            logger.exception("Failed to list hosts from inventory repository")
             self._cached_inventory_hosts = []
             return []
 

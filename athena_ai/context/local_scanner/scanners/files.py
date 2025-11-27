@@ -11,13 +11,13 @@ from typing import Any, Dict
 # - /etc/passwd, /etc/group (PII - user identities)
 # - /etc/ssh/* (SSH security configuration)
 # - /etc/sudoers (privilege escalation rules)
+# - /etc/fstab (may contain mount credentials for NFS/CIFS)
+# - /etc/crontab (reveals operational patterns and scheduled tasks)
 ETC_FILES_TO_SCAN = [
     "/etc/hosts",
     "/etc/hostname",
     "/etc/resolv.conf",
     "/etc/os-release",
-    "/etc/fstab",
-    "/etc/crontab",
 ]
 
 

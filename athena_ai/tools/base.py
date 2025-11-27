@@ -120,11 +120,28 @@ class ToolContext:
             self.console = Console()
         # Initialize inventory repository
         if not self.inventory_repo:
+            # Step 1: Import the repository module
             try:
                 from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
-                self.inventory_repo = get_inventory_repository()
-            except Exception as e:
-                logger.warning(f"Failed to initialize inventory repository: {e}")
+            except (ImportError, ModuleNotFoundError) as e:
+                logger.warning(f"Failed to import inventory repository module: {type(e).__name__}: {e}")
+                get_inventory_repository = None
+
+            # Step 2: Initialize the repository if import succeeded
+            if get_inventory_repository is not None:
+                import sqlite3
+                try:
+                    self.inventory_repo = get_inventory_repository()
+                except (ValueError, RuntimeError, OSError, sqlite3.Error) as e:
+                    # Known initialization errors:
+                    # - ValueError/RuntimeError: invalid config or runtime issues
+                    # - OSError: filesystem errors (can't create .athena directory)
+                    # - sqlite3.Error: database connection or schema errors
+                    logger.warning(f"Failed to initialize inventory repository: {type(e).__name__}: {e}")
+                except Exception as e:
+                    # Unexpected errors - log and re-raise to avoid silent failures
+                    logger.error(f"Unexpected error initializing inventory repository: {type(e).__name__}: {e}")
+                    raise
 
     def get_user_input(self, prompt: str = "> ") -> str:
         """
@@ -210,10 +227,14 @@ def validate_host(hostname: str) -> tuple[bool, str]:
     if ctx.inventory_repo:
         try:
             host = ctx.inventory_repo.get_host_by_name(hostname)
-            if host:
+            if host is not None:
                 return True, f"Host '{hostname}' found in inventory"
+        except (AttributeError, TypeError, ValueError) as e:
+            # Expected errors from malformed data or missing attributes
+            logger.debug(f"Inventory lookup error for '{hostname}': {e}")
         except Exception as e:
-            logger.debug(f"Inventory lookup failed for '{hostname}': {e}")
+            # Unexpected errors - log at warning level for visibility
+            logger.warning(f"Inventory lookup failed for '{hostname}': {type(e).__name__}: {e}")
 
     # Fall back to legacy host registry
     if not ctx.host_registry:

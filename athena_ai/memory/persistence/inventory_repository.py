@@ -76,57 +76,68 @@ class InventoryRepository(
             - validated_relations: User-validated relations
             - cached_scans: Active (non-expired) cache entries
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        from datetime import datetime
 
         stats: Dict[str, Any] = {}
 
-        # Total hosts
-        cursor.execute("SELECT COUNT(*) FROM hosts_v2")
-        stats["total_hosts"] = cursor.fetchone()[0]
+        # Use context manager to ensure connection is always closed
+        with self._connection() as conn:
+            cursor = conn.cursor()
 
-        # By environment
-        cursor.execute("""
-            SELECT environment, COUNT(*) FROM hosts_v2
-            GROUP BY environment
-        """)
-        stats["by_environment"] = {row[0] or "unknown": row[1] for row in cursor.fetchall()}
+            # Total hosts
+            cursor.execute("SELECT COUNT(*) FROM hosts_v2")
+            stats["total_hosts"] = cursor.fetchone()[0]
 
-        # By source
-        cursor.execute("""
-            SELECT s.name, COUNT(h.id)
-            FROM inventory_sources s
-            LEFT JOIN hosts_v2 h ON h.source_id = s.id
-            GROUP BY s.id
-        """)
-        stats["by_source"] = {row[0]: row[1] for row in cursor.fetchall()}
+            # By environment
+            cursor.execute("""
+                SELECT environment, COUNT(*) FROM hosts_v2
+                GROUP BY environment
+            """)
+            stats["by_environment"] = {row[0] or "unknown": row[1] for row in cursor.fetchall()}
 
-        # Relations
-        cursor.execute("SELECT COUNT(*) FROM host_relations")
-        stats["total_relations"] = cursor.fetchone()[0]
+            # By source
+            cursor.execute("""
+                SELECT s.name, COUNT(h.id)
+                FROM inventory_sources s
+                LEFT JOIN hosts_v2 h ON h.source_id = s.id
+                GROUP BY s.id
+            """)
+            stats["by_source"] = {row[0]: row[1] for row in cursor.fetchall()}
 
-        cursor.execute("SELECT COUNT(*) FROM host_relations WHERE validated_by_user = 1")
-        stats["validated_relations"] = cursor.fetchone()[0]
+            # Relations
+            cursor.execute("SELECT COUNT(*) FROM host_relations")
+            stats["total_relations"] = cursor.fetchone()[0]
 
-        # Cache
-        from datetime import datetime
-        cursor.execute(
-            "SELECT COUNT(*) FROM scan_cache WHERE expires_at > ?",
-            (datetime.now().isoformat(),)
-        )
-        stats["cached_scans"] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM host_relations WHERE validated_by_user = 1")
+            stats["validated_relations"] = cursor.fetchone()[0]
 
-        conn.close()
+            # Cache
+            cursor.execute(
+                "SELECT COUNT(*) FROM scan_cache WHERE expires_at > ?",
+                (datetime.now().isoformat(),)
+            )
+            stats["cached_scans"] = cursor.fetchone()[0]
+
         return stats
 
 
 def get_inventory_repository(db_path: Optional[str] = None) -> InventoryRepository:
     """Get the inventory repository singleton.
 
+    The InventoryRepository class implements thread-safe singleton semantics
+    via __new__. Calling this function (or InventoryRepository() directly)
+    returns the same instance after the first call.
+
     Args:
-        db_path: Optional database path. Only used on first call.
+        db_path: Optional database path. Only used on first instantiation.
+            Subsequent calls ignore this parameter (a warning is logged if
+            a different path is provided).
 
     Returns:
-        The InventoryRepository singleton instance.
+        The shared InventoryRepository singleton instance.
+
+    Note:
+        For testing, use InventoryRepository.reset_instance() to clear
+        the singleton before creating a new instance with a different path.
     """
     return InventoryRepository(db_path)

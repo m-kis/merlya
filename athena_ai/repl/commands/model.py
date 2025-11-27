@@ -78,10 +78,11 @@ class ModelCommandHandler:
 
         subcmd = args[0].lower()
         if subcmd in ['on', 'true', 'enable']:
-            # Switch to Ollama provider
-            model_config.set_provider("ollama")
-            # Keep llm_router's cached provider in sync
-            self.repl.orchestrator.llm_router.provider = "ollama"
+            # Switch to Ollama provider using proper encapsulated method
+            llm_router = self.repl.orchestrator.llm_router
+            if not llm_router.switch_provider("ollama", verify=True):
+                print_error("Failed to switch to Ollama - server may not be available")
+                return
             if len(args) > 1:
                 model_config.set_model("ollama", args[1])
             current_model = model_config.get_model("ollama")
@@ -89,12 +90,17 @@ class ModelCommandHandler:
             self.repl.orchestrator.reload_agents()
 
         elif subcmd in ['off', 'false', 'disable']:
-            # Switch back to default cloud provider
-            model_config.set_provider("openrouter")
-            # Keep llm_router's cached provider in sync
-            self.repl.orchestrator.llm_router.provider = "openrouter"
-            current_model = model_config.get_model("openrouter")
-            print_success(f"Switched to OpenRouter (Model: {current_model})")
+            # Switch back to default cloud provider from config
+            llm_router = self.repl.orchestrator.llm_router
+            default_provider = model_config.config.get("provider", "openrouter")
+            # If default is ollama, fall back to openrouter
+            if default_provider == "ollama":
+                default_provider = llm_router._get_fallback_provider() or "openrouter"
+            if not llm_router.switch_provider(default_provider, verify=False):
+                print_error(f"Failed to switch to {default_provider}")
+                return
+            current_model = model_config.get_model(default_provider)
+            print_success(f"Switched to {default_provider.title()} (Model: {current_model})")
             self.repl.orchestrator.reload_agents()
 
         elif subcmd == 'set' and len(args) > 1:
@@ -134,11 +140,23 @@ class ModelCommandHandler:
         self.repl.orchestrator.reload_agents()
 
     def _set_provider(self, provider: str):
-        """Switch provider."""
-        model_config = self.repl.orchestrator.llm_router.model_config
-        model_config.set_provider(provider)
-        # Keep llm_router's cached provider in sync
-        self.repl.orchestrator.llm_router.provider = provider
+        """Switch provider with validation."""
+        llm_router = self.repl.orchestrator.llm_router
+        model_config = llm_router.model_config
+
+        # Validate provider against known providers
+        valid_providers = list(model_config.AVAILABLE_MODELS.keys())
+        if provider not in valid_providers:
+            print_error(f"Invalid provider: {provider}. Must be one of: {', '.join(valid_providers)}")
+            return
+
+        # Use encapsulated switch_provider method
+        # Skip verification for cloud providers (they don't need it)
+        verify = (provider == "ollama")
+        if not llm_router.switch_provider(provider, verify=verify):
+            print_error(f"Failed to switch to {provider}")
+            return
+
         print_success(f"Provider set to: {provider}")
         # Reload agents to apply the new provider
         self.repl.orchestrator.reload_agents()

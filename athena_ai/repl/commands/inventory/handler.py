@@ -27,43 +27,62 @@ class InventoryCommandHandler:
     def repo(self):
         """Lazy load repository."""
         if self._repo is None:
-            from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
-            self._repo = get_inventory_repository()
+            try:
+                from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+                self._repo = get_inventory_repository()
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize inventory repository: {e}") from e
         return self._repo
 
     @property
     def importer(self):
+        """Lazy load importer handler."""
         if self._importer is None:
-            from .importer import InventoryImporter
-            self._importer = InventoryImporter(self.repo)
+            try:
+                from .importer import InventoryImporter
+                self._importer = InventoryImporter(self.repo)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize inventory importer: {e}") from e
         return self._importer
 
     @property
     def viewer(self):
+        """Lazy load viewer handler."""
         if self._viewer is None:
-            from .viewer import InventoryViewer
-            self._viewer = InventoryViewer(self.repo)
+            try:
+                from .viewer import InventoryViewer
+                self._viewer = InventoryViewer(self.repo)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize inventory viewer: {e}") from e
         return self._viewer
 
     @property
     def manager(self):
+        """Lazy load manager handler."""
         if self._manager is None:
-            from .manager import InventoryManager
-            self._manager = InventoryManager(self.repo)
+            try:
+                from .manager import InventoryManager
+                self._manager = InventoryManager(self.repo)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize inventory manager: {e}") from e
         return self._manager
 
     @property
     def relations(self):
+        """Lazy load relations handler."""
         if self._relations is None:
-            from .relations import RelationsHandler
-            self._relations = RelationsHandler(self.repo)
+            try:
+                from .relations import RelationsHandler
+                self._relations = RelationsHandler(self.repo)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize relations handler: {e}") from e
         return self._relations
 
     def handle(self, args: List[str]) -> bool:
         """
         Handle /inventory command.
 
-        Returns True if command was handled.
+        Returns True to indicate the REPL should continue (always returns True).
         """
         if not args:
             self._show_help()

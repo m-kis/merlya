@@ -184,7 +184,14 @@ Example: After adding filesystem server, say 'list files in /tmp'
 
     def _custom_commands_section(self) -> str:
         """Build custom commands section if any exist."""
-        custom_commands = self.repl.command_loader.list_commands()
+        try:
+            custom_commands = self.repl.command_loader.list_commands()
+        except Exception as e:
+            # command_loader may be uninitialized or fail
+            if hasattr(self.repl, 'logger') and self.repl.logger:
+                self.repl.logger.debug(f"Failed to load custom commands: {e}")
+            custom_commands = {}
+
         if not custom_commands:
             return ""
 

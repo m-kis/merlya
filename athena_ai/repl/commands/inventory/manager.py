@@ -78,7 +78,7 @@ class InventoryManager:
                     writer.writeheader()
                     for host in hosts:
                         writer.writerow({
-                            "hostname": host["hostname"],
+                            "hostname": host.get("hostname", ""),
                             "ip_address": host.get("ip_address", ""),
                             "environment": host.get("environment", ""),
                             "groups": ",".join(host.get("groups", [])),

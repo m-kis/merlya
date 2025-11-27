@@ -26,22 +26,14 @@ class CommandResult(Enum):
     NOT_HANDLED = auto()  # Command was not recognized
 
 
-def _run_async(coro):
+async def _run_async(coro):
     """
-    Run async coroutine safely, handling both sync and async contexts.
+    Await an async coroutine.
 
-    If already in an event loop, submits to that loop via run_coroutine_threadsafe.
-    Otherwise, uses asyncio.run().
+    This function is async to avoid blocking the event loop. Callers must
+    await this function or use asyncio.run() from a sync context.
     """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop - safe to use asyncio.run()
-        return asyncio.run(coro)
-
-    # Already in an event loop - submit to that loop
-    future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result()
+    return await coro
 
 
 class CommandHandler:
@@ -115,6 +107,8 @@ class CommandHandler:
             CommandResult.NOT_HANDLED if command was not recognized
         """
         parts = command.split()
+        if not parts:
+            return CommandResult.NOT_HANDLED
         cmd = parts[0].lower()
         args = parts[1:] if len(parts) > 1 else []
 
@@ -129,7 +123,7 @@ class CommandHandler:
         cmd_name = cmd[1:]  # Remove leading /
         custom_cmd = self.repl.command_loader.get(cmd_name)
         if custom_cmd:
-            return self._handle_custom_command(custom_cmd, args)
+            return asyncio.run(self._handle_custom_command(custom_cmd, args))
 
         # Route to appropriate handler
         handlers = {
@@ -178,7 +172,7 @@ class CommandHandler:
 
         return CommandResult.NOT_HANDLED
 
-    def _handle_custom_command(self, custom_cmd, args) -> CommandResult:
+    async def _handle_custom_command(self, custom_cmd, args) -> CommandResult:
         """Execute a custom command loaded from markdown."""
         try:
             prompt = self.repl.command_loader.expand(custom_cmd, args)
@@ -192,7 +186,7 @@ class CommandHandler:
             status_manager.set_console(console)
             status_manager.start("[cyan]Athena is thinking...[/cyan]")
             try:
-                response = _run_async(
+                response = await _run_async(
                     self.repl.orchestrator.process_request(user_query=prompt)
                 )
             finally:

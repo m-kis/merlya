@@ -9,6 +9,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from athena_ai.core.exceptions import PersistenceError
+
 
 MAX_SNAPSHOT_LIMIT = 1000
 
@@ -54,29 +56,33 @@ class SnapshotRepositoryMixin:
             "created_at": timestamp,
         }
 
-        conn = self._get_connection()
+        snapshot_name = name or f"snapshot_{now.strftime('%Y%m%d_%H%M%S')}"
+
+        # Serialize snapshot data with fallback for non-JSON-serializable types
         try:
+            serialized_data = json.dumps(snapshot_data, default=str)
+        except (TypeError, ValueError) as e:
+            raise PersistenceError(
+                operation="create_snapshot",
+                reason=f"Failed to serialize snapshot data: {e}",
+                details={"snapshot_name": snapshot_name, "host_count": len(hosts)},
+            ) from e
+
+        with self._connection(commit=True) as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
                 INSERT INTO inventory_snapshots (name, description, host_count, snapshot_data, created_at)
                 VALUES (?, ?, ?, ?, ?)
             """, (
-                name or f"snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+                snapshot_name,
                 description,
                 len(hosts),
-                json.dumps(snapshot_data),
+                serialized_data,
                 timestamp,
             ))
 
-            snapshot_id = cursor.lastrowid
-            conn.commit()
-            return snapshot_id
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            return cursor.lastrowid
 
     def list_snapshots(self, limit: int = 20) -> List[Dict[str, Any]]:
         """List inventory snapshots.
@@ -104,8 +110,7 @@ class SnapshotRepositoryMixin:
         # Clamp to maximum allowed value
         limit = min(limit, MAX_SNAPSHOT_LIMIT)
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -117,8 +122,6 @@ class SnapshotRepositoryMixin:
             rows = cursor.fetchall()
 
             return [self._row_to_dict(row) for row in rows]
-        finally:
-            conn.close()
 
     def get_snapshot(self, snapshot_id: int) -> Optional[Dict[str, Any]]:
         """Get a snapshot by ID.
@@ -129,8 +132,7 @@ class SnapshotRepositoryMixin:
         Returns:
             Snapshot dictionary with parsed data, or None if not found.
         """
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             cursor = conn.cursor()
 
             cursor.execute("SELECT * FROM inventory_snapshots WHERE id = ?", (snapshot_id,))
@@ -141,8 +143,6 @@ class SnapshotRepositoryMixin:
                 result["snapshot_data"] = json.loads(result["snapshot_data"])
                 return result
             return None
-        finally:
-            conn.close()
 
     def delete_snapshot(self, snapshot_id: int) -> bool:
         """Delete a snapshot.
@@ -153,17 +153,8 @@ class SnapshotRepositoryMixin:
         Returns:
             True if deleted, False if not found.
         """
-        conn = self._get_connection()
-        try:
+        with self._connection(commit=True) as conn:
             cursor = conn.cursor()
 
             cursor.execute("DELETE FROM inventory_snapshots WHERE id = ?", (snapshot_id,))
-            deleted = cursor.rowcount > 0
-
-            conn.commit()
-            return deleted
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            return cursor.rowcount > 0

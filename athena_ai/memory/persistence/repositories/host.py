@@ -51,7 +51,7 @@ class HostRepositoryMixin:
                 metadata TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY (source_id) REFERENCES inventory_sources(id) ON DELETE SET NULL
+                FOREIGN KEY (source_id) REFERENCES inventory_sources(id) ON DELETE CASCADE
             )
         """)
         cursor.execute("""
@@ -116,88 +116,22 @@ class HostRepositoryMixin:
         Returns:
             The host ID (existing or newly created).
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        now = datetime.now().isoformat()
-        hostname_lower = hostname.lower()
-
-        # Serialize JSON fields (None if not provided, to let COALESCE preserve existing)
-        aliases_json = json.dumps(aliases) if aliases is not None else None
-        groups_json = json.dumps(groups) if groups is not None else None
-        metadata_json = json.dumps(metadata) if metadata is not None else None
-
-        # For new inserts, we need defaults for required JSON fields
-        aliases_default = json.dumps([])
-        groups_default = json.dumps([])
-        metadata_default = json.dumps({})
-
-        # Get old data for versioning (if host exists)
-        cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname_lower,))
-        existing_row = cursor.fetchone()
-        old_data = self._host_row_to_dict(existing_row) if existing_row else None
-
-        # Atomic upsert: INSERT or UPDATE in a single statement
-        cursor.execute("""
-            INSERT INTO hosts_v2
-            (hostname, ip_address, aliases, environment, groups, role, service,
-             ssh_port, status, source_id, metadata, created_at, updated_at)
-            VALUES (?, ?, COALESCE(?, ?), ?, COALESCE(?, ?), ?, ?, COALESCE(?, 22), 'unknown', ?, COALESCE(?, ?), ?, ?)
-            ON CONFLICT(hostname) DO UPDATE SET
-                ip_address = COALESCE(excluded.ip_address, hosts_v2.ip_address),
-                aliases = COALESCE(?, hosts_v2.aliases),
-                environment = COALESCE(excluded.environment, hosts_v2.environment),
-                groups = COALESCE(?, hosts_v2.groups),
-                role = COALESCE(excluded.role, hosts_v2.role),
-                service = COALESCE(excluded.service, hosts_v2.service),
-                ssh_port = COALESCE(?, hosts_v2.ssh_port),
-                source_id = COALESCE(excluded.source_id, hosts_v2.source_id),
-                metadata = COALESCE(?, hosts_v2.metadata),
-                updated_at = excluded.updated_at
-            RETURNING id
-        """, (
-            # INSERT values
-            hostname_lower,
-            ip_address,
-            aliases_json, aliases_default,
-            environment,
-            groups_json, groups_default,
-            role,
-            service,
-            ssh_port,
-            source_id,
-            metadata_json, metadata_default,
-            now,
-            now,
-            # ON CONFLICT UPDATE values
-            aliases_json,
-            groups_json,
-            ssh_port,
-            metadata_json,
-        ))
-
-        host_id = cursor.fetchone()[0]
-
-        # Record version changes
-        if old_data is None:
-            self._add_host_version(cursor, host_id, {"action": "created"}, changed_by)
-        else:
-            changes = self._compute_changes(old_data, {
-                "ip_address": ip_address,
-                "aliases": aliases,
-                "environment": environment,
-                "groups": groups,
-                "role": role,
-                "service": service,
-                "ssh_port": ssh_port,
-                "metadata": metadata,
-            })
-            if changes:
-                self._add_host_version(cursor, host_id, changes, changed_by)
-
-        conn.commit()
-        conn.close()
-
-        return host_id
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+            return self._add_host_internal(
+                cursor=cursor,
+                hostname=hostname,
+                ip_address=ip_address,
+                aliases=aliases,
+                environment=environment,
+                groups=groups,
+                role=role,
+                service=service,
+                ssh_port=ssh_port,
+                source_id=source_id,
+                metadata=metadata,
+                changed_by=changed_by,
+            )
 
     def bulk_add_hosts(
         self,
@@ -225,42 +159,37 @@ class HostRepositoryMixin:
         if not hosts:
             return 0
 
-        conn = self._get_connection()
-        cursor = conn.cursor()
         added = 0
-
         try:
-            for host in hosts:
-                self._add_host_internal(
-                    cursor=cursor,
-                    hostname=host.hostname,
-                    ip_address=host.ip_address,
-                    aliases=host.aliases,
-                    environment=host.environment,
-                    groups=host.groups,
-                    role=host.role,
-                    service=host.service,
-                    ssh_port=host.ssh_port,
-                    source_id=source_id,
-                    metadata=host.metadata,
-                    changed_by=changed_by,
-                )
-                added += 1
+            with self._connection(commit=True) as conn:
+                cursor = conn.cursor()
+                for host in hosts:
+                    self._add_host_internal(
+                        cursor=cursor,
+                        hostname=host.hostname,
+                        ip_address=host.ip_address,
+                        aliases=host.aliases,
+                        environment=host.environment,
+                        groups=host.groups,
+                        role=host.role,
+                        service=host.service,
+                        ssh_port=host.ssh_port,
+                        source_id=source_id,
+                        metadata=host.metadata,
+                        changed_by=changed_by,
+                    )
+                    added += 1
 
-            conn.commit()
             logger.debug(f"Bulk inserted {added} hosts in single transaction")
             return added
 
         except sqlite3.Error as e:
-            conn.rollback()
             logger.error(f"Bulk host import failed after {added} hosts: {e}")
             raise PersistenceError(
                 operation="bulk_add_hosts",
                 reason=str(e),
                 details={"hosts_attempted": len(hosts), "hosts_before_failure": added},
             ) from e
-        finally:
-            conn.close()
 
     def _add_host_internal(
         self,
@@ -429,12 +358,10 @@ class HostRepositoryMixin:
         Returns:
             Host dictionary or None if not found.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM hosts_v2 WHERE id = ?", (host_id,))
-        row = cursor.fetchone()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM hosts_v2 WHERE id = ?", (host_id,))
+            row = cursor.fetchone()
 
         if row:
             return self._host_row_to_dict(row)
@@ -451,23 +378,66 @@ class HostRepositoryMixin:
         Returns:
             Host dictionary or None if not found.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        hostname_lower = hostname.lower()
 
-        # First try exact match
-        cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname.lower(),))
-        row = cursor.fetchone()
-
-        # If not found, try alias match
-        if not row:
-            cursor.execute("SELECT * FROM hosts_v2 WHERE aliases LIKE ?", (f'%"{hostname.lower()}"%',))
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            # First try exact match
+            cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname_lower,))
             row = cursor.fetchone()
 
-        conn.close()
+            # If not found, try alias match with exact JSON array element matching
+            if not row:
+                row = self._find_host_by_alias(cursor, hostname_lower)
 
         if row:
             return self._host_row_to_dict(row)
         return None
+
+    def _find_host_by_alias(
+        self, cursor: sqlite3.Cursor, alias: str
+    ) -> Optional[sqlite3.Row]:
+        """Find a host by exact alias match.
+
+        Uses json_each() for SQLite >= 3.9, falls back to Python-side
+        JSON parsing for older versions.
+
+        Args:
+            cursor: Database cursor.
+            alias: Alias to search for (already lowercased).
+
+        Returns:
+            Host row or None if not found.
+        """
+        # Check SQLite version for json_each support (added in 3.9.0)
+        cursor.execute("SELECT sqlite_version()")
+        version_str = cursor.fetchone()[0]
+        version_parts = [int(p) for p in version_str.split(".")[:3]]
+        sqlite_version = version_parts[0] * 1000000 + version_parts[1] * 1000 + version_parts[2]
+
+        if sqlite_version >= 3009000:
+            # SQLite >= 3.9: Use json_each for exact array element matching
+            cursor.execute("""
+                SELECT h.* FROM hosts_v2 h, json_each(h.aliases) AS alias
+                WHERE alias.value = ?
+                LIMIT 1
+            """, (alias,))
+            return cursor.fetchone()
+        else:
+            # Fallback for older SQLite: fetch candidates and check in Python
+            # Use LIKE as a pre-filter to avoid scanning all rows
+            cursor.execute(
+                "SELECT * FROM hosts_v2 WHERE aliases LIKE ?",
+                (f'%"{alias}"%',)
+            )
+            for row in cursor.fetchall():
+                try:
+                    aliases_list = json.loads(row["aliases"]) if row["aliases"] else []
+                    if alias in aliases_list:
+                        return row
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            return None
 
     def search_hosts(
         self,
@@ -491,9 +461,6 @@ class HostRepositoryMixin:
         Returns:
             List of host dictionaries matching the filters.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
         query = "SELECT * FROM hosts_v2 WHERE 1=1"
         params: list = []
 
@@ -510,7 +477,7 @@ class HostRepositoryMixin:
             query += " AND groups LIKE ?"
             params.append(f'%"{group}"%')
 
-        if source_id:
+        if source_id is not None:
             query += " AND source_id = ?"
             params.append(source_id)
 
@@ -523,9 +490,10 @@ class HostRepositoryMixin:
             query += " LIMIT ?"
             params.append(limit)
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
 
         return [self._host_row_to_dict(row) for row in rows]
 
@@ -544,17 +512,13 @@ class HostRepositoryMixin:
             host_id: Host ID to update.
             status: New status value.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE hosts_v2
-            SET status = ?, updated_at = ?
-            WHERE id = ?
-        """, (status, datetime.now().isoformat(), host_id))
-
-        conn.commit()
-        conn.close()
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE hosts_v2
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+            """, (status, datetime.now().isoformat(), host_id))
 
     def delete_host(self, hostname: str) -> bool:
         """Delete a host by hostname.
@@ -565,16 +529,10 @@ class HostRepositoryMixin:
         Returns:
             True if deleted, False if not found.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM hosts_v2 WHERE hostname = ?", (hostname.lower(),))
-        deleted = cursor.rowcount > 0
-
-        conn.commit()
-        conn.close()
-
-        return deleted
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM hosts_v2 WHERE hostname = ?", (hostname.lower(),))
+            return cursor.rowcount > 0
 
     def get_host_versions(self, host_id: int) -> List[Dict[str, Any]]:
         """Get version history for a host.
@@ -585,16 +543,14 @@ class HostRepositoryMixin:
         Returns:
             List of version dictionaries, newest first.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT * FROM host_versions
-            WHERE host_id = ?
-            ORDER BY version DESC
-        """, (host_id,))
-        rows = cursor.fetchall()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM host_versions
+                WHERE host_id = ?
+                ORDER BY version DESC
+            """, (host_id,))
+            rows = cursor.fetchall()
 
         return [self._row_to_dict(row) for row in rows]
 
@@ -625,4 +581,26 @@ class HostRepositoryMixin:
                 d["metadata"] = {}
         else:
             d["metadata"] = {}
+        return d
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert a generic sqlite3.Row to dictionary with JSON parsing for changes field.
+
+        Used for host_versions table rows.
+
+        Args:
+            row: Database row.
+
+        Returns:
+            Dictionary with parsed 'changes' JSON field (if present).
+        """
+        d = dict(row)
+        # Parse 'changes' JSON field if present
+        if "changes" in d and d["changes"]:
+            try:
+                d["changes"] = json.loads(d["changes"])
+            except (json.JSONDecodeError, TypeError):
+                d["changes"] = {}
+        elif "changes" in d:
+            d["changes"] = {}
         return d

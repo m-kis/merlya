@@ -9,6 +9,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from athena_ai.utils.logger import logger
+
 
 class SourceRepositoryMixin:
     """Mixin for inventory source operations."""
@@ -56,10 +58,10 @@ class SourceRepositoryMixin:
             ValueError: If source was deleted during creation (race condition).
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
-        now = datetime.now().isoformat()
-
         try:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+
             cursor.execute("""
                 INSERT INTO inventory_sources
                 (name, source_type, file_path, import_method, host_count, created_at, updated_at, metadata)
@@ -68,20 +70,22 @@ class SourceRepositoryMixin:
 
             source_id = cursor.lastrowid
             conn.commit()
-        except sqlite3.IntegrityError:
-            # Source with this name already exists, return existing ID
-            cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
-            row = cursor.fetchone()
-            if row:
-                source_id = row[0]
-            else:
-                # Concurrent delete occurred - reraise to let caller handle
-                conn.close()
+            return source_id
+        except sqlite3.IntegrityError as e:
+            error_msg = str(e)
+            # Only treat as name collision if it's the UNIQUE constraint on inventory_sources.name
+            if "UNIQUE constraint failed" in error_msg or "inventory_sources.name" in error_msg:
+                # Source with this name already exists, return existing ID
+                cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
+                row = cursor.fetchone()
+                if row:
+                    return row[0]
+                # Concurrent delete occurred - re-raise for caller
                 raise ValueError(f"Source '{name}' was deleted during creation")
+            # Different IntegrityError - re-raise so caller sees the actual constraint failure
+            raise
         finally:
             conn.close()
-
-        return source_id
 
     def get_source(self, name: str) -> Optional[Dict[str, Any]]:
         """Get an inventory source by name.
@@ -113,15 +117,15 @@ class SourceRepositoryMixin:
             Source dictionary or None if not found.
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM inventory_sources WHERE id = ?", (source_id,))
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return self._row_to_dict(row)
-        return None
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM inventory_sources WHERE id = ?", (source_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+        finally:
+            conn.close()
 
     def list_sources(self) -> List[Dict[str, Any]]:
         """List all inventory sources.
@@ -144,21 +148,39 @@ class SourceRepositoryMixin:
         Args:
             source_id: Source ID to update.
             count: New host count.
+
+        Raises:
+            SourceNotFoundError: If source_id doesn't exist.
         """
+        from athena_ai.core.exceptions import SourceNotFoundError
+
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE inventory_sources
+                SET host_count = ?, updated_at = ?
+                WHERE id = ?
+            """, (count, datetime.now().isoformat(), source_id))
 
-        cursor.execute("""
-            UPDATE inventory_sources
-            SET host_count = ?, updated_at = ?
-            WHERE id = ?
-        """, (count, datetime.now().isoformat(), source_id))
+            if cursor.rowcount == 0:
+                raise SourceNotFoundError(source_id)
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+        except SourceNotFoundError:
+            # Re-raise business logic errors without rollback
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def delete_source(self, name: str) -> bool:
         """Delete an inventory source and its hosts.
+
+        Associated hosts are automatically deleted via ON DELETE CASCADE
+        on the hosts_v2.source_id foreign key constraint.
 
         Args:
             name: Source name to delete.
@@ -166,24 +188,36 @@ class SourceRepositoryMixin:
         Returns:
             True if deleted, False if not found.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
-        row = cursor.fetchone()
+            cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
+            row = cursor.fetchone()
 
-        if not row:
-            conn.close()
-            return False
+            if not row:
+                logger.debug(f"Source '{name}' not found for deletion")
+                return False
 
-        source_id = row[0]
+            source_id = row[0]
 
-        # Delete hosts from this source
-        cursor.execute("DELETE FROM hosts_v2 WHERE source_id = ?", (source_id,))
-        # Delete the source
-        cursor.execute("DELETE FROM inventory_sources WHERE id = ?", (source_id,))
+            # Delete the source (hosts cascade-deleted via FK constraint)
+            cursor.execute("DELETE FROM inventory_sources WHERE id = ?", (source_id,))
 
-        conn.commit()
-        conn.close()
-
-        return True
+            conn.commit()
+            logger.info(f"Deleted source '{name}' (id={source_id})")
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting source '{name}': {e}")
+            if conn:
+                conn.rollback()
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error deleting source '{name}': {e}")
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()

@@ -6,6 +6,13 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 
+# Sentinel for unknown/invalid scan timestamps.
+# Using Unix epoch (1970-01-01) as it's recognizable, always triggers rescan
+# checks (any TTL comparison will treat it as stale), and is clearly distinct
+# from valid recent timestamps.
+UNKNOWN_SCAN_TIME = datetime(1970, 1, 1)
+
+
 @dataclass
 class LocalContext:
     """Complete local machine context."""
@@ -32,25 +39,72 @@ class LocalContext:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LocalContext":
-        """Create from dictionary."""
-        scanned_at = data.get("scanned_at")
-        if isinstance(scanned_at, str):
-            try:
-                scanned_at = datetime.fromisoformat(scanned_at)
-            except (ValueError, TypeError):
-                # Invalid timestamp - use sentinel to force rescan
-                scanned_at = datetime.min
-        elif scanned_at is None:
-            # Missing timestamp - use sentinel to indicate unknown scan time
-            # This will force a rescan rather than making old data appear fresh
-            scanned_at = datetime.min
+        """Create from dictionary.
+
+        Supports both new structure (with _metadata) and legacy (scanned_at at root).
+        Also handles _value wrapper for non-dict values stored in repository.
+        """
+        # Get scanned_at from _metadata (new) or root level (legacy)
+        metadata = data.get("_metadata", {})
+        scanned_at_value = metadata.get("scanned_at") or data.get("scanned_at")
+        scanned_at = _parse_scanned_at(scanned_at_value)
 
         return cls(
-            os_info=data.get("os_info", {}),
-            network=data.get("network", {}),
-            services=data.get("services", {}),
-            processes=data.get("processes", []),
-            etc_files=data.get("etc_files", {}),
-            resources=data.get("resources", {}),
+            os_info=_unwrap_value(data.get("os_info", {})),
+            network=_unwrap_value(data.get("network", {})),
+            services=_unwrap_value(data.get("services", {})),
+            processes=_unwrap_value(data.get("processes", [])),
+            etc_files=_unwrap_value(data.get("etc_files", {})),
+            resources=_unwrap_value(data.get("resources", {})),
             scanned_at=scanned_at,
         )
+
+    def needs_rescan(self, max_age_seconds: int = 3600) -> bool:
+        """Check if context is stale and needs rescan.
+
+        Args:
+            max_age_seconds: Maximum age in seconds before rescan needed.
+
+        Returns:
+            True if scanned_at is unknown or older than max_age.
+        """
+        if self.scanned_at == UNKNOWN_SCAN_TIME:
+            return True
+        age = (datetime.now() - self.scanned_at).total_seconds()
+        return age > max_age_seconds
+
+
+def _unwrap_value(data: Any) -> Any:
+    """Unwrap _value wrapper if present.
+
+    The repository stores non-dict values as {"_value": original_value}.
+    This function restores the original value.
+    """
+    if isinstance(data, dict) and "_value" in data and len(data) == 1:
+        return data["_value"]
+    return data
+
+
+def _parse_scanned_at(value: Any) -> datetime:
+    """Parse scanned_at from various input types.
+
+    Args:
+        value: The value to parse (str, datetime, None, or other).
+
+    Returns:
+        Parsed datetime, or UNKNOWN_SCAN_TIME if invalid/missing.
+    """
+    if value is None:
+        return UNKNOWN_SCAN_TIME
+
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError):
+            return UNKNOWN_SCAN_TIME
+
+    # Unexpected type - return sentinel
+    return UNKNOWN_SCAN_TIME

@@ -7,8 +7,9 @@ for all repository mixins.
 
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 
 from athena_ai.utils.logger import logger
 
@@ -44,7 +45,7 @@ class BaseRepository:
                 # Double-check locking pattern
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    cls._initialized = False
         return cls._instance
 
     def __init__(self, db_path: Optional[str] = None):
@@ -55,7 +56,7 @@ class BaseRepository:
                 ~/.athena/inventory.db as default.
         """
         with _repository_lock:
-            if self._initialized:
+            if type(self)._initialized:
                 # Warn if trying to use different db_path after initialization
                 if db_path and db_path != self.db_path:
                     logger.warning(
@@ -72,7 +73,7 @@ class BaseRepository:
                 self.db_path = str(athena_dir / "inventory.db")
 
             self._init_tables()
-            self._initialized = True
+            type(self)._initialized = True
             logger.debug(f"Repository initialized at {self.db_path}")
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -86,6 +87,31 @@ class BaseRepository:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
+    @contextmanager
+    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager for database connections.
+
+        Ensures connections are always closed, even if exceptions occur.
+        Optionally commits on success or rolls back on failure.
+
+        Args:
+            commit: If True, commits on success and rolls back on exception.
+
+        Yields:
+            SQLite connection with Row factory and foreign keys enabled.
+        """
+        conn = self._get_connection()
+        try:
+            yield conn
+            if commit:
+                conn.commit()
+        except Exception:
+            if commit:
+                conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def _init_tables(self) -> None:
         """Initialize all database tables.
 
@@ -94,35 +120,42 @@ class BaseRepository:
         dependencies).
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
+            try:
+                # Call mixin table initializers in dependency order
+                # Sources must come before hosts (hosts reference sources)
+                if hasattr(self, "_init_source_tables"):
+                    self._init_source_tables(cursor)
 
-        # Call mixin table initializers in dependency order
-        # Sources must come before hosts (hosts reference sources)
-        if hasattr(self, "_init_source_tables"):
-            self._init_source_tables(cursor)
+                # Hosts must come before relations, scan_cache (they reference hosts)
+                if hasattr(self, "_init_host_tables"):
+                    self._init_host_tables(cursor)
 
-        # Hosts must come before relations, scan_cache (they reference hosts)
-        if hasattr(self, "_init_host_tables"):
-            self._init_host_tables(cursor)
+                # Relations depend on hosts
+                if hasattr(self, "_init_relation_tables"):
+                    self._init_relation_tables(cursor)
 
-        # Relations depend on hosts
-        if hasattr(self, "_init_relation_tables"):
-            self._init_relation_tables(cursor)
+                # Scan cache depends on hosts
+                if hasattr(self, "_init_scan_cache_tables"):
+                    self._init_scan_cache_tables(cursor)
 
-        # Scan cache depends on hosts
-        if hasattr(self, "_init_scan_cache_tables"):
-            self._init_scan_cache_tables(cursor)
+                # Local context is independent
+                if hasattr(self, "_init_local_context_tables"):
+                    self._init_local_context_tables(cursor)
 
-        # Local context is independent
-        if hasattr(self, "_init_local_context_tables"):
-            self._init_local_context_tables(cursor)
+                # Snapshots are independent
+                if hasattr(self, "_init_snapshot_tables"):
+                    self._init_snapshot_tables(cursor)
 
-        # Snapshots are independent
-        if hasattr(self, "_init_snapshot_tables"):
-            self._init_snapshot_tables(cursor)
-
-        conn.commit()
-        conn.close()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
 
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to dictionary.

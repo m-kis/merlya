@@ -39,6 +39,17 @@ class HostNotFoundError(ValidationError):
         self.hostname = hostname
 
 
+class SourceNotFoundError(ValidationError):
+    """Inventory source not found."""
+
+    def __init__(self, source_id: int):
+        super().__init__(
+            f"Source with ID {source_id} not found in inventory",
+            {"source_id": source_id}
+        )
+        self.source_id = source_id
+
+
 class InvalidCommandError(ValidationError):
     """Command validation failed."""
     pass
@@ -110,7 +121,7 @@ class PersistenceError(AthenaError):
     def __init__(self, operation: str, reason: str, details: dict | None = None):
         super().__init__(
             f"Persistence error during {operation}: {reason}",
-            {"operation": operation, "reason": reason, **(details or {})}
+            {**(details or {}), "operation": operation, "reason": reason}
         )
         self.operation = operation
         self.reason = reason

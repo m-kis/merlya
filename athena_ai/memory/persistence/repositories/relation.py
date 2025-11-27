@@ -13,6 +13,22 @@ from typing import Any, Dict, List, Optional
 class RelationRepositoryMixin:
     """Mixin for host relation operations."""
 
+    def _parse_metadata(self, metadata_str: Optional[str]) -> Dict[str, Any]:
+        """Parse metadata JSON string to dict.
+
+        Args:
+            metadata_str: JSON string or None.
+
+        Returns:
+            Parsed dict, or empty dict on null/empty/error.
+        """
+        if not metadata_str:
+            return {}
+        try:
+            return json.loads(metadata_str)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
     def _init_relation_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize host relations table."""
         cursor.execute("""
@@ -24,12 +40,18 @@ class RelationRepositoryMixin:
                 confidence REAL DEFAULT 1.0,
                 metadata TEXT,
                 created_at TEXT NOT NULL,
+                updated_at TEXT,
                 validated_by_user INTEGER DEFAULT 0,
                 FOREIGN KEY (source_host_id) REFERENCES hosts_v2(id) ON DELETE CASCADE,
                 FOREIGN KEY (target_host_id) REFERENCES hosts_v2(id) ON DELETE CASCADE,
                 UNIQUE(source_host_id, target_host_id, relation_type)
             )
         """)
+        # Add updated_at column if missing (migration for existing databases)
+        cursor.execute("PRAGMA table_info(host_relations)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "updated_at" not in columns:
+            cursor.execute("ALTER TABLE host_relations ADD COLUMN updated_at TEXT")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_relations_source ON host_relations(source_host_id)
         """)
@@ -58,7 +80,13 @@ class RelationRepositoryMixin:
 
         Returns:
             Relation ID or None if hosts not found.
+
+        Raises:
+            ValueError: If confidence is not between 0.0 and 1.0.
         """
+        if not (0.0 <= confidence <= 1.0):
+            raise ValueError("confidence must be between 0.0 and 1.0")
+
         source_host = self.get_host_by_name(source_hostname)
         target_host = self.get_host_by_name(target_hostname)
 
@@ -68,30 +96,46 @@ class RelationRepositoryMixin:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO host_relations
-                (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                source_host["id"],
-                target_host["id"],
-                relation_type,
-                confidence,
-                1 if validated else 0,
-                json.dumps(metadata or {}),
-                datetime.now().isoformat(),
-            ))
+        now = datetime.now().isoformat()
+        metadata_json = json.dumps(metadata or {})
+        validated_int = 1 if validated else 0
 
+        cursor.execute("""
+            INSERT INTO host_relations
+            (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_host_id, target_host_id, relation_type) DO UPDATE SET
+                confidence = excluded.confidence,
+                validated_by_user = excluded.validated_by_user,
+                metadata = excluded.metadata,
+                updated_at = ?
+        """, (
+            source_host["id"],
+            target_host["id"],
+            relation_type,
+            confidence,
+            validated_int,
+            metadata_json,
+            now,
+            now,  # updated_at for the ON CONFLICT case
+        ))
+
+        # Get the id - either newly inserted or existing row that was updated
+        if cursor.lastrowid:
             relation_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
+        else:
+            # Row was updated, fetch the existing id
+            cursor.execute("""
+                SELECT id FROM host_relations
+                WHERE source_host_id = ? AND target_host_id = ? AND relation_type = ?
+            """, (source_host["id"], target_host["id"], relation_type))
+            row = cursor.fetchone()
+            relation_id = row[0] if row else None
 
-            return relation_id
+        conn.commit()
+        conn.close()
 
-        except sqlite3.IntegrityError:
-            conn.close()
-            return None
+        return relation_id
 
     def get_relations(
         self,
@@ -146,7 +190,12 @@ class RelationRepositoryMixin:
         rows = cursor.fetchall()
         conn.close()
 
-        return [self._row_to_dict(row) for row in rows]
+        results = []
+        for row in rows:
+            row_dict = self._row_to_dict(row)
+            row_dict["metadata"] = self._parse_metadata(row_dict.get("metadata"))
+            results.append(row_dict)
+        return results
 
     def validate_relation(self, relation_id: int) -> None:
         """Mark a relation as validated by user.

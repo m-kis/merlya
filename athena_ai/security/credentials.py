@@ -428,9 +428,11 @@ class CredentialManager:
             if remaining_for_inventory:
                 resolved = self._resolve_inventory_hosts(resolved, remaining_for_inventory)
 
-        # Check for still unresolved variables
+        # Check for still unresolved variables (exclude intentionally unresolved secrets)
         if warn_missing:
             still_unresolved = re.findall(variable_pattern, resolved)
+            # Filter out secret variables that were intentionally left unresolved
+            still_unresolved = [v for v in still_unresolved if v not in secret_var_names]
             for var in still_unresolved:
                 logger.warning(
                     f"Variable @{var} referenced but not defined. "

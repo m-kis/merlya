@@ -61,7 +61,9 @@ class LocalScanner:
             existing = self.repo.get_local_context()
 
             if existing:
-                scanned_at_str = existing.get("scanned_at")
+                # Get scanned_at from _metadata (new structure) or root level (legacy)
+                metadata = existing.get("_metadata", {})
+                scanned_at_str = metadata.get("scanned_at") or existing.get("scanned_at")
                 if scanned_at_str:
                     try:
                         scanned_at = datetime.fromisoformat(scanned_at_str)
@@ -99,7 +101,7 @@ class LocalScanner:
             processes=scan_processes(),
             etc_files=scan_etc_files(),
             resources=scan_resources(),
-            scanned_at=datetime.now(),
+            scanned_at=datetime.now(timezone.utc),
         )
 
 

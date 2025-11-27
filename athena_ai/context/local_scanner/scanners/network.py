@@ -1,30 +1,91 @@
 """
 Network scanner.
 """
+import ipaddress
 import platform
 import socket
 import subprocess
-from typing import Any, Dict
+import threading
+from typing import Any, Dict, Optional
 
 from athena_ai.utils.logger import logger
+
+# Lock to protect global socket timeout changes during DNS resolution
+_socket_timeout_lock = threading.Lock()
+
+
+def _is_valid_ip(value: str) -> bool:
+    """Check if value is a valid IPv4 or IPv6 address."""
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _extract_gateway_from_route(output: str) -> Optional[str]:
+    """
+    Extract and validate gateway IP from 'ip route show default' output.
+
+    Looks for 'via <ip>' pattern first, then falls back to finding
+    the first valid IP-like token in the line.
+    """
+    parts = output.split()
+
+    # Look for "via" token and validate the following token
+    try:
+        via_idx = parts.index("via")
+        if via_idx + 1 < len(parts):
+            candidate = parts[via_idx + 1]
+            if _is_valid_ip(candidate):
+                return candidate
+            else:
+                logger.debug(f"Gateway token after 'via' is not a valid IP: {candidate}")
+    except ValueError:
+        # "via" not found in output
+        pass
+
+    # Fallback: find the first valid IP-like token in the line
+    for token in parts:
+        if _is_valid_ip(token):
+            return token
+
+    logger.debug(f"Could not extract valid gateway IP from route output: {output.strip()}")
+    return None
 
 
 def scan_network() -> Dict[str, Any]:
     """Scan network interfaces and configuration."""
+    # Get hostname and FQDN with timeout protection (getfqdn can block on reverse DNS)
+    try:
+        with _socket_timeout_lock:
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(5.0)
+            try:
+                hostname = socket.gethostname()
+                fqdn = socket.getfqdn()
+            finally:
+                socket.setdefaulttimeout(old_timeout)
+    except (socket.gaierror, socket.timeout, OSError):
+        hostname = socket.gethostname()  # Basic call without FQDN resolution
+        fqdn = hostname
+
     info = {
-        "hostname": socket.gethostname(),
-        "fqdn": socket.getfqdn(),
+        "hostname": hostname,
+        "fqdn": fqdn,
         "interfaces": [],
     }
 
     # Get all IP addresses (with timeout to prevent indefinite blocking)
+    # Use lock to protect global socket timeout modification from concurrent access
     try:
-        old_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(5.0)
-        try:
-            info["all_ips"] = socket.gethostbyname_ex(socket.gethostname())[2]
-        finally:
-            socket.setdefaulttimeout(old_timeout)
+        with _socket_timeout_lock:
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(5.0)
+            try:
+                info["all_ips"] = socket.gethostbyname_ex(socket.gethostname())[2]
+            finally:
+                socket.setdefaulttimeout(old_timeout)
     except (socket.gaierror, socket.timeout, OSError):
         info["all_ips"] = []
 
@@ -70,12 +131,20 @@ def scan_network() -> Dict[str, Any]:
                         iface_name = line.split(":")[0]
                         current_iface = {"name": iface_name, "ips": []}
                         info["interfaces"].append(current_iface)
-                    elif current_iface and "inet " in line:
+                    elif current_iface and ("inet " in line or "inet6 " in line):
                         parts = line.split()
                         if len(parts) >= 2:
+                            # Determine family based on which token is present
+                            if "inet6 " in line:
+                                family = "inet6"
+                                # inet6 address may have %scope suffix, strip it
+                                address = parts[1].split("%")[0]
+                            else:
+                                family = "inet"
+                                address = parts[1]
                             current_iface["ips"].append({
-                                "address": parts[1],
-                                "family": "inet",
+                                "address": address,
+                                "family": family,
                             })
 
     except Exception as e:
@@ -91,9 +160,9 @@ def scan_network() -> Dict[str, Any]:
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout:
-                parts = result.stdout.split()
-                if len(parts) >= 3:
-                    info["default_gateway"] = parts[2]
+                gateway = _extract_gateway_from_route(result.stdout)
+                if gateway:
+                    info["default_gateway"] = gateway
 
         elif platform.system() == "Darwin":
             result = subprocess.run(
@@ -105,7 +174,11 @@ def scan_network() -> Dict[str, Any]:
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
                     if "gateway:" in line:
-                        info["default_gateway"] = line.split(":")[1].strip()
+                        candidate = line.split(":", 1)[1].strip()
+                        if _is_valid_ip(candidate):
+                            info["default_gateway"] = candidate
+                        else:
+                            logger.debug(f"macOS gateway value is not a valid IP: {candidate}")
                         break
 
     except Exception as e:

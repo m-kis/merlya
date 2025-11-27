@@ -28,7 +28,7 @@ def scan_os() -> Dict[str, Any]:
             os_release = Path("/etc/os-release")
             if os_release.exists():
                 release_info = {}
-                with open(os_release) as f:
+                with open(os_release, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if "=" in line:

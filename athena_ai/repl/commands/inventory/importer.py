@@ -147,7 +147,15 @@ class InventoryImporter:
                 f"failed after {e.details.get('hosts_before_failure', '?')}[/dim]"
             )
             # Clean up the source since no hosts were added
-            self.repo.delete_source(source_name)
+            try:
+                self.repo.delete_source(source_name)
+            except Exception as cleanup_err:
+                logger.warning(
+                    "Failed to clean up source '%s' after import failure: %s",
+                    source_name,
+                    cleanup_err,
+                    exc_info=True,
+                )
             return False
 
         # Update source host count

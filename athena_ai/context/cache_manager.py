@@ -48,10 +48,6 @@ class CacheConfig:
     # Cleanup settings
     cleanup_interval: int = 300     # Run cleanup every 5 minutes
     max_entries: int = 1000         # Maximum cached entries
-    max_memory_mb: int = 100        # Maximum memory usage
-
-    # Stale entry threshold (multiplier of TTL)
-    stale_threshold: float = 2.0
 
 
 @dataclass
@@ -83,52 +79,55 @@ class CacheEntry:
 
 
 class CacheStats:
-    """Statistics for cache operations."""
+    """Statistics for cache operations (thread-safe)."""
 
     def __init__(self):
-        self.hits = 0
-        self.misses = 0
-        self.evictions = 0
-        self.expirations = 0
-        self.cleanups = 0
+        self._hits = 0
+        self._misses = 0
+        self._evictions = 0
+        self._expirations = 0
+        self._cleanups = 0
         self._lock = threading.Lock()
 
     def get_hit_rate(self) -> float:
         """Calculate cache hit rate (thread-safe)."""
         with self._lock:
-            total = self.hits + self.misses
-            return self.hits / total if total > 0 else 0.0
+            total = self._hits + self._misses
+            return self._hits / total if total > 0 else 0.0
 
     def record_hit(self):
         with self._lock:
-            self.hits += 1
+            self._hits += 1
 
     def record_miss(self):
         with self._lock:
-            self.misses += 1
+            self._misses += 1
 
     def record_eviction(self):
         with self._lock:
-            self.evictions += 1
+            self._evictions += 1
 
     def record_expiration(self):
         with self._lock:
-            self.expirations += 1
+            self._expirations += 1
 
     def record_cleanup(self):
         with self._lock:
-            self.cleanups += 1
+            self._cleanups += 1
 
     def to_dict(self) -> Dict[str, Any]:
         """Get statistics as dictionary (thread-safe snapshot)."""
         with self._lock:
+            hits = self._hits
+            misses = self._misses
+            total = hits + misses
             return {
-                "hits": self.hits,
-                "misses": self.misses,
-                "evictions": self.evictions,
-                "expirations": self.expirations,
-                "cleanups": self.cleanups,
-                "hit_rate": round(self.hits / (self.hits + self.misses), 3) if (self.hits + self.misses) > 0 else 0.0,
+                "hits": hits,
+                "misses": misses,
+                "evictions": self._evictions,
+                "expirations": self._expirations,
+                "cleanups": self._cleanups,
+                "hit_rate": round(hits / total, 3) if total > 0 else 0.0,
             }
 
 
@@ -177,7 +176,8 @@ class CacheManager:
     def start_cleanup_thread(self):
         """Start background cleanup thread (thread-safe)."""
         with self._lock:
-            if self._cleanup_thread is not None:
+            # Check if thread exists and is still alive
+            if self._cleanup_thread is not None and self._cleanup_thread.is_alive():
                 return
 
             self._stop_cleanup.clear()
@@ -564,11 +564,19 @@ _cache_manager_lock = threading.Lock()
 
 
 def get_cache_manager() -> CacheManager:
-    """Get the cache manager singleton (thread-safe)."""
+    """Get the cache manager singleton (thread-safe).
+
+    Uses double-check locking with local variable to ensure
+    thread-safe lazy initialization.
+    """
     global _cache_manager
-    if _cache_manager is None:
-        with _cache_manager_lock:
-            # Double-check locking pattern
-            if _cache_manager is None:
-                _cache_manager = CacheManager()
-    return _cache_manager
+    # First check without lock (fast path)
+    manager = _cache_manager
+    if manager is not None:
+        return manager
+
+    with _cache_manager_lock:
+        # Double-check inside lock
+        if _cache_manager is None:
+            _cache_manager = CacheManager()
+        return _cache_manager

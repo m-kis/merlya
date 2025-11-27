@@ -1,7 +1,7 @@
 """
 Handles viewing and searching inventory.
 """
-from typing import List
+from typing import List, Tuple
 
 from rich.table import Table
 
@@ -13,6 +13,34 @@ class InventoryViewer:
 
     def __init__(self, repo):
         self.repo = repo
+
+    def _parse_limit_arg(
+        self, args: List[str], default_limit: int
+    ) -> Tuple[int, List[str], bool]:
+        """Parse --limit argument from args list.
+
+        Returns:
+            Tuple of (limit, remaining_args, has_error).
+            If has_error is True, an error message was printed and caller should return early.
+        """
+        limit = default_limit
+        remaining_args = []
+        i = 0
+        while i < len(args):
+            if args[i] == "--limit" and i + 1 < len(args):
+                try:
+                    limit = int(args[i + 1])
+                    if limit < 1:
+                        print_error("Limit must be a positive integer")
+                        return (0, [], True)
+                except ValueError:
+                    print_error(f"Invalid limit value: {args[i + 1]}")
+                    return (0, [], True)
+                i += 2
+            else:
+                remaining_args.append(args[i])
+                i += 1
+        return (limit, remaining_args, False)
 
     def handle_list(self, args: List[str]) -> bool:
         """Handle /inventory list."""
@@ -45,27 +73,9 @@ class InventoryViewer:
 
     def handle_show(self, args: List[str]) -> bool:
         """Handle /inventory show [source] [--limit N]."""
-        source_name = None
-        default_limit = 100
-
-        # Parse --limit argument
-        limit = default_limit
-        remaining_args = []
-        i = 0
-        while i < len(args):
-            if args[i] == "--limit" and i + 1 < len(args):
-                try:
-                    limit = int(args[i + 1])
-                    if limit < 1:
-                        print_error("Limit must be a positive integer")
-                        return True
-                except ValueError:
-                    print_error(f"Invalid limit value: {args[i + 1]}")
-                    return True
-                i += 2
-            else:
-                remaining_args.append(args[i])
-                i += 1
+        limit, remaining_args, has_error = self._parse_limit_arg(args, default_limit=100)
+        if has_error:
+            return True
 
         source_name = remaining_args[0] if remaining_args else None
         source_id = None
@@ -127,26 +137,9 @@ class InventoryViewer:
             print_error("Usage: /inventory search <pattern> [--limit N]")
             return True
 
-        default_limit = 50
-
-        # Parse --limit argument
-        limit = default_limit
-        remaining_args = []
-        i = 0
-        while i < len(args):
-            if args[i] == "--limit" and i + 1 < len(args):
-                try:
-                    limit = int(args[i + 1])
-                    if limit < 1:
-                        print_error("Limit must be a positive integer")
-                        return True
-                except ValueError:
-                    print_error(f"Invalid limit value: {args[i + 1]}")
-                    return True
-                i += 2
-            else:
-                remaining_args.append(args[i])
-                i += 1
+        limit, remaining_args, has_error = self._parse_limit_arg(args, default_limit=50)
+        if has_error:
+            return True
 
         if not remaining_args:
             print_error("Usage: /inventory search <pattern> [--limit N]")

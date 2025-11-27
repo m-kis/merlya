@@ -5,7 +5,6 @@ Handles: /variables, /credentials
 """
 
 import logging
-import traceback
 
 from rich.table import Table
 
@@ -53,7 +52,6 @@ class VariablesCommandHandler:
         except Exception as e:
             logger.exception("Variable operation failed: %s", e)
             print_error(f"Variable operation failed: {e}")
-            console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return False
 
         return True

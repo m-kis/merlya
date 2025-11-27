@@ -344,10 +344,15 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
                 data = json.loads(json_match.group())
                 for item in data:
                     if isinstance(item, dict) and item.get("source") and item.get("target"):
+                        # Validate relation_type against allowed types
+                        relation_type = item.get("type", "related_service")
+                        if relation_type not in self.RELATION_TYPES:
+                            logger.debug(f"Invalid relation type from LLM: {relation_type}, defaulting to related_service")
+                            relation_type = "related_service"
                         suggestions.append(RelationSuggestion(
                             source_hostname=item["source"].lower(),
                             target_hostname=item["target"].lower(),
-                            relation_type=item.get("type", "related_service"),
+                            relation_type=relation_type,
                             confidence=min(float(item.get("confidence", 0.5)), 0.75),  # Cap LLM confidence
                             reason=item.get("reason", "LLM suggestion"),
                             metadata={"source": "llm"},

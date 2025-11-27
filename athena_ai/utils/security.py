@@ -36,9 +36,8 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
         for secret in sorted_secrets:
             if len(secret) < 3:  # Don't redact very short strings to avoid false positives
                 continue
-            # Use regex with word boundaries to avoid over-redaction
-            escaped_secret = re.escape(secret)
-            redacted = re.sub(rf'\b{escaped_secret}\b', '[REDACTED]', redacted)
+            # Use direct string replacement to reliably redact exact secrets
+            redacted = redacted.replace(secret, '[REDACTED]')
 
     # 2. Redact command line flags
     
@@ -114,7 +113,7 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
             return f'{match.group(1)}{match.group(2)}{match.group(1)}: {match.group(3)}[REDACTED]{match.group(3)}'
 
         redacted = re.sub(
-            rf'(["\'])({key})\1\s*:\s*(["\'])([^"\']+?)\3',
+            rf'(["\'])({key})\1\s*:\s*(["\'])([^"\']*?)\3',
             json_quoted_replacer,
             redacted,
             flags=re.IGNORECASE

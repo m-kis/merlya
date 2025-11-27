@@ -148,7 +148,7 @@ class RelationsHandler:
                 rel.get("source_hostname", "?"),
                 "→",
                 rel.get("target_hostname", "?"),
-                rel["relation_type"],
+                rel.get("relation_type", "?"),
                 f"{rel.get('confidence', 1.0):.0%}",
             )
 

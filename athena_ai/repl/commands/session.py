@@ -4,9 +4,13 @@ Session and conversation command handlers.
 Handles: /session, /conversations, /new, /load, /compact, /delete
 """
 
+import logging
+
 from rich.table import Table
 
 from athena_ai.repl.ui import console, print_error, print_success, print_warning
+
+logger = logging.getLogger(__name__)
 
 
 class SessionCommandHandler:
@@ -19,7 +23,7 @@ class SessionCommandHandler:
     def handle_session(self, args: list) -> bool:
         """Show session information."""
         try:
-            if 'list' in args:
+            if args and args[0] == 'list':
                 sessions = self.repl.session_manager.list_sessions(limit=5)
                 table = Table(title="Recent Sessions")
                 table.add_column("Session ID", style="cyan")
@@ -41,46 +45,63 @@ class SessionCommandHandler:
 
     def handle_conversations(self, args: list) -> bool:
         """Handle /conversations command to list all conversations."""
-        conversations = self.repl.conversation_manager.list_conversations(limit=20)
-        if not conversations:
-            print_warning("No conversations found")
-            console.print("[dim]Start chatting to create a conversation[/dim]")
-            return True
+        try:
+            conversations = self.repl.conversation_manager.list_conversations(limit=20)
+            if not conversations:
+                print_warning("No conversations found")
+                console.print("[dim]Start chatting to create a conversation[/dim]")
+                return True
 
-        table = Table(title="Conversations")
-        table.add_column("ID", style="cyan")
-        table.add_column("Title", style="green")
-        table.add_column("Messages", style="yellow")
-        table.add_column("Tokens", style="magenta")
-        table.add_column("Updated", style="dim")
+            table = Table(title="Conversations")
+            table.add_column("ID", style="cyan")
+            table.add_column("Title", style="green")
+            table.add_column("Messages", style="yellow")
+            table.add_column("Tokens", style="magenta")
+            table.add_column("Updated", style="dim")
 
-        current_id = (
-            self.repl.conversation_manager.current_conversation.id
-            if self.repl.conversation_manager.current_conversation
-            else None
-        )
+            current_id = (
+                self.repl.conversation_manager.current_conversation.id
+                if self.repl.conversation_manager.current_conversation
+                else None
+            )
 
-        for conv in conversations:
-            conv_id = conv.get('id', conv.get('conversation_id', 'N/A'))
-            title = conv.get('title', 'Untitled')[:30]
-            msg_count = str(conv.get('message_count', 0))
-            tokens = str(conv.get('token_count', 0))
-            updated = conv.get('updated_at', '')[:16]
+            for conv in conversations:
+                conv_id = conv.get('id', conv.get('conversation_id', 'N/A'))
+                title = conv.get('title', 'Untitled')[:30]
+                msg_count = str(conv.get('message_count', 0))
+                tokens = str(conv.get('token_count', 0))
+                updated = conv.get('updated_at', '')[:16]
 
-            # Mark current conversation
-            if conv_id == current_id:
-                conv_id = f"[bold]{conv_id}[/bold] *"
+                # Mark current conversation
+                if conv_id == current_id:
+                    conv_id = f"[bold]{conv_id}[/bold] *"
 
-            table.add_row(conv_id, title, msg_count, tokens, updated)
+                table.add_row(conv_id, title, msg_count, tokens, updated)
 
-        console.print(table)
-        console.print("[dim]* = current conversation[/dim]")
+            console.print(table)
+            console.print("[dim]* = current conversation[/dim]")
+
+        except Exception as e:
+            print_error(f"Error listing conversations: {e}")
+            console.print("[dim]Check database connection or try /new[/dim]")
+
         return True
 
     def handle_new(self, args: list) -> bool:
         """Handle /new command to start a new conversation."""
         title = ' '.join(args) if args else None
-        conv = self.repl.conversation_manager.create_conversation(title=title)
+        try:
+            conv = self.repl.conversation_manager.create_conversation(title=title)
+        except Exception as e:
+            logger.exception("Failed to create conversation: %s", e)
+            print_error(f"Failed to create conversation: {e}")
+            return False
+
+        if not conv or not getattr(conv, 'id', None):
+            logger.error("create_conversation returned invalid result: %r", conv)
+            print_error("Failed to create conversation: invalid response")
+            return False
+
         print_success(f"New conversation started: {conv.id}")
         if title:
             console.print(f"  Title: {title}")
@@ -93,11 +114,24 @@ class SessionCommandHandler:
             return True
 
         conv_id = args[0]
-        if self.repl.conversation_manager.load_conversation(conv_id):
-            conv = self.repl.conversation_manager.current_conversation
-            print_success(f"Loaded conversation: {conv_id}")
-            console.print(f"  Messages: {len(conv.messages)}")
-            console.print(f"  Tokens: {conv.token_count}")
+        try:
+            loaded = self.repl.conversation_manager.load_conversation(conv_id)
+        except Exception as e:
+            logger.exception("Failed to load conversation %s: %s", conv_id, e)
+            print_error(f"Failed to load conversation: {e}")
+            return True
+
+        if loaded:
+            try:
+                conv = self.repl.conversation_manager.current_conversation
+                print_success(f"Loaded conversation: {conv_id}")
+                console.print(f"  Messages: {len(conv.messages)}")
+                console.print(f"  Tokens: {conv.token_count}")
+            except Exception as e:
+                logger.exception(
+                    "Failed to access conversation attributes for %s: %s", conv_id, e
+                )
+                print_error(f"Loaded conversation but failed to display details: {e}")
         else:
             print_error(f"Conversation not found: {conv_id}")
 
@@ -112,18 +146,63 @@ class SessionCommandHandler:
 
         before_tokens = conv.token_count
         before_messages = len(conv.messages)
+        original_conv_id = conv.id
 
         # Compact by summarizing old messages
-        with console.status("[cyan]Compacting conversation...[/cyan]", spinner="dots"):
-            self.repl.conversation_manager.compact_conversation()
+        try:
+            with console.status("[cyan]Compacting conversation...[/cyan]", spinner="dots"):
+                success = self.repl.conversation_manager.compact_conversation()
 
-        after_tokens = conv.token_count
-        after_messages = len(conv.messages)
+            if not success:
+                # Compaction returned False - log and inform user
+                logger.warning(
+                    "Compaction returned False for conversation %s", original_conv_id
+                )
+                print_error("Compaction failed - conversation unchanged")
+                return True
+
+        except Exception as e:
+            # Log full exception with stack trace
+            logger.exception(
+                "Failed to compact conversation %s: %s", original_conv_id, e
+            )
+            print_error(f"Compaction failed: {e}")
+
+            # Attempt to restore/reload original conversation if state is inconsistent
+            current_conv = self.repl.conversation_manager.current_conversation
+            if current_conv is None or current_conv.id != original_conv_id:
+                # State changed during failed compaction - try to reload original
+                logger.info(
+                    "Attempting to restore original conversation %s", original_conv_id
+                )
+                try:
+                    self.repl.conversation_manager.load_conversation(original_conv_id)
+                    logger.info("Successfully restored conversation %s", original_conv_id)
+                except Exception as restore_err:
+                    logger.exception(
+                        "Failed to restore conversation %s: %s",
+                        original_conv_id,
+                        restore_err,
+                    )
+                    print_error(
+                        "Warning: Could not restore original conversation. "
+                        "Use /conversations to list available conversations."
+                    )
+            return True
+
+        # Get updated conversation (may be new after compaction)
+        conv = self.repl.conversation_manager.current_conversation
+        after_tokens = conv.token_count if conv else 0
+        after_messages = len(conv.messages) if conv else 0
 
         print_success("Conversation compacted")
         console.print(f"  Messages: {before_messages} → {after_messages}")
         console.print(f"  Tokens: {before_tokens} → {after_tokens}")
-        console.print(f"  Saved: {before_tokens - after_tokens} tokens")
+        delta = before_tokens - after_tokens
+        if delta >= 0:
+            console.print(f"  Saved: {delta} tokens")
+        else:
+            console.print(f"  Increased: {abs(delta)} tokens")
 
         return True
 
@@ -145,10 +224,14 @@ class SessionCommandHandler:
             print_warning("Cancelled")
             return True
 
-        if self.repl.conversation_manager.delete_conversation(conv_id):
-            print_success(f"Conversation deleted: {conv_id}")
-        else:
-            print_error(f"Failed to delete conversation: {conv_id}")
+        try:
+            if self.repl.conversation_manager.delete_conversation(conv_id):
+                print_success(f"Conversation deleted: {conv_id}")
+            else:
+                print_error(f"Failed to delete conversation: {conv_id}")
+        except Exception as e:
+            logger.exception("Failed to delete conversation %s: %s", conv_id, e)
+            print_error(f"Failed to delete conversation: {e}")
 
         return True
 
