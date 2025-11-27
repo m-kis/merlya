@@ -347,10 +347,13 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
 
         for s in suggestions:
             # Create a normalized key (order-independent for bidirectional relations)
+            # Normalize to lowercase for case-insensitive comparison
+            src_lower = s.source_hostname.lower()
+            tgt_lower = s.target_hostname.lower()
             if s.relation_type in ["cluster_member", "load_balanced"]:
-                key = tuple(sorted([s.source_hostname, s.target_hostname])) + (s.relation_type,)
+                key = tuple(sorted([src_lower, tgt_lower])) + (s.relation_type,)
             else:
-                key = (s.source_hostname, s.target_hostname, s.relation_type)
+                key = (src_lower, tgt_lower, s.relation_type)
 
             if key not in seen:
                 seen.add(key)
