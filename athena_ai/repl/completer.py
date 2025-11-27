@@ -110,10 +110,11 @@ class AthenaCompleter(Completer):
                 )
 
     def _complete_variables(self, partial: str) -> Iterable[Completion]:
-        """Complete @variables."""
+        """Complete @variables and @inventory_hosts."""
         variables = self._get_variables()
         partial_lower = partial.lower()
 
+        # Complete user-defined variables
         for var in variables:
             if var.lower().startswith(partial_lower):
                 yield Completion(
@@ -121,6 +122,20 @@ class AthenaCompleter(Completer):
                     start_position=-len(partial) - 1,  # Include @
                     display=f"@{var}",
                     display_meta="variable"
+                )
+
+        # Complete inventory hosts
+        inventory_hosts = self._get_inventory_hosts()
+        for host in inventory_hosts:
+            # Skip if already a user variable (user vars take priority)
+            if host.lower() in [v.lower() for v in variables]:
+                continue
+            if host.lower().startswith(partial_lower):
+                yield Completion(
+                    f"@{host}",
+                    start_position=-len(partial) - 1,  # Include @
+                    display=f"@{host}",
+                    display_meta="inventory host"
                 )
 
     def _complete_services(self, partial: str) -> Iterable[Completion]:
@@ -156,6 +171,26 @@ class AthenaCompleter(Completer):
             except Exception:
                 pass
         return self._cached_variables
+
+    def _get_inventory_hosts(self) -> List[str]:
+        """Get list of hostnames from inventory."""
+        # Try credentials manager first (has get_inventory_hosts method)
+        if self.credentials_manager:
+            try:
+                return self.credentials_manager.get_inventory_hosts()
+            except AttributeError:
+                pass
+            except Exception:
+                pass
+
+        # Direct fallback to inventory repository
+        try:
+            from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+            repo = get_inventory_repository()
+            hosts = repo.list_hosts()
+            return [h["hostname"] for h in hosts]
+        except Exception:
+            return []
 
     def update_hosts(self, hosts: List[str]) -> None:
         """Update cached host list."""

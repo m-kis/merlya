@@ -21,6 +21,7 @@ SLASH_COMMANDS = {
     '/model': 'Model management (list, set, show)',
     '/variables': 'Manage variables (hosts, credentials, etc.)',
     '/credentials': 'Alias for /variables (backward compatibility)',
+    '/inventory': 'Manage host inventory (add, list, show, remove, export, relations)',
     '/mcp': 'Manage MCP servers (add, list, delete, show)',
     '/language': 'Change language (en/fr)',
     '/triage': 'Test priority classification for a query',
@@ -76,6 +77,7 @@ class CommandHandler:
             '/model': lambda: self._handle_model(args),
             '/variables': lambda: self._handle_variables(args),
             '/credentials': lambda: self._handle_variables(args),
+            '/inventory': lambda: self._handle_inventory(args),
             '/mcp': lambda: self._handle_mcp(args),
             '/language': lambda: self._handle_language(args),
             '/triage': lambda: self._handle_triage(args),
@@ -163,10 +165,30 @@ class CommandHandler:
         help_text += "- `/variables clear` - Clear all variables\n"
         help_text += "- Note: `/credentials` is an alias for `/variables`\n"
 
+        help_text += "\n## Inventory System\n\n"
+        help_text += "Manage your infrastructure hosts with `/inventory`:\n\n"
+        help_text += "**Commands:**\n"
+        help_text += "- `/inventory list` - List all hosts in inventory\n"
+        help_text += "- `/inventory add <file>` - Import hosts from file (CSV, JSON, YAML, INI, /etc/hosts, ~/.ssh/config)\n"
+        help_text += "- `/inventory show <hostname>` - Show host details\n"
+        help_text += "- `/inventory search <query>` - Search hosts by name, group, or IP\n"
+        help_text += "- `/inventory remove <hostname>` - Remove a host\n"
+        help_text += "- `/inventory export [format]` - Export inventory (json, csv, yaml)\n"
+        help_text += "- `/inventory relations [suggest]` - Show/suggest host relations\n"
+        help_text += "- `/inventory snapshot [name]` - Create/list inventory snapshots\n"
+        help_text += "- `/inventory stats` - Show inventory statistics\n\n"
+        help_text += "**Host References (@hostname):**\n"
+        help_text += "Reference any inventory host in your prompts using `@hostname`:\n"
+        help_text += "- `check nginx on @web-prod-01` - Target specific host\n"
+        help_text += "- `compare disk usage @db-master vs @db-replica`\n"
+        help_text += "- `restart service on @backend-01 @backend-02`\n\n"
+        help_text += "Auto-completion is available for inventory hosts.\n"
+
         help_text += "\n## Examples\n\n"
         help_text += "- `list mongo preprod IPs`\n"
         help_text += "- `check if nginx is running on web-prod-001`\n"
         help_text += "- `what services are running on mongo-preprod-1`\n"
+        help_text += "- `check redis on @cache-prod-01` (using inventory host)\n"
         help_text += "- `/scan --full` (scan all hosts via SSH)\n"
         help_text += "- `/cache-stats` (check cache status)\n"
         help_text += "- `/refresh` (force refresh local context)\n"
@@ -663,6 +685,19 @@ class CommandHandler:
         console.print("  /model set <model> - Set cloud model")
         console.print("  /model provider <provider> - Switch cloud provider")
 
+
+    def _handle_inventory(self, args):
+        """Handle /inventory command for host inventory management."""
+        try:
+            from athena_ai.repl.commands.inventory import InventoryCommandHandler
+            handler = InventoryCommandHandler()
+            return handler.handle(args)
+        except ImportError as e:
+            print_error(f"Inventory module not available: {e}")
+            return True
+        except Exception as e:
+            print_error(f"Inventory command failed: {e}")
+            return True
 
     def _handle_mcp(self, args):
         return self.repl._handle_mcp_command(args)

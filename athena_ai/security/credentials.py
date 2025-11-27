@@ -396,24 +396,82 @@ class CredentialManager:
         Example:
             "check mysql on @proddb using @dbuser @dbpass"
             -> "check mysql on db-prod-001 using admin secret123"
+
+        Resolution order:
+        1. User-defined variables (from /variables command)
+        2. Inventory hosts (from /inventory command)
         """
         resolved = text
 
-        # Replace all known variables
+        # Replace all known user variables first (higher priority)
         for key, (value, _) in self._variables.items():
             resolved = re.sub(f'@{re.escape(key)}\\b', value, resolved)
 
-        # Check for unresolved variables
+        # Find remaining unresolved variables
+        variable_pattern = r'@([\w\-]+)'
+        remaining = re.findall(variable_pattern, resolved)
+
+        # Try to resolve from inventory
+        if remaining:
+            resolved = self._resolve_inventory_hosts(resolved, remaining)
+
+        # Check for still unresolved variables
         if warn_missing:
-            variable_pattern = r'@([\w\-]+)'
             still_unresolved = re.findall(variable_pattern, resolved)
             for var in still_unresolved:
                 logger.warning(
                     f"Variable @{var} referenced but not defined. "
-                    f"Use '/variables set {var} <value>' to define it."
+                    f"Use '/variables set {var} <value>' or '/inventory add' to define it."
                 )
 
         return resolved
+
+    def _resolve_inventory_hosts(self, text: str, variables: list) -> str:
+        """
+        Resolve @hostname references from inventory.
+
+        Args:
+            text: Text with @variable references
+            variables: List of unresolved variable names
+
+        Returns:
+            Text with inventory hostnames resolved
+        """
+        try:
+            from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+            repo = get_inventory_repository()
+
+            for var in variables:
+                # Try to find host in inventory
+                host = repo.get_host_by_name(var)
+                if host:
+                    # Replace @hostname with the actual hostname
+                    # If there's an IP, use "hostname (IP)" format for clarity
+                    replacement = host["hostname"]
+                    text = re.sub(f'@{re.escape(var)}\\b', replacement, text)
+                    logger.debug(f"Resolved @{var} to inventory host: {replacement}")
+
+        except ImportError:
+            logger.debug("Inventory repository not available for host resolution")
+        except Exception as e:
+            logger.debug(f"Failed to resolve inventory hosts: {e}")
+
+        return text
+
+    def get_inventory_hosts(self) -> list:
+        """
+        Get list of hostnames from inventory for auto-completion.
+
+        Returns:
+            List of hostname strings
+        """
+        try:
+            from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+            repo = get_inventory_repository()
+            hosts = repo.list_hosts()
+            return [h["hostname"] for h in hosts]
+        except Exception:
+            return []
 
     def has_variables(self, text: str) -> bool:
         """Check if text contains @variable references."""

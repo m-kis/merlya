@@ -104,6 +104,7 @@ class ToolContext:
     error_correction: Any = None
     credentials: Any = None
     host_registry: Optional[HostRegistry] = None
+    inventory_repo: Any = None  # New inventory repository
     hooks: Any = None
     console: Any = None  # Rich console for user interaction
     input_callback: Any = None  # Callback for user input (to handle spinner pause)
@@ -117,6 +118,13 @@ class ToolContext:
         if not self.console:
             from rich.console import Console
             self.console = Console()
+        # Initialize inventory repository
+        if not self.inventory_repo:
+            try:
+                from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+                self.inventory_repo = get_inventory_repository()
+            except Exception:
+                pass
 
     def get_user_input(self, prompt: str = "> ") -> str:
         """
@@ -185,7 +193,9 @@ def initialize_tools(
 
 def validate_host(hostname: str) -> tuple[bool, str]:
     """
-    Validate hostname against registry.
+    Validate hostname against registry and inventory.
+
+    Checks both the legacy host registry and the new inventory repository.
 
     Returns:
         (is_valid, message)
@@ -196,7 +206,16 @@ def validate_host(hostname: str) -> tuple[bool, str]:
     if hostname in ["local", "localhost", "127.0.0.1"]:
         return True, "Local execution allowed"
 
-    # Ensure registry is loaded
+    # Check new inventory repository first
+    if ctx.inventory_repo:
+        try:
+            host = ctx.inventory_repo.get_host_by_name(hostname)
+            if host:
+                return True, f"Host '{hostname}' found in inventory"
+        except Exception:
+            pass
+
+    # Fall back to legacy host registry
     if not ctx.host_registry:
         ctx.host_registry = get_host_registry()
     if ctx.host_registry.is_empty():

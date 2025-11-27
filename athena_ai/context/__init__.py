@@ -7,6 +7,9 @@ Provides:
 - Host registry with strict validation
 - Inventory source management
 - Interactive inventory setup wizard
+- Local machine scanning with intelligent caching
+- On-demand remote host scanning
+- Intelligent cache management
 """
 
 from .discovery import Discovery
@@ -29,6 +32,11 @@ from .inventory_setup import (
 from .inventory_sources import DataAvailability, InventorySourceManager
 from .manager import ContextManager, get_context_manager
 from .smart_cache import SmartCache
+
+# New inventory system components
+from .local_scanner import LocalScanner, get_local_scanner
+from .on_demand_scanner import OnDemandScanner, ScanConfig, ScanResult, get_on_demand_scanner
+from .cache_manager import CacheManager, CacheConfig, get_cache_manager
 
 __all__ = [
     # Discovery
@@ -55,4 +63,14 @@ __all__ = [
     "DataAvailability",
     # Cache
     "SmartCache",
+    # New inventory system
+    "LocalScanner",
+    "get_local_scanner",
+    "OnDemandScanner",
+    "ScanConfig",
+    "ScanResult",
+    "get_on_demand_scanner",
+    "CacheManager",
+    "CacheConfig",
+    "get_cache_manager",
 ]

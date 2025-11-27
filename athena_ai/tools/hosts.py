@@ -210,3 +210,191 @@ def check_permissions(
         return f"✅ Permission check for {target}\n\n{summary}"
     except Exception as e:
         return f"❌ Permission check failed: {e}"
+
+
+def search_inventory(
+    query: Annotated[str, "Search query (hostname, IP, group, or environment)"]
+) -> str:
+    """
+    Search hosts in the inventory.
+
+    Searches across hostname, IP address, groups, and environment.
+
+    Args:
+        query: Search query
+
+    Returns:
+        Matching hosts from inventory
+    """
+    ctx = get_tool_context()
+    logger.info(f"Tool: search_inventory query={query}")
+
+    if not ctx.inventory_repo:
+        return "❌ Inventory not available"
+
+    try:
+        hosts = ctx.inventory_repo.search_hosts(query, limit=50)
+
+        if not hosts:
+            return f"❌ No hosts found matching '{query}'\n\n💡 Try a different search term or use /inventory list"
+
+        lines = [f"📋 INVENTORY SEARCH: {len(hosts)} hosts matching '{query}'", ""]
+
+        for host in hosts:
+            ip_info = f" ({host['ip_address']})" if host.get('ip_address') else ""
+            env_info = f" [{host['environment']}]" if host.get('environment') else ""
+            groups = host.get('groups', [])
+            groups_info = f" groups: {', '.join(groups[:3])}" if groups else ""
+            lines.append(f"  • {host['hostname']}{ip_info}{env_info}{groups_info}")
+
+        lines.append("")
+        lines.append("💡 Use @hostname syntax to reference these hosts in prompts")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ Search failed: {e}"
+
+
+def get_host_details(
+    hostname: Annotated[str, "Hostname to get details for"]
+) -> str:
+    """
+    Get detailed information about a specific host from inventory.
+
+    Args:
+        hostname: Hostname to look up
+
+    Returns:
+        Host details including metadata, groups, relations
+    """
+    ctx = get_tool_context()
+    logger.info(f"Tool: get_host_details hostname={hostname}")
+
+    if not ctx.inventory_repo:
+        return "❌ Inventory not available"
+
+    try:
+        host = ctx.inventory_repo.get_host_by_name(hostname)
+
+        if not host:
+            # Search for similar hosts
+            similar = ctx.inventory_repo.search_hosts(hostname, limit=5)
+            if similar:
+                suggestions = ", ".join(h['hostname'] for h in similar[:5])
+                return f"❌ Host '{hostname}' not found\n\n💡 Similar hosts: {suggestions}"
+            return f"❌ Host '{hostname}' not found in inventory"
+
+        lines = [f"📋 HOST DETAILS: {host['hostname']}", ""]
+
+        # Basic info
+        if host.get('ip_address'):
+            lines.append(f"  IP Address: {host['ip_address']}")
+        if host.get('environment'):
+            lines.append(f"  Environment: {host['environment']}")
+        if host.get('os'):
+            lines.append(f"  OS: {host['os']}")
+
+        # Groups
+        groups = host.get('groups', [])
+        if groups:
+            lines.append(f"  Groups: {', '.join(groups)}")
+
+        # Metadata
+        metadata = host.get('metadata', {})
+        if metadata:
+            lines.append("  Metadata:")
+            for key, value in list(metadata.items())[:10]:
+                lines.append(f"    {key}: {value}")
+
+        # Source
+        if host.get('source'):
+            lines.append(f"  Source: {host['source']}")
+
+        # Check for relations
+        try:
+            relations = ctx.inventory_repo.get_host_relations(hostname)
+            if relations:
+                lines.append(f"\n  Relations ({len(relations)}):")
+                for rel in relations[:5]:
+                    direction = "→" if rel['source_hostname'] == hostname else "←"
+                    other = rel['target_hostname'] if rel['source_hostname'] == hostname else rel['source_hostname']
+                    lines.append(f"    {direction} {other} ({rel['relation_type']})")
+        except Exception:
+            pass
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ Failed to get host details: {e}"
+
+
+def list_inventory_hosts(
+    environment: Annotated[str, "Filter by environment (prod, staging, dev, all)"] = "all",
+    group: Annotated[str, "Filter by group name"] = "",
+    limit: Annotated[int, "Maximum number of hosts to return"] = 50
+) -> str:
+    """
+    List hosts from the inventory with optional filters.
+
+    Args:
+        environment: Filter by environment
+        group: Filter by group name
+        limit: Maximum hosts to return
+
+    Returns:
+        List of inventory hosts
+    """
+    ctx = get_tool_context()
+    logger.info(f"Tool: list_inventory_hosts env={environment} group={group}")
+
+    if not ctx.inventory_repo:
+        return "❌ Inventory not available"
+
+    try:
+        hosts = ctx.inventory_repo.list_hosts(limit=limit * 2)  # Get more to filter
+
+        # Filter by environment
+        if environment and environment != "all":
+            hosts = [h for h in hosts if h.get('environment', '').lower() == environment.lower()]
+
+        # Filter by group
+        if group:
+            hosts = [h for h in hosts if group.lower() in [g.lower() for g in h.get('groups', [])]]
+
+        # Apply limit
+        hosts = hosts[:limit]
+
+        if not hosts:
+            filter_info = []
+            if environment != "all":
+                filter_info.append(f"environment={environment}")
+            if group:
+                filter_info.append(f"group={group}")
+            filter_str = f" with filters: {', '.join(filter_info)}" if filter_info else ""
+            return f"❌ No hosts found{filter_str}\n\n💡 Try /inventory list or list_inventory_hosts(environment='all')"
+
+        lines = [f"📋 INVENTORY HOSTS ({len(hosts)} found):", ""]
+
+        # Group by environment
+        by_env = {}
+        for host in hosts:
+            env = host.get('environment', 'unknown') or 'unknown'
+            if env not in by_env:
+                by_env[env] = []
+            by_env[env].append(host)
+
+        for env, env_hosts in sorted(by_env.items()):
+            lines.append(f"  [{env.upper()}]")
+            for host in sorted(env_hosts, key=lambda h: h['hostname']):
+                ip_info = f" ({host['ip_address']})" if host.get('ip_address') else ""
+                lines.append(f"    • {host['hostname']}{ip_info}")
+            lines.append("")
+
+        lines.append("💡 Use @hostname syntax to reference hosts in prompts")
+        lines.append("💡 Use search_inventory('query') for specific searches")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ Failed to list hosts: {e}"
