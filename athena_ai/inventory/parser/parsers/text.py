@@ -69,7 +69,11 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
                         errors.append(f"Line {line_num}: Invalid IP address '{value}' for host '{hostname}'")
                 elif key == "ansible_port":
                     try:
-                        host.ssh_port = int(value)
+                        port = int(value)
+                        if 1 <= port <= 65535:
+                            host.ssh_port = port
+                        else:
+                            errors.append(f"Line {line_num}: Invalid port '{value}' for host '{hostname}'")
                     except ValueError:
                         errors.append(f"Line {line_num}: Invalid port '{value}' for host '{hostname}'")
                 elif key in ["ansible_user", "user"]:
@@ -184,9 +188,10 @@ def parse_ssh_config(content: str) -> Tuple[List[ParsedHost], List[str]]:
             current_host_line = line_num
 
         elif current_host:
-            # Parse host options
-            if " " in line:
-                key, value = line.split(None, 1)
+            # Parse host options (handle both space and tab indentation)
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                key, value = parts
                 key = key.lower()
 
                 if key == "hostname":
@@ -205,7 +210,11 @@ def parse_ssh_config(content: str) -> Tuple[List[ParsedHost], List[str]]:
                         current_host.hostname = fqdn
                 elif key == "port":
                     try:
-                        current_host.ssh_port = int(value)
+                        port = int(value)
+                        if 1 <= port <= 65535:
+                            current_host.ssh_port = port
+                        else:
+                            errors.append(f"Line {line_num}: Invalid port '{value}' for host at line {current_host_line}")
                     except ValueError:
                         errors.append(f"Line {line_num}: Invalid port '{value}' for host at line {current_host_line}")
                 elif key == "user":

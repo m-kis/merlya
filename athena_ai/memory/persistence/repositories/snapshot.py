@@ -51,18 +51,7 @@ class SnapshotRepositoryMixin:
         Raises:
             PersistenceError: If snapshot limit is reached or serialization fails.
         """
-        # Enforce snapshot limit to prevent unbounded storage growth
-        with self._connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM inventory_snapshots")
-            count = cursor.fetchone()[0]
-            if count >= MAX_SNAPSHOT_LIMIT:
-                raise PersistenceError(
-                    operation="create_snapshot",
-                    reason=f"Maximum snapshot limit ({MAX_SNAPSHOT_LIMIT}) reached",
-                    details={"current_count": count},
-                )
-
+        # Prepare snapshot data before acquiring the write lock to minimize lock duration
         hosts = self.get_all_hosts()
         relations = self.get_relations()
 
@@ -86,21 +75,56 @@ class SnapshotRepositoryMixin:
                 details={"snapshot_name": snapshot_name, "host_count": len(hosts)},
             ) from e
 
-        with self._connection(commit=True) as conn:
+        # Perform count check and insert atomically within a single transaction
+        # using BEGIN IMMEDIATE to acquire write lock immediately and prevent
+        # race conditions where concurrent workers could exceed MAX_SNAPSHOT_LIMIT
+        with self._connection() as conn:
             cursor = conn.cursor()
+            try:
+                # BEGIN IMMEDIATE acquires a write lock immediately, blocking
+                # other writers until this transaction completes
+                cursor.execute("BEGIN IMMEDIATE")
 
-            cursor.execute("""
-                INSERT INTO inventory_snapshots (name, description, host_count, snapshot_data, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                snapshot_name,
-                description,
-                len(hosts),
-                serialized_data,
-                timestamp,
-            ))
+                # Check count inside the transaction with the write lock held
+                cursor.execute("SELECT COUNT(*) FROM inventory_snapshots")
+                count = cursor.fetchone()[0]
+                if count >= MAX_SNAPSHOT_LIMIT:
+                    cursor.execute("ROLLBACK")
+                    raise PersistenceError(
+                        operation="create_snapshot",
+                        reason=f"Maximum snapshot limit ({MAX_SNAPSHOT_LIMIT}) reached",
+                        details={"current_count": count},
+                    )
 
-            return cursor.lastrowid
+                cursor.execute("""
+                    INSERT INTO inventory_snapshots (name, description, host_count, snapshot_data, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    snapshot_name,
+                    description,
+                    len(hosts),
+                    serialized_data,
+                    timestamp,
+                ))
+
+                snapshot_id = cursor.lastrowid
+                cursor.execute("COMMIT")
+                return snapshot_id
+
+            except PersistenceError:
+                # Re-raise PersistenceError (already rolled back above)
+                raise
+            except Exception as e:
+                # Rollback on any other exception
+                try:
+                    cursor.execute("ROLLBACK")
+                except Exception:
+                    pass  # Ignore rollback errors
+                raise PersistenceError(
+                    operation="create_snapshot",
+                    reason=f"Failed to create snapshot: {e}",
+                    details={"snapshot_name": snapshot_name},
+                ) from e
 
     def list_snapshots(self, limit: int = 20) -> List[Dict[str, Any]]:
         """List inventory snapshots.

@@ -312,8 +312,9 @@ def get_host_details(
                 lines.append(f"    {key}: {value}")
 
         # Source
-        if host.get('source'):
-            lines.append(f"  Source: {host['source']}")
+        source = host.get('source')
+        if source:
+            lines.append(f"  Source: {source}")
 
         # Check for relations
         try:

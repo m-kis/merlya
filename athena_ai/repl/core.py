@@ -158,6 +158,9 @@ class AthenaREPL:
                         break
                     if result in (CommandResult.HANDLED, CommandResult.FAILED):
                         continue
+                    # Unexpected result - slash commands should not fall through to LLM
+                    logger.warning(f"Unexpected command result: {result} for input: {user_input[:50]}")
+                    continue
 
                 # Process natural language query
                 self.conversation_manager.add_user_message(user_input)
@@ -181,9 +184,9 @@ class AthenaREPL:
 
                 # Use StatusManager so tools can pause spinner for user input
                 status_manager = get_status_manager()
-                status_manager.set_console(console)
-                status_manager.start("[cyan]🧠 Processing...[/cyan]")
                 try:
+                    status_manager.set_console(console)
+                    status_manager.start("[cyan]🧠 Processing...[/cyan]")
                     response = asyncio.run(
                         self.orchestrator.process_request(
                             user_query=resolved_query,
@@ -214,7 +217,7 @@ class AthenaREPL:
 
     # Command implementations called from CommandHandler
 
-    def _handle_mcp_command(self, args):
+    def handle_mcp_command(self, args):
         """Handle /mcp command for MCP server management."""
         from rich.table import Table
 
@@ -311,7 +314,7 @@ class AthenaREPL:
 
         return True
 
-    def _handle_language_command(self, args):
+    def handle_language_command(self, args):
         """Handle /language command to change language preference."""
         if not args:
             current = self.config.language or 'en'
@@ -331,7 +334,7 @@ class AthenaREPL:
 
         return True
 
-    def _handle_triage_command(self, args):
+    def handle_triage_command(self, args):
         """Handle /triage command to test priority classification."""
         from athena_ai.triage import classify_priority, describe_behavior
 
@@ -354,7 +357,7 @@ class AthenaREPL:
 
         return True
 
-    def _handle_feedback_command(self, args):
+    def handle_feedback_command(self, args):
         """Handle /feedback command to correct triage classification."""
         from athena_ai.triage import Intent, Priority
 
@@ -454,7 +457,7 @@ class AthenaREPL:
         console.print("  /feedback action P1 restart nginx on prod")
         console.print("  /feedback --last analysis P2")
 
-    def _handle_triage_stats_command(self, args):
+    def handle_triage_stats_command(self, args):
         """Handle /triage-stats command to show learning statistics."""
         from rich.table import Table
 
@@ -617,14 +620,19 @@ class AthenaREPL:
         """
         Get recent conversation history for context injection.
 
-        Returns list of {role, content} dicts for the last N messages.
+        Returns list of {role, content} dicts for the last N messages,
+        excluding the current user message (which was just added before calling this).
+        This avoids sending the same message twice to the orchestrator.
         """
         conv = self.conversation_manager.current_conversation
         if not conv or not conv.messages:
             return []
 
-        # Get recent messages (including the current user message if already added)
-        recent = conv.messages[-max_messages:]
+        # Exclude the last message (current user input just added) to avoid duplication
+        # The orchestrator receives the current query via user_query parameter
+        if len(conv.messages) <= 1:
+            return []
+        recent = conv.messages[-(max_messages + 1):-1]
         return [{"role": msg.role, "content": msg.content} for msg in recent]
 
     def process_single_query(self, query: str) -> str:

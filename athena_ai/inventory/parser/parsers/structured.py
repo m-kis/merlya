@@ -90,6 +90,34 @@ def _looks_like_host(item: Any) -> bool:
     return bool(item_keys_lower & HOST_INDICATOR_FIELDS)
 
 
+def _parse_list_field(value: str) -> List[str]:
+    """Parse a list field from CSV that may be JSON-encoded or delimited.
+
+    Tries JSON first (preferred format), then falls back to splitting by
+    pipe or comma for backward compatibility.
+    """
+    if not value or not value.strip():
+        return []
+
+    value = value.strip()
+
+    # Try JSON first (preferred format from export)
+    if value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if item]
+        except json.JSONDecodeError:
+            pass
+
+    # Fall back to delimiter splitting for backward compatibility
+    # Try pipe first (safer delimiter), then comma
+    if "|" in value:
+        return [item.strip() for item in value.split("|") if item.strip()]
+    else:
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
     """Parse CSV content."""
     hosts = []
@@ -121,17 +149,17 @@ def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
 
             host = ParsedHost(
                 hostname=hostname.lower(),
-                ip_address=row.get(ip_field, "").strip() if ip_field else None,
-                environment=row.get(env_field, "").strip() if env_field else None,
+                ip_address=(row.get(ip_field) or "").strip() or None if ip_field else None,
+                environment=(row.get(env_field) or "").strip() or None if env_field else None,
             )
 
             # Add remaining fields as metadata
             for key, value in row.items():
                 if key not in [hostname_field, ip_field, env_field] and value:
                     if key.lower() == "groups" or key.lower() == "group":
-                        host.groups = [g.strip() for g in value.split(",")]
+                        host.groups = _parse_list_field(value)
                     elif key.lower() == "aliases" or key.lower() == "alias":
-                        host.aliases = [a.strip() for a in value.split(",")]
+                        host.aliases = _parse_list_field(value)
                     elif key.lower() == "role":
                         host.role = value.strip()
                     elif key.lower() == "service":
@@ -192,13 +220,8 @@ def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
             if not isinstance(item, dict):
                 continue
 
-            # Find hostname
-            hostname = None
-            for field in HOSTNAME_FIELDS:
-                if field in item:
-                    hostname = item[field]
-                    break
-
+            # Find hostname (case-insensitive)
+            hostname = _get_field(item, HOSTNAME_FIELDS)
             if not hostname:
                 continue
 

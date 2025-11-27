@@ -35,7 +35,11 @@ def scan_os() -> Dict[str, Any]:
                             continue
                         if "=" in line:
                             key, value = line.split("=", 1)
-                            release_info[key.lower()] = value.strip('"')
+                            value = value.strip()
+                            # Remove surrounding quotes (single or double)
+                            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                                value = value[1:-1]
+                            release_info[key.lower()] = value
                 info["distro"] = release_info.get("name", "Unknown")
                 info["distro_version"] = release_info.get("version_id", "")
                 info["distro_codename"] = release_info.get("version_codename", "")

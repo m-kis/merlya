@@ -242,6 +242,10 @@ class HostRepositoryMixin:
         metadata_default = json.dumps({})
 
         # Get old data for versioning
+        # Note: This SELECT and the subsequent upsert are within the same transaction,
+        # so SQLite's serialized write model prevents TOCTOU race conditions within
+        # a single connection. Concurrent writes from separate connections are unlikely
+        # for this CLI tool's use case.
         cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname_lower,))
         existing_row = cursor.fetchone()
         old_data = self._host_row_to_dict(existing_row) if existing_row else None

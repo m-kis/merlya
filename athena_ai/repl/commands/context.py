@@ -128,7 +128,9 @@ class ContextCommandHandler:
                 force=True,
                 progress_callback=update_progress
             )
-            progress.update(task, completed=task.total or 0, host="done")
+            # Mark complete
+            if task.total is not None:
+                progress.update(task, completed=task.total, host="done")
 
         remote_hosts = context.get('remote_hosts', {})
         accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
@@ -234,7 +236,7 @@ class ContextCommandHandler:
                 console.print("[dim]Run commands on hosts to detect permissions automatically.[/dim]")
             else:
                 console.print("\n[bold]🔒 Permission Capabilities (Cached)[/bold]\n")
-                for target, _caps in self.repl.orchestrator.permissions.capabilities_cache.items():
+                for target in self.repl.orchestrator.permissions.capabilities_cache:
                     console.print(f"[cyan]{target}[/cyan]:")
                     console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
                     console.print()

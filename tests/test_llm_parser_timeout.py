@@ -94,14 +94,27 @@ class TestLLMParserTimeout:
 
     def test_default_timeout_from_env(self, mock_llm_router, monkeypatch):
         """Test that default timeout is read from environment variable."""
+        import importlib
+        import sys
+
+        # Set the env var BEFORE reloading the module
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "120")
 
-        from athena_ai.inventory.parser.parsers import llm
+        # Reload the module so it re-reads the env var during initialization
+        module_name = "athena_ai.inventory.parser.parsers.llm"
+        if module_name in sys.modules:
+            llm_module = sys.modules[module_name]
+            importlib.reload(llm_module)
+            llm = llm_module
+        else:
+            from athena_ai.inventory.parser.parsers import llm
 
-        # Patch the module constant directly instead of reloading
-        monkeypatch.setattr(llm, "LLM_TIMEOUT", 120)
-
+        # Verify the module-level constant was set from the env var
         assert llm.LLM_TIMEOUT == 120
+
+        # Cleanup: reload with default to not affect other tests
+        monkeypatch.delenv("ATHENA_LLM_TIMEOUT", raising=False)
+        importlib.reload(sys.modules[module_name])
 
     def test_timeout_error_message_is_helpful(self, slow_llm_router):
         """Test that timeout error message provides actionable guidance."""
@@ -164,18 +177,44 @@ class TestLLMTimeoutConfiguration:
 
     def test_env_var_timeout_parsing(self, monkeypatch):
         """Test that ATHENA_LLM_TIMEOUT env var is properly parsed."""
+        import importlib
+        import sys
+
+        # Set the env var BEFORE importing/reloading the module
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "90")
 
-        from athena_ai.inventory.parser.parsers import llm
+        # Remove the module from cache if already imported, then reload
+        module_name = "athena_ai.inventory.parser.parsers.llm"
+        if module_name in sys.modules:
+            llm_module = sys.modules[module_name]
+            importlib.reload(llm_module)
+            llm = llm_module
+        else:
+            from athena_ai.inventory.parser.parsers import llm
 
         # Test _parse_llm_timeout reads the env var correctly
         assert llm._parse_llm_timeout() == 90
+        # Also verify the module-level constant was set correctly
+        assert llm.LLM_TIMEOUT == 90
 
     def test_invalid_env_var_timeout_fallback(self, monkeypatch):
         """Test behavior with invalid ATHENA_LLM_TIMEOUT value falls back to default."""
+        import importlib
+        import sys
+
+        # Set the invalid env var BEFORE importing/reloading the module
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "invalid")
 
-        from athena_ai.inventory.parser.parsers import llm
+        # Remove the module from cache if already imported, then reload
+        module_name = "athena_ai.inventory.parser.parsers.llm"
+        if module_name in sys.modules:
+            llm_module = sys.modules[module_name]
+            importlib.reload(llm_module)
+            llm = llm_module
+        else:
+            from athena_ai.inventory.parser.parsers import llm
 
         # Invalid env var should fall back to DEFAULT_LLM_TIMEOUT (with warning logged)
         assert llm._parse_llm_timeout() == llm.DEFAULT_LLM_TIMEOUT
+        # Also verify the module-level constant fell back correctly
+        assert llm.LLM_TIMEOUT == llm.DEFAULT_LLM_TIMEOUT

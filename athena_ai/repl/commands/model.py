@@ -166,5 +166,6 @@ class ModelCommandHandler:
         console.print("[yellow]Usage:[/yellow]")
         console.print("  /model show - Show current configuration")
         console.print("  /model local <on|off|set> [model] - Enable/Disable/Configure local LLM (Ollama)")
-        console.print("  /model set <model> - Set cloud model")
+        console.print("  /model list [provider] - List available models")
+        console.print("  /model set [provider] <model> - Set model for provider")
         console.print("  /model provider <provider> - Switch cloud provider")

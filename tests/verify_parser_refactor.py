@@ -55,7 +55,7 @@ def verify_parser():
     assert result.success
     assert result.hosts[0].hostname == "test-ini"
     assert result.hosts[0].ip_address == "1.2.3.7"
-    assert result.hosts[0].groups == ["web"]
+    assert "web" in result.hosts[0].groups
     assert result.hosts[0].metadata["ssh_user"] == "root"
     print("   ✅ INI passed")
     

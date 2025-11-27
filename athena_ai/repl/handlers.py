@@ -150,11 +150,11 @@ class CommandHandler:
             '/inventory': lambda: self._handle_inventory(args),
 
             # Delegated to core.py (triage, mcp, language)
-            '/mcp': lambda: self.repl._handle_mcp_command(args),
-            '/language': lambda: self.repl._handle_language_command(args),
-            '/triage': lambda: self.repl._handle_triage_command(args),
-            '/feedback': lambda: self.repl._handle_feedback_command(args),
-            '/triage-stats': lambda: self.repl._handle_triage_stats_command(args),
+            '/mcp': lambda: self.repl.handle_mcp_command(args),
+            '/language': lambda: self.repl.handle_language_command(args),
+            '/triage': lambda: self.repl.handle_triage_command(args),
+            '/feedback': lambda: self.repl.handle_feedback_command(args),
+            '/triage-stats': lambda: self.repl.handle_triage_stats_command(args),
         }
 
         handler = handlers.get(cmd)
@@ -197,13 +197,16 @@ class CommandHandler:
 
         return CommandResult.HANDLED
 
-    def _handle_inventory(self, args):
+    def _handle_inventory(self, args) -> CommandResult:
         """Handle /inventory command for host inventory management."""
         try:
             from athena_ai.repl.commands.inventory import InventoryCommandHandler
             handler = InventoryCommandHandler()
-            return handler.handle(args)
+            handler.handle(args)
+            return CommandResult.HANDLED
         except ImportError as e:
             print_error(f"Inventory module not available: {e}")
+            return CommandResult.FAILED
         except Exception as e:
             print_error(f"Inventory command failed: {e}")
+            return CommandResult.FAILED

@@ -1,0 +1,275 @@
+"""
+SSH-based scanning logic.
+"""
+import asyncio
+import os
+from typing import Any, Dict, List
+
+from athena_ai.utils.logger import logger
+from .config import ScanConfig
+
+
+async def ssh_scan(
+    hostname: str,
+    scan_type: str,
+    config: ScanConfig,
+) -> Dict[str, Any]:
+    """
+    Perform SSH-based scan.
+
+    Args:
+        hostname: Hostname to scan
+        scan_type: Type of scan
+        config: Scan configuration
+
+    Returns:
+        Scan data from SSH
+    """
+    data = {}
+    client = None
+
+    try:
+        import paramiko
+
+        # Get SSH credentials from context
+        from athena_ai.security.credentials import CredentialManager
+        creds = CredentialManager()
+        user = creds.get_user_for_host(hostname)
+        key_path = creds.get_key_for_host(hostname) or creds.get_default_key()
+
+        # Connect
+        client = paramiko.SSHClient()
+
+        # Determine host key policy from config or environment
+        # Environment variable overrides config for testing/non-production
+        env_auto_add = os.environ.get("ATHENA_SSH_AUTO_ADD_HOSTS", "").lower() in ("1", "true", "yes")
+        policy_name = "auto_add" if env_auto_add else config.ssh_host_key_policy
+
+        # Load system known_hosts for security
+        known_hosts_loaded = False
+        try:
+            client.load_system_host_keys()
+            known_hosts_loaded = True
+        except FileNotFoundError:
+            # known_hosts file doesn't exist - common on fresh systems
+            logger.warning(
+                "System known_hosts file not found. "
+                "Set ATHENA_SSH_AUTO_ADD_HOSTS=1 to allow connections without host verification."
+            )
+        except PermissionError as e:
+            # Can't read known_hosts - security concern
+            logger.warning(
+                f"Permission denied reading known_hosts: {e}. "
+                "Set ATHENA_SSH_AUTO_ADD_HOSTS=1 to allow connections without host verification."
+            )
+        except paramiko.ssh_exception.SSHException as e:
+            # Parsing error in known_hosts file - this is a real problem
+            logger.error(
+                f"Failed to parse known_hosts file: {e}. "
+                "The file may be corrupted. Using RejectPolicy for safety."
+            )
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            raise  # Re-raise so caller can handle
+
+        # Set host key policy based on configuration
+        if policy_name == "auto_add":
+            if env_auto_add:
+                logger.warning(
+                    "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
+                    "This should only be used in non-production environments."
+                )
+            else:
+                logger.warning(
+                    "SSH AutoAddPolicy enabled via config. "
+                    "This is insecure and should only be used for testing."
+                )
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        elif policy_name == "reject" or not known_hosts_loaded:
+            # Use RejectPolicy if explicitly configured OR if known_hosts unavailable
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            if not known_hosts_loaded and policy_name != "reject":
+                logger.debug(
+                    "SSH host key policy: RejectPolicy (no known_hosts available)"
+                )
+            else:
+                logger.debug("SSH host key policy: RejectPolicy (strictest)")
+        else:
+            # Default: WarningPolicy - logs warning but connects
+            client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            logger.debug("SSH host key policy: WarningPolicy (default)")
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: client.connect(
+                hostname,
+                username=user,
+                key_filename=key_path,
+                timeout=config.connect_timeout,
+                allow_agent=creds.is_agent_available(),
+            )
+        )
+
+        data["ssh_connected"] = True
+        data["ssh_user"] = user
+
+        # Run commands based on scan type
+        if scan_type in ["system", "full"]:
+            data.update(await _get_system_info(client, config))
+
+        if scan_type in ["services", "full"]:
+            data.update(await _get_services_info(client, config))
+
+        if scan_type == "full":
+            data.update(await _get_full_info(client, config))
+
+    except ImportError:
+        data["ssh_connected"] = False
+        data["error"] = "paramiko not installed"
+    except Exception as e:
+        data["ssh_connected"] = False
+        data["error"] = str(e)
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    return data
+
+
+async def _get_system_info(client, config: ScanConfig) -> Dict[str, Any]:
+    """Get system information via SSH."""
+    data = {}
+    loop = asyncio.get_event_loop()
+
+    commands = {
+        "os": "cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'",
+        "kernel": "uname -r",
+        "uptime": "uptime -p 2>/dev/null || uptime",
+        "cpu_count": "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null",
+        "memory_mb": "free -m 2>/dev/null | awk '/^Mem:/{print $2}' || sysctl -n hw.memsize 2>/dev/null | awk '{print $0/1048576}'",
+        "hostname_full": "hostname -f 2>/dev/null || hostname",
+    }
+
+    for key, cmd in commands.items():
+        try:
+            _, stdout, _ = await loop.run_in_executor(
+                None,
+                lambda c=cmd: client.exec_command(c, timeout=config.command_timeout)
+            )
+            result = stdout.read().decode().strip()
+            if result:
+                data[key] = result
+        except Exception as e:
+            logger.debug(f"Failed to get {key}: {e}")
+
+    return data
+
+
+async def _get_services_info(client, config: ScanConfig) -> Dict[str, Any]:
+    """Get services information via SSH."""
+    data = {}
+    loop = asyncio.get_event_loop()
+
+    # Try systemd first
+    try:
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(
+                "systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | head -20",
+                timeout=config.command_timeout
+            )
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            services = []
+            for line in result.split('\n'):
+                parts = line.split()
+                if parts:
+                    service_name = parts[0].replace('.service', '')
+                    services.append(service_name)
+            data["services"] = services
+    except Exception as e:
+        logger.debug(f"Failed to get services: {e}")
+
+    # Check common ports
+    data["open_ports"] = await _check_common_ports(client)
+
+    return data
+
+
+async def _check_common_ports(client) -> List[int]:
+    """Check common service ports."""
+    loop = asyncio.get_event_loop()
+    common_ports = [22, 80, 443, 3306, 5432, 6379, 27017, 8080, 9000]
+    open_ports = []
+
+    try:
+        ports_str = ' '.join(str(p) for p in common_ports)
+        cmd = f"for p in {ports_str}; do (echo >/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done"
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(f"bash -c '{cmd}'", timeout=10)
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            open_ports = [int(p) for p in result.split('\n') if p.strip()]
+    except Exception:
+        pass
+
+    return open_ports
+
+
+async def _get_full_info(client, config: ScanConfig) -> Dict[str, Any]:
+    """Get full system information via SSH."""
+    data = {}
+    loop = asyncio.get_event_loop()
+
+    # Disk usage
+    try:
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(
+                "df -h / 2>/dev/null | tail -1 | awk '{print $5}'",
+                timeout=config.command_timeout
+            )
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            data["disk_usage_root"] = result
+    except Exception:
+        pass
+
+    # Load average
+    try:
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(
+                "cat /proc/loadavg 2>/dev/null | cut -d' ' -f1-3",
+                timeout=config.command_timeout
+            )
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            data["load_avg"] = result
+    except Exception:
+        pass
+
+    # Process count
+    try:
+        _, stdout, _ = await loop.run_in_executor(
+            None,
+            lambda: client.exec_command(
+                "ps aux 2>/dev/null | wc -l",
+                timeout=config.command_timeout
+            )
+        )
+        result = stdout.read().decode().strip()
+        if result:
+            data["process_count"] = int(result)
+    except Exception:
+        pass
+
+    return data

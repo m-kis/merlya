@@ -130,20 +130,33 @@ class RelationsHandler:
                 print_error(f"Invalid selection(s): {', '.join(map(str, invalid_indices))}. Choose from 1-{displayed_count}.")
                 return True
 
-        # Save validated relations
-        saved = 0
-        for i in indices:
-            s = suggestions[i]
-            self.repo.add_relation(
-                source_hostname=s.source_hostname,
-                target_hostname=s.target_hostname,
-                relation_type=s.relation_type,
-                confidence=s.confidence,
-                validated=True,
-                metadata=s.metadata,
+        # Build list of relations to save
+        relations_to_save = [
+            {
+                "source_hostname": suggestions[i].source_hostname,
+                "target_hostname": suggestions[i].target_hostname,
+                "relation_type": suggestions[i].relation_type,
+                "confidence": suggestions[i].confidence,
+                "validated": True,
+                "metadata": suggestions[i].metadata,
+            }
+            for i in indices
+        ]
+
+        # Save relations atomically with error handling
+        try:
+            saved = self.repo.add_relations_batch(relations_to_save)
+            print_success(f"Saved {saved} relations")
+        except Exception as e:
+            logger.error(
+                "Failed to save relations: %s (attempted %d relations)",
+                e,
+                len(relations_to_save),
+                exc_info=True,
             )
-            saved += 1
-        print_success(f"Saved {saved} relations")
+            print_error(f"Failed to save relations: {e}")
+            return False
+
         return True
 
     def _handle_relations_list(self) -> bool:

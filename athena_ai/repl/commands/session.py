@@ -31,7 +31,11 @@ class SessionCommandHandler:
                 table.add_column("Queries", style="magenta")
 
                 for s in sessions:
-                    table.add_row(s['id'], s['started_at'], str(s['total_queries']))
+                    table.add_row(
+                        s.get('id', 'N/A'),
+                        s.get('started_at', 'N/A'),
+                        str(s.get('total_queries', 0))
+                    )
 
                 console.print(table)
             else:
@@ -192,8 +196,10 @@ class SessionCommandHandler:
 
         # Get updated conversation (may be new after compaction)
         conv = self.repl.conversation_manager.current_conversation
-        if not conv:
-            print_warning("Compaction completed but conversation state unclear")
+        if conv is None:
+            print_warning("Conversation removed or compaction resulted in no active conversation")
+            console.print(f"  Messages: {before_messages} → N/A")
+            console.print(f"  Tokens: {before_tokens} → N/A")
             return True
 
         after_tokens = conv.token_count

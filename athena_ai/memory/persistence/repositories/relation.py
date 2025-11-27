@@ -236,3 +236,93 @@ class RelationRepositoryMixin:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM host_relations WHERE id = ?", (relation_id,))
             return cursor.rowcount > 0
+
+    def add_relations_batch(
+        self,
+        relations: List[Dict[str, Any]],
+    ) -> int:
+        """Add multiple relations atomically in a single transaction.
+
+        All relations are saved together; if any fails, the entire batch is rolled back.
+
+        Args:
+            relations: List of relation dicts, each containing:
+                - source_hostname: Source host name
+                - target_hostname: Target host name
+                - relation_type: Type of relation
+                - confidence: Optional confidence score (default 1.0)
+                - validated: Optional bool (default False)
+                - metadata: Optional metadata dict
+
+        Returns:
+            Number of relations successfully saved.
+
+        Raises:
+            ValueError: If confidence is not between 0.0 and 1.0.
+            sqlite3.Error: If a database error occurs (transaction is rolled back).
+        """
+        if not relations:
+            return 0
+
+        now = datetime.now().isoformat()
+        saved_count = 0
+
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+
+            for rel in relations:
+                source_hostname = rel["source_hostname"].lower()
+                target_hostname = rel["target_hostname"].lower()
+                relation_type = rel["relation_type"]
+                confidence = rel.get("confidence", 1.0)
+                validated = rel.get("validated", False)
+                metadata = rel.get("metadata")
+
+                if not (0.0 <= confidence <= 1.0):
+                    raise ValueError(f"confidence must be between 0.0 and 1.0, got {confidence}")
+
+                metadata_json = json.dumps(metadata or {})
+                validated_int = 1 if validated else 0
+
+                # Look up source host
+                cursor.execute(
+                    "SELECT id FROM hosts_v2 WHERE hostname = ?", (source_hostname,)
+                )
+                source_row = cursor.fetchone()
+                if not source_row:
+                    # Skip relations where host doesn't exist
+                    continue
+                source_host_id = source_row[0]
+
+                # Look up target host
+                cursor.execute(
+                    "SELECT id FROM hosts_v2 WHERE hostname = ?", (target_hostname,)
+                )
+                target_row = cursor.fetchone()
+                if not target_row:
+                    # Skip relations where host doesn't exist
+                    continue
+                target_host_id = target_row[0]
+
+                cursor.execute("""
+                    INSERT INTO host_relations
+                    (source_host_id, target_host_id, relation_type, confidence, validated_by_user, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source_host_id, target_host_id, relation_type) DO UPDATE SET
+                        confidence = excluded.confidence,
+                        validated_by_user = excluded.validated_by_user,
+                        metadata = excluded.metadata,
+                        updated_at = ?
+                """, (
+                    source_host_id,
+                    target_host_id,
+                    relation_type,
+                    confidence,
+                    validated_int,
+                    metadata_json,
+                    now,
+                    now,
+                ))
+                saved_count += 1
+
+        return saved_count

@@ -193,8 +193,8 @@ class AthenaCompleter(Completer):
                 hosts = self.credentials_manager.get_inventory_hosts()
                 self._cached_inventory_hosts = hosts
                 return hosts
-            except Exception:
-                logger.exception("Failed to list hosts from credentials manager")
+            except Exception as e:
+                logger.debug("Failed to list hosts from credentials manager: %s", e)
 
         # Direct fallback to inventory repository
         try:
@@ -204,8 +204,8 @@ class AthenaCompleter(Completer):
             result = [h["hostname"] for h in hosts]
             self._cached_inventory_hosts = result
             return result
-        except Exception:
-            logger.exception("Failed to list hosts from inventory repository")
+        except Exception as e:
+            logger.debug("Failed to list hosts from inventory repository: %s", e)
             # Don't cache on error - allow retry on next call
             return []
 
