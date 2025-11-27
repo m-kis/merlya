@@ -7,6 +7,7 @@ from athena_ai.executors.connectivity import ConnectivityPlanner
 from athena_ai.executors.ssh_connection_pool import get_connection_pool
 from athena_ai.security.credentials import CredentialManager
 from athena_ai.utils.logger import logger
+from athena_ai.utils.security import redact_sensitive_info
 
 
 class SSHManager:
@@ -137,7 +138,7 @@ class SSHManager:
         try:
 
             # Execute command
-            logger.debug(f"Executing: {command}")
+            logger.debug(f"Executing: {redact_sensitive_info(command)}")
             stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
 
             # Set timeout on channel

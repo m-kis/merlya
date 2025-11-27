@@ -167,7 +167,8 @@ class AthenaREPL:
                 resolved_query = user_input
                 try:
                     if self.credentials.has_variables(user_input):
-                        resolved_query = self.credentials.resolve_variables(user_input)
+                        # Resolve variables but KEEP SECRETS as @variable to prevent leaking to LLM
+                        resolved_query = self.credentials.resolve_variables(user_input, resolve_secrets=False)
                         # Security: Log resolution without exposing secret values
                         logger.debug(f"Variables resolved (original: {len(user_input)}, resolved: {len(resolved_query)} chars)")
                 except Exception as e:
@@ -638,7 +639,8 @@ class AthenaREPL:
         resolved_query = query
         try:
             if self.credentials.has_variables(query):
-                resolved_query = self.credentials.resolve_variables(query)
+                # Resolve variables but KEEP SECRETS as @variable to prevent leaking to LLM
+                resolved_query = self.credentials.resolve_variables(query, resolve_secrets=False)
                 # Security: Log variable resolution (without exposing secret values)
                 logger.debug(f"Variables resolved in query (original length: {len(query)}, resolved: {len(resolved_query)})")
         except Exception as e:

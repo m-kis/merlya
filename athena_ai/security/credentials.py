@@ -382,20 +382,23 @@ class CredentialManager:
     # Variable Resolution
     # =========================================================================
 
-    def resolve_variables(self, text: str, warn_missing: bool = True) -> str:
+    def resolve_variables(self, text: str, warn_missing: bool = True, resolve_secrets: bool = True) -> str:
         """
         Resolve @variable references in text.
 
         Args:
             text: Text containing @variable references
             warn_missing: If True, warn about unresolved variables
+            resolve_secrets: If True, resolve secret variables to their values.
+                           If False, keep @secret_name for secrets (to prevent leaking to LLM).
 
         Returns:
             Text with variables replaced by their values
 
         Example:
             "check mysql on @proddb using @dbuser @dbpass"
-            -> "check mysql on db-prod-001 using admin secret123"
+            -> "check mysql on db-prod-001 using admin secret123" (resolve_secrets=True)
+            -> "check mysql on db-prod-001 using admin @dbpass" (resolve_secrets=False)
 
         Resolution order:
         1. User-defined variables (from /variables command)
@@ -404,7 +407,10 @@ class CredentialManager:
         resolved = text
 
         # Replace all known user variables first (higher priority)
-        for key, (value, _) in self._variables.items():
+        for key, (value, var_type) in self._variables.items():
+            # Skip secrets if resolve_secrets is False
+            if var_type == VariableType.SECRET and not resolve_secrets:
+                continue
             resolved = re.sub(f'@{re.escape(key)}\\b', value, resolved)
 
         # Find remaining unresolved variables

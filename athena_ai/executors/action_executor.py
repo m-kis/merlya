@@ -7,6 +7,7 @@ from athena_ai.security.credentials import CredentialManager
 from athena_ai.security.risk_assessor import RiskAssessor
 from athena_ai.triage import ErrorAnalysis, get_error_analyzer
 from athena_ai.utils.logger import logger
+from athena_ai.utils.security import redact_sensitive_info
 
 
 class ActionExecutor:
@@ -69,39 +70,6 @@ class ActionExecutor:
             logger.info("Credential prompt cancelled")
             return None
 
-    @staticmethod
-    def redact_sensitive_info(command: str) -> str:
-        """
-        Redact sensitive information (passwords, tokens, keys) from commands for logging.
-
-        Patterns redacted:
-        - -p 'password' or -p "password" or -p password
-        - --password='password' or --password="password" or --password password
-        - --pass, --passwd, --secret, --token, --api-key, etc.
-
-        Args:
-            command: Original command with potential sensitive data
-
-        Returns:
-            Command with sensitive values replaced by [REDACTED]
-        """
-        redacted = command
-
-        # Pattern 1: -p 'value' or -p "value" (single letter flags with quotes)
-        redacted = re.sub(r"(-p\s+['\"])([^'\"]+)(['\"])", r"\1[REDACTED]\3", redacted)
-
-        # Pattern 2: -p value (single letter flags without quotes, stops at next flag or space)
-        redacted = re.sub(r"(-p\s+)(\S+)", r"\1[REDACTED]", redacted)
-
-        # Pattern 3: --password='value' or --password="value" (long flags with = and quotes)
-        password_flags = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api-key',
-                         'apikey', 'auth', 'credential', 'key']
-        for flag in password_flags:
-            redacted = re.sub(rf"(--{flag}[=\s]+['\"])([^'\"]+)(['\"])", r"\1[REDACTED]\3", redacted, flags=re.IGNORECASE)
-            redacted = re.sub(rf"(--{flag}[=\s]+)(\S+)", r"\1[REDACTED]", redacted, flags=re.IGNORECASE)
-
-        return redacted
-
     def execute(self, target: str, command: str, action_type: str = "shell", confirm: bool = False, timeout: int = 60) -> Dict[str, Any]:
         """
         Execute an action on a target.
@@ -119,7 +87,7 @@ class ActionExecutor:
         """
         risk = self.risk_assessor.assess(command)
         # Log command with sensitive info redacted
-        redacted_command = self.redact_sensitive_info(command)
+        redacted_command = redact_sensitive_info(command)
         logger.info(f"Executing {action_type} on {target}: {redacted_command} (Risk: {risk['level']})")
 
         if self.risk_assessor.requires_confirmation(risk['level']) and not confirm:

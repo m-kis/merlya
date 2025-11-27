@@ -3,6 +3,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from athena_ai.utils.security import redact_sensitive_info
+
 
 def setup_logger(verbose: bool = False):
     """
@@ -34,5 +36,13 @@ def setup_logger(verbose: bool = False):
             format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
             level="DEBUG",
         )
+
+    # 3. Global Redaction Filter
+    def redaction_filter(record):
+        """Redact sensitive info from all logs."""
+        record["message"] = redact_sensitive_info(record["message"])
+        return True
+
+    logger.configure(patcher=redaction_filter)
 
     return logger
