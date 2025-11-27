@@ -12,11 +12,16 @@ Manages:
 
 import json
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
+
+
+# Thread-safe singleton lock
+_repository_lock = threading.Lock()
 
 
 class InventoryRepository:
@@ -33,12 +38,16 @@ class InventoryRepository:
     """
 
     _instance: Optional["InventoryRepository"] = None
+    _instance_db_path: Optional[str] = None
 
     def __new__(cls, db_path: Optional[str] = None):
-        """Singleton pattern for repository."""
+        """Thread-safe singleton pattern for repository."""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with _repository_lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self, db_path: Optional[str] = None):
@@ -215,22 +224,34 @@ class InventoryRepository:
         import_method: str = "manual",
         metadata: Optional[Dict] = None,
     ) -> int:
-        """Add a new inventory source."""
+        """Add a new inventory source or return existing one.
+
+        If a source with the same name already exists, returns its ID
+        instead of raising an error.
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
         now = datetime.now().isoformat()
 
-        cursor.execute("""
-            INSERT INTO inventory_sources
-            (name, source_type, file_path, import_method, host_count, created_at, updated_at, metadata)
-            VALUES (?, ?, ?, ?, 0, ?, ?, ?)
-        """, (name, source_type, file_path, import_method, now, now, json.dumps(metadata or {})))
+        try:
+            cursor.execute("""
+                INSERT INTO inventory_sources
+                (name, source_type, file_path, import_method, host_count, created_at, updated_at, metadata)
+                VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+            """, (name, source_type, file_path, import_method, now, now, json.dumps(metadata or {})))
 
-        source_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+            source_id = cursor.lastrowid
+            conn.commit()
+            logger.info(f"Added inventory source: {name} (type: {source_type})")
+        except sqlite3.IntegrityError:
+            # Source with this name already exists, return existing ID
+            cursor.execute("SELECT id FROM inventory_sources WHERE name = ?", (name,))
+            row = cursor.fetchone()
+            source_id = row[0] if row else -1
+            logger.debug(f"Inventory source already exists: {name} (id: {source_id})")
+        finally:
+            conn.close()
 
-        logger.info(f"Added inventory source: {name} (type: {source_type})")
         return source_id
 
     def get_source(self, name: str) -> Optional[Dict]:
@@ -433,9 +454,12 @@ class InventoryRepository:
             VALUES (?, ?, ?, ?, ?)
         """, (host_id, new_version, json.dumps(changes), changed_by, datetime.now().isoformat()))
 
-    def _compute_changes(self, old_data: Dict, new_data: Dict) -> Dict:
+    def _compute_changes(self, old_data: Optional[Dict], new_data: Dict) -> Dict:
         """Compute changes between old and new data."""
         changes = {}
+        if old_data is None:
+            # Host was deleted between existence check and this call
+            return changes
         for key, new_value in new_data.items():
             if new_value is not None:
                 old_value = old_data.get(key)
@@ -847,36 +871,45 @@ class InventoryRepository:
         return context
 
     def save_local_context(self, context: Dict):
-        """Save local context to database."""
+        """Save local context to database (atomic operation)."""
         conn = self._get_connection()
         cursor = conn.cursor()
         now = datetime.now().isoformat()
 
-        # Clear existing context
-        cursor.execute("DELETE FROM local_context")
+        try:
+            # Start explicit transaction
+            cursor.execute("BEGIN IMMEDIATE")
 
-        # Insert new context
-        for category, data in context.items():
-            if category == "scanned_at":
-                continue
+            # Clear existing context
+            cursor.execute("DELETE FROM local_context")
 
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    value_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            # Insert new context
+            for category, data in context.items():
+                if category == "scanned_at":
+                    continue
+
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        value_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                        cursor.execute("""
+                            INSERT INTO local_context (category, key, value, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (category, key, value_str, now, now))
+                else:
+                    value_str = json.dumps(data) if isinstance(data, (dict, list)) else str(data)
                     cursor.execute("""
                         INSERT INTO local_context (category, key, value, created_at, updated_at)
                         VALUES (?, ?, ?, ?, ?)
-                    """, (category, key, value_str, now, now))
-            else:
-                value_str = json.dumps(data) if isinstance(data, (dict, list)) else str(data)
-                cursor.execute("""
-                    INSERT INTO local_context (category, key, value, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (category, "value", value_str, now, now))
+                    """, (category, "value", value_str, now, now))
 
-        conn.commit()
-        conn.close()
-        logger.info("Local context saved to database")
+            conn.commit()
+            logger.info("Local context saved to database")
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to save local context: {e}")
+            raise
+        finally:
+            conn.close()
 
     def has_local_context(self) -> bool:
         """Check if local context exists."""
@@ -979,13 +1012,23 @@ class InventoryRepository:
     def _host_row_to_dict(self, row: sqlite3.Row) -> Dict:
         """Convert a host row to dictionary with JSON parsing."""
         d = dict(row)
-        # Parse JSON fields
-        for field in ["aliases", "groups", "metadata"]:
+        # Parse JSON fields with appropriate defaults
+        for field in ["aliases", "groups"]:
             if d.get(field):
                 try:
                     d[field] = json.loads(d[field])
                 except (json.JSONDecodeError, TypeError):
                     d[field] = []
+            else:
+                d[field] = []
+        # Metadata defaults to empty dict
+        if d.get("metadata"):
+            try:
+                d["metadata"] = json.loads(d["metadata"])
+            except (json.JSONDecodeError, TypeError):
+                d["metadata"] = {}
+        else:
+            d["metadata"] = {}
         return d
 
     def get_stats(self) -> Dict[str, Any]:
