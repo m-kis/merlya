@@ -246,11 +246,14 @@ class InventoryCommandHandler:
         table.add_column("Added", style="dim")
 
         for source in sources:
+            # Safely extract date portion (handle None or short strings)
+            created_at = source.get("created_at") or ""
+            date_str = created_at[:10] if len(created_at) >= 10 else created_at or "-"
             table.add_row(
                 source["name"],
                 source["source_type"],
                 str(source["host_count"]),
-                source["created_at"][:10],
+                date_str,
             )
 
         console.print(table)
@@ -387,12 +390,12 @@ class InventoryCommandHandler:
         try:
             if ext == ".json":
                 import json
-                with open(file_path, "w") as f:
+                with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(hosts, f, indent=2, default=str)
 
             elif ext == ".csv":
                 import csv
-                with open(file_path, "w", newline="") as f:
+                with open(file_path, "w", encoding="utf-8", newline="") as f:
                     writer = csv.DictWriter(f, fieldnames=[
                         "hostname", "ip_address", "environment", "groups", "role", "service"
                     ])
@@ -408,8 +411,12 @@ class InventoryCommandHandler:
                         })
 
             elif ext in [".yaml", ".yml"]:
-                import yaml
-                with open(file_path, "w") as f:
+                try:
+                    import yaml
+                except ImportError:
+                    print_error("YAML export requires PyYAML: pip install pyyaml")
+                    return True
+                with open(file_path, "w", encoding="utf-8") as f:
                     yaml.dump(hosts, f, default_flow_style=False)
 
             print_success(f"Exported {len(hosts)} hosts to {file_path}")
