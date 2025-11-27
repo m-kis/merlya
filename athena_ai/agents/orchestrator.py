@@ -327,7 +327,7 @@ class Orchestrator(BaseOrchestrator):
         """Reset the chat session."""
         # New API doesn't have agent.reset(), just reinitialize
         self.planner.init_agents(self.mode.value, self.knowledge_db)
-        self.console.print("[dim]Session reset[/dim]")
+        self.console.print("[dim]🔄 Session reset[/dim]")
 
     # =========================================================================
     # Main Processing (new async API)

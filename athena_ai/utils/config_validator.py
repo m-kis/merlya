@@ -40,7 +40,7 @@ class ConfigValidator:
             if not check():
                 return False
 
-        console.print("[green]✓ System is ready![/green]")
+        console.print("[green]✅ System is ready![/green]")
         return True
 
     def check_config_dir(self) -> bool:
@@ -149,7 +149,7 @@ class ConfigValidator:
         if not self.config_dir.exists():
             if Confirm.ask(f"Create config directory at {self.config_dir}?"):
                 self.config_dir.mkdir(parents=True, exist_ok=True)
-                console.print("[green]✓ Directory created[/green]")
+                console.print("[green]✅ Directory created[/green]")
             else:
                 return False
 
@@ -172,15 +172,15 @@ class ConfigValidator:
                         sys.executable, "-m", "pip", "install",
                         "pyautogen", "autogen-ext[openai]"
                     ])
-                    console.print("[green]✓ autogen packages installed[/green]")
+                    console.print("[green]✅ autogen packages installed[/green]")
                 except subprocess.CalledProcessError:
-                    console.print("[red]✗ Failed to install autogen packages[/red]")
+                    console.print("[red]❌ Failed to install autogen packages[/red]")
                     return False
             else:
                 console.print("[yellow]Skipping dependency installation. Multi-agent features will be disabled.[/yellow]")
                 # We allow proceeding but warn
 
-        console.print("\n[green]Configuration fixed![/green]")
+        console.print("\n[green]✅ Configuration fixed![/green]")
         return True
 
 

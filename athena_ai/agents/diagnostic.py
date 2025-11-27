@@ -59,9 +59,9 @@ class DiagnosticAgent(BaseAgent):
 
         # Interactive Confirmation
         if not confirm:
-            self._display.console.print("\n[bold]Proposed Diagnostic Plan:[/bold]")
+            self._display.console.print("\n[bold]📋 Proposed Diagnostic Plan:[/bold]")
             for i, cmd in enumerate(commands, 1):
-                self._display.console.print(f"  {i}. [cyan]{cmd}[/cyan]")
+                self._display.console.print(f"  {i}. [cyan]⚡ {cmd}[/cyan]")
 
             import click
             if not click.confirm("\nDo you want to execute these commands?", default=False):

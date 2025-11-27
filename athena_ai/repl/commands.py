@@ -98,7 +98,7 @@ class CommandHandler:
         """Execute a custom command loaded from markdown."""
         try:
             prompt = self.repl.command_loader.expand(custom_cmd, args)
-            print_message(f"[cyan]Running /{custom_cmd.name}...[/cyan]\n")
+            print_message(f"[cyan]⚙️ Running /{custom_cmd.name}...[/cyan]\n")
 
             # Add to conversation and process
             self.repl.conversation_manager.add_user_message(prompt)
@@ -312,7 +312,7 @@ class CommandHandler:
             table.add_column("Fingerprint", style="magenta")
 
             for key, info in stats.items():
-                status = "✓ Valid" if info['valid'] else "✗ Expired"
+                status = "✅ Valid" if info['valid'] else "❌ Expired"
                 status_style = "green" if info['valid'] else "red"
                 fingerprint = "Yes" if info.get('has_fingerprint') else "No"
 
@@ -335,12 +335,12 @@ class CommandHandler:
     def _handle_ssh_info(self):
         """Show SSH configuration and available keys."""
         try:
-            console.print("\n[bold]SSH Configuration[/bold]\n")
+            console.print("\n[bold]🔑 SSH Configuration[/bold]\n")
 
             if self.repl.credentials.supports_agent():
                 agent_keys = self.repl.credentials.get_agent_keys()
                 if agent_keys:
-                    console.print(f"[green]✓ ssh-agent: {len(agent_keys)} keys loaded[/green]")
+                    console.print(f"[green]✅ ssh-agent: {len(agent_keys)} keys loaded[/green]")
                 else:
                     print_warning("ssh-agent detected but no keys")
             else:
@@ -365,7 +365,7 @@ class CommandHandler:
                 print_warning("No permission data cached yet.")
                 console.print("[dim]Run commands on hosts to detect permissions automatically.[/dim]")
             else:
-                console.print("\n[bold]Permission Capabilities (Cached)[/bold]\n")
+                console.print("\n[bold]🔒 Permission Capabilities (Cached)[/bold]\n")
                 for target, _caps in self.repl.orchestrator.permissions.capabilities_cache.items():
                     console.print(f"[cyan]{target}[/cyan]:")
                     console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
@@ -373,7 +373,7 @@ class CommandHandler:
         else:
             # Show permissions for specific host
             target = args[0]
-            console.print(f"\n[bold]Detecting permissions on {target}...[/bold]\n")
+            console.print(f"\n[bold]🔍 Detecting permissions on {target}...[/bold]\n")
             try:
                 self.repl.orchestrator.permissions.detect_capabilities(target)
                 console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
@@ -389,7 +389,7 @@ class CommandHandler:
             inventory = context.get('inventory', {})
             remote_hosts = context.get('remote_hosts', {})
 
-            console.print("\n[bold]Current Context[/bold]")
+            console.print("\n[bold]🖥️ Current Context[/bold]")
             console.print(f"  Local: {local.get('hostname', 'unknown')} ({local.get('os', 'unknown')})")
             console.print(f"  Inventory: {len(inventory)} hosts")
 
@@ -563,7 +563,7 @@ class CommandHandler:
                 provider = config['provider']
                 model = config['model']
 
-                console.print("\n[bold]Current Model Configuration[/bold]\n")
+                console.print("\n[bold]🤖 Current Model Configuration[/bold]\n")
 
                 # Provider & Model
                 is_local = provider == "ollama"
@@ -573,7 +573,7 @@ class CommandHandler:
 
                 # Show task-specific models if configured
                 if config.get('task_models'):
-                    console.print("\n[bold]Task Models:[/bold]")
+                    console.print("\n[bold]⚙️ Task Models:[/bold]")
                     for task, model_alias in config['task_models'].items():
                         console.print(f"  {task}: [yellow]{model_alias}[/yellow]")
                 console.print()

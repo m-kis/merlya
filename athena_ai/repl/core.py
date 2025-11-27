@@ -112,18 +112,18 @@ class AthenaREPL:
                 choice = input("\nEnter choice / Entrez votre choix (1-2): ").strip()
                 if choice == '1':
                     self.config.language = 'en'
-                    console.print("[green]✓ Language set to English[/green]\n")
+                    console.print("[green]✅ Language set to English[/green]\n")
                     break
                 elif choice == '2':
                     self.config.language = 'fr'
-                    console.print("[green]✓ Langue définie sur Français[/green]\n")
+                    console.print("[green]✅ Langue définie sur Français[/green]\n")
                     break
                 else:
-                    console.print("[red]Invalid choice. Please enter 1 or 2.[/red]")
+                    console.print("[red]❌ Invalid choice. Please enter 1 or 2.[/red]")
             except (KeyboardInterrupt, EOFError):
                 # Default to English on interrupt
                 self.config.language = 'en'
-                console.print("\n[yellow]Defaulting to English[/yellow]\n")
+                console.print("\n[yellow]⚠️ Defaulting to English[/yellow]\n")
                 break
 
     def start(self):
@@ -138,7 +138,7 @@ class AthenaREPL:
 **Token usage**: {token_usage:.1f}% of limit
 """
         # Add memory status
-        memory_status = "✓ FalkorDB" if self.orchestrator.has_long_term_memory else "SQLite only"
+        memory_status = "✅ FalkorDB" if self.orchestrator.has_long_term_memory else "💾 SQLite only"
         conv_info += f"**Memory**: {memory_status}\n"
 
         show_welcome(self.env, self.session_manager.current_session_id, self.config.language, conv_info)
@@ -181,7 +181,7 @@ class AthenaREPL:
                 # Use StatusManager so tools can pause spinner for user input
                 status_manager = get_status_manager()
                 status_manager.set_console(console)
-                status_manager.start("[cyan]Processing...[/cyan]")
+                status_manager.start("[cyan]🧠 Processing...[/cyan]")
                 try:
                     response = asyncio.run(
                         self.orchestrator.process_request(
@@ -232,7 +232,7 @@ class AthenaREPL:
             servers = self.mcp_manager.list_servers()
             if not servers:
                 print_warning("No MCP servers configured")
-                console.print("[dim]Use /mcp add to configure a server[/dim]")
+                console.print("[dim]💡 Use /mcp add to configure a server[/dim]")
             else:
                 table = Table(title="MCP Servers")
                 table.add_column("Name", style="cyan")
@@ -241,12 +241,12 @@ class AthenaREPL:
 
                 for name, config in servers.items():
                     cmd_str = config.get('command', 'N/A')
-                    status = "[green]✓[/green]" if config.get('enabled', True) else "[red]✗[/red]"
+                    status = "[green]✅[/green]" if config.get('enabled', True) else "[red]❌[/red]"
                     table.add_row(name, cmd_str[:50], status)
                 console.print(table)
 
         elif cmd == 'add':
-            console.print("\n[bold cyan]Add MCP Server[/bold cyan]\n")
+            console.print("\n[bold cyan]➕ Add MCP Server[/bold cyan]\n")
             try:
                 name = input("Server name: ").strip()
                 command = input("Command (e.g., npx, uvx): ").strip()
@@ -342,13 +342,13 @@ class AthenaREPL:
         query = ' '.join(args)
         result = classify_priority(query)
 
-        console.print("\n[bold]Triage Analysis[/bold]")
+        console.print("\n[bold]🎯 Triage Analysis[/bold]")
         console.print(f"  Query: [dim]{query}[/dim]")
         console.print(f"  Priority: [{result.priority.color}]{result.priority.label}[/{result.priority.color}]")
-        console.print(f"  Environment: {result.environment or 'unknown'}")
-        console.print(f"  Impact: {result.impact or 'unknown'}")
-        console.print(f"  Service: {result.service or 'unknown'}")
-        console.print("\n[bold]Behavior Profile:[/bold]")
+        console.print(f"  🖥️ Environment: {result.environment or 'unknown'}")
+        console.print(f"  📊 Impact: {result.impact or 'unknown'}")
+        console.print(f"  ⚙️ Service: {result.service or 'unknown'}")
+        console.print("\n[bold]📋 Behavior Profile:[/bold]")
         console.print(describe_behavior(result.priority))
 
         return True
@@ -466,7 +466,7 @@ class AthenaREPL:
                 console.print(f"[dim]{reason}[/dim]")
                 return True
 
-            console.print("\n[bold]Triage Learning Statistics[/bold]\n")
+            console.print("\n[bold]📊 Triage Learning Statistics[/bold]\n")
 
             # Pattern store stats
             pattern_stats = stats.get('pattern_store', {})
@@ -491,9 +491,9 @@ class AthenaREPL:
             # Embedding status
             embeddings = stats.get('embeddings_available', False)
             if embeddings:
-                console.print("\n  Embeddings: [green]✓ Available[/green]")
+                console.print("\n  Embeddings: [green]✅ Available[/green]")
             else:
-                console.print("\n  Embeddings: [yellow]Not available[/yellow]")
+                console.print("\n  Embeddings: [yellow]⚠️ Not available[/yellow]")
                 console.print("[dim]  Install sentence-transformers for semantic matching[/dim]")
 
         except Exception as e:
@@ -508,7 +508,7 @@ class AthenaREPL:
         conversations = self.conversation_manager.list_conversations(limit=20)
         if not conversations:
             print_warning("No conversations found")
-            console.print("[dim]Start chatting to create a conversation[/dim]")
+            console.print("[dim]💡 Start chatting to create a conversation[/dim]")
             return True
 
         table = Table(title="Conversations")
@@ -541,7 +541,7 @@ class AthenaREPL:
         """Handle /new command to start a new conversation."""
         title = ' '.join(args) if args else None
         conv = self.conversation_manager.create_conversation(title=title)
-        print_success(f"New conversation started: {conv.id}")
+        print_success(f"💬 New conversation started: {conv.id}")
         if title:
             console.print(f"  Title: {title}")
         return True
@@ -574,7 +574,7 @@ class AthenaREPL:
         before_messages = len(conv.messages)
 
         # Compact by summarizing old messages
-        with console.status("[cyan]Compacting conversation...[/cyan]", spinner="dots"):
+        with console.status("[cyan]🗜️ Compacting conversation...[/cyan]", spinner="dots"):
             self.conversation_manager.compact_conversation()
 
         after_tokens = conv.token_count

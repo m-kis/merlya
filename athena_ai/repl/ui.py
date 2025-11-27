@@ -86,12 +86,32 @@ def print_message(text: str, style: str = None):
 
 def print_error(text: str):
     """Print an error message."""
-    console.print(f"[red]Error: {text}[/red]")
+    console.print(f"[red]❌ Error: {text}[/red]")
 
 def print_success(text: str):
     """Print a success message."""
-    console.print(f"[green]✓ {text}[/green]")
+    console.print(f"[green]✅ {text}[/green]")
 
 def print_warning(text: str):
     """Print a warning message."""
-    console.print(f"[yellow]⚠ {text}[/yellow]")
+    console.print(f"[yellow]⚠️ {text}[/yellow]")
+
+def print_info(text: str):
+    """Print an info message."""
+    console.print(f"[cyan]ℹ️ {text}[/cyan]")
+
+def print_thinking(text: str = "Processing..."):
+    """Print a thinking/processing message."""
+    console.print(f"[dim]🧠 {text}[/dim]")
+
+def print_executing(target: str, command: str):
+    """Print an execution message."""
+    console.print(f"[blue]⚡ Executing on {target}:[/blue] {command}")
+
+def print_security(text: str):
+    """Print a security-related message."""
+    console.print(f"[cyan]🔒 {text}[/cyan]")
+
+def print_critical(text: str):
+    """Print a critical alert (P0/P1)."""
+    console.print(f"[bold red]🚨 CRITICAL: {text}[/bold red]")
