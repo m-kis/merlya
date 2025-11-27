@@ -195,8 +195,10 @@ class TestFalkorDBClientCRUD(unittest.TestCase):
         self.client._graph = MagicMock()
         self.client._connected = True
 
-    def test_query_not_connected(self):
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
+    def test_query_not_connected(self, mock_is_running):
         """Test query raises error when not connected."""
+        mock_is_running.return_value = False
         self.client._connected = False
         self.client._db = None
 
