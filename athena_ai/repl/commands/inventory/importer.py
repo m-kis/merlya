@@ -145,21 +145,26 @@ class InventoryImporter:
             # Transaction was rolled back, no partial data persisted
             logger.error(f"Host import failed: {e.reason}", exc_info=True)
             print_error(f"Import failed: {e.reason}")
+            # Defensively access error details
+            details = getattr(e, "details", {})
+            if not isinstance(details, dict):
+                details = {}
             console.print(
-                f"[dim]Attempted {e.details.get('hosts_attempted', '?')} hosts, "
-                f"failed after {e.details.get('hosts_before_failure', '?')}[/dim]"
+                f"[dim]Attempted {details.get('hosts_attempted', '?')} hosts, "
+                f"failed after {details.get('hosts_before_failure', '?')}[/dim]"
             )
             # Clean up the source since no hosts were added
             try:
                 self.repo.delete_source(source_name)
             except Exception as cleanup_err:
                 logger.warning(
-                    "Failed to clean up source '%s' after import failure: %s",
+                    "Failed to clean up source '%s' (id=%s) after import failure: %s",
                     source_name,
+                    source_id,
                     cleanup_err,
                     exc_info=True,
                 )
-            return False
+            return True
 
         # Update source host count
         try:

@@ -168,7 +168,7 @@ def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
                         try:
                             host.ssh_port = int(value)
                         except ValueError:
-                            pass
+                            host.ssh_port = 22  # default, consistent with JSON parser
                     else:
                         host.metadata[key] = value
 
@@ -234,6 +234,12 @@ def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 except (ValueError, TypeError):
                     logger.debug(f"Invalid ssh_port value '{raw_port}' for host {hostname}, using default 22")
 
+            # Build exclusion set from all known structured fields (case-insensitive)
+            exclude_keys_lower = {k.lower() for k in (
+                HOSTNAME_FIELDS + IP_FIELDS + ENV_FIELDS +
+                ["groups", "aliases", "role", "service", "ssh_port", "port"]
+            )}
+
             host = ParsedHost(
                 hostname=str(hostname).lower(),
                 ip_address=_get_field(item, IP_FIELDS),
@@ -243,9 +249,7 @@ def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 role=item.get("role"),
                 service=item.get("service"),
                 ssh_port=ssh_port,
-                metadata={k: v for k, v in item.items()
-                          if k not in ["hostname", "host", "ip", "ip_address", "environment", "env",
-                                       "groups", "aliases", "role", "service", "ssh_port", "port"]},
+                metadata={k: v for k, v in item.items() if k.lower() not in exclude_keys_lower},
             )
             hosts.append(host)
 

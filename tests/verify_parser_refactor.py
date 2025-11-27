@@ -94,15 +94,37 @@ def verify_parser():
     assert result.hosts[0].ip_address == "1.2.3.10"
     print("   ✅ TXT passed")
     
-    # 8. Test Auto-detection
+    # 8. Test Auto-detection (self-contained samples for test independence)
     print("8. Testing Auto-detection...")
-    result = parser.parse(json_content) # Should detect JSON
-    assert result.success
-    assert result.source_type == "json"
-    
-    result = parser.parse(ini_content) # Should detect INI
-    assert result.success
-    assert result.source_type == "ini"
+
+    # JSON auto-detection
+    auto_json = '[{"hostname": "auto-json", "ip": "10.0.0.1"}]'
+    result = parser.parse(auto_json)
+    assert result.success, "JSON auto-detection failed"
+    assert result.source_type == "json", f"Expected json, got {result.source_type}"
+    print("   ✅ JSON auto-detected")
+
+    # INI auto-detection
+    auto_ini = "[servers]\nauto-ini ansible_host=10.0.0.2"
+    result = parser.parse(auto_ini)
+    assert result.success, "INI auto-detection failed"
+    assert result.source_type == "ini", f"Expected ini, got {result.source_type}"
+    print("   ✅ INI auto-detected")
+
+    # YAML auto-detection
+    auto_yaml = "---\n- hostname: auto-yaml\n  ip: 10.0.0.3"
+    result = parser.parse(auto_yaml)
+    assert result.success, "YAML auto-detection failed"
+    assert result.source_type == "yaml", f"Expected yaml, got {result.source_type}"
+    print("   ✅ YAML auto-detected")
+
+    # CSV auto-detection
+    auto_csv = "hostname,ip,environment\nauto-csv,10.0.0.4,staging"
+    result = parser.parse(auto_csv)
+    assert result.success, "CSV auto-detection failed"
+    assert result.source_type == "csv", f"Expected csv, got {result.source_type}"
+    print("   ✅ CSV auto-detected")
+
     print("   ✅ Auto-detection passed")
 
     print("\n✅ All parser verification steps passed!")

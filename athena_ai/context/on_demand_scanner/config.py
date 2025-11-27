@@ -40,3 +40,14 @@ class ScanConfig:
         "processes": 60,    # 1 min - process list
         "full": 600,        # 10 min - full scan
     })
+
+    # Valid SSH host key policies
+    _VALID_SSH_POLICIES = frozenset({"reject", "warning", "auto_add"})
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.ssh_host_key_policy not in self._VALID_SSH_POLICIES:
+            raise ValueError(
+                f"ssh_host_key_policy must be one of {set(self._VALID_SSH_POLICIES)}, "
+                f"got: {self.ssh_host_key_policy!r}"
+            )

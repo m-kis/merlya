@@ -105,7 +105,7 @@ def scan_processes() -> List[Dict[str, Any]]:
             # macOS: use ps without --sort
             cmd = ["ps", "-eo", "pid,user,%cpu,%mem,comm"]
         else:
-            # Linux: use ps with --sort
+            # Non-macOS: use ps with --sort
             cmd = ["ps", "-eo", "pid,user,%cpu,%mem,comm", "--sort=-%cpu"]
 
         result = subprocess.run(

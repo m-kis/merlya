@@ -94,9 +94,9 @@ async def ssh_scan(
             else:
                 logger.debug("SSH host key policy: RejectPolicy (strictest)")
         else:
-            # Default: WarningPolicy - logs warning but connects
-            client.set_missing_host_key_policy(paramiko.WarningPolicy())
-            logger.debug("SSH host key policy: WarningPolicy (default)")
+            # Default: RejectPolicy - safest option for production
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
@@ -155,11 +155,11 @@ async def _get_system_info(client, config: ScanConfig) -> Dict[str, Any]:
 
     for key, cmd in commands.items():
         try:
-            _, stdout, _ = await loop.run_in_executor(
-                None,
-                lambda c=cmd: client.exec_command(c, timeout=config.command_timeout)
-            )
-            result = stdout.read().decode().strip()
+            def run_command(c):
+                _, stdout, _ = client.exec_command(c, timeout=config.command_timeout)
+                return stdout.read().decode().strip()
+
+            result = await loop.run_in_executor(None, run_command, cmd)
             if result:
                 data[key] = result
         except Exception as e:
@@ -175,14 +175,14 @@ async def _get_services_info(client, config: ScanConfig) -> Dict[str, Any]:
 
     # Try systemd first
     try:
-        _, stdout, _ = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_systemctl():
+            _, stdout, _ = client.exec_command(
                 "systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | head -20",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_systemctl)
         if result:
             services = []
             for line in result.split('\n'):
@@ -218,14 +218,14 @@ async def _check_common_ports(client, config: ScanConfig) -> List[int]:
 
     # Method 1: Try ss (modern Linux)
     try:
-        _, stdout, stderr = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_ss():
+            _, stdout, _ = client.exec_command(
                 "ss -tlnH 2>/dev/null | awk '{print $4}' | grep -oE '[0-9]+$'",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_ss)
         if result:
             for line in result.split('\n'):
                 line = line.strip()
@@ -240,15 +240,15 @@ async def _check_common_ports(client, config: ScanConfig) -> List[int]:
 
     # Method 2: Try netstat (older Linux, BSD, macOS)
     try:
-        _, stdout, _ = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_netstat():
+            _, stdout, _ = client.exec_command(
                 "netstat -tlnp 2>/dev/null | awk 'NR>2 {print $4}' | grep -oE '[0-9]+$' || "
                 "netstat -an 2>/dev/null | grep LISTEN | awk '{print $4}' | grep -oE '[0-9]+$'",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_netstat)
         if result:
             for line in result.split('\n'):
                 line = line.strip()
@@ -263,14 +263,14 @@ async def _check_common_ports(client, config: ScanConfig) -> List[int]:
 
     # Method 3: Parse /proc/net/tcp directly (Linux fallback, doesn't require ss/netstat)
     try:
-        _, stdout, _ = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_proc_tcp():
+            _, stdout, _ = client.exec_command(
                 "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk 'NR>1 && $4==\"0A\" {print $2}' | cut -d: -f2",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_proc_tcp)
         if result:
             for line in result.split('\n'):
                 line = line.strip()
@@ -295,14 +295,14 @@ async def _get_full_info(client, config: ScanConfig) -> Dict[str, Any]:
 
     # Disk usage
     try:
-        _, stdout, _ = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_df():
+            _, stdout, _ = client.exec_command(
                 "df -h / 2>/dev/null | tail -1 | awk '{print $5}'",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_df)
         if result:
             data["disk_usage_root"] = result
     except Exception:
@@ -310,14 +310,14 @@ async def _get_full_info(client, config: ScanConfig) -> Dict[str, Any]:
 
     # Load average
     try:
-        _, stdout, _ = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_loadavg():
+            _, stdout, _ = client.exec_command(
                 "cat /proc/loadavg 2>/dev/null | cut -d' ' -f1-3",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_loadavg)
         if result:
             data["load_avg"] = result
     except Exception:
@@ -325,14 +325,14 @@ async def _get_full_info(client, config: ScanConfig) -> Dict[str, Any]:
 
     # Process count
     try:
-        _, stdout, _ = await loop.run_in_executor(
-            None,
-            lambda: client.exec_command(
+        def run_ps():
+            _, stdout, _ = client.exec_command(
                 "ps aux 2>/dev/null | wc -l",
                 timeout=config.command_timeout
             )
-        )
-        result = stdout.read().decode().strip()
+            return stdout.read().decode().strip()
+
+        result = await loop.run_in_executor(None, run_ps)
         if result:
             data["process_count"] = int(result)
     except Exception:

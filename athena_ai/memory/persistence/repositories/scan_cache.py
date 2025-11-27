@@ -111,6 +111,12 @@ class ScanCacheRepositoryMixin:
         if not isinstance(ttl_seconds, int) or ttl_seconds <= 0:
             raise ValueError(f"ttl_seconds must be a positive integer, got: {ttl_seconds!r}")
 
+        # Validate data is JSON serializable before starting transaction
+        try:
+            json_data = json.dumps(data)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"data must be JSON serializable: {e}") from e
+
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl_seconds)
 
@@ -129,7 +135,7 @@ class ScanCacheRepositoryMixin:
                 """, (
                     host_id,
                     scan_type_stripped,
-                    json.dumps(data),
+                    json_data,
                     ttl_seconds,
                     now.isoformat(),
                     expires_at.isoformat(),

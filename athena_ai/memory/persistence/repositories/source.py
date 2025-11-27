@@ -159,8 +159,12 @@ class SourceRepositoryMixin:
             count: New host count.
 
         Raises:
+            ValueError: If count is negative.
             SourceNotFoundError: If source_id doesn't exist.
         """
+        if count < 0:
+            raise ValueError("count must be non-negative")
+
         from athena_ai.core.exceptions import SourceNotFoundError
 
         conn = self._get_connection()

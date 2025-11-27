@@ -36,7 +36,7 @@ def scan_resources() -> Dict[str, Any]:
     # Memory info
     try:
         if platform.system() == "Linux":
-            with open("/proc/meminfo") as f:
+            with open("/proc/meminfo", encoding="utf-8") as f:
                 meminfo = {}
                 for line in f:
                     parts = line.split(":")

@@ -4,15 +4,18 @@ Handles management commands (remove, export, snapshot).
 import csv
 import json
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from athena_ai.repl.ui import console, print_error, print_success, print_warning
+
+if TYPE_CHECKING:
+    from athena_ai.memory.persistence.inventory_repository import InventoryRepository
 
 
 class InventoryManager:
     """Handles management of inventory sources and data."""
 
-    def __init__(self, repo):
+    def __init__(self, repo: "InventoryRepository"):
         self.repo = repo
 
     def handle_remove(self, args: List[str]) -> bool:
@@ -57,7 +60,7 @@ class InventoryManager:
         # Determine format from extension
         ext = file_path.suffix.lower()
         if ext not in [".json", ".csv", ".yaml", ".yml"]:
-            print_error("Supported export formats: .json, .csv, .yaml")
+            print_error("Supported export formats: .json, .csv, .yaml, .yml")
             return True
 
         hosts = self.repo.get_all_hosts()

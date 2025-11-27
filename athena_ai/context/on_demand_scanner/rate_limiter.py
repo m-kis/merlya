@@ -44,7 +44,7 @@ class RateLimiter:
         self.burst = burst
         self.tokens = float(self.burst)
         self.last_update = time.monotonic()
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None  # Lazy init to avoid RuntimeError
 
     async def acquire(self):
         """Acquire a token, waiting if necessary.
@@ -52,6 +52,10 @@ class RateLimiter:
         Uses a loop to ensure tokens are only consumed when >= 1,
         preventing negative token counts and rate limit violations.
         """
+        # Lazy initialization of lock when event loop is running
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
         while True:
             async with self._lock:
                 now = time.monotonic()

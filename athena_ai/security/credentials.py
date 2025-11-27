@@ -415,7 +415,9 @@ class CredentialManager:
             if var_type == VariableType.SECRET and not resolve_secrets:
                 secret_var_names.add(key)
                 continue
-            resolved = re.sub(f'@{re.escape(key)}\\b', value, resolved)
+            # Use negative lookahead to match variable names that can contain hyphens
+            # (consistent with _resolve_inventory_hosts and variable_pattern)
+            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', value, resolved)
 
         # Find remaining unresolved variables
         variable_pattern = r'@([\w\-]+)'

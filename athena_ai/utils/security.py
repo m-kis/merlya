@@ -40,14 +40,12 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
             redacted = redacted.replace(secret, '[REDACTED]')
 
     # 2. Redact command line flags
-    
-    # Pattern 1: -p 'value' or -p "value" (quoted values for single letter flags)
-    # Uses negative lookahead to match any char except the opening quote
-    redacted = re.sub(r"(-p\s+)(['\"])(?:(?!\2).)+\2", r"\1[REDACTED]", redacted)
-    # Pattern 2: -p value (unquoted single letter flag)
-    redacted = re.sub(r"(-p\s+)(?!['\"])(\S+)", r"\1[REDACTED]", redacted)
 
-    # Pattern 3: --password='value' or --password="value" (long flags with = and quotes)
+    # Note: Single-letter -p flag is NOT redacted due to ambiguity
+    # (port, path, process, pid, etc.). Use --password or add secrets to extra_secrets.
+    # Only redact long-form password flags to avoid false positives.
+
+    # --password='value' or --password="value" (long flags with = and quotes)
     password_flags = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api-key', 
                      'apikey', 'auth', 'credential', 'key']
     
@@ -166,16 +164,17 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
     # 8. Redact Authorization Bearer tokens
     # Matches: Authorization: Bearer <token>, Bearer <token>
     # Bearer tokens are sensitive credentials that grant access
-    # Token pattern: alphanumeric, dash, underscore, dot (common JWT/OAuth chars)
+    # Token pattern includes: alphanumeric, dash, underscore, dot (JWT/base64url)
+    # plus +, /, = for standard base64 encoding used in some OAuth tokens
     redacted = re.sub(
-        r'(Authorization:\s*Bearer\s+)([a-zA-Z0-9_.-]+)',
+        r'(Authorization:\s*Bearer\s+)([a-zA-Z0-9_.\-+/=]+)',
         r'\1[REDACTED]',
         redacted,
         flags=re.IGNORECASE
     )
     # Standalone Bearer token (8+ chars to avoid false positives like "Bearer short")
     redacted = re.sub(
-        r'(Bearer\s+)([a-zA-Z0-9_.-]{8,})',
+        r'(Bearer\s+)([a-zA-Z0-9_.\-+/=]{8,})',
         r'\1[REDACTED]',
         redacted,
         flags=re.IGNORECASE

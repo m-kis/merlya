@@ -75,48 +75,53 @@ class InventoryRepository(
             - total_relations: Total relations
             - validated_relations: User-validated relations
             - cached_scans: Active (non-expired) cache entries
+            - error: Error message if stats retrieval failed (partial results)
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         stats: Dict[str, Any] = {}
 
-        # Use context manager to ensure connection is always closed
-        with self._connection() as conn:
-            cursor = conn.cursor()
+        try:
+            # Use context manager to ensure connection is always closed
+            with self._connection() as conn:
+                cursor = conn.cursor()
 
-            # Total hosts
-            cursor.execute("SELECT COUNT(*) FROM hosts_v2")
-            stats["total_hosts"] = cursor.fetchone()[0]
+                # Total hosts
+                cursor.execute("SELECT COUNT(*) FROM hosts_v2")
+                stats["total_hosts"] = cursor.fetchone()[0]
 
-            # By environment
-            cursor.execute("""
-                SELECT environment, COUNT(*) FROM hosts_v2
-                GROUP BY environment
-            """)
-            stats["by_environment"] = {row[0] or "unknown": row[1] for row in cursor.fetchall()}
+                # By environment
+                cursor.execute("""
+                    SELECT environment, COUNT(*) FROM hosts_v2
+                    GROUP BY environment
+                """)
+                stats["by_environment"] = {row[0] or "unknown": row[1] for row in cursor.fetchall()}
 
-            # By source (group by name to match dict key)
-            cursor.execute("""
-                SELECT s.name, COUNT(h.id)
-                FROM inventory_sources s
-                LEFT JOIN hosts_v2 h ON h.source_id = s.id
-                GROUP BY s.name
-            """)
-            stats["by_source"] = {row[0]: row[1] for row in cursor.fetchall()}
+                # By source (group by name to match dict key)
+                cursor.execute("""
+                    SELECT s.name, COUNT(h.id)
+                    FROM inventory_sources s
+                    LEFT JOIN hosts_v2 h ON h.source_id = s.id
+                    GROUP BY s.name
+                """)
+                stats["by_source"] = {row[0]: row[1] for row in cursor.fetchall()}
 
-            # Relations
-            cursor.execute("SELECT COUNT(*) FROM host_relations")
-            stats["total_relations"] = cursor.fetchone()[0]
+                # Relations
+                cursor.execute("SELECT COUNT(*) FROM host_relations")
+                stats["total_relations"] = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM host_relations WHERE validated_by_user = 1")
-            stats["validated_relations"] = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM host_relations WHERE validated_by_user = 1")
+                stats["validated_relations"] = cursor.fetchone()[0]
 
-            # Cache
-            cursor.execute(
-                "SELECT COUNT(*) FROM scan_cache WHERE expires_at > ?",
-                (datetime.now().isoformat(),)
-            )
-            stats["cached_scans"] = cursor.fetchone()[0]
+                # Cache - use UTC for consistent timezone handling
+                cursor.execute(
+                    "SELECT COUNT(*) FROM scan_cache WHERE expires_at > ?",
+                    (datetime.now(timezone.utc).isoformat(),)
+                )
+                stats["cached_scans"] = cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"Failed to retrieve inventory stats: {e}")
+            stats["error"] = str(e)
 
         return stats
 

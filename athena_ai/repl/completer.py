@@ -29,10 +29,6 @@ class AthenaCompleter(Completer):
     - Service names in relevant contexts
     """
 
-    # Track which errors have been logged at warning level (log once, then debug)
-    # This prevents log flooding since completers run on every keystroke
-    _logged_warnings: set = set()
-
     # Common services for completion
     SERVICES = [
         "mysql", "mariadb", "postgres", "postgresql", "mongodb", "mongo",
@@ -57,6 +53,9 @@ class AthenaCompleter(Completer):
         self._cached_hosts: List[str] = []
         self._cached_variables: List[str] = []
         self._cached_inventory_hosts: List[str] | None = None
+        # Track which errors have been logged at warning level (log once, then debug)
+        # This prevents log flooding since completers run on every keystroke
+        self._logged_warnings: set = set()
 
     def get_completions(
         self, document: Document, complete_event: CompleteEvent

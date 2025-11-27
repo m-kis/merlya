@@ -86,14 +86,28 @@ def parse_ini(content: str) -> Tuple[List[ParsedHost], List[str]]:
         group_lower = current_group.lower()
         group_parts = set(group_lower.replace('-', '_').split('_'))
 
-        if group_parts & {'prod', 'production'}:
-            host.environment = "production"
-        elif group_parts & {'staging', 'stage'}:
-            host.environment = "staging"
-        elif group_parts & {'dev', 'development'}:
-            host.environment = "development"
-        elif group_parts & {'test', 'testing'}:
-            host.environment = "testing"
+        # Environment keywords and their canonical names (priority order: production > staging > dev > test)
+        env_keywords = [
+            ({'prod', 'production'}, "production"),
+            ({'staging', 'stage'}, "staging"),
+            ({'dev', 'development'}, "development"),
+            ({'test', 'testing'}, "testing"),
+        ]
+
+        matched_envs = []
+        for keywords, env_name in env_keywords:
+            if group_parts & keywords:
+                matched_envs.append(env_name)
+
+        if len(matched_envs) > 1:
+            # Ambiguous group name - warn but use highest priority (first match)
+            errors.append(
+                f"Line {line_num}: Ambiguous environment in group '{current_group}': "
+                f"found {matched_envs}, using '{matched_envs[0]}'"
+            )
+            host.environment = matched_envs[0]
+        elif len(matched_envs) == 1:
+            host.environment = matched_envs[0]
 
         hosts.append(host)
 
