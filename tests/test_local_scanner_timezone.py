@@ -157,9 +157,9 @@ class TestLocalScannerTimezoneHandling:
         scanner = LocalScanner(mock_repo)
 
         # Capture logs by enabling loguru sink to stderr
-        from athena_ai.utils.logger import logger
-        import sys
         from io import StringIO
+
+        from athena_ai.utils.logger import logger
 
         # Use a custom sink to capture log output
         log_output = StringIO()
@@ -267,8 +267,8 @@ class TestGetLocalTimezoneFunction:
 
     def test_returns_utc_by_default_when_local_unavailable(self):
         """Test fallback to UTC when local timezone can't be determined."""
+
         from athena_ai.utils.config import get_local_timezone
-        from datetime import datetime as real_datetime
 
         with patch("athena_ai.utils.config.ConfigManager") as mock_config_cls:
             mock_config = MagicMock()
@@ -319,7 +319,7 @@ class TestConfigManagerTimezone:
 
     def test_local_timezone_property_default(self):
         """Test that local_timezone property returns default value."""
-        from athena_ai.utils.config import ConfigManager, DEFAULT_LOCAL_TIMEZONE
+        from athena_ai.utils.config import DEFAULT_LOCAL_TIMEZONE, ConfigManager
 
         with patch.object(ConfigManager, "_load_config", return_value={}):
             config = ConfigManager()

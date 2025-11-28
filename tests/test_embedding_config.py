@@ -5,6 +5,7 @@ Tests the centralized embedding model configuration system.
 """
 
 import os
+
 import pytest
 
 from athena_ai.triage.embedding_config import (

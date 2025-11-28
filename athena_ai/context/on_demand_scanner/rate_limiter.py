@@ -27,8 +27,8 @@ class RateLimiter:
         # Validate rate: must be a positive number
         try:
             rate = float(rate)
-        except (TypeError, ValueError):
-            raise ValueError(f"rate must be a positive number, got {rate!r}")
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"rate must be a positive number, got {rate!r}") from e
         if not math.isfinite(rate):
             raise ValueError(f"rate must be a finite number, got {rate}")
         if rate <= 0:

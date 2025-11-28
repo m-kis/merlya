@@ -6,12 +6,12 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from athena_ai.memory.persistence.inventory_repository import InventoryRepository
+
 
 def verify_inventory_repository():
     print("🧪 Verifying InventoryRepository...")
@@ -57,7 +57,7 @@ def verify_inventory_repository():
 
         # 3. Test Relations
         print("3. Testing Relations...")
-        host2_id = repo.add_host("db-host", "192.168.1.2", role="db")
+        repo.add_host("db-host", "192.168.1.2", role="db")
         rel_id = repo.add_relation("test-host", "db-host", "connects_to")
         assert rel_id is not None
 
@@ -142,10 +142,11 @@ def verify_bulk_add_hosts_rollback():
     """
     print("\n🧪 Verifying bulk_add_hosts rollback...")
 
-    from unittest.mock import patch
     import sqlite3
-    from athena_ai.memory.persistence.repositories import HostData
+    from unittest.mock import patch
+
     from athena_ai.core.exceptions import PersistenceError
+    from athena_ai.memory.persistence.repositories import HostData
 
     # Use a cross-platform temporary DB with guaranteed cleanup
     tmp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)

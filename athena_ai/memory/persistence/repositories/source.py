@@ -90,7 +90,7 @@ class SourceRepositoryMixin:
                 if row:
                     return row[0]
                 # Concurrent delete occurred - re-raise for caller
-                raise ValueError(f"Source '{name}' was deleted during creation")
+                raise ValueError(f"Source '{name}' was deleted during creation") from e
             # Different IntegrityError - re-raise so caller sees the actual constraint failure
             raise
         finally:

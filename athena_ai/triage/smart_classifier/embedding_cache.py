@@ -6,6 +6,7 @@ import hashlib
 from typing import Dict, List, Optional
 
 from athena_ai.utils.logger import logger
+
 from ..embedding_config import get_embedding_config
 
 # Optional imports for embeddings

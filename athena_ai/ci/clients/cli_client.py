@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional
 from athena_ai.ci.clients.base import BaseCIClient, CIClientError
 from athena_ai.utils.logger import logger
 
-
 # Input validation patterns
 VALID_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
 VALID_REF_PATTERN = re.compile(r'^[a-zA-Z0-9/_.-]+$')
@@ -85,8 +84,8 @@ def validate_limit(value: Any) -> int:
         if limit < 1 or limit > 1000:
             raise ValueError("Invalid limit: must be between 1 and 1000")
         return limit
-    except (TypeError, ValueError):
-        raise ValueError("Invalid limit: must be a positive integer")
+    except (TypeError, ValueError) as e:
+        raise ValueError("Invalid limit: must be a positive integer") from e
 
 
 class CLIClient(BaseCIClient):
@@ -279,7 +278,7 @@ class CLIClient(BaseCIClient):
             raise CIClientError(
                 f"Parameter validation failed: {e}",
                 operation=operation,
-            )
+            ) from e
 
         # Build command as list (shell=False for security)
         cmd_list = self._build_command_list(template, validated_params)
@@ -310,18 +309,18 @@ class CLIClient(BaseCIClient):
             # Parse output
             return self._parse_output(result.stdout, operation)
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             raise CIClientError(
                 f"Command timed out after {timeout}s",
                 operation=operation,
-            )
+            ) from e
         except Exception as e:
             if isinstance(e, CIClientError):
                 raise
             raise CIClientError(
                 f"Command execution failed: {e}",
                 operation=operation,
-            )
+            ) from e
 
     def _build_command(self, template: str, params: Dict[str, Any]) -> str:
         """

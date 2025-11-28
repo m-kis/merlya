@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-
 # Sentinel for unknown/invalid scan timestamps.
 # Using Unix epoch (1970-01-01) as it's recognizable, always triggers rescan
 # checks (any TTL comparison will treat it as stale), and is clearly distinct

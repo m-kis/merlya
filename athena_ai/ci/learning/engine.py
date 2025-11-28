@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional
 from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
 from athena_ai.ci.learning.memory_router import CIMemoryRouter
 from athena_ai.ci.models import CIErrorType, FailureAnalysis, Run, RunLogs
-from athena_ai.utils.logger import logger
 
 
 @dataclass

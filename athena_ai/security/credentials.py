@@ -418,7 +418,8 @@ class CredentialManager:
             # Use negative lookahead to match variable names that can contain hyphens
             # (consistent with _resolve_inventory_hosts and variable_pattern)
             # Use lambda to avoid backreference interpretation if value contains \1, \2, etc.
-            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', lambda m: value, resolved)
+            # Note: Use default arg to capture value at definition time (not runtime)
+            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', lambda m, v=value: v, resolved)
 
         # Find remaining unresolved variables
         variable_pattern = r'@([\w\-]+)'
@@ -467,7 +468,8 @@ class CredentialManager:
                     replacement = host["hostname"]
                     ip = host.get("ip")
                     # Use lambda to avoid backreference interpretation
-                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', lambda m: replacement, text)
+                    # Note: Use default arg to capture replacement at definition time
+                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', lambda m, r=replacement: r, text)
                     if ip:
                         logger.debug(f"✅ Resolved @{var} to inventory host: {replacement} (IP: {ip})")
                     else:

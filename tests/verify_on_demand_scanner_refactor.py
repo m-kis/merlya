@@ -3,15 +3,14 @@ Verification script for on-demand scanner refactoring.
 Mocks external dependencies (SSH, Socket) to test logic in isolation.
 """
 import asyncio
-import sys
 import os
 import socket
+import sys
 from unittest.mock import MagicMock, patch
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.context.on_demand_scanner import ScanConfig
 from athena_ai.context.on_demand_scanner.scanner import OnDemandScanner
 
 

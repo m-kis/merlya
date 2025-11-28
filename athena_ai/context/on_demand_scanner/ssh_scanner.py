@@ -6,6 +6,7 @@ import os
 from typing import Any, Dict, List
 
 from athena_ai.utils.logger import logger
+
 from .config import ScanConfig
 
 
@@ -46,11 +47,9 @@ async def ssh_scan(
         policy_name = "auto_add" if env_auto_add else config.ssh_host_key_policy
 
         # Load system known_hosts for security
-        known_hosts_loaded = False
         known_hosts_corrupted = False
         try:
             client.load_system_host_keys()
-            known_hosts_loaded = True
         except FileNotFoundError:
             # known_hosts file doesn't exist - common on fresh systems
             logger.warning(

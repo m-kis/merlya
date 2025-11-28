@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
+
 from .config import ScanConfig
 from .models import ScanResult
 from .rate_limiter import get_shared_rate_limiter
@@ -162,7 +163,7 @@ class OnDemandScanner:
 
         # Convert exceptions to failed ScanResults
         processed = []
-        for hostname, result in zip(hostnames, results):
+        for hostname, result in zip(hostnames, results, strict=True):
             if isinstance(result, Exception):
                 processed.append(ScanResult(
                     hostname=hostname,

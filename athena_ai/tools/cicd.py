@@ -7,9 +7,7 @@ These tools are platform-agnostic and adapt to available platforms.
 
 from typing import Annotated, Optional
 
-from athena_ai.tools.base import get_tool_context
 from athena_ai.utils.logger import logger
-
 
 # Lazy-loaded singletons
 _platform_manager = None

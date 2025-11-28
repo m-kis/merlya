@@ -4,6 +4,7 @@ Security utilities for Athena.
 import re
 from typing import List, Optional
 
+
 def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) -> Optional[str]:
     """
     Redact sensitive information (passwords, tokens, keys) from text for logging.
@@ -46,9 +47,9 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
     # Only redact long-form password flags to avoid false positives.
 
     # --password='value' or --password="value" (long flags with = and quotes)
-    password_flags = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api-key', 
+    password_flags = ['password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api-key',
                      'apikey', 'auth', 'credential', 'key']
-    
+
     for flag in password_flags:
         # Quoted values - uses backreference (\2) to match closing quote, allowing embedded opposite quotes and empty values
         redacted = re.sub(rf"(--{flag}[=\s]+)(['\"])(.*?)(\2)", r"\1\2[REDACTED]\4", redacted, flags=re.IGNORECASE)

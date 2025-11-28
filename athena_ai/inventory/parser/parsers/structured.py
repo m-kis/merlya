@@ -4,9 +4,10 @@ Structured format parsers (CSV, JSON, YAML).
 import csv
 import io
 import json
-from typing import Any, List, Tuple, Optional, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
+
 from ..models import ParsedHost
 
 # Common hostname field names in CSV/JSON

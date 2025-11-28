@@ -17,7 +17,7 @@ class InventoryCommandHandler:
     def __init__(self, repl: Optional["AthenaREPL"] = None):
         self.repl = repl
         self._repo = None
-        
+
         # Lazy load sub-handlers
         self._importer = None
         self._viewer = None

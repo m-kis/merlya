@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-
 # Default timezone for interpreting naive timestamps from legacy DB records.
 # Set to "local" to use system local timezone, or an IANA timezone name (e.g., "America/New_York").
 DEFAULT_LOCAL_TIMEZONE = "local"

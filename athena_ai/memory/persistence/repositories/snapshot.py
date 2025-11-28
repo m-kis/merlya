@@ -148,8 +148,8 @@ class SnapshotRepositoryMixin:
         if not isinstance(limit, int):
             try:
                 limit = int(limit)
-            except (TypeError, ValueError):
-                raise ValueError(f"limit must be an integer, got {type(limit).__name__}")
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"limit must be an integer, got {type(limit).__name__}") from e
 
         # Reject non-positive values
         if limit <= 0:

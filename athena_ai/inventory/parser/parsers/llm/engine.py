@@ -2,22 +2,24 @@
 LLM parser engine.
 """
 import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from typing import List, Tuple, Optional, Any
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
+
 from ...models import ParsedHost
 from .config import (
+    CONTENT_END_DELIMITER,
+    CONTENT_START_DELIMITER,
     ENABLE_LLM_FALLBACK,
     LLM_COMPLIANCE_ACKNOWLEDGED,
     LLM_TIMEOUT,
-    CONTENT_START_DELIMITER,
-    CONTENT_END_DELIMITER,
 )
 from .sanitizer import (
+    encode_content_for_prompt,
     sanitize_inventory_content,
     sanitize_prompt_injection,
-    encode_content_for_prompt,
 )
 from .validator import validate_llm_response
 

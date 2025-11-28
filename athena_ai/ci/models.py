@@ -5,10 +5,15 @@ These models provide a platform-agnostic representation of CI/CD concepts,
 allowing the same code to work with GitHub Actions, GitLab CI, Jenkins, etc.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from athena_ai.ci.protocols import CIPlatformType, RunStatus
 
 
 class CIErrorType(Enum):

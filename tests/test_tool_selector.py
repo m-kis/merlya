@@ -12,7 +12,7 @@ from athena_ai.domains.tools.selector import (
     get_tool_selector,
     reset_tool_selector,
 )
-from athena_ai.triage import ErrorType, Intent
+from athena_ai.triage import ErrorType
 
 
 @pytest.fixture(autouse=True)

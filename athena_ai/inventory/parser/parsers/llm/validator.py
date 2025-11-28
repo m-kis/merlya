@@ -3,9 +3,10 @@ Validation logic for LLM parser.
 """
 import json
 import re
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
+
 from ...models import ParsedHost
 
 

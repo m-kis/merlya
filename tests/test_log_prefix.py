@@ -13,21 +13,21 @@ class TestLogPrefix(unittest.TestCase):
             # Remove USE_EMOJI_LOGS if present
             os.environ.pop("USE_EMOJI_LOGS", None)
             # Need to reimport to pick up env change
-            from athena_ai.utils.logger import use_emoji_logs, log_prefix
+            from athena_ai.utils.logger import log_prefix, use_emoji_logs
             self.assertTrue(use_emoji_logs())
             self.assertEqual(log_prefix("🔄"), "🔄")
 
     def test_emoji_enabled_explicit(self):
         """Emoji logs should be enabled when USE_EMOJI_LOGS=1."""
         with patch.dict(os.environ, {"USE_EMOJI_LOGS": "1"}):
-            from athena_ai.utils.logger import use_emoji_logs, log_prefix
+            from athena_ai.utils.logger import log_prefix, use_emoji_logs
             self.assertTrue(use_emoji_logs())
             self.assertEqual(log_prefix("❌"), "❌")
 
     def test_emoji_disabled_zero(self):
         """Emoji logs should be disabled when USE_EMOJI_LOGS=0."""
         with patch.dict(os.environ, {"USE_EMOJI_LOGS": "0"}):
-            from athena_ai.utils.logger import use_emoji_logs, log_prefix
+            from athena_ai.utils.logger import log_prefix, use_emoji_logs
             self.assertFalse(use_emoji_logs())
             self.assertEqual(log_prefix("🔄"), "[RETRY]")
             self.assertEqual(log_prefix("⚠️"), "[WARN]")
@@ -43,20 +43,20 @@ class TestLogPrefix(unittest.TestCase):
     def test_emoji_disabled_false(self):
         """Emoji logs should be disabled when USE_EMOJI_LOGS=false."""
         with patch.dict(os.environ, {"USE_EMOJI_LOGS": "false"}):
-            from athena_ai.utils.logger import use_emoji_logs, log_prefix
+            from athena_ai.utils.logger import log_prefix, use_emoji_logs
             self.assertFalse(use_emoji_logs())
             self.assertEqual(log_prefix("❌"), "[ERROR]")
 
     def test_emoji_disabled_no(self):
         """Emoji logs should be disabled when USE_EMOJI_LOGS=no."""
         with patch.dict(os.environ, {"USE_EMOJI_LOGS": "no"}):
-            from athena_ai.utils.logger import use_emoji_logs, log_prefix
+            from athena_ai.utils.logger import use_emoji_logs
             self.assertFalse(use_emoji_logs())
 
     def test_emoji_disabled_off(self):
         """Emoji logs should be disabled when USE_EMOJI_LOGS=off."""
         with patch.dict(os.environ, {"USE_EMOJI_LOGS": "off"}):
-            from athena_ai.utils.logger import use_emoji_logs, log_prefix
+            from athena_ai.utils.logger import use_emoji_logs
             self.assertFalse(use_emoji_logs())
 
     def test_emoji_disabled_case_insensitive(self):

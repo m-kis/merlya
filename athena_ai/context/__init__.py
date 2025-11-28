@@ -12,6 +12,7 @@ Provides:
 - Intelligent cache management
 """
 
+from .cache_manager import CacheConfig, CacheManager, get_cache_manager
 from .discovery import Discovery
 from .host_registry import (
     Host,
@@ -30,13 +31,12 @@ from .inventory_setup import (
     get_inventory_wizard,
 )
 from .inventory_sources import DataAvailability, InventorySourceManager
-from .manager import ContextManager, get_context_manager
-from .smart_cache import SmartCache
 
 # New inventory system components
 from .local_scanner import LocalScanner, get_local_scanner
+from .manager import ContextManager, get_context_manager
 from .on_demand_scanner import OnDemandScanner, ScanConfig, ScanResult, get_on_demand_scanner
-from .cache_manager import CacheManager, CacheConfig, get_cache_manager
+from .smart_cache import SmartCache
 
 __all__ = [
     # Discovery

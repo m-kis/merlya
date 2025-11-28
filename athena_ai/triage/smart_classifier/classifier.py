@@ -8,7 +8,7 @@ from athena_ai.utils.logger import logger
 
 from ..priority import Intent, Priority, PriorityResult
 from ..signals import SignalDetector
-from .embedding_cache import EmbeddingCache, HAS_EMBEDDINGS
+from .embedding_cache import HAS_EMBEDDINGS, EmbeddingCache
 from .pattern_store import PatternStore
 
 # Optional imports for embeddings

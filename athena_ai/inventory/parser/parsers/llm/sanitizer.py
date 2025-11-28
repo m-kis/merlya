@@ -157,14 +157,14 @@ def sanitize_inventory_content(content: str) -> str:
         # YAML format: key: value
         sanitized = re.sub(
             rf'(\b{key}\s*:\s*)([^\n\r]+)',
-            rf'\1[REDACTED]',
+            r'\1[REDACTED]',
             sanitized,
             flags=re.IGNORECASE
         )
         # INI format: key=value
         sanitized = re.sub(
             rf'(\b{key}\s*=\s*)([^\n\r]+)',
-            rf'\1[REDACTED]',
+            r'\1[REDACTED]',
             sanitized,
             flags=re.IGNORECASE
         )

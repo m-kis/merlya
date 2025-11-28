@@ -4,7 +4,6 @@ CI/CD command handlers for Athena REPL.
 Handles: /cicd, /debug-workflow, /ci-status, /ci-trigger, /ci-analyze
 """
 
-from typing import Any, Dict, List, Optional
 
 from rich.panel import Panel
 from rich.table import Table
@@ -432,7 +431,6 @@ class CICDCommandHandler:
 
     def _display_debug_results(self, run, insights) -> None:
         """Display debugging results."""
-        from athena_ai.ci.learning.engine import LearningInsight
 
         # Header
         console.print(Panel(

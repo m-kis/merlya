@@ -6,8 +6,8 @@ from typing import Annotated
 from athena_ai.core.hooks import HookEvent
 from athena_ai.domains.tools.selector import ToolAction, get_tool_selector
 from athena_ai.knowledge.ops_knowledge_manager import get_knowledge_manager
-from athena_ai.triage import ErrorType, get_error_analyzer
 from athena_ai.tools.base import emit_hook, get_tool_context, validate_host
+from athena_ai.triage import ErrorType
 from athena_ai.utils.logger import logger
 
 

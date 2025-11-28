@@ -16,7 +16,7 @@ from athena_ai.utils.logger import logger
 
 # Reuse EmbeddingCache from smart_classifier (DRY principle)
 try:
-    from athena_ai.triage.smart_classifier import EmbeddingCache, HAS_EMBEDDINGS
+    from athena_ai.triage.smart_classifier import HAS_EMBEDDINGS, EmbeddingCache
 except ImportError:
     HAS_EMBEDDINGS = False
     EmbeddingCache = None  # type: ignore

@@ -10,12 +10,9 @@ from enum import Enum, auto
 from rich.markdown import Markdown
 
 from athena_ai.repl.ui import console, print_error, print_message
-
-logger = logging.getLogger(__name__)
 from athena_ai.tools.base import get_status_manager
 
-# Re-export SLASH_COMMANDS for backward compatibility
-from athena_ai.repl.commands.help import SLASH_COMMANDS
+logger = logging.getLogger(__name__)
 
 
 class CommandResult(Enum):

@@ -15,6 +15,18 @@ from .base import (
     initialize_tools,
     validate_host,
 )
+from .cicd import (
+    CI_TOOLS,
+    analyze_ci_failure,
+    cancel_ci_run,
+    check_ci_permissions,
+    debug_most_recent_failure,
+    get_ci_status,
+    list_ci_runs,
+    list_ci_workflows,
+    retry_ci_run,
+    trigger_ci_workflow,
+)
 
 # Modular tools
 from .commands import add_route, execute_command
@@ -50,18 +62,6 @@ from .system import (
     service_control,
 )
 from .web import web_fetch, web_search
-from .cicd import (
-    get_ci_status,
-    list_ci_workflows,
-    list_ci_runs,
-    analyze_ci_failure,
-    trigger_ci_workflow,
-    retry_ci_run,
-    cancel_ci_run,
-    check_ci_permissions,
-    debug_most_recent_failure,
-    CI_TOOLS,
-)
 
 __all__ = [
     # Generation tools

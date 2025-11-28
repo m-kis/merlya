@@ -8,7 +8,6 @@ from rich.markdown import Markdown
 
 from athena_ai.repl.ui import console
 
-
 SLASH_COMMANDS = {
     '/help': 'Show available slash commands',
     '/scan': 'Scan infrastructure (--full for SSH scan)',

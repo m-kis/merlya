@@ -6,7 +6,7 @@ error classification. No deterministic heuristics - uses semantic similarity.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from athena_ai.ci.models import CIErrorType
 from athena_ai.utils.logger import logger
@@ -14,6 +14,7 @@ from athena_ai.utils.logger import logger
 # Optional import for embeddings
 try:
     import numpy as np
+
     from athena_ai.triage.smart_classifier.embedding_cache import EmbeddingCache
 
     HAS_EMBEDDINGS = True

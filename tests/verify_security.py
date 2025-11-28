@@ -2,8 +2,9 @@
 Verification script for security fixes.
 """
 import pytest
-from athena_ai.utils.security import redact_sensitive_info
+
 from athena_ai.security.credentials import CredentialManager, VariableType
+from athena_ai.utils.security import redact_sensitive_info
 
 # Sentinel value for testing secret resolution without exposing real secrets
 _SECRET_SENTINEL = "<RESOLVED_SECRET_SENTINEL>"

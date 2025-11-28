@@ -2,16 +2,14 @@
 Verification script for HostRelationClassifier refactoring.
 """
 import unittest
-from unittest.mock import MagicMock, patch
-from typing import List, Dict, Any
+from unittest.mock import MagicMock
 
 # Import the class to be refactored (will need to update import after refactor)
 try:
-    from athena_ai.inventory.relation_classifier import HostRelationClassifier, RelationSuggestion
+    from athena_ai.inventory.relation_classifier import HostRelationClassifier
 except ImportError:
     # Fallback for after refactor if package structure changes
     from athena_ai.inventory.relation_classifier.classifier import HostRelationClassifier
-    from athena_ai.inventory.relation_classifier.models import RelationSuggestion
 
 class TestHostRelationClassifier(unittest.TestCase):
     def setUp(self):
@@ -27,7 +25,7 @@ class TestHostRelationClassifier(unittest.TestCase):
             {"hostname": "db-01", "environment": "prod"},
         ]
         suggestions = self.classifier.suggest_relations(hosts, use_llm=False)
-        
+
         cluster_rels = [s for s in suggestions if s.relation_type == "cluster_member"]
         self.assertTrue(len(cluster_rels) >= 1)
         self.assertEqual(cluster_rels[0].source_hostname, "web-01")
@@ -40,7 +38,7 @@ class TestHostRelationClassifier(unittest.TestCase):
             {"hostname": "db-replica", "environment": "prod"},
         ]
         suggestions = self.classifier.suggest_relations(hosts, use_llm=False)
-        
+
         replica_rels = [s for s in suggestions if s.relation_type == "database_replica"]
         self.assertTrue(len(replica_rels) >= 1)
         # Note: logic might produce bidirectional or specific direction, checking existence
@@ -53,7 +51,7 @@ class TestHostRelationClassifier(unittest.TestCase):
             {"hostname": "db-main", "environment": "prod"},
         ]
         suggestions = self.classifier.suggest_relations(hosts, use_llm=False)
-        
+
         # web -> db dependency
         depends_rels = [s for s in suggestions if s.relation_type == "depends_on"]
         self.assertTrue(len(depends_rels) >= 1)
@@ -68,13 +66,13 @@ class TestHostRelationClassifier(unittest.TestCase):
             {"hostname": "dummy-1", "environment": "prod"},
             {"hostname": "dummy-2", "environment": "prod"},
         ]
-        
+
         # Mock LLM response
         mock_response = '[{"source": "custom-app", "target": "legacy-db", "type": "depends_on", "confidence": 0.8, "reason": "Test reason"}]'
         self.classifier.llm.generate.return_value = mock_response
-        
+
         suggestions = self.classifier.suggest_relations(hosts, use_llm=True)
-        
+
         llm_rels = [s for s in suggestions if s.metadata.get("source") == "llm"]
         self.assertEqual(len(llm_rels), 1)
         self.assertEqual(llm_rels[0].source_hostname, "custom-app")

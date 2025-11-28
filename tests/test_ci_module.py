@@ -4,9 +4,10 @@ Tests for the CI/CD module.
 Tests core functionality without requiring actual CI platforms.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestCIErrorType:
@@ -294,7 +295,7 @@ class TestModels:
 
     def test_run_properties(self):
         """Test Run dataclass properties."""
-        from athena_ai.ci.models import Run, Job
+        from athena_ai.ci.models import Job, Run
         from athena_ai.ci.protocols import RunStatus
 
         run = Run(
@@ -315,7 +316,7 @@ class TestModels:
 
     def test_failure_analysis_creation(self):
         """Test FailureAnalysis creation."""
-        from athena_ai.ci.models import FailureAnalysis, CIErrorType
+        from athena_ai.ci.models import CIErrorType, FailureAnalysis
 
         analysis = FailureAnalysis(
             run_id="123",
@@ -409,7 +410,7 @@ class TestSecurityValidation:
 
     def test_validate_id_rejects_too_long(self):
         """Test that validate_id rejects overly long inputs."""
-        from athena_ai.ci.clients.cli_client import validate_id, MAX_ID_LENGTH
+        from athena_ai.ci.clients.cli_client import MAX_ID_LENGTH, validate_id
 
         long_id = "a" * (MAX_ID_LENGTH + 1)
         with pytest.raises(ValueError, match="too long"):
@@ -529,9 +530,9 @@ class TestSecurityValidation:
 
     def test_cli_client_uses_shell_false(self):
         """Test that CLIClient uses shell=False for subprocess."""
+        from unittest.mock import MagicMock, patch
+
         from athena_ai.ci.clients.cli_client import CLIClient
-        import subprocess
-        from unittest.mock import patch, MagicMock
 
         client = CLIClient(platform="github", repo_slug="owner/repo")
 
@@ -560,7 +561,7 @@ class TestResourceLimits:
     def test_pending_incidents_limit(self):
         """Test that pending incidents are limited."""
         from athena_ai.ci.learning.memory_router import CIMemoryRouter
-        from athena_ai.ci.models import Run, FailureAnalysis, CIErrorType
+        from athena_ai.ci.models import CIErrorType, FailureAnalysis, Run
         from athena_ai.ci.protocols import RunStatus
 
         router = CIMemoryRouter(max_pending=5)
@@ -585,9 +586,10 @@ class TestResourceLimits:
 
     def test_thread_safe_registry(self):
         """Test that registry operations are thread-safe."""
-        from athena_ai.ci.registry import CIPlatformRegistry
         import threading
         import time
+
+        from athena_ai.ci.registry import CIPlatformRegistry
 
         CIPlatformRegistry.reset_instance()
         registry = CIPlatformRegistry()

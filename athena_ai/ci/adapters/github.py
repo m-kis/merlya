@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from athena_ai.ci.adapters.base import BaseCIAdapter
+from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
 from athena_ai.ci.clients.base import CIClientError
 from athena_ai.ci.clients.cli_client import CLIClient
 from athena_ai.ci.config import CIConfig
@@ -27,7 +28,6 @@ from athena_ai.ci.models import (
     Workflow,
 )
 from athena_ai.ci.protocols import CIPlatformType, RunStatus
-from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
 from athena_ai.utils.logger import logger
 
 
@@ -215,7 +215,7 @@ class GitHubCIAdapter(BaseCIAdapter):
 
         except CIClientError as e:
             logger.error(f"Failed to trigger workflow {workflow_id}: {e}")
-            raise RuntimeError(f"Failed to trigger workflow: {e}")
+            raise RuntimeError(f"Failed to trigger workflow: {e}") from e
 
     def cancel_run(self, run_id: str) -> bool:
         """Cancel a running workflow."""
@@ -249,7 +249,7 @@ class GitHubCIAdapter(BaseCIAdapter):
 
         except CIClientError as e:
             logger.error(f"Failed to retry run {run_id}: {e}")
-            raise RuntimeError(f"Failed to retry run: {e}")
+            raise RuntimeError(f"Failed to retry run: {e}") from e
 
     def analyze_failure(self, run_id: str) -> FailureAnalysis:
         """

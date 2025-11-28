@@ -2,7 +2,6 @@
 Host Relation Classifier.
 """
 
-import threading
 from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
