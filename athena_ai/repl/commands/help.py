@@ -83,12 +83,20 @@ Athena uses intelligent caching that auto-detects changes:
         return """
 ## Model Configuration
 
-Athena supports multiple LLM providers and models:
+**LLM Models (for chat and planning):**
 - `/model show` - Show current model configuration
 - `/model list` - List available models for current provider
 - `/model set <provider> <model>` - Set model for provider
 - `/model provider <provider>` - Switch provider (openrouter, anthropic, openai, ollama)
 - Task-specific models: Fast model for corrections, best model for complex planning
+
+**Embedding Models (for AI features):**
+- `/model embedding` - Show current embedding model
+- `/model embedding list` - List all available embedding models
+- `/model embedding set <model>` - Change embedding model
+- Models: BGE, E5, GTE, MiniLM families (sizes: 17-420MB)
+- Used for: Triage classification, tool selection, error analysis
+- Persist with: `ATHENA_EMBEDDING_MODEL` environment variable
 """
 
     def _variables_section(self) -> str:
@@ -127,6 +135,7 @@ Manage your infrastructure hosts with `/inventory`:
 **Commands:**
 - `/inventory list` - List all hosts in inventory
 - `/inventory add <file>` - Import hosts from file (CSV, JSON, YAML, INI, /etc/hosts, ~/.ssh/config)
+- `/inventory add-host [name]` - Add a single host interactively
 - `/inventory show <hostname>` - Show host details
 - `/inventory search <query>` - Search hosts by name, group, or IP
 - `/inventory remove <hostname>` - Remove a host
@@ -134,6 +143,12 @@ Manage your infrastructure hosts with `/inventory`:
 - `/inventory relations [suggest]` - Show/suggest host relations
 - `/inventory snapshot [name]` - Create/list inventory snapshots
 - `/inventory stats` - Show inventory statistics
+
+**SSH Key Management:**
+- `/inventory ssh-key <host>` - Show SSH key config for host
+- `/inventory ssh-key <host> set` - Set SSH key path (interactive)
+- `/inventory ssh-key <host> clear` - Remove SSH key config
+- Passphrases are stored as secrets (in-memory only, never persisted)
 
 **Host References (@hostname):**
 Reference any inventory host in your prompts using `@hostname`:

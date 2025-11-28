@@ -154,6 +154,63 @@ classifier = get_smart_classifier(
 result = await classifier.classify("mongo is slow on prod")
 ```
 
+#### Embedding Models
+
+The Smart Classifier uses sentence-transformers for embeddings. Models can be configured via the `/model embedding` command or `ATHENA_EMBEDDING_MODEL` environment variable.
+
+**Available Models:**
+
+| Model | Size | Dims | Speed | Quality | Best For |
+|-------|------|------|-------|---------|----------|
+| `BAAI/bge-small-en-v1.5` (default) | 45MB | 384 | fast | better | General use, semantic search |
+| `BAAI/bge-base-en-v1.5` | 110MB | 768 | medium | best | High accuracy classification |
+| `intfloat/e5-small-v2` | 45MB | 384 | fast | better | Multilingual support |
+| `intfloat/e5-base-v2` | 110MB | 768 | medium | best | Multilingual high accuracy |
+| `thenlper/gte-small` | 45MB | 384 | fast | better | Fast inference |
+| `thenlper/gte-base` | 110MB | 768 | medium | best | High accuracy |
+| `all-MiniLM-L6-v2` | 22MB | 384 | fast | good | Minimal footprint |
+| `paraphrase-MiniLM-L3-v2` | 17MB | 384 | fast | good | Ultra-fast, basic quality |
+| `multi-qa-MiniLM-L6-cos-v1` | 22MB | 384 | fast | better | Q&A optimization |
+| `all-mpnet-base-v2` | 420MB | 768 | slow | best | Maximum quality |
+
+**Configuration:**
+
+```bash
+# Via environment variable (persistent)
+export ATHENA_EMBEDDING_MODEL="BAAI/bge-base-en-v1.5"
+
+# Via REPL command (session-only)
+/model embedding set BAAI/bge-base-en-v1.5
+```
+
+**Commands:**
+
+```bash
+/model embedding         # Show current model
+/model embedding list    # List all available models
+/model embedding set <model>  # Change model
+```
+
+**Python API:**
+
+```python
+from athena_ai.triage import get_embedding_config, EmbeddingConfig
+
+# Get current model
+config = get_embedding_config()
+print(config.current_model)  # BAAI/bge-small-en-v1.5
+
+# Change model
+config.set_model("all-MiniLM-L6-v2")
+
+# Get model info
+info = config.model_info
+print(f"Size: {info.size_mb}MB, Dimensions: {info.dimensions}")
+
+# List available models
+models = EmbeddingConfig.list_models()
+```
+
 ---
 
 ### 2. AI Classifier
@@ -402,6 +459,62 @@ await classifier.learn(
     feedback_score=1.0
 )
 ```
+
+---
+
+## Embedding Models
+
+The Smart Classifier and Tool Selector use sentence-transformers for semantic similarity matching.
+
+### Available Embedding Models
+
+| Model | Size | Dims | Speed | Quality | Description |
+|-------|------|------|-------|---------|-------------|
+| `BAAI/bge-small-en-v1.5` | 45MB | 384 | fast | better | **Default** - SOTA 2024, excellent for semantic search |
+| `BAAI/bge-base-en-v1.5` | 110MB | 768 | medium | best | Top MTEB performer, best quality/size |
+| `intfloat/e5-small-v2` | 45MB | 384 | fast | better | Fast multilingual, good for classification |
+| `intfloat/e5-base-v2` | 110MB | 768 | medium | best | Strong multilingual support |
+| `thenlper/gte-small` | 45MB | 384 | fast | better | Competitive with BGE |
+| `thenlper/gte-base` | 110MB | 768 | medium | best | Top MTEB performer |
+| `all-MiniLM-L6-v2` | 22MB | 384 | fast | good | Proven classic, 5x faster than BERT |
+| `paraphrase-MiniLM-L3-v2` | 17MB | 384 | fast | good | Smallest, ultra-fast |
+| `multi-qa-MiniLM-L6-cos-v1` | 22MB | 384 | fast | better | Optimized for Q&A |
+| `all-mpnet-base-v2` | 420MB | 768 | slow | best | Highest quality legacy |
+
+### Embedding Model Configuration
+
+**Via Environment Variable (persistent):**
+
+```bash
+export ATHENA_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
+```
+
+**Via Command (runtime):**
+
+```bash
+/model embedding list       # Show all available models
+/model embedding            # Show current model
+/model embedding set <name> # Change model
+```
+
+**Via Code:**
+
+```python
+from athena_ai.triage.embedding_config import get_embedding_config
+
+config = get_embedding_config()
+config.set_model("BAAI/bge-base-en-v1.5")  # Higher quality
+```
+
+### Embedding Model Selection Guide
+
+| Use Case | Recommended Model |
+|----------|-------------------|
+| Fast CLI response | `paraphrase-MiniLM-L3-v2` (17MB) |
+| Balanced (default) | `BAAI/bge-small-en-v1.5` (45MB) |
+| Best quality | `BAAI/bge-base-en-v1.5` (110MB) |
+| Multilingual | `intfloat/e5-base-v2` (110MB) |
+| Limited resources | `all-MiniLM-L6-v2` (22MB) |
 
 ---
 

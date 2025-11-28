@@ -99,6 +99,7 @@ class InventoryCommandHandler:
         handlers = {
             "add": lambda a: self.importer.handle_add(a),
             "import": lambda a: self.importer.handle_add(a),  # Alias
+            "add-host": lambda a: self.manager.handle_add_host(a, self.repl),
             "list": lambda a: self.viewer.handle_list(a),
             "ls": lambda a: self.viewer.handle_list(a),  # Alias
             "show": lambda a: self.viewer.handle_show(a),
@@ -111,6 +112,7 @@ class InventoryCommandHandler:
             "snapshot": lambda a: self.manager.handle_snapshot(a),
             "relations": lambda a: self.relations.handle_relations(a),
             "stats": lambda a: self.viewer.handle_stats(a),
+            "ssh-key": lambda a: self.manager.handle_ssh_key(a, self.repl),
             "help": lambda _: self._show_help(),
         }
 
@@ -136,6 +138,7 @@ class InventoryCommandHandler:
         console.print("\n[bold cyan]Inventory Commands[/bold cyan]\n")
         console.print("  /inventory add <file>         Import hosts from file (CSV, JSON, YAML, etc.)")
         console.print("  /inventory add /etc/hosts     Import from system file")
+        console.print("  /inventory add-host <name>    Add a single host interactively")
         console.print("  /inventory list               List all inventory sources")
         console.print("  /inventory show [source]      Show hosts (optionally from specific source)")
         console.print("  /inventory search <pattern>   Search hosts by name/IP")
@@ -144,6 +147,12 @@ class InventoryCommandHandler:
         console.print("  /inventory snapshot [name]    Create inventory snapshot")
         console.print("  /inventory relations          Manage host relations")
         console.print("  /inventory stats              Show inventory statistics")
+        console.print()
+        console.print("[bold]SSH Key Management:[/bold]")
+        console.print("  /inventory ssh-key <host> set <key_path>   Set SSH key for host")
+        console.print("  /inventory ssh-key <host> passphrase       Set passphrase (stored as secret)")
+        console.print("  /inventory ssh-key <host> show             Show SSH key config")
+        console.print("  /inventory ssh-key <host> clear            Remove SSH key config")
         console.print()
         console.print("[bold]Options:[/bold]")
         console.print("  --limit N                     Limit results (default: show 100, search 50)")

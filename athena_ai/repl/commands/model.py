@@ -189,13 +189,13 @@ class ModelCommandHandler:
 
         if subcmd == 'list':
             # List available embedding models
-            table = Table(title="🧠 Available Embedding Models")
-            table.add_column("Model", style="cyan")
-            table.add_column("Size", style="yellow", justify="right")
-            table.add_column("Dims", style="green", justify="right")
-            table.add_column("Speed", style="blue")
-            table.add_column("Quality", style="magenta")
-            table.add_column("Description", style="dim")
+            table = Table(title="🧠 Available Embedding Models", show_lines=False)
+            table.add_column("Model", style="cyan", no_wrap=True, min_width=28)
+            table.add_column("Size", style="yellow", justify="right", width=6)
+            table.add_column("Dims", style="green", justify="right", width=5)
+            table.add_column("Speed", style="blue", width=7)
+            table.add_column("Quality", style="magenta", width=7)
+            table.add_column("Description", style="dim", overflow="fold")
 
             for name, info in AVAILABLE_MODELS.items():
                 is_current = "→ " if name == config.current_model else "  "
