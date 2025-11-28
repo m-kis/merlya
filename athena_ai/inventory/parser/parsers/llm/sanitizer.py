@@ -31,7 +31,11 @@ def sanitize_inventory_content(content: str) -> str:
     # Limit input size to prevent ReDoS on pathological inputs (100KB max)
     max_size = 100_000
     if len(content) > max_size:
+        # Truncate at last newline to preserve structure (YAML/JSON lines)
         content = content[:max_size]
+        last_newline = content.rfind('\n')
+        if last_newline > max_size * 0.8:  # Only if we can keep 80%+
+            content = content[:last_newline]
 
     sanitized = content
 
