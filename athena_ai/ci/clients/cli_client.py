@@ -3,15 +3,90 @@ CLI Client - Execute CI operations via command-line tools.
 
 Supports gh (GitHub), glab (GitLab), and other CLI tools.
 Follows Athena's philosophy: execute commands like a user would.
+
+SECURITY: Uses list-based subprocess execution (shell=False) to prevent
+command injection. All user inputs are validated before use.
 """
 
 import json
+import re
+import shlex
 import shutil
 import subprocess
 from typing import Any, Dict, List, Optional
 
 from athena_ai.ci.clients.base import BaseCIClient, CIClientError
 from athena_ai.utils.logger import logger
+
+
+# Input validation patterns
+VALID_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
+VALID_REF_PATTERN = re.compile(r'^[a-zA-Z0-9/_.-]+$')
+VALID_REPO_SLUG_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$')
+
+# Maximum lengths to prevent DoS
+MAX_ID_LENGTH = 100
+MAX_REF_LENGTH = 200
+MAX_REPO_SLUG_LENGTH = 200
+
+
+def validate_id(value: str, name: str = "id") -> str:
+    """Validate an ID parameter (run_id, workflow_id, etc.)."""
+    if not value or not isinstance(value, str):
+        raise ValueError(f"Invalid {name}: must be non-empty string")
+
+    value = value.strip()
+
+    if len(value) > MAX_ID_LENGTH:
+        raise ValueError(f"Invalid {name}: too long (max {MAX_ID_LENGTH})")
+
+    if not VALID_ID_PATTERN.match(value):
+        raise ValueError(f"Invalid {name}: contains invalid characters")
+
+    return value
+
+
+def validate_ref(value: str) -> str:
+    """Validate a git ref parameter (branch, tag)."""
+    if not value or not isinstance(value, str):
+        raise ValueError("Invalid ref: must be non-empty string")
+
+    value = value.strip()
+
+    if len(value) > MAX_REF_LENGTH:
+        raise ValueError(f"Invalid ref: too long (max {MAX_REF_LENGTH})")
+
+    if not VALID_REF_PATTERN.match(value):
+        raise ValueError("Invalid ref: contains invalid characters")
+
+    return value
+
+
+def validate_repo_slug(value: str) -> str:
+    """Validate a repository slug (owner/repo)."""
+    if not value or not isinstance(value, str):
+        raise ValueError("Invalid repo slug: must be non-empty string")
+
+    value = value.strip()
+
+    if len(value) > MAX_REPO_SLUG_LENGTH:
+        raise ValueError(f"Invalid repo slug: too long (max {MAX_REPO_SLUG_LENGTH})")
+
+    if not VALID_REPO_SLUG_PATTERN.match(value):
+        raise ValueError("Invalid repo slug: must be owner/repo format")
+
+    return value
+
+
+def validate_limit(value: Any) -> int:
+    """Validate a limit parameter."""
+    try:
+        limit = int(value)
+        if limit < 1 or limit > 1000:
+            raise ValueError("Invalid limit: must be between 1 and 1000")
+        return limit
+    except (TypeError, ValueError):
+        raise ValueError("Invalid limit: must be a positive integer")
 
 
 class CLIClient(BaseCIClient):
@@ -84,10 +159,14 @@ class CLIClient(BaseCIClient):
             platform: Platform name ("github", "gitlab")
             cli_command: Override CLI command (default: auto-detect)
             repo_slug: Repository slug (owner/repo) for context
+
+        Raises:
+            ValueError: If repo_slug is invalid
         """
         super().__init__(platform)
         self.cli_command = cli_command or self.CLI_COMMANDS.get(platform, platform)
-        self.repo_slug = repo_slug
+        # Validate repo_slug if provided
+        self.repo_slug = validate_repo_slug(repo_slug) if repo_slug else None
 
     def is_available(self) -> bool:
         """Check if CLI tool is available in PATH."""
@@ -110,6 +189,50 @@ class CLIClient(BaseCIClient):
             return result.get("authenticated", False)
         except CIClientError:
             return False
+
+    def _validate_params(self, operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate and sanitize parameters based on operation type.
+
+        Args:
+            operation: Operation name
+            params: Raw parameters
+
+        Returns:
+            Validated parameters
+
+        Raises:
+            ValueError: If validation fails
+        """
+        validated = {}
+
+        for key, value in params.items():
+            if key == "run_id":
+                validated[key] = validate_id(value, "run_id")
+            elif key == "workflow_id":
+                validated[key] = validate_id(value, "workflow_id")
+            elif key == "ref":
+                validated[key] = validate_ref(value)
+            elif key == "limit":
+                validated[key] = validate_limit(value)
+            elif key == "inputs":
+                # Inputs dict - validate keys and values
+                if isinstance(value, dict):
+                    validated_inputs = {}
+                    for k, v in value.items():
+                        # Keys must be alphanumeric with underscores
+                        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', str(k)):
+                            raise ValueError(f"Invalid input key: {k}")
+                        # Values are quoted when building command
+                        validated_inputs[str(k)] = str(v)
+                    validated[key] = validated_inputs
+                else:
+                    raise ValueError("inputs must be a dictionary")
+            else:
+                # Unknown params - reject for safety
+                raise ValueError(f"Unknown parameter: {key}")
+
+        return validated
 
     def execute(
         self,
@@ -149,14 +272,23 @@ class CLIClient(BaseCIClient):
                 operation=operation,
             )
 
-        # Build command
-        cmd = self._build_command(template, params)
+        # Validate params before use
+        try:
+            validated_params = self._validate_params(operation, params)
+        except ValueError as e:
+            raise CIClientError(
+                f"Parameter validation failed: {e}",
+                operation=operation,
+            )
 
-        # Execute
+        # Build command as list (shell=False for security)
+        cmd_list = self._build_command_list(template, validated_params)
+
+        # Execute with shell=False to prevent command injection
         try:
             result = subprocess.run(
-                cmd,
-                shell=True,
+                cmd_list,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -192,28 +324,51 @@ class CLIClient(BaseCIClient):
             )
 
     def _build_command(self, template: str, params: Dict[str, Any]) -> str:
-        """Build command string from template and params."""
-        cmd = template
+        """
+        Build command string from template and params.
 
-        # Handle special params
-        if "inputs" in params and isinstance(params["inputs"], dict):
-            # Convert dict to --field key=value pairs
-            inputs_str = " ".join(
-                f"--field {k}={v}" for k, v in params["inputs"].items()
-            )
-            params = {**params, "inputs": inputs_str}
+        DEPRECATED: Use _build_command_list for secure execution.
+        Kept for backwards compatibility with tests.
+        """
+        cmd_list = self._build_command_list(template, params.copy())
+        return " ".join(shlex.quote(arg) for arg in cmd_list)
 
-        # Substitute params
+    def _build_command_list(self, template: str, params: Dict[str, Any]) -> List[str]:
+        """
+        Build command as list for subprocess with shell=False.
+
+        Args:
+            template: Command template string
+            params: Validated parameters
+
+        Returns:
+            Command as list of arguments
+        """
+        # Start with template, substitute simple params
+        cmd_str = template
+
+        # Handle inputs separately - they need special handling
+        inputs_dict = params.pop("inputs", None) if "inputs" in params else None
+
+        # Substitute simple params
         for key, value in params.items():
             placeholder = "{" + key + "}"
-            if placeholder in cmd:
-                cmd = cmd.replace(placeholder, str(value))
+            if placeholder in cmd_str:
+                cmd_str = cmd_str.replace(placeholder, str(value))
 
-        # Add repo context if available
-        if self.repo_slug and "-R" not in cmd and self.platform == "github":
-            cmd = f"{cmd} -R {self.repo_slug}"
+        # Parse template into list using shlex (safe for static templates)
+        cmd_list = shlex.split(cmd_str)
 
-        return cmd
+        # Add inputs as separate --field arguments
+        if inputs_dict:
+            for k, v in inputs_dict.items():
+                cmd_list.extend(["--field", f"{k}={v}"])
+
+        # Add repo context if available (validated at init)
+        if self.repo_slug and "-R" not in cmd_str and self.platform == "github":
+            cmd_list.extend(["-R", self.repo_slug])
+
+        return cmd_list
 
     def _parse_output(self, output: str, operation: str) -> Dict[str, Any]:
         """Parse command output, attempting JSON first."""

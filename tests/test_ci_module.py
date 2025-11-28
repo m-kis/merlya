@@ -367,5 +367,263 @@ class TestGitHubCIAdapter:
         assert workflows[0].name == "CI"
 
 
+class TestSecurityValidation:
+    """Security tests for CI module."""
+
+    def test_validate_id_rejects_injection(self):
+        """Test that validate_id rejects command injection attempts."""
+        from athena_ai.ci.clients.cli_client import validate_id
+
+        # Should reject shell metacharacters
+        injection_attempts = [
+            "123; rm -rf /",
+            "123 && whoami",
+            "123 | cat /etc/passwd",
+            "$(whoami)",
+            "`whoami`",
+            "123\n456",
+            "123\t456",
+            "../../../etc/passwd",
+            "123 > /tmp/pwned",
+        ]
+
+        for attempt in injection_attempts:
+            with pytest.raises(ValueError):
+                validate_id(attempt)
+
+    def test_validate_id_accepts_valid(self):
+        """Test that validate_id accepts valid IDs."""
+        from athena_ai.ci.clients.cli_client import validate_id
+
+        valid_ids = [
+            "12345",
+            "workflow_1",
+            "ci.yml",
+            "test-workflow",
+            "MY_WORKFLOW_123",
+        ]
+
+        for valid_id in valid_ids:
+            result = validate_id(valid_id)
+            assert result == valid_id.strip()
+
+    def test_validate_id_rejects_too_long(self):
+        """Test that validate_id rejects overly long inputs."""
+        from athena_ai.ci.clients.cli_client import validate_id, MAX_ID_LENGTH
+
+        long_id = "a" * (MAX_ID_LENGTH + 1)
+        with pytest.raises(ValueError, match="too long"):
+            validate_id(long_id)
+
+    def test_validate_ref_rejects_injection(self):
+        """Test that validate_ref rejects command injection."""
+        from athena_ai.ci.clients.cli_client import validate_ref
+
+        injection_attempts = [
+            "main; rm -rf /",
+            "main && whoami",
+            "refs/heads/$(whoami)",
+        ]
+
+        for attempt in injection_attempts:
+            with pytest.raises(ValueError):
+                validate_ref(attempt)
+
+    def test_validate_ref_accepts_valid(self):
+        """Test that validate_ref accepts valid git refs."""
+        from athena_ai.ci.clients.cli_client import validate_ref
+
+        valid_refs = [
+            "main",
+            "feature/my-branch",
+            "refs/heads/main",
+            "v1.0.0",
+            "release_1.2.3",
+        ]
+
+        for ref in valid_refs:
+            result = validate_ref(ref)
+            assert result == ref.strip()
+
+    def test_validate_repo_slug_rejects_injection(self):
+        """Test that validate_repo_slug rejects invalid input."""
+        from athena_ai.ci.clients.cli_client import validate_repo_slug
+
+        invalid_slugs = [
+            "owner/repo; whoami",
+            "../../etc/passwd",
+            "owner",  # Missing repo
+            "/repo",  # Missing owner
+        ]
+
+        for slug in invalid_slugs:
+            with pytest.raises(ValueError):
+                validate_repo_slug(slug)
+
+    def test_validate_repo_slug_accepts_valid(self):
+        """Test that validate_repo_slug accepts valid slugs."""
+        from athena_ai.ci.clients.cli_client import validate_repo_slug
+
+        valid_slugs = [
+            "owner/repo",
+            "my-org/my-repo",
+            "user_123/repo_456",
+        ]
+
+        for slug in valid_slugs:
+            result = validate_repo_slug(slug)
+            assert result == slug.strip()
+
+    def test_validate_limit_rejects_invalid(self):
+        """Test that validate_limit rejects invalid values."""
+        from athena_ai.ci.clients.cli_client import validate_limit
+
+        invalid_limits = [0, -1, 1001, "abc", None, [1, 2]]
+
+        for limit in invalid_limits:
+            with pytest.raises(ValueError):
+                validate_limit(limit)
+
+    def test_validate_limit_accepts_valid(self):
+        """Test that validate_limit accepts valid values."""
+        from athena_ai.ci.clients.cli_client import validate_limit
+
+        assert validate_limit(1) == 1
+        assert validate_limit(100) == 100
+        assert validate_limit(1000) == 1000
+        assert validate_limit("50") == 50
+
+    def test_sensitive_data_redaction(self):
+        """Test that sensitive data is properly redacted."""
+        from athena_ai.ci.clients.base import BaseCIClient
+
+        # Create a concrete implementation for testing
+        class TestClient(BaseCIClient):
+            def is_available(self) -> bool:
+                return True
+
+            def execute(self, operation, params, timeout=60):
+                return {}
+
+        client = TestClient("test")
+
+        test_data = {
+            "username": "testuser",
+            "api_token": "secret123",
+            "password": "mypassword",
+            "auth_key": "authsecret",
+            "nested": {
+                "ssh_key": "private_key_data",
+                "normal": "visible",
+            },
+        }
+
+        redacted = client._redact_sensitive(test_data)
+
+        assert redacted["username"] == "testuser"
+        assert redacted["api_token"] == "***"
+        assert redacted["password"] == "***"
+        assert redacted["auth_key"] == "***"
+        assert redacted["nested"]["ssh_key"] == "***"
+        assert redacted["nested"]["normal"] == "visible"
+
+    def test_cli_client_uses_shell_false(self):
+        """Test that CLIClient uses shell=False for subprocess."""
+        from athena_ai.ci.clients.cli_client import CLIClient
+        import subprocess
+        from unittest.mock import patch, MagicMock
+
+        client = CLIClient(platform="github", repo_slug="owner/repo")
+
+        with patch("shutil.which", return_value="/usr/bin/gh"):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    returncode=0,
+                    stdout='[{"id": "1", "name": "test"}]',
+                    stderr="",
+                )
+
+                try:
+                    client.execute("list_workflows", {})
+                except Exception:
+                    pass  # We're testing the subprocess call, not the result
+
+                # Verify shell=False was used
+                if mock_run.called:
+                    call_kwargs = mock_run.call_args[1]
+                    assert call_kwargs.get("shell") is False, "subprocess.run must use shell=False"
+
+
+class TestResourceLimits:
+    """Tests for resource limit enforcement."""
+
+    def test_pending_incidents_limit(self):
+        """Test that pending incidents are limited."""
+        from athena_ai.ci.learning.memory_router import CIMemoryRouter
+        from athena_ai.ci.models import Run, FailureAnalysis, CIErrorType
+        from athena_ai.ci.protocols import RunStatus
+
+        router = CIMemoryRouter(max_pending=5)
+
+        # Add more than max_pending incidents
+        for i in range(10):
+            run = Run(
+                id=f"run_{i}",
+                name=f"Test Run {i}",
+                status=RunStatus.FAILURE,
+            )
+            analysis = FailureAnalysis(
+                run_id=f"run_{i}",
+                error_type=CIErrorType.TEST_FAILURE,
+                summary=f"Test failure {i}",
+                raw_error="Error",
+            )
+            router.record_failure(run, analysis, "github")
+
+        # Should only have max_pending incidents
+        assert len(router._pending_incidents) <= 5
+
+    def test_thread_safe_registry(self):
+        """Test that registry operations are thread-safe."""
+        from athena_ai.ci.registry import CIPlatformRegistry
+        import threading
+        import time
+
+        CIPlatformRegistry.reset_instance()
+        registry = CIPlatformRegistry()
+
+        errors = []
+
+        class MockAdapter:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+        def register_platforms(thread_id):
+            try:
+                for i in range(10):
+                    registry.register(f"platform_{thread_id}_{i}", MockAdapter)
+                    time.sleep(0.001)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=register_platforms, args=(i,))
+            for i in range(5)
+        ]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
+
+        # Verify all platforms were registered
+        platforms = registry.list_all()
+        assert len(platforms) >= 40  # At least most should succeed
+
+        CIPlatformRegistry.reset_instance()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

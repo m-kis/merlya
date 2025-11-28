@@ -81,11 +81,46 @@ class BaseCIClient(ABC):
         """
         ...
 
+    # Patterns for sensitive data that should be redacted from logs
+    SENSITIVE_PATTERNS = frozenset({
+        "token", "secret", "password", "passwd", "pwd",
+        "key", "api_key", "apikey", "auth", "credential",
+        "bearer", "private", "cert", "ssh", "gpg",
+    })
+
     def _log_operation(self, operation: str, params: Dict[str, Any]) -> None:
-        """Log operation for debugging."""
-        # Redact sensitive params
-        safe_params = {
-            k: "***" if "token" in k.lower() or "secret" in k.lower() else v
-            for k, v in params.items()
-        }
+        """Log operation for debugging with sensitive data redaction."""
+        safe_params = self._redact_sensitive(params)
         logger.debug(f"CI Client [{self.platform}] {operation}: {safe_params}")
+
+    def _redact_sensitive(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Recursively redact sensitive data from a dictionary.
+
+        Args:
+            data: Dictionary that may contain sensitive values
+
+        Returns:
+            Copy of dictionary with sensitive values replaced by "***"
+        """
+        result = {}
+        for key, value in data.items():
+            key_lower = key.lower()
+            # Check if key matches any sensitive pattern
+            is_sensitive = any(
+                pattern in key_lower for pattern in self.SENSITIVE_PATTERNS
+            )
+
+            if is_sensitive:
+                result[key] = "***"
+            elif isinstance(value, dict):
+                result[key] = self._redact_sensitive(value)
+            elif isinstance(value, list):
+                result[key] = [
+                    self._redact_sensitive(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                result[key] = value
+
+        return result

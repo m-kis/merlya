@@ -59,10 +59,15 @@ class CIMemoryRouter:
     - Suggests fixes based on history
     """
 
+    # Resource limits to prevent unbounded memory growth
+    MAX_PENDING_INCIDENTS = 100
+    INCIDENT_TTL_HOURS = 24  # Auto-expire unresolved incidents after 24h
+
     def __init__(
         self,
         skill_store: Optional[Any] = None,
         incident_memory: Optional[Any] = None,
+        max_pending: int = MAX_PENDING_INCIDENTS,
     ):
         """
         Initialize router.
@@ -70,10 +75,12 @@ class CIMemoryRouter:
         Args:
             skill_store: Athena's SkillStore instance
             incident_memory: Athena's IncidentMemory instance
+            max_pending: Maximum number of pending incidents to keep
         """
         self._skill_store = skill_store
         self._incident_memory = incident_memory
         self._pending_incidents: Dict[str, CIIncident] = {}
+        self._max_pending = max_pending
 
     @property
     def skill_store(self) -> Optional[Any]:
@@ -99,6 +106,42 @@ class CIMemoryRouter:
                 logger.warning("IncidentMemory not available")
         return self._incident_memory
 
+    def _cleanup_expired_incidents(self) -> None:
+        """Remove expired pending incidents to prevent memory exhaustion."""
+        now = datetime.utcnow()
+        expired_ids = []
+
+        for incident_id, incident in self._pending_incidents.items():
+            try:
+                created = datetime.fromisoformat(incident.created_at)
+                age_hours = (now - created).total_seconds() / 3600
+                if age_hours > self.INCIDENT_TTL_HOURS:
+                    expired_ids.append(incident_id)
+            except (ValueError, TypeError):
+                # Invalid timestamp - mark for removal
+                expired_ids.append(incident_id)
+
+        for incident_id in expired_ids:
+            del self._pending_incidents[incident_id]
+            logger.debug(f"Expired pending CI incident: {incident_id}")
+
+    def _enforce_pending_limit(self) -> None:
+        """Enforce maximum pending incidents limit (FIFO eviction)."""
+        if len(self._pending_incidents) < self._max_pending:
+            return
+
+        # Sort by created_at and remove oldest
+        sorted_incidents = sorted(
+            self._pending_incidents.items(),
+            key=lambda x: x[1].created_at,
+        )
+
+        # Remove oldest until under limit
+        to_remove = len(self._pending_incidents) - self._max_pending + 1
+        for incident_id, _ in sorted_incidents[:to_remove]:
+            del self._pending_incidents[incident_id]
+            logger.debug(f"Evicted old CI incident due to limit: {incident_id}")
+
     def record_failure(
         self,
         run: Run,
@@ -116,6 +159,10 @@ class CIMemoryRouter:
         Returns:
             Incident ID
         """
+        # Cleanup before adding new incident
+        self._cleanup_expired_incidents()
+        self._enforce_pending_limit()
+
         incident_id = f"ci-{run.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
         incident = CIIncident(
