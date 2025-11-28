@@ -386,6 +386,9 @@ class HostRelationClassifier:
 
         return suggestions
 
+    # Maximum response length to parse (100KB) - prevents DoS from huge LLM responses
+    _MAX_PARSE_LENGTH = 100_000
+
     def _extract_json_array(self, response: str) -> Optional[List[Any]]:
         """Extract a JSON array from LLM response with robust parsing.
 
@@ -397,6 +400,13 @@ class HostRelationClassifier:
         Returns None if no valid JSON array found.
         """
         response = response.strip()
+
+        # Limit response length to prevent DoS
+        if len(response) > self._MAX_PARSE_LENGTH:
+            logger.warning(
+                f"LLM response too long ({len(response)} bytes), truncating to {self._MAX_PARSE_LENGTH}"
+            )
+            response = response[:self._MAX_PARSE_LENGTH]
 
         # Strategy 1: Try parsing entire response as JSON
         try:

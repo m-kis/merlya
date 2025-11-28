@@ -35,18 +35,25 @@ def get_smart_classifier(
     Returns:
         SmartTriageClassifier instance
     """
-    cache_key = (id(db_client) if db_client else 0, user_id)
-
     with _lock:
-        if force_new or cache_key not in _smart_classifiers:
-            classifier = SmartTriageClassifier(
-                db_client=db_client,
-                user_id=user_id,
-            )
-            # Store both classifier and db_client reference to prevent GC
-            _smart_classifiers[cache_key] = (classifier, db_client)
+        # Compute cache_key inside lock to prevent db_client GC during computation
+        cache_key = (id(db_client) if db_client else 0, user_id)
 
-        return _smart_classifiers[cache_key][0]
+        # Check for cached instance and verify it's the same object (not just same ID)
+        if not force_new and cache_key in _smart_classifiers:
+            cached_classifier, cached_db_client = _smart_classifiers[cache_key]
+            if cached_db_client is db_client:
+                return cached_classifier
+            # ID collision after GC - evict stale entry
+            del _smart_classifiers[cache_key]
+
+        # Create new instance
+        classifier = SmartTriageClassifier(
+            db_client=db_client,
+            user_id=user_id,
+        )
+        _smart_classifiers[cache_key] = (classifier, db_client)
+        return classifier
 
 
 def reset_smart_classifier(user_id: Optional[str] = None) -> None:

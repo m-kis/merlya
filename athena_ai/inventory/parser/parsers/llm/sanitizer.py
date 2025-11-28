@@ -28,6 +28,11 @@ def sanitize_inventory_content(content: str) -> str:
     if not content:
         return content or ""
 
+    # Limit input size to prevent ReDoS on pathological inputs (100KB max)
+    max_size = 100_000
+    if len(content) > max_size:
+        content = content[:max_size]
+
     sanitized = content
 
     # 1. Redact MAC addresses FIRST (before IPv6, as patterns can overlap)
