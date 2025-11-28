@@ -169,8 +169,8 @@ class CacheManager:
             try:
                 from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
                 self._repo = get_inventory_repository()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to load inventory repository: {e}", exc_info=True)
         return self._repo
 
     def start_cleanup_thread(self):

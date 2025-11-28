@@ -59,8 +59,9 @@ class ContextCommandHandler:
                 progress_callback=update_progress
             )
             # Mark complete
-            if task.total is not None:
-                progress.update(task, completed=task.total, host="done")
+            task_obj = progress.tasks[task]
+            if task_obj.total is not None:
+                progress.update(task, completed=task_obj.total, host="done")
 
         self._display_scan_results(context, is_full=True)
 
@@ -129,8 +130,9 @@ class ContextCommandHandler:
                 progress_callback=update_progress
             )
             # Mark complete
-            if task.total is not None:
-                progress.update(task, completed=task.total, host="done")
+            task_obj = progress.tasks[task]
+            if task_obj.total is not None:
+                progress.update(task, completed=task_obj.total, host="done")
 
         remote_hosts = context.get('remote_hosts', {})
         accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
@@ -248,5 +250,5 @@ class ContextCommandHandler:
                 self.repl.orchestrator.permissions.detect_capabilities(target)
                 console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
             except Exception as e:
-                print_error(f"{e}")
+                print_error(f"Permission detection failed: {e}")
         return True

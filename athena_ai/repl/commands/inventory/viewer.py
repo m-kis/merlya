@@ -196,7 +196,7 @@ class InventoryViewer:
         stats = self.repo.get_stats()
 
         console.print("\n[bold cyan]Inventory Statistics[/bold cyan]\n")
-        console.print(f"  Total hosts: [green]{stats['total_hosts']}[/green]")
+        console.print(f"  Total hosts: [green]{stats.get('total_hosts', 0)}[/green]")
 
         if stats.get("by_environment"):
             console.print("\n  By environment:")
@@ -208,7 +208,7 @@ class InventoryViewer:
             for source, count in sorted(stats["by_source"].items()):
                 console.print(f"    {source}: {count}")
 
-        console.print(f"\n  Relations: {stats['total_relations']} ({stats['validated_relations']} validated)")
-        console.print(f"  Cached scans: {stats['cached_scans']}")
+        console.print(f"\n  Relations: {stats.get('total_relations', 0)} ({stats.get('validated_relations', 0)} validated)")
+        console.print(f"  Cached scans: {stats.get('cached_scans', 0)}")
 
         return True

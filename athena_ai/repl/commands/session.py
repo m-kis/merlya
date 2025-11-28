@@ -148,9 +148,14 @@ class SessionCommandHandler:
             print_error("No active conversation")
             return True
 
-        before_tokens = conv.token_count
-        before_messages = len(conv.messages)
-        original_conv_id = conv.id
+        try:
+            original_conv_id = conv.id
+            before_tokens = conv.token_count
+            before_messages = len(conv.messages)
+        except AttributeError as e:
+            logger.error("Conversation object missing expected attributes: %s", e)
+            print_error(f"Cannot compact: conversation object is malformed ({e})")
+            return True
 
         # Compact by summarizing old messages
         try:
@@ -202,8 +207,15 @@ class SessionCommandHandler:
             console.print(f"  Tokens: {before_tokens} → N/A")
             return True
 
-        after_tokens = conv.token_count
-        after_messages = len(conv.messages)
+        try:
+            after_tokens = conv.token_count
+            after_messages = len(conv.messages)
+        except AttributeError as e:
+            logger.error(
+                "Compacted conversation object missing expected attributes: %s", e
+            )
+            print_error(f"Compaction completed but cannot display results: {e}")
+            return True
 
         print_success("Conversation compacted")
         console.print(f"  Messages: {before_messages} → {after_messages}")

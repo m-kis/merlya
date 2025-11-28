@@ -100,5 +100,9 @@ def _parse_resolv_conf(content: str) -> Dict[str, Any]:
                 nameservers.append(parts[1])
         elif directive == "search":
             search_domains.extend(parts[1:])
+        elif directive == "domain":
+            # "domain" is equivalent to a single search entry
+            if len(parts) >= 2:
+                search_domains.insert(0, parts[1])
 
     return {"nameservers": nameservers, "search_domains": search_domains}

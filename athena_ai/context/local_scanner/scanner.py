@@ -89,8 +89,11 @@ class LocalScanner:
                                     "Invalidating cache and rescanning..."
                                 )
                                 try:
-                                    # Invalidate corrupted cache by clearing it
-                                    self.repo.save_local_context({})
+                                    # Invalidate corrupted cache by saving a minimal valid structure
+                                    # that matches LocalContext's expected schema. This ensures
+                                    # any concurrent reads won't fail on LocalContext.from_dict().
+                                    minimal_context = LocalContext().to_dict()
+                                    self.repo.save_local_context(minimal_context)
                                 except Exception:
                                     logger.debug("Failed to clear corrupted cache", exc_info=True)
                                 # Fall through to rescan below

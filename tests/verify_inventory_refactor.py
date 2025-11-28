@@ -5,7 +5,7 @@ Tests the mixin-based architecture and new features.
 import os
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add project root to path
@@ -260,7 +260,7 @@ def verify_local_context():
     print("6. Testing needs_rescan method...")
     ctx = LocalContext.from_dict({"scanned_at": None})
     assert ctx.needs_rescan(), "Unknown scan time should need rescan"
-    ctx = LocalContext.from_dict({"scanned_at": datetime.now().isoformat()})
+    ctx = LocalContext.from_dict({"scanned_at": datetime.now(timezone.utc).isoformat()})
     assert not ctx.needs_rescan(max_age_seconds=3600), "Fresh scan should not need rescan"
     print("   ✅ needs_rescan method works")
 
@@ -311,8 +311,25 @@ def verify_search_with_limit():
 
 
 if __name__ == "__main__":
-    verify_inventory_repository()
-    verify_bulk_add_hosts()
-    verify_bulk_add_hosts_rollback()
-    verify_local_context()
-    verify_search_with_limit()
+    tests = [
+        ("InventoryRepository", verify_inventory_repository),
+        ("Bulk Add Hosts", verify_bulk_add_hosts),
+        ("Bulk Add Rollback", verify_bulk_add_hosts_rollback),
+        ("LocalContext", verify_local_context),
+        ("Search with Limit", verify_search_with_limit),
+    ]
+
+    failed = []
+    for name, test_func in tests:
+        try:
+            test_func()
+        except Exception as e:
+            print(f"FAILED {name}: {e}")
+            failed.append(name)
+
+    if failed:
+        print(f"\nFAILED: {len(failed)} test(s) failed: {', '.join(failed)}")
+        sys.exit(1)
+    else:
+        print("\nAll tests passed!")
+        sys.exit(0)

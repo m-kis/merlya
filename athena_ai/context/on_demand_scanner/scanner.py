@@ -192,6 +192,7 @@ class OnDemandScanner:
                     data=data,
                     duration_ms=duration_ms,
                     retries=attempt,  # Number of retries (0 = first attempt succeeded)
+                    scanned_at=data.get("scanned_at", ""),
                 )
 
             except Exception as e:

@@ -2,6 +2,7 @@
 Rate limiting for on-demand scanning.
 """
 import asyncio
+import math
 import threading
 import time
 from typing import Optional
@@ -28,15 +29,14 @@ class RateLimiter:
             rate = float(rate)
         except (TypeError, ValueError):
             raise ValueError(f"rate must be a positive number, got {rate!r}")
+        if not math.isfinite(rate):
+            raise ValueError(f"rate must be a finite number, got {rate}")
         if rate <= 0:
             raise ValueError(f"rate must be greater than 0, got {rate}")
 
         # Validate burst: must be a positive integer
         if not isinstance(burst, int):
-            try:
-                burst = int(burst)
-            except (TypeError, ValueError):
-                raise ValueError(f"burst must be a positive integer, got {burst!r}")
+            raise ValueError(f"burst must be an integer, got {type(burst).__name__}")
         if burst <= 0:
             raise ValueError(f"burst must be greater than 0, got {burst}")
 
@@ -44,6 +44,7 @@ class RateLimiter:
         self.burst = burst
         self.tokens = float(self.burst)
         self.last_update = time.monotonic()
+        self._async_lock_init = threading.Lock()
         self._lock: Optional[asyncio.Lock] = None  # Lazy init to avoid RuntimeError
 
     async def acquire(self):
@@ -54,7 +55,9 @@ class RateLimiter:
         """
         # Lazy initialization of lock when event loop is running
         if self._lock is None:
-            self._lock = asyncio.Lock()
+            with self._async_lock_init:
+                if self._lock is None:
+                    self._lock = asyncio.Lock()
 
         while True:
             async with self._lock:
