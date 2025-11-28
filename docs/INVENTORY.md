@@ -259,7 +259,7 @@ The inventory system can detect and manage relationships between hosts.
 ┃ # ┃ Source   ┃ → ┃ Target     ┃ Type       ┃ Confidence ┃
 ┡━━━╇━━━━━━━━━━╇━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
 │ 1 │ db-master│ → │ db-replica │ replicates │ 95%        │
-│ 2 │ lb-prod  │ → │ web-01     │ load_bal   │ 87%        │
+│ 2 │ lb-prod  │ → │ web-01     │ load_balances │ 87%        │
 └───┴──────────┴───┴────────────┴────────────┴────────────┘
 
 Enter numbers to accept (e.g., '1,2'), 'all', or 'none':

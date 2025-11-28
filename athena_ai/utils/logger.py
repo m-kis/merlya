@@ -72,7 +72,9 @@ def setup_logger(verbose: bool = False):
             _seen.add(value_id)
             result_list = [_redact_value(item, _seen) for item in value]
             _seen.discard(value_id)
-            return type(value)(result_list)
+            # Return as list since redacted items might be unhashable
+            # (e.g., a dict {"api_key": "secret"} becomes {"api_key": "[REDACTED]"})
+            return result_list
         else:
             # For other types, preserve the original object to maintain type consistency
             # Sensitive data in __str__ is rare for non-string/container types

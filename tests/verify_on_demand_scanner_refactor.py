@@ -35,7 +35,10 @@ async def verify_scanner():
 
     # Mock SSH command execution - match command patterns used by ssh_scanner
     def exec_command_side_effect(cmd, timeout=None):
+        stdin = MagicMock()
         stdout = MagicMock()
+        stderr = MagicMock()
+        stderr.read.return_value = b""
         # Handle compound commands with fallbacks (cmd1 || cmd2)
         if "hostname" in cmd:
             stdout.read.return_value = b"test-host\n"
@@ -51,7 +54,7 @@ async def verify_scanner():
             stdout.read.return_value = b'NAME="Ubuntu"\nVERSION="22.04"\n'
         else:
             stdout.read.return_value = b"\n"
-        return None, stdout, None
+        return stdin, stdout, stderr
 
     mock_ssh.exec_command.side_effect = exec_command_side_effect
 
@@ -101,7 +104,7 @@ async def verify_scanner():
         scanner_unreachable = OnDemandScanner(connectivity_checker=create_connectivity_checker(False))
         result = await scanner_unreachable.scan_host("unreachable-host", scan_type="system", force=True)
         assert result.success  # Scan completes but host is unreachable
-        assert not result.data.get("reachable", True)
+        assert "reachable" in result.data and result.data["reachable"] is False
         print("   ✅ Connectivity Failure passed")
 
     print("\n✅ All on-demand scanner verification steps passed!")

@@ -35,8 +35,8 @@ class Intent(Enum):
     def allowed_tools(self) -> Optional[List[str]]:
         """Tools allowed for this intent type. None means all tools allowed."""
         if self == Intent.QUERY:
-            # Read-only tools for information gathering
-            # All tools listed here MUST exist in orchestrator._collect_tools()
+            # Read-only tools for information gathering.
+            # All tools listed here MUST exist in orchestrator._collect_tools().
             return [
                 # Host information
                 "list_hosts",
@@ -60,6 +60,11 @@ class Intent(Enum):
                 "get_solution_suggestion",
                 # Interaction
                 "ask_user",
+                # Permission elevation: Not strictly read-only, but included here
+                # because information gathering may require elevated permissions
+                # (e.g., reading protected logs or system files). This tool only
+                # requests elevation; if granted, subsequent reads gain access.
+                # The actual permission change happens externally upon approval.
                 "request_elevation",
             ]
         # ACTION and ANALYSIS: all tools allowed

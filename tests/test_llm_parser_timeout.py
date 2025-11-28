@@ -155,8 +155,8 @@ class TestLLMTimeoutConfiguration:
 
         assert DEFAULT_LLM_TIMEOUT == 60  # 60 seconds is reasonable default
 
-    def test_env_var_timeout_parsing(self, monkeypatch):
-        """Test that timeout constant can be set to custom value."""
+    def test_timeout_constant_can_be_configured(self, monkeypatch):
+        """Test that LLM_TIMEOUT constant can be set to a custom value."""
         from athena_ai.inventory.parser.parsers.llm import config
 
         # Patch the timeout constant directly (avoids module reloading issues)

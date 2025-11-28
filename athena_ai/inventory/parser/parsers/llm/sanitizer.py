@@ -16,6 +16,9 @@ def sanitize_inventory_content(content: str) -> str:
     - Environment indicators (prod/staging/dev kept but specific names redacted)
     - Known sensitive metadata patterns
 
+    Note: YAML multiline values (using | or >) only have the first line redacted.
+    This is a known limitation; full YAML parsing would add significant complexity.
+
     Args:
         content: Raw inventory content that may contain sensitive data
 
@@ -23,7 +26,7 @@ def sanitize_inventory_content(content: str) -> str:
         Sanitized content safe for LLM processing
     """
     if not content:
-        return content
+        return content or ""
 
     sanitized = content
 
@@ -191,7 +194,7 @@ def sanitize_prompt_injection(content: str) -> Tuple[str, List[str]]:
         Tuple of (sanitized_content, list of detected injection patterns)
     """
     if not content:
-        return content, []
+        return content or "", []
 
     detected_patterns = []
     sanitized = content

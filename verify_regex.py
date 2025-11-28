@@ -8,7 +8,7 @@ content = path.read_text(encoding="utf-8")
 print(f"File content length: {len(content)}")
 print(f"First 50 chars: {repr(content[:50])}")
 
-regex = r'^---\s*\n(.*?)\n---\s*\n(.*)$'
+regex = r'^---\s*\r?\n(.*?)\r?\n---\s*\r?\n(.*)$'
 match = re.match(regex, content, re.DOTALL)
 
 if match:

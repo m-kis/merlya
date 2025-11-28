@@ -46,6 +46,38 @@ class ScanConfig:
 
     def __post_init__(self):
         """Validate configuration values."""
+        # Validate parallelism
+        if self.max_workers <= 0:
+            raise ValueError(f"max_workers must be positive, got: {self.max_workers}")
+        if self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got: {self.batch_size}")
+
+        # Validate rate limiting
+        if self.requests_per_second <= 0:
+            raise ValueError(f"requests_per_second must be positive, got: {self.requests_per_second}")
+        if self.burst_size <= 0:
+            raise ValueError(f"burst_size must be positive, got: {self.burst_size}")
+
+        # Validate retry configuration
+        if self.max_retries < 0:
+            raise ValueError(f"max_retries must be non-negative, got: {self.max_retries}")
+        if self.retry_base_delay <= 0:
+            raise ValueError(f"retry_base_delay must be positive, got: {self.retry_base_delay}")
+        if self.retry_max_delay <= 0:
+            raise ValueError(f"retry_max_delay must be positive, got: {self.retry_max_delay}")
+        if self.retry_base_delay > self.retry_max_delay:
+            raise ValueError(
+                f"retry_base_delay ({self.retry_base_delay}) cannot exceed "
+                f"retry_max_delay ({self.retry_max_delay})"
+            )
+
+        # Validate timeouts
+        if self.connect_timeout <= 0:
+            raise ValueError(f"connect_timeout must be positive, got: {self.connect_timeout}")
+        if self.command_timeout <= 0:
+            raise ValueError(f"command_timeout must be positive, got: {self.command_timeout}")
+
+        # Validate SSH policy
         if self.ssh_host_key_policy not in self._VALID_SSH_POLICIES:
             raise ValueError(
                 f"ssh_host_key_policy must be one of {set(self._VALID_SSH_POLICIES)}, "

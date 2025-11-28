@@ -75,7 +75,12 @@ def scan_resources() -> Dict[str, Any]:
                 stats = {}
                 for line in result.stdout.splitlines():
                     if "page size of" in line:
-                        page_size = int(line.split()[-2])
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            try:
+                                page_size = int(parts[-2])
+                            except (ValueError, IndexError):
+                                logger.debug(f"Could not parse page size from: {line}")
                     elif ":" in line:
                         parts = line.split(":")
                         key = parts[0].strip()
@@ -113,7 +118,7 @@ def scan_resources() -> Dict[str, Any]:
     # Disk info
     try:
         result = subprocess.run(
-            ["df", "-h", "/"],
+            ["df", "-P", "-h", "/"],
             capture_output=True,
             text=True,
             timeout=5,

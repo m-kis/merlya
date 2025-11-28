@@ -417,7 +417,8 @@ class CredentialManager:
                 continue
             # Use negative lookahead to match variable names that can contain hyphens
             # (consistent with _resolve_inventory_hosts and variable_pattern)
-            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', value, resolved)
+            # Use lambda to avoid backreference interpretation if value contains \1, \2, etc.
+            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', lambda m: value, resolved)
 
         # Find remaining unresolved variables
         variable_pattern = r'@([\w\-]+)'
@@ -462,15 +463,15 @@ class CredentialManager:
                 # Try to find host in inventory
                 host = repo.get_host_by_name(var)
                 if host:
-                    # Replace @hostname with the actual hostname
-                    # If there's an IP, use 'hostname (IP)'
+                    # Use hostname only (command-compatible, no parentheses that break shell)
+                    replacement = host["hostname"]
                     ip = host.get("ip")
+                    # Use lambda to avoid backreference interpretation
+                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', lambda m: replacement, text)
                     if ip:
-                        replacement = f'{host["hostname"]} ({ip})'
+                        logger.debug(f"✅ Resolved @{var} to inventory host: {replacement} (IP: {ip})")
                     else:
-                        replacement = host["hostname"]
-                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', replacement, text)
-                    logger.debug(f"✅ Resolved @{var} to inventory host: {replacement}")
+                        logger.debug(f"✅ Resolved @{var} to inventory host: {replacement}")
 
         except ImportError:
             logger.debug("🔍 Inventory repository not available for host resolution")

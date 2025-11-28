@@ -221,7 +221,13 @@ class AthenaCompleter(Completer):
             from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
             repo = get_inventory_repository()
             hosts = repo.list_hosts()
-            result = [h["hostname"] for h in hosts]
+            result = []
+            for h in hosts:
+                hostname = h.get("hostname") if isinstance(h, dict) else None
+                if hostname:
+                    result.append(hostname)
+                else:
+                    logger.debug("Skipping malformed host entry in inventory: %s", h)
             self._cached_inventory_hosts = result
             return result
         except Exception as e:

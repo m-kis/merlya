@@ -71,29 +71,29 @@ async def ssh_scan(
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
             # Force RejectPolicy and skip further policy configuration
             policy_name = "reject"
-        else:
-            # Set host key policy based on configuration
-            # Only runs if no exception occurred loading known_hosts
-            if policy_name == "auto_add":
-                if env_auto_add:
-                    logger.warning(
-                        "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
-                        "This should only be used in non-production environments."
-                    )
-                else:
-                    logger.warning(
-                        "SSH AutoAddPolicy enabled via config. "
-                        "This is insecure and should only be used for testing."
-                    )
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            elif policy_name == "reject":
-                # Use RejectPolicy if explicitly configured
-                client.set_missing_host_key_policy(paramiko.RejectPolicy())
-                logger.debug("SSH host key policy: RejectPolicy (strictest)")
+
+        # Set host key policy based on configuration (unless already forced to reject)
+        if policy_name == "auto_add":
+            if env_auto_add:
+                logger.warning(
+                    "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
+                    "This should only be used in non-production environments."
+                )
             else:
-                # Default: RejectPolicy - safest option for production
+                logger.warning(
+                    "SSH AutoAddPolicy enabled via config. "
+                    "This is insecure and should only be used for testing."
+                )
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        elif policy_name == "reject":
+            # RejectPolicy already set or explicitly configured
+            if known_hosts_loaded:
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())
-                logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
+            logger.debug("SSH host key policy: RejectPolicy (strictest)")
+        else:
+            # Default: RejectPolicy - safest option for production
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
@@ -125,7 +125,10 @@ async def ssh_scan(
         data["error"] = "paramiko not installed"
     except Exception as e:
         data["ssh_connected"] = False
-        data["error"] = str(e)
+        # Log full error internally but expose only safe info to prevent leaking
+        # sensitive paths, hostnames, or authentication details
+        logger.debug(f"SSH scan failed for {hostname}: {e}")
+        data["error"] = f"SSH connection failed: {type(e).__name__}"
     finally:
         if client is not None:
             try:

@@ -112,18 +112,20 @@ def validate_llm_response(response: str) -> Tuple[List[ParsedHost], List[str]]:
             postamble = cleaned_response[json_start + len(json_substring):].strip()
 
             if preamble:
+                preamble_display = preamble[:100] + "..." if len(preamble) > 100 else preamble
                 errors.append(
                     f"LLM_UNEXPECTED_PREAMBLE: Response contained unexpected text before JSON: "
-                    f"'{preamble[:100]}...'. This may indicate injection artifacts."
+                    f"'{preamble_display}'. This may indicate injection artifacts."
                 )
-                logger.warning(f"LLM response has unexpected preamble: {preamble[:100]}")
+                logger.warning(f"LLM response has unexpected preamble: {preamble_display}")
 
             if postamble:
+                postamble_display = postamble[:100] + "..." if len(postamble) > 100 else postamble
                 errors.append(
                     f"LLM_UNEXPECTED_POSTAMBLE: Response contained unexpected text after JSON: "
-                    f"'{postamble[:100]}...'. This may indicate injection artifacts."
+                    f"'{postamble_display}'. This may indicate injection artifacts."
                 )
-                logger.warning(f"LLM response has unexpected postamble: {postamble[:100]}")
+                logger.warning(f"LLM response has unexpected postamble: {postamble_display}")
 
             try:
                 data = json.loads(json_substring)

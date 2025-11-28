@@ -176,7 +176,7 @@ class InventoryViewer:
         for host in hosts:
             groups = host.get("groups", [])
             groups_str = ", ".join(groups[:2]) if isinstance(groups, list) and groups else "-"
-            if isinstance(groups, list) and len(groups) > 2:
+            if len(groups) > 2:
                 groups_str += f" +{len(groups) - 2}"
 
             table.add_row(

@@ -154,62 +154,9 @@ classifier = get_smart_classifier(
 result = await classifier.classify("mongo is slow on prod")
 ```
 
-#### Embedding Models
+#### Embedding Configuration
 
-The Smart Classifier uses sentence-transformers for embeddings. Models can be configured via the `/model embedding` command or `ATHENA_EMBEDDING_MODEL` environment variable.
-
-**Available Models:**
-
-| Model | Size | Dims | Speed | Quality | Best For |
-|-------|------|------|-------|---------|----------|
-| `BAAI/bge-small-en-v1.5` (default) | 45MB | 384 | fast | better | General use, semantic search |
-| `BAAI/bge-base-en-v1.5` | 110MB | 768 | medium | best | High accuracy classification |
-| `intfloat/e5-small-v2` | 45MB | 384 | fast | better | Multilingual support |
-| `intfloat/e5-base-v2` | 110MB | 768 | medium | best | Multilingual high accuracy |
-| `thenlper/gte-small` | 45MB | 384 | fast | better | Fast inference |
-| `thenlper/gte-base` | 110MB | 768 | medium | best | High accuracy |
-| `all-MiniLM-L6-v2` | 22MB | 384 | fast | good | Minimal footprint |
-| `paraphrase-MiniLM-L3-v2` | 17MB | 384 | fast | good | Ultra-fast, basic quality |
-| `multi-qa-MiniLM-L6-cos-v1` | 22MB | 384 | fast | better | Q&A optimization |
-| `all-mpnet-base-v2` | 420MB | 768 | slow | best | Maximum quality |
-
-**Configuration:**
-
-```bash
-# Via environment variable (persistent)
-export ATHENA_EMBEDDING_MODEL="BAAI/bge-base-en-v1.5"
-
-# Via REPL command (session-only)
-/model embedding set BAAI/bge-base-en-v1.5
-```
-
-**Commands:**
-
-```bash
-/model embedding         # Show current model
-/model embedding list    # List all available models
-/model embedding set <model>  # Change model
-```
-
-**Python API:**
-
-```python
-from athena_ai.triage import get_embedding_config, EmbeddingConfig
-
-# Get current model
-config = get_embedding_config()
-print(config.current_model)  # BAAI/bge-small-en-v1.5
-
-# Change model
-config.set_model("all-MiniLM-L6-v2")
-
-# Get model info
-info = config.model_info
-print(f"Size: {info.size_mb}MB, Dimensions: {info.dimensions}")
-
-# List available models
-models = EmbeddingConfig.list_models()
-```
+The Smart Classifier uses sentence-transformers for embeddings. See [Embedding Models](#embedding-models) for available models, configuration options, and selection guidance.
 
 ---
 
@@ -500,10 +447,21 @@ export ATHENA_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
 **Via Code:**
 
 ```python
-from athena_ai.triage.embedding_config import get_embedding_config
+from athena_ai.triage import get_embedding_config, EmbeddingConfig
 
+# Get current model
 config = get_embedding_config()
+print(config.current_model)  # BAAI/bge-small-en-v1.5
+
+# Change model
 config.set_model("BAAI/bge-base-en-v1.5")  # Higher quality
+
+# Get model info
+info = config.model_info
+print(f"Size: {info.size_mb}MB, Dimensions: {info.dimensions}")
+
+# List available models
+models = EmbeddingConfig.list_models()
 ```
 
 ### Embedding Model Selection Guide
@@ -515,6 +473,10 @@ config.set_model("BAAI/bge-base-en-v1.5")  # Higher quality
 | Best quality | `BAAI/bge-base-en-v1.5` (110MB) |
 | Multilingual | `intfloat/e5-base-v2` (110MB) |
 | Limited resources | `all-MiniLM-L6-v2` (22MB) |
+
+### Tool Selector Requirements
+
+The Tool Selector shares the same embedding configuration as the Smart Classifier. Both components use the model set via `ATHENA_EMBEDDING_MODEL` or the `/model embedding` command. For Tool Selector workloads that require fast response times (e.g., interactive CLI), prefer smaller models like `all-MiniLM-L6-v2` or `paraphrase-MiniLM-L3-v2`.
 
 ---
 

@@ -383,10 +383,7 @@ def list_inventory_hosts(
             if group:
                 filter_info.append(f"group={group}")
             filter_str = f" with filters: {', '.join(filter_info)}" if filter_info else ""
-            result = f"❌ No hosts found{filter_str}\n\n💡 Try /inventory list or list_inventory_hosts(environment='all')"
-            if original_limit > limit:
-                result += f"\n\nℹ️ Note: requested limit {original_limit} capped to 1000"
-            return result
+            return f"❌ No hosts found{filter_str}\n\n💡 Try /inventory list or list_inventory_hosts(environment='all')"
 
         lines = [f"📋 INVENTORY HOSTS ({len(hosts)} found):", ""]
 
@@ -400,7 +397,7 @@ def list_inventory_hosts(
 
         for env, env_hosts in sorted(by_env.items()):
             lines.append(f"  [{env.upper()}]")
-            for host in sorted(env_hosts, key=lambda h: h.get('hostname', '')):
+            for host in sorted(env_hosts, key=lambda h: h.get('hostname') or ''):
                 hostname = host.get('hostname', 'unknown')
                 ip_info = f" ({host.get('ip_address')})" if host.get('ip_address') else ""
                 lines.append(f"    • {hostname}{ip_info}")

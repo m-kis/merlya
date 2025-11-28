@@ -49,13 +49,11 @@ class BaseRepository:
         Returns:
             The singleton instance for this specific class.
         """
-        if cls not in cls._instances:
-            with _repository_lock:
-                # Double-check locking pattern
-                if cls not in cls._instances:
-                    instance = super().__new__(cls)
-                    cls._instances[cls] = instance
-        return cls._instances[cls]
+        with _repository_lock:
+            if cls not in cls._instances:
+                instance = super().__new__(cls)
+                cls._instances[cls] = instance
+            return cls._instances[cls]
 
     def __init__(self, db_path: Optional[str] = None):
         """Initialize repository with database path.

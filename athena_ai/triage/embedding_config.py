@@ -5,8 +5,9 @@ Centralized configuration for sentence-transformers models used in Athena.
 Supports dynamic model switching and environment variable configuration.
 """
 import os
+import threading
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
 
@@ -132,12 +133,14 @@ class EmbeddingConfig:
     """
 
     _instance: Optional["EmbeddingConfig"] = None
+    _lock = threading.Lock()
 
     def __new__(cls):
-        """Singleton implementation."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+        """Thread-safe singleton implementation."""
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
@@ -157,7 +160,7 @@ class EmbeddingConfig:
             self._current_model = DEFAULT_MODEL
 
         # Callback for model change notifications
-        self._on_change_callbacks: List[callable] = []
+        self._on_change_callbacks: List[Callable[[str, str], None]] = []
 
         self._initialized = True
         logger.debug(f"✅ EmbeddingConfig initialized with model: {self._current_model}")
@@ -207,7 +210,7 @@ class EmbeddingConfig:
 
         return True
 
-    def on_model_change(self, callback: callable) -> None:
+    def on_model_change(self, callback: Callable[[str, str], None]) -> None:
         """
         Register a callback for model changes.
 

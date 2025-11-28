@@ -12,6 +12,7 @@ Uses the same LLM as intent/triage (Ollama local by default).
 
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -294,8 +295,21 @@ class HostRelationClassifier:
 
         return suggestions
 
-    def _heuristic_service_relations(self, hosts: List[Dict]) -> List[RelationSuggestion]:
-        """Find relations based on service types in hostnames."""
+    def _heuristic_service_relations(
+        self,
+        hosts: List[Dict],
+        max_relations_per_pair: int = 5,
+        secondary_threshold: int = 10,
+    ) -> List[RelationSuggestion]:
+        """Find relations based on service types in hostnames.
+
+        Args:
+            hosts: List of host dictionaries with hostname keys.
+            max_relations_per_pair: Maximum relations to create per service pattern pair.
+                When len(dependents) * len(dependencies) exceeds this, use star topology.
+            secondary_threshold: When either dependents or dependencies count exceeds this,
+                reduce confidence from 0.5 to 0.3 for lower-signal suggestions.
+        """
         suggestions = []
 
         # Common service patterns that typically have dependencies
@@ -314,18 +328,136 @@ class HostRelationClassifier:
             dependencies = [h for h in hostnames
                             if any(term in h.lower() for term in dependency_terms)]
 
-            for dependent in dependents:
+            # Skip if no matches on either side
+            if not dependents or not dependencies:
+                continue
+
+            # Calculate cartesian product size
+            cartesian_size = len(dependents) * len(dependencies)
+
+            # Determine confidence: reduce when many hosts exist
+            many_hosts = len(dependents) > secondary_threshold or len(dependencies) > secondary_threshold
+            base_confidence = 0.3 if many_hosts else 0.5
+
+            if cartesian_size <= max_relations_per_pair:
+                # Small enough: create all relations
+                for dependent in dependents:
+                    for dependency in dependencies:
+                        if dependent != dependency:
+                            suggestions.append(RelationSuggestion(
+                                source_hostname=dependent,
+                                target_hostname=dependency,
+                                relation_type="depends_on",
+                                confidence=base_confidence,
+                                reason="Service dependency pattern",
+                            ))
+            else:
+                # Use star topology: connect first dependent to all dependencies
+                # This bounds relations to len(dependencies) instead of cartesian product
+                hub_dependent = dependents[0]
+                relations_created = 0
+
                 for dependency in dependencies:
-                    if dependent != dependency:
+                    if hub_dependent != dependency and relations_created < max_relations_per_pair:
                         suggestions.append(RelationSuggestion(
-                            source_hostname=dependent,
+                            source_hostname=hub_dependent,
                             target_hostname=dependency,
                             relation_type="depends_on",
-                            confidence=0.5,
-                            reason=f"Service dependency pattern",
+                            confidence=base_confidence * 0.9,  # Slightly lower for star topology
+                            reason=f"Service dependency pattern (star topology, {len(dependents)} dependents)",
+                            metadata={"topology": "star", "total_dependents": len(dependents)},
                         ))
+                        relations_created += 1
+
+                # If we have room, also connect first dependency to remaining dependents (round-robin)
+                if relations_created < max_relations_per_pair and dependencies:
+                    hub_dependency = dependencies[0]
+                    for dependent in dependents[1:]:  # Skip first, already used as hub
+                        if dependent != hub_dependency and relations_created < max_relations_per_pair:
+                            suggestions.append(RelationSuggestion(
+                                source_hostname=dependent,
+                                target_hostname=hub_dependency,
+                                relation_type="depends_on",
+                                confidence=base_confidence * 0.9,
+                                reason=f"Service dependency pattern (star topology, {len(dependencies)} dependencies)",
+                                metadata={"topology": "star", "total_dependencies": len(dependencies)},
+                            ))
+                            relations_created += 1
 
         return suggestions
+
+    def _extract_json_array(self, response: str) -> Optional[List[Any]]:
+        """Extract a JSON array from LLM response with robust parsing.
+
+        Tries multiple strategies:
+        1. Parse entire response as JSON
+        2. Find and parse the first valid JSON array using bracket matching
+        3. Use regex as fallback with validation
+
+        Returns None if no valid JSON array found.
+        """
+        response = response.strip()
+
+        # Strategy 1: Try parsing entire response as JSON
+        try:
+            data = json.loads(response)
+            if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Find first '[' and parse from there using bracket matching
+        start_idx = response.find('[')
+        if start_idx != -1:
+            # Find matching closing bracket using stack-based matching
+            depth = 0
+            in_string = False
+            escape_next = False
+
+            for i, char in enumerate(response[start_idx:], start=start_idx):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+
+                if char == '[':
+                    depth += 1
+                elif char == ']':
+                    depth -= 1
+                    if depth == 0:
+                        # Found matching bracket
+                        candidate = response[start_idx:i + 1]
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, list):
+                                return data
+                        except json.JSONDecodeError:
+                            pass
+                        break
+
+        # Strategy 3: Regex fallback - find all potential arrays and try each
+        for match in re.finditer(r'\[', response):
+            start = match.start()
+            # Try increasingly longer substrings
+            for end in range(start + 2, len(response) + 1):
+                if response[end - 1] == ']':
+                    candidate = response[start:end]
+                    try:
+                        data = json.loads(candidate)
+                        if isinstance(data, list):
+                            return data
+                    except json.JSONDecodeError:
+                        continue
+
+        logger.debug("Failed to extract valid JSON array from LLM response")
+        return None
 
     def _llm_relations(self, hosts: List[Dict]) -> List[RelationSuggestion]:
         """Use LLM to discover complex relations."""
@@ -375,10 +507,9 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
         try:
             response = self.llm.generate(prompt, task="synthesis")
 
-            # Extract JSON from response
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
+            # Parse JSON from response using robust extraction
+            data = self._extract_json_array(response)
+            if data is not None:
                 for item in data:
                     if isinstance(item, dict) and item.get("source") and item.get("target"):
                         # Validate relation_type against allowed types
@@ -389,8 +520,14 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
                         # Preserve original hostname casing using the map
                         source = item["source"]
                         target = item["target"]
-                        source_hostname = original_hostnames.get(source.lower(), source)
-                        target_hostname = original_hostnames.get(target.lower(), target)
+
+                        # Skip suggestions for non-existent hosts (LLM hallucination guard)
+                        if source.lower() not in original_hostnames or target.lower() not in original_hostnames:
+                            logger.debug(f"Skipping LLM suggestion with non-existent host: {source} -> {target}")
+                            continue
+
+                        source_hostname = original_hostnames[source.lower()]
+                        target_hostname = original_hostnames[target.lower()]
                         suggestions.append(RelationSuggestion(
                             source_hostname=source_hostname,
                             target_hostname=target_hostname,
@@ -449,13 +586,17 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
         ]
 
 
-# Singleton
+# Thread-safe singleton
 _classifier: Optional[HostRelationClassifier] = None
+_classifier_lock = threading.Lock()
 
 
 def get_relation_classifier() -> HostRelationClassifier:
-    """Get the relation classifier singleton."""
+    """Get the relation classifier singleton (thread-safe)."""
     global _classifier
     if _classifier is None:
-        _classifier = HostRelationClassifier()
+        with _classifier_lock:
+            # Double-checked locking pattern
+            if _classifier is None:
+                _classifier = HostRelationClassifier()
     return _classifier

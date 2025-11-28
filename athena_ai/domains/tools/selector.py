@@ -6,6 +6,7 @@ select the most appropriate tool based on context (error type, intent, etc.).
 
 Falls back to heuristic rules when embeddings are unavailable.
 """
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -343,6 +344,114 @@ class ToolSelector:
         # Fallback to heuristics
         return self._heuristic_select(error_type, error_message, intent, context)
 
+    def _enrich_alternate_path_params(
+        self, context: Dict[str, Any], error_message: str
+    ) -> Dict[str, Any]:
+        """
+        Enrich params for RETRY_ALTERNATE_PATH from available context keys.
+
+        Checks for:
+        - old_path/new_path: direct path pair
+        - candidate_paths: list of alternative paths to try
+        - path_suggestions: dict or list of suggested paths
+        - Extracts path from error_message as fallback
+        """
+        # Try direct old_path/new_path pair
+        old_path = context.get("old_path")
+        new_path = context.get("new_path")
+        if old_path and new_path:
+            return {"old_path": old_path, "new_path": new_path}
+
+        # Try candidate_paths list
+        candidate_paths = context.get("candidate_paths")
+        if candidate_paths and isinstance(candidate_paths, list) and len(candidate_paths) > 0:
+            return {"paths": candidate_paths}
+
+        # Try path_suggestions (could be dict or list)
+        path_suggestions = context.get("path_suggestions")
+        if path_suggestions:
+            if isinstance(path_suggestions, dict):
+                # Assume dict maps old->new
+                return {"paths": path_suggestions}
+            elif isinstance(path_suggestions, list) and len(path_suggestions) > 0:
+                return {"paths": path_suggestions}
+
+        # Try to extract path from error message and suggest common alternatives
+        if error_message:
+            error_lower = error_message.lower()
+            common_alternates = {
+                "/var/log/syslog": "/var/log/messages",
+                "/var/log/messages": "/var/log/syslog",
+                "/var/log/auth.log": "/var/log/secure",
+                "/var/log/secure": "/var/log/auth.log",
+            }
+            for old, new in common_alternates.items():
+                if old in error_lower:
+                    return {"old_path": old, "new_path": new}
+
+        # Fallback: empty paths list with descriptive message
+        return {"paths": [], "note": "No alternate paths identified"}
+
+    def _enrich_alternate_command_params(
+        self, context: Dict[str, Any], error_message: str
+    ) -> Dict[str, Any]:
+        """
+        Enrich params for RETRY_ALTERNATE_COMMAND from available context keys.
+
+        Checks for:
+        - old_command/new_command: direct command pair
+        - candidate_commands: list of alternative commands
+        - command_suggestions: dict or list of suggested commands
+        - Extracts command from error_message/context as fallback
+        """
+        # Try direct old_command/new_command pair
+        old_command = context.get("old_command")
+        new_command = context.get("new_command")
+        if old_command and new_command:
+            return {"old_command": old_command, "new_command": new_command}
+
+        # Try candidate_commands list
+        candidate_commands = context.get("candidate_commands")
+        if candidate_commands and isinstance(candidate_commands, list) and len(candidate_commands) > 0:
+            return {"commands": candidate_commands}
+
+        # Try command_suggestions (could be dict or list)
+        command_suggestions = context.get("command_suggestions")
+        if command_suggestions:
+            if isinstance(command_suggestions, dict):
+                return {"commands": command_suggestions}
+            elif isinstance(command_suggestions, list) and len(command_suggestions) > 0:
+                return {"commands": command_suggestions}
+
+        # Try to extract command from context or error and suggest alternatives
+        failed_command = context.get("command", "")
+        if failed_command or error_message:
+            # Common command alternatives
+            common_alternates = {
+                "python": ["python3", "python2"],
+                "pip": ["pip3", "python -m pip", "python3 -m pip"],
+                "vim": ["vi", "nano"],
+                "less": ["more", "cat"],
+                "service": ["systemctl"],
+                "ifconfig": ["ip addr", "ip a"],
+                "netstat": ["ss"],
+            }
+            cmd_to_check = failed_command.split()[0] if failed_command else ""
+            if not cmd_to_check and error_message:
+                # Try to extract command from error like "bash: foo: command not found"
+                match = re.search(r"(?:bash:|sh:)\s*(\w+):", error_message)
+                if match:
+                    cmd_to_check = match.group(1)
+
+            if cmd_to_check in common_alternates:
+                return {
+                    "old_command": cmd_to_check,
+                    "alternatives": common_alternates[cmd_to_check],
+                }
+
+        # Fallback: empty commands list with descriptive message
+        return {"commands": [], "note": "No alternate commands identified"}
+
     def _build_recommendation(
         self,
         action: ToolAction,
@@ -377,9 +486,15 @@ class ToolSelector:
 
         elif action == ToolAction.RETRY_ALTERNATE_PATH:
             params = context.get("alternate_paths", {})
+            # Enrich params from other context keys if alternate_paths is empty
+            if not params:
+                params = self._enrich_alternate_path_params(context, error_message)
 
         elif action == ToolAction.RETRY_ALTERNATE_COMMAND:
             params = context.get("alternate_commands", {})
+            # Enrich params from other context keys if alternate_commands is empty
+            if not params:
+                params = self._enrich_alternate_command_params(context, error_message)
 
         return ToolRecommendation(
             action=action,

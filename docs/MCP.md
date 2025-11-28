@@ -230,18 +230,50 @@ Once configured, MCP servers make their tools available to Athena agents.
 
 ### @mcp Reference (Planned)
 
-Reference MCP servers in queries with `@mcp`:
+> **Note:** This feature is not yet implemented. The following examples describe the intended behavior for a future release.
+
+Reference MCP servers in queries with `@mcp`. The syntax is:
+
+```
+@mcp <server_name> <query>
+```
+
+The `parse_mcp_reference()` function returns a tuple `(server_name, query)` where:
+- `server_name` is the MCP server to invoke
+- `query` is interpreted as **natural-language** by default, unless the server documentation specifies otherwise
+
+#### Natural-Language Invocation (Default)
+
+When using natural language, the agent interprets your intent and selects the appropriate MCP tool:
 
 ```bash
-# Use filesystem server
+# Natural language: agent determines which tool to use
 @mcp filesystem list files in /tmp
+# → Parsed as: ("filesystem", "list files in /tmp")
+# → Agent interprets intent and calls read_directory or list_files tool
 
-# Use git server
 @mcp git show recent commits
-
-# Use postgres server
-@mcp postgres list tables in public schema
+# → Parsed as: ("git", "show recent commits")
+# → Agent calls git_log or similar tool based on intent
 ```
+
+#### Literal Command-Style Invocation
+
+Some MCP servers support explicit tool names. When using literal syntax, prefix with `!` to bypass natural-language interpretation and pass the query directly to the server's tool dispatcher:
+
+```bash
+# Literal command: directly invoke a specific tool
+@mcp !filesystem read_file /tmp/config.json
+# → Parsed as: ("filesystem", "read_file /tmp/config.json")
+# → Parser detects "!" prefix, sets literal_mode=True
+# → Passes "read_file /tmp/config.json" verbatim to tool dispatcher
+
+@mcp !postgres query SELECT * FROM users LIMIT 10
+# → Parsed as: ("postgres", "query SELECT * FROM users LIMIT 10")
+# → Directly executes the query tool with the SQL statement
+```
+
+**Note:** Literal mode (`!` prefix) requires the MCP server to expose tools with matching names. Check server documentation for available tool names.
 
 ### Tool Integration
 
@@ -343,8 +375,46 @@ manager.delete_server("filesystem")
 
 # Parse @mcp reference
 result = manager.parse_mcp_reference("@mcp filesystem list files")
-# ("filesystem", "list files")
+# Returns: ("filesystem", "list files")
 ```
+
+### parse_mcp_reference()
+
+Parses an `@mcp` reference string into its components.
+
+```python
+def parse_mcp_reference(reference: str) -> tuple[str, str]:
+    """
+    Parse an @mcp reference into server name and query.
+
+    Args:
+        reference: The full @mcp reference string (e.g., "@mcp filesystem list files")
+
+    Returns:
+        A tuple of (server_name, query):
+        - server_name: The MCP server to invoke (str)
+        - query: The remaining text after the server name (str)
+
+    Examples:
+        >>> parse_mcp_reference("@mcp filesystem list files in /tmp")
+        ("filesystem", "list files in /tmp")
+
+        >>> parse_mcp_reference("@mcp !postgres query SELECT * FROM users")
+        ("postgres", "query SELECT * FROM users")  # "!" prefix stripped
+    """
+```
+
+**Parsing Behavior:**
+
+| Input | server_name | query | Mode |
+|-------|-------------|-------|------|
+| `@mcp filesystem list files` | `"filesystem"` | `"list files"` | Natural language |
+| `@mcp git show commits` | `"git"` | `"show commits"` | Natural language |
+| `@mcp !filesystem read_file /tmp/x` | `"filesystem"` | `"read_file /tmp/x"` | Literal (! prefix) |
+| `@mcp !postgres query SELECT 1` | `"postgres"` | `"query SELECT 1"` | Literal (! prefix) |
+
+- **Natural language (default):** The `query` is passed to the agent for intent interpretation. The agent selects the appropriate MCP tool based on semantic understanding.
+- **Literal mode (`!` prefix):** The `!` is stripped from the server name, and the `query` is passed verbatim to the server's tool dispatcher without agent interpretation.
 
 ---
 

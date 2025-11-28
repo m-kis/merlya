@@ -27,7 +27,7 @@ class ContextManager:
             force: If True, bypass cache and force refresh everything
             progress_callback: Optional callback(current, total, hostname) for progress updates
         """
-        logger.info("🔄 Force discovery scan requested")
+        logger.info("🔄 Discovery scan requested")
 
         if force:
             self.cache.invalidate_all()

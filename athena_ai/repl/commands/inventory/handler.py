@@ -41,10 +41,10 @@ class InventoryCommandHandler:
         if self._importer is None:
             try:
                 from .importer import InventoryImporter
+                # Access repo inside try - its RuntimeError will propagate directly
+                self._importer = InventoryImporter(self.repo)
             except ImportError as e:
                 raise RuntimeError(f"Failed to import inventory importer: {e}") from e
-            # Let repo/handler init exceptions propagate with original context
-            self._importer = InventoryImporter(self.repo)
         return self._importer
 
     @property
@@ -53,10 +53,9 @@ class InventoryCommandHandler:
         if self._viewer is None:
             try:
                 from .viewer import InventoryViewer
+                self._viewer = InventoryViewer(self.repo)
             except ImportError as e:
                 raise RuntimeError(f"Failed to import inventory viewer: {e}") from e
-            # Let repo/handler init exceptions propagate with original context
-            self._viewer = InventoryViewer(self.repo)
         return self._viewer
 
     @property
@@ -65,10 +64,9 @@ class InventoryCommandHandler:
         if self._manager is None:
             try:
                 from .manager import InventoryManager
+                self._manager = InventoryManager(self.repo)
             except ImportError as e:
                 raise RuntimeError(f"Failed to import inventory manager: {e}") from e
-            # Let repo/handler init exceptions propagate with original context
-            self._manager = InventoryManager(self.repo)
         return self._manager
 
     @property
@@ -77,10 +75,9 @@ class InventoryCommandHandler:
         if self._relations is None:
             try:
                 from .relations import RelationsHandler
+                self._relations = RelationsHandler(self.repo)
             except ImportError as e:
                 raise RuntimeError(f"Failed to import relations handler: {e}") from e
-            # Let repo/handler init exceptions propagate with original context
-            self._relations = RelationsHandler(self.repo)
         return self._relations
 
     def handle(self, args: List[str]) -> bool:

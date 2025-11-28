@@ -3,6 +3,7 @@ Tools Base - Context injection and validation utilities.
 
 Replaces global variables with dependency injection (DIP principle).
 """
+import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -130,11 +131,7 @@ class ToolContext:
             # Step 2: Initialize the repository if import succeeded
             if get_inventory_repository is not None:
                 try:
-                    import sqlite3
                     self.inventory_repo = get_inventory_repository()
-                except ImportError as e:
-                    # sqlite3 not available
-                    logger.warning(f"Failed to initialize inventory repository: {type(e).__name__}: {e}")
                 except (ValueError, RuntimeError, OSError, sqlite3.Error) as e:
                     # Known initialization errors:
                     # - ValueError/RuntimeError: invalid config or runtime issues
@@ -144,7 +141,6 @@ class ToolContext:
                 except Exception as e:
                     # Unexpected errors - log at error level but continue since inventory is optional
                     logger.error(f"Unexpected error initializing inventory repository: {type(e).__name__}: {e}")
-                    self.inventory_repo = None
 
     def get_user_input(self, prompt: str = "> ") -> str:
         """

@@ -206,7 +206,6 @@ Example: After adding filesystem server, say 'list files in /tmp'
             if hasattr(self.repl, 'logger') and self.repl.logger:
                 self.repl.logger.error(f"Failed to load custom commands: {e}")
             return f"\n## Custom Commands\n\nError loading commands: {e}\n"
-        custom_commands = {}
 
         if not custom_commands:
             return ""
