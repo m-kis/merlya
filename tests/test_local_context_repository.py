@@ -68,8 +68,15 @@ class TestLocalContextRepository:
         # scanned_at should be an ISO timestamp string
         scanned_at = result["_metadata"]["scanned_at"]
         assert isinstance(scanned_at, str)
-        # Verify it's a valid ISO format
-        datetime.fromisoformat(scanned_at)
+        # Verify it's a valid ISO format (handle Python <3.11 'Z' suffix issue)
+        try:
+            datetime.fromisoformat(scanned_at)
+        except ValueError:
+            # Fallback: replace trailing 'Z' with '+00:00' for Python <3.11
+            if scanned_at.endswith("Z"):
+                datetime.fromisoformat(scanned_at[:-1] + "+00:00")
+            else:
+                raise
 
     def test_metadata_key_is_reserved(self, repo):
         """Test that _metadata key is not saved as user data."""

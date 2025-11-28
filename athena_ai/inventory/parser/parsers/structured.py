@@ -82,7 +82,9 @@ def _get_list_field(item: Dict, key: str) -> List[str]:
     """Get a list field value from a dict (case-insensitive)."""
     lower_map = {k.lower(): v for k, v in item.items()}
     val = lower_map.get(key.lower())
-    return val if isinstance(val, list) else []
+    if isinstance(val, list):
+        return [str(v) for v in val if v is not None]
+    return []
 
 
 def _looks_like_host(item: Any) -> bool:

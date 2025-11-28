@@ -84,7 +84,11 @@ _init_lock = threading.Lock()
 
 
 def get_shared_rate_limiter(config: ScanConfig) -> RateLimiter:
-    """Get or create the shared rate limiter."""
+    """Get or create the shared rate limiter.
+
+    Note: The rate limiter is created on first call using the provided config.
+    Subsequent calls return the same instance, ignoring any config differences.
+    """
     global _shared_rate_limiter
     if _shared_rate_limiter is None:  # Fast path check
         with _init_lock:

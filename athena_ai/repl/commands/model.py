@@ -103,12 +103,15 @@ class ModelCommandHandler:
             print_success(f"Switched to {default_provider.title()} (Model: {current_model})")
             self.repl.orchestrator.reload_agents()
 
-        elif subcmd == 'set' and len(args) > 1:
-            model_config.set_model("ollama", args[1])
-            print_success(f"Ollama model set to: {args[1]}")
-            self.repl.orchestrator.reload_agents()
+        elif subcmd == 'set':
+            if len(args) > 1:
+                model_config.set_model("ollama", args[1])
+                print_success(f"Ollama model set to: {args[1]}")
+                self.repl.orchestrator.reload_agents()
+            else:
+                print_error("Missing model name. Usage: /model local set <model>")
         else:
-            print_error("Invalid local command. Use: on, off, set <model>")
+            print_error(f"Invalid local subcommand: {subcmd}. Use: on, off, set <model>")
 
     def _list_models(self, args: list, model_config):
         """List available models."""

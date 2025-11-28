@@ -9,13 +9,35 @@ Features:
 - Automatic cleanup of stale entries
 """
 
+import copy
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
+
+
+# Shared executor for background persistence tasks
+_persistence_executor: Optional[ThreadPoolExecutor] = None
+_persistence_executor_lock = threading.Lock()
+
+
+def _get_persistence_executor() -> ThreadPoolExecutor:
+    """Get or create the shared persistence executor (thread-safe)."""
+    global _persistence_executor
+    if _persistence_executor is not None:
+        return _persistence_executor
+
+    with _persistence_executor_lock:
+        if _persistence_executor is None:
+            _persistence_executor = ThreadPoolExecutor(
+                max_workers=2,
+                thread_name_prefix="CachePersist"
+            )
+        return _persistence_executor
 
 
 @dataclass
@@ -492,17 +514,21 @@ class CacheManager:
 
         # Persist asynchronously to avoid blocking cache operations
         if self.repo:
+            # Deep copy mutable data to avoid race conditions if caller mutates
+            data_copy = copy.deepcopy(data)
+            ttl = self.config.ttl_config.get(data_type, 300)
+            repo = self.repo  # Capture reference
+
             def persist():
                 try:
-                    ttl = self.config.ttl_config.get(data_type, 300)
-                    self.repo.set_scan_cache(hostname, data_type, data, ttl)
+                    repo.set_scan_cache(hostname, data_type, data_copy, ttl)
                 except Exception as e:
                     logger.debug(f"Failed to persist cache for {hostname}: {e}")
 
-            threading.Thread(target=persist, daemon=True).start()
+            _get_persistence_executor().submit(persist)
 
     # Sentinel value to distinguish "no data in DB" from "not yet checked"
-    _NO_DATA_SENTINEL = {"__no_data__": True}
+    _NO_DATA_SENTINEL = object()
 
     def get_host_data(
         self,
@@ -514,7 +540,7 @@ class CacheManager:
         data = self.get(key, data_type)
 
         # Check if we have a cached "no data" sentinel
-        if data == self._NO_DATA_SENTINEL:
+        if data is self._NO_DATA_SENTINEL:
             return None
 
         # Try persistent cache if not in memory

@@ -241,9 +241,11 @@ class RelationRepositoryMixin:
         self,
         relations: List[Dict[str, Any]],
     ) -> int:
-        """Add multiple relations atomically in a single transaction.
+        """Add multiple relations in a single transaction.
 
-        All relations are saved together; if any fails, the entire batch is rolled back.
+        Relations whose source or target host does not exist in the database
+        are silently skipped. Partial saves may occur: some relations may be
+        saved while others are skipped due to missing hosts.
 
         Args:
             relations: List of relation dicts, each containing:
@@ -255,10 +257,11 @@ class RelationRepositoryMixin:
                 - metadata: Optional metadata dict
 
         Returns:
-            Number of relations successfully saved.
+            Number of relations actually saved (excludes skipped relations).
 
         Raises:
-            ValueError: If confidence is not between 0.0 and 1.0.
+            ValueError: If required fields are missing or confidence is not
+                between 0.0 and 1.0.
             sqlite3.Error: If a database error occurs (transaction is rolled back).
         """
         if not relations:
@@ -271,6 +274,11 @@ class RelationRepositoryMixin:
             cursor = conn.cursor()
 
             for rel in relations:
+                required_fields = ["source_hostname", "target_hostname", "relation_type"]
+                missing = [f for f in required_fields if f not in rel]
+                if missing:
+                    raise ValueError(f"Missing required fields: {missing}")
+
                 source_hostname = rel["source_hostname"].lower()
                 target_hostname = rel["target_hostname"].lower()
                 relation_type = rel["relation_type"]

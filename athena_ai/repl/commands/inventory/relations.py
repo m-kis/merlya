@@ -81,7 +81,7 @@ class RelationsHandler:
                 s.target_hostname,
                 s.relation_type,
                 f"{s.confidence:.0%}",
-                s.reason[:35] + "..." if len(s.reason) > 35 else s.reason,
+                (s.reason[:35] + "..." if len(s.reason) > 35 else s.reason) if s.reason else "",
             )
 
         console.print(table)

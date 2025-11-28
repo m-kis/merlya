@@ -69,7 +69,8 @@ async def ssh_scan(
                 "The file may be corrupted. Using RejectPolicy for safety."
             )
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            # Continue with RejectPolicy - connection will only succeed if host key is already known
+            # Force RejectPolicy and skip further policy configuration
+            policy_name = "reject"
         else:
             # Set host key policy based on configuration
             # Only runs if no exception occurred loading known_hosts
@@ -85,15 +86,10 @@ async def ssh_scan(
                         "This is insecure and should only be used for testing."
                     )
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            elif policy_name == "reject" or not known_hosts_loaded:
-                # Use RejectPolicy if explicitly configured OR if known_hosts unavailable
+            elif policy_name == "reject":
+                # Use RejectPolicy if explicitly configured
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())
-                if not known_hosts_loaded and policy_name != "reject":
-                    logger.debug(
-                        "SSH host key policy: RejectPolicy (no known_hosts available)"
-                    )
-                else:
-                    logger.debug("SSH host key policy: RejectPolicy (strictest)")
+                logger.debug("SSH host key policy: RejectPolicy (strictest)")
             else:
                 # Default: RejectPolicy - safest option for production
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())

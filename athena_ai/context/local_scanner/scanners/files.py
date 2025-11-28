@@ -34,20 +34,31 @@ def scan_etc_files() -> Dict[str, Any]:
 
     for file_path in ETC_FILES_TO_SCAN:
         path = Path(file_path)
-        if path.exists() and path.is_file():
+        # Resolve symlinks and validate the path is actually in /etc
+        try:
+            resolved_path = path.resolve(strict=True)
+        except (OSError, RuntimeError):
+            files[file_path] = {"error": "path resolution failed"}
+            continue
+
+        if not str(resolved_path).startswith("/etc/"):
+            files[file_path] = {"error": "path outside /etc"}
+            continue
+
+        if resolved_path.exists() and resolved_path.is_file():
             try:
                 # Check file size to avoid reading huge files
-                stat = path.stat()
+                stat = resolved_path.stat()
                 if stat.st_size > 100 * 1024:  # 100KB limit
                     files[file_path] = {"error": "file too large", "size": stat.st_size}
                     continue
 
                 # Check if readable
-                if not os.access(path, os.R_OK):
+                if not os.access(resolved_path, os.R_OK):
                     files[file_path] = {"error": "permission denied"}
                     continue
 
-                content = path.read_text(errors="replace")
+                content = resolved_path.read_text(errors="replace")
 
                 # Parse specific files
                 if file_path == "/etc/hosts":

@@ -26,12 +26,18 @@ class OnDemandScanner:
     - Progress callbacks
     """
 
-    def __init__(self, config: Optional[ScanConfig] = None):
+    def __init__(
+        self,
+        config: Optional[ScanConfig] = None,
+        connectivity_checker: Optional[Callable[[str, int], bool]] = None,
+    ):
         """
         Initialize scanner.
 
         Args:
             config: Scanner configuration (uses defaults if not provided)
+            connectivity_checker: Optional callable(hostname, port) -> bool for testing.
+                If provided, used instead of actual socket connectivity checks.
 
         Note:
             Uses a shared module-level RateLimiter to enforce global rate limits.
@@ -39,6 +45,7 @@ class OnDemandScanner:
             preventing rate limit bypass through multiple instantiation.
         """
         self.config = config or ScanConfig()
+        self._connectivity_checker = connectivity_checker
         # Use shared rate limiter to enforce global limits across all instances
         self.rate_limiter = get_shared_rate_limiter(self.config)
         self._executor = None
@@ -275,6 +282,10 @@ class OnDemandScanner:
 
     async def _check_connectivity(self, hostname: str, port: int = 22) -> bool:
         """Check if host is reachable on SSH port (supports IPv4 and IPv6)."""
+        # Use injected checker if provided (for testing)
+        if self._connectivity_checker is not None:
+            return self._connectivity_checker(hostname, port)
+
         loop = asyncio.get_running_loop()
 
         def check():

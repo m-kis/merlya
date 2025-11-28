@@ -125,7 +125,7 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
             return f'{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}[REDACTED]'
 
         redacted = re.sub(
-            rf'(["\'])({key})\1(:\s*)([^\s,}\]"\']+)',
+            rf'(["\'])({key})\1(:\s*)([^\s,\}}\]"\']+)',
             json_unquoted_replacer,
             redacted,
             flags=re.IGNORECASE
