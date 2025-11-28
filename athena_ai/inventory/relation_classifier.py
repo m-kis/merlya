@@ -528,11 +528,18 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
 
                         source_hostname = original_hostnames[source.lower()]
                         target_hostname = original_hostnames[target.lower()]
+
+                        # Parse confidence safely (LLM may return non-numeric values)
+                        try:
+                            confidence = min(float(item.get("confidence", 0.5)), 0.75)
+                        except (ValueError, TypeError):
+                            confidence = 0.5
+
                         suggestions.append(RelationSuggestion(
                             source_hostname=source_hostname,
                             target_hostname=target_hostname,
                             relation_type=relation_type,
-                            confidence=min(float(item.get("confidence", 0.5)), 0.75),  # Cap LLM confidence
+                            confidence=confidence,
                             reason=item.get("reason", "LLM suggestion"),
                             metadata={"source": "llm"},
                         ))

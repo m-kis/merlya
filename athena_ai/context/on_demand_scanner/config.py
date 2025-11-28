@@ -83,3 +83,8 @@ class ScanConfig:
                 f"ssh_host_key_policy must be one of {set(self._VALID_SSH_POLICIES)}, "
                 f"got: {self.ssh_host_key_policy!r}"
             )
+
+        # Validate cache TTL values
+        for category, ttl in self.cache_ttl.items():
+            if ttl <= 0:
+                raise ValueError(f"cache_ttl[{category!r}] must be positive, got: {ttl}")

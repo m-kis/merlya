@@ -163,8 +163,12 @@ class RelationsHandler:
 
         # Save relations atomically with error handling
         try:
-            saved = self.repo.add_relations_batch(relations_to_save)
-            print_success(f"Saved {saved} relations")
+            result = self.repo.add_relations_batch(relations_to_save)
+            print_success(f"Saved {result.saved_count} relations")
+            if result.skipped:
+                for idx, reason in result.skipped:
+                    logger.warning("Skipped relation %d: %s", idx, reason)
+                print_warning(f"Skipped {len(result.skipped)} relations (see logs)")
         except Exception as e:
             logger.error(
                 "Failed to save relations: %s (attempted %d relations)",

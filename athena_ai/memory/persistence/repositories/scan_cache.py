@@ -48,6 +48,13 @@ class ScanCacheRepositoryMixin:
         Returns:
             Cache dictionary with parsed data, or None if not found/expired.
         """
+        # Validate and normalize scan_type
+        if not isinstance(scan_type, str):
+            raise ValueError(f"scan_type must be a string, got: {type(scan_type).__name__}")
+        scan_type = scan_type.strip()
+        if not scan_type:
+            raise ValueError("scan_type must be a non-empty string after stripping whitespace")
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             try:
@@ -164,6 +171,14 @@ class ScanCacheRepositoryMixin:
 
         If neither argument provided, deletes all cache entries.
         """
+        # Validate and normalize scan_type if provided
+        if scan_type is not None:
+            if not isinstance(scan_type, str):
+                raise ValueError(f"scan_type must be a string, got: {type(scan_type).__name__}")
+            scan_type = scan_type.strip()
+            if not scan_type:
+                raise ValueError("scan_type must be a non-empty string after stripping whitespace")
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             try:
@@ -224,6 +239,13 @@ class ScanCacheRepositoryMixin:
             data: Scan data dictionary.
             ttl_seconds: Time to live in seconds.
         """
+        # Validate and normalize scan_type
+        if not isinstance(scan_type, str):
+            raise ValueError(f"scan_type must be a string, got: {type(scan_type).__name__}")
+        scan_type = scan_type.strip()
+        if not scan_type:
+            raise ValueError("scan_type must be a non-empty string after stripping whitespace")
+
         host = self.get_host_by_name(hostname)
         if host:
             self.save_scan_cache(host["id"], scan_type, data, ttl_seconds)
@@ -243,6 +265,13 @@ class ScanCacheRepositoryMixin:
         Returns:
             Cache dictionary or None if not found.
         """
+        # Validate and normalize scan_type
+        if not isinstance(scan_type, str):
+            raise ValueError(f"scan_type must be a string, got: {type(scan_type).__name__}")
+        scan_type = scan_type.strip()
+        if not scan_type:
+            raise ValueError("scan_type must be a non-empty string after stripping whitespace")
+
         host = self.get_host_by_name(hostname)
         if host:
             return self.get_scan_cache(host["id"], scan_type)

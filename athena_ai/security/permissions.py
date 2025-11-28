@@ -105,7 +105,7 @@ class PermissionManager:
             if not capabilities['elevation_method']:
                 if capabilities['has_privileged_group']:
                     capabilities['elevation_method'] = 'su'
-                    logger.info(f"🔒 {target}: User in privileged group {capabilities['privileged_groups']}, using 'su' for elevation")
+                    logger.info(f"🔒 {target}: User in privileged groups {', '.join(capabilities['privileged_groups'])}, using 'su' for elevation")
                 elif capabilities['has_sudo'] and not capabilities['sudo_nopasswd']:
                     # sudo exists but requires password, prefer su instead
                     capabilities['elevation_method'] = 'su'

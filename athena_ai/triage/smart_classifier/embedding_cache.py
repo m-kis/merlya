@@ -46,6 +46,11 @@ class EmbeddingCache:
     @property
     def model(self) -> "SentenceTransformer":
         """Lazy load the model."""
+        if not HAS_EMBEDDINGS:
+            raise RuntimeError(
+                "Embedding dependencies are not installed. "
+                "Install with: pip install sentence-transformers numpy"
+            )
         if self._model is None:
             logger.info(f"🔄 Loading embedding model: {self._model_name}")
             self._model = SentenceTransformer(self._model_name)

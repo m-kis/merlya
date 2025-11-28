@@ -83,12 +83,21 @@ class LocalScanner:
                         # Normalize to UTC for consistent age calculation
                         if scanned_at.tzinfo is None:
                             # Legacy naive timestamp - interpret using configured local timezone
+                            # Note: We construct a new datetime with tzinfo rather than using
+                            # replace(tzinfo=...) because replace() merely relabels without
+                            # adjusting the time value, which produces incorrect results with DST.
                             local_tz = get_local_timezone()
                             logger.debug(
                                 f"Naive timestamp encountered: {scanned_at_str}. "
                                 f"Interpreting as {local_tz} (configure 'local_timezone' in ~/.athena/config.json)"
                             )
-                            scanned_at = scanned_at.replace(tzinfo=local_tz).astimezone(timezone.utc)
+                            # Create timezone-aware datetime by constructing with tzinfo
+                            # This properly interprets the naive time as being in local_tz
+                            scanned_at = datetime(
+                                scanned_at.year, scanned_at.month, scanned_at.day,
+                                scanned_at.hour, scanned_at.minute, scanned_at.second,
+                                scanned_at.microsecond, tzinfo=local_tz
+                            ).astimezone(timezone.utc)
                         else:
                             scanned_at = scanned_at.astimezone(timezone.utc)
                         age_hours = (datetime.now(timezone.utc) - scanned_at).total_seconds() / 3600

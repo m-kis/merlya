@@ -1,9 +1,52 @@
+import os
 import sys
 from pathlib import Path
 
 from loguru import logger
 
 from athena_ai.utils.security import redact_sensitive_info
+
+
+def use_emoji_logs() -> bool:
+    """
+    Check if emoji prefixes should be used in log messages.
+
+    Returns True unless USE_EMOJI_LOGS environment variable is set to "0" or "false".
+    Production environments can disable emojis by setting USE_EMOJI_LOGS=0.
+    """
+    value = os.environ.get("USE_EMOJI_LOGS", "1").lower()
+    return value not in ("0", "false", "no", "off")
+
+
+# Mapping of emoji prefixes to ASCII alternatives
+_EMOJI_TO_ASCII = {
+    "🔄": "[RETRY]",
+    "⚠️": "[WARN]",
+    "💀": "[DEAD]",
+    "⏱️": "[TIMEOUT]",
+    "🌐": "[CONNECT]",
+    "✓": "[OK]",
+    "✅": "[OK]",
+    "❌": "[ERROR]",
+    "🔒": "[CLOSE]",
+    "🧹": "[CLEANUP]",
+}
+
+
+def log_prefix(emoji: str) -> str:
+    """
+    Return the appropriate log prefix based on USE_EMOJI_LOGS setting.
+
+    Args:
+        emoji: The emoji to use when emoji logs are enabled.
+
+    Returns:
+        The emoji if USE_EMOJI_LOGS is enabled, otherwise the ASCII equivalent
+        (or empty string if no mapping exists).
+    """
+    if use_emoji_logs():
+        return emoji
+    return _EMOJI_TO_ASCII.get(emoji, "")
 
 
 def setup_logger(verbose: bool = False):

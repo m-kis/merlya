@@ -5,9 +5,26 @@ Handles CRUD operations for host-to-host relations (dependencies, connections, e
 """
 
 import json
+import logging
 import sqlite3
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BatchRelationResult:
+    """Result of a batch relation insert operation.
+
+    Attributes:
+        saved_count: Number of relations successfully saved.
+        skipped: List of (index, reason) tuples for skipped relations.
+    """
+
+    saved_count: int = 0
+    skipped: List[Tuple[int, str]] = field(default_factory=list)
 
 
 class RelationRepositoryMixin:
@@ -237,57 +254,129 @@ class RelationRepositoryMixin:
             cursor.execute("DELETE FROM host_relations WHERE id = ?", (relation_id,))
             return cursor.rowcount > 0
 
+    def _validate_relation_field(
+        self, rel: Dict[str, Any], field_name: str, index: int
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Validate a required string field in a relation dict.
+
+        Args:
+            rel: The relation dictionary.
+            field_name: The field name to validate.
+            index: The index of the relation in the batch (for error messages).
+
+        Returns:
+            Tuple of (validated_value, error_message). If validation succeeds,
+            error_message is None. If validation fails, validated_value is None.
+        """
+        if field_name not in rel:
+            return None, f"relation[{index}]: missing required field '{field_name}'"
+
+        value = rel[field_name]
+        if value is None:
+            return None, f"relation[{index}]: '{field_name}' is None"
+
+        if isinstance(value, str):
+            if not value.strip():
+                return None, f"relation[{index}]: '{field_name}' is empty string"
+            return value.lower(), None
+
+        # Try to convert to string if it's a reasonable type
+        if isinstance(value, (int, float)):
+            logger.warning(
+                "relation[%d]: '%s' is %s, converting to string",
+                index,
+                field_name,
+                type(value).__name__,
+            )
+            return str(value).lower(), None
+
+        return None, (
+            f"relation[{index}]: '{field_name}' must be a string, "
+            f"got {type(value).__name__}"
+        )
+
     def add_relations_batch(
         self,
         relations: List[Dict[str, Any]],
-    ) -> int:
+    ) -> BatchRelationResult:
         """Add multiple relations in a single transaction.
 
-        Relations whose source or target host does not exist in the database
-        are silently skipped. Partial saves may occur: some relations may be
-        saved while others are skipped due to missing hosts.
+        Relations with invalid fields or whose source/target host does not exist
+        in the database are skipped and recorded in the result. Partial saves may
+        occur: some relations may be saved while others are skipped.
 
         Args:
             relations: List of relation dicts, each containing:
-                - source_hostname: Source host name
-                - target_hostname: Target host name
-                - relation_type: Type of relation
+                - source_hostname: Source host name (required, must be str)
+                - target_hostname: Target host name (required, must be str)
+                - relation_type: Type of relation (required, must be str)
                 - confidence: Optional confidence score (default 1.0)
                 - validated: Optional bool (default False)
                 - metadata: Optional metadata dict
 
         Returns:
-            Number of relations actually saved (excludes skipped relations).
+            BatchRelationResult with saved_count and list of skipped relations.
 
         Raises:
-            ValueError: If required fields are missing or confidence is not
-                between 0.0 and 1.0.
+            ValueError: If confidence is not between 0.0 and 1.0.
             sqlite3.Error: If a database error occurs (transaction is rolled back).
         """
+        result = BatchRelationResult()
+
         if not relations:
-            return 0
+            return result
 
         now = datetime.now().isoformat()
-        saved_count = 0
 
         with self._connection(commit=True) as conn:
             cursor = conn.cursor()
 
-            for rel in relations:
-                required_fields = ["source_hostname", "target_hostname", "relation_type"]
-                missing = [f for f in required_fields if f not in rel]
-                if missing:
-                    raise ValueError(f"Missing required fields: {missing}")
+            for idx, rel in enumerate(relations):
+                # Validate source_hostname
+                source_hostname, error = self._validate_relation_field(
+                    rel, "source_hostname", idx
+                )
+                if error:
+                    logger.warning("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
+                    continue
 
-                source_hostname = rel["source_hostname"].lower()
-                target_hostname = rel["target_hostname"].lower()
-                relation_type = rel["relation_type"]
+                # Validate target_hostname
+                target_hostname, error = self._validate_relation_field(
+                    rel, "target_hostname", idx
+                )
+                if error:
+                    logger.warning("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
+                    continue
+
+                # Validate relation_type
+                relation_type, error = self._validate_relation_field(
+                    rel, "relation_type", idx
+                )
+                if error:
+                    logger.warning("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
+                    continue
+
                 confidence = rel.get("confidence", 1.0)
                 validated = rel.get("validated", False)
                 metadata = rel.get("metadata")
 
+                # Validate confidence
+                try:
+                    confidence = float(confidence)
+                except (TypeError, ValueError):
+                    error = f"relation[{idx}]: confidence must be numeric, got {type(confidence).__name__}"
+                    logger.warning("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
+                    continue
+
                 if not (0.0 <= confidence <= 1.0):
-                    raise ValueError(f"confidence must be between 0.0 and 1.0, got {confidence}")
+                    error = f"relation[{idx}]: confidence must be between 0.0 and 1.0, got {confidence}"
+                    logger.warning("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
+                    continue
 
                 metadata_json = json.dumps(metadata or {})
                 validated_int = 1 if validated else 0
@@ -298,7 +387,9 @@ class RelationRepositoryMixin:
                 )
                 source_row = cursor.fetchone()
                 if not source_row:
-                    # Skip relations where host doesn't exist
+                    error = f"relation[{idx}]: source host '{source_hostname}' not found"
+                    logger.debug("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
                     continue
                 source_host_id = source_row[0]
 
@@ -308,7 +399,9 @@ class RelationRepositoryMixin:
                 )
                 target_row = cursor.fetchone()
                 if not target_row:
-                    # Skip relations where host doesn't exist
+                    error = f"relation[{idx}]: target host '{target_hostname}' not found"
+                    logger.debug("Skipping relation: %s", error)
+                    result.skipped.append((idx, error))
                     continue
                 target_host_id = target_row[0]
 
@@ -331,6 +424,6 @@ class RelationRepositoryMixin:
                     now,
                     now,
                 ))
-                saved_count += 1
+                result.saved_count += 1
 
-        return saved_count
+        return result

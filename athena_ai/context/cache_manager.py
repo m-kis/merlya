@@ -554,8 +554,8 @@ class CacheManager:
                         return data_value
                 # Cache "no data" with short TTL to avoid repeated DB lookups
                 self.set(key, self._NO_DATA_SENTINEL, data_type, ttl=60)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to load from persistent cache for {hostname}: {e}")
 
         return data
 

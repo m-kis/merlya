@@ -19,7 +19,10 @@ from athena_ai.memory.persistence.repositories.host import HostData, HostReposit
 from athena_ai.memory.persistence.repositories.local_context import (
     LocalContextRepositoryMixin,
 )
-from athena_ai.memory.persistence.repositories.relation import RelationRepositoryMixin
+from athena_ai.memory.persistence.repositories.relation import (
+    BatchRelationResult,
+    RelationRepositoryMixin,
+)
 from athena_ai.memory.persistence.repositories.scan_cache import (
     ScanCacheRepositoryMixin,
 )
@@ -27,6 +30,7 @@ from athena_ai.memory.persistence.repositories.snapshot import SnapshotRepositor
 from athena_ai.memory.persistence.repositories.source import SourceRepositoryMixin
 
 __all__ = [
+    "BatchRelationResult",
     "HostData",
     "SourceRepositoryMixin",
     "HostRepositoryMixin",

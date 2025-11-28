@@ -178,7 +178,7 @@ class PatternStore:
                 params,
             )
 
-            return result
+            return result or []
 
         except Exception as e:
             logger.warning(f"Failed to find patterns: {e}")

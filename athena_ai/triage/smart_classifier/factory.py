@@ -2,12 +2,15 @@
 Factory functions for Smart Triage Classifier.
 """
 
-from typing import Dict, Optional, Tuple
+import threading
+from typing import Any, Dict, Optional, Tuple
 
 from .classifier import SmartTriageClassifier
 
-# Singleton instances per (db_client_id, user_id) combination
-_smart_classifiers: Dict[Tuple[int, str], SmartTriageClassifier] = {}
+# Cache structure: (db_client_id, user_id) -> (classifier, db_client_ref)
+# We keep a reference to db_client to prevent GC and ID reuse issues
+_smart_classifiers: Dict[Tuple[int, str], Tuple[SmartTriageClassifier, Any]] = {}
+_lock = threading.Lock()
 
 
 def get_smart_classifier(
@@ -21,6 +24,9 @@ def get_smart_classifier(
     Creates separate instances for different db_client/user_id combinations.
     Reuses existing instances for the same combination unless force_new=True.
 
+    Thread-safe implementation that prevents cache collisions from ID reuse
+    after garbage collection.
+
     Args:
         db_client: FalkorDB client for pattern storage
         user_id: User identifier for personalized patterns
@@ -29,16 +35,18 @@ def get_smart_classifier(
     Returns:
         SmartTriageClassifier instance
     """
-    # Use id(db_client) to distinguish different client instances
     cache_key = (id(db_client) if db_client else 0, user_id)
 
-    if force_new or cache_key not in _smart_classifiers:
-        _smart_classifiers[cache_key] = SmartTriageClassifier(
-            db_client=db_client,
-            user_id=user_id,
-        )
+    with _lock:
+        if force_new or cache_key not in _smart_classifiers:
+            classifier = SmartTriageClassifier(
+                db_client=db_client,
+                user_id=user_id,
+            )
+            # Store both classifier and db_client reference to prevent GC
+            _smart_classifiers[cache_key] = (classifier, db_client)
 
-    return _smart_classifiers[cache_key]
+        return _smart_classifiers[cache_key][0]
 
 
 def reset_smart_classifier(user_id: Optional[str] = None) -> None:
@@ -49,11 +57,11 @@ def reset_smart_classifier(user_id: Optional[str] = None) -> None:
         user_id: If provided, only reset instances for this user.
                  If None, reset all instances.
     """
-    global _smart_classifiers
-    if user_id is None:
-        _smart_classifiers.clear()
-    else:
-        # Remove only instances matching user_id
-        keys_to_remove = [k for k in _smart_classifiers if k[1] == user_id]
-        for key in keys_to_remove:
-            del _smart_classifiers[key]
+    with _lock:
+        if user_id is None:
+            _smart_classifiers.clear()
+        else:
+            # Remove only instances matching user_id
+            keys_to_remove = [k for k in _smart_classifiers if k[1] == user_id]
+            for key in keys_to_remove:
+                del _smart_classifiers[key]

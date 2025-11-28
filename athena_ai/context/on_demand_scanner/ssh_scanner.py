@@ -47,6 +47,7 @@ async def ssh_scan(
 
         # Load system known_hosts for security
         known_hosts_loaded = False
+        known_hosts_corrupted = False
         try:
             client.load_system_host_keys()
             known_hosts_loaded = True
@@ -64,16 +65,19 @@ async def ssh_scan(
             )
         except paramiko.ssh_exception.SSHException as e:
             # Parsing error in known_hosts file - this is a real problem
+            # Force RejectPolicy and skip further policy configuration
             logger.error(
                 f"Failed to parse known_hosts file: {e}. "
                 "The file may be corrupted. Using RejectPolicy for safety."
             )
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            # Force RejectPolicy and skip further policy configuration
-            policy_name = "reject"
+            known_hosts_corrupted = True
 
-        # Set host key policy based on configuration (unless already forced to reject)
-        if policy_name == "auto_add":
+        # Set host key policy based on configuration
+        # Skip if known_hosts was corrupted - RejectPolicy already enforced above
+        if known_hosts_corrupted:
+            logger.debug("SSH host key policy: RejectPolicy (known_hosts corrupted)")
+        elif policy_name == "auto_add":
             if env_auto_add:
                 logger.warning(
                     "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
@@ -86,9 +90,7 @@ async def ssh_scan(
                 )
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         elif policy_name == "reject":
-            # RejectPolicy already set or explicitly configured
-            if known_hosts_loaded:
-                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
             logger.debug("SSH host key policy: RejectPolicy (strictest)")
         else:
             # Default: RejectPolicy - safest option for production

@@ -1,32 +1,19 @@
 """
-Host Repository Mixin - Manages host entities with versioning.
-
-Handles CRUD operations for hosts including version tracking for audit trails.
+Host Repository Mixin.
 """
 
 import json
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from athena_ai.core.exceptions import PersistenceError
 from athena_ai.utils.logger import logger
 
-
-@dataclass
-class HostData:
-    """Data container for host bulk imports."""
-
-    hostname: str
-    ip_address: Optional[str] = None
-    aliases: Optional[List[str]] = None
-    environment: Optional[str] = None
-    groups: Optional[List[str]] = None
-    role: Optional[str] = None
-    service: Optional[str] = None
-    ssh_port: Optional[int] = None
-    metadata: Optional[Dict] = None
+from .converters import host_row_to_dict, version_row_to_dict
+from .models import HostData
+from .schema import init_host_tables
+from .versioning import add_host_version, compute_changes
 
 
 class HostRepositoryMixin:
@@ -34,51 +21,7 @@ class HostRepositoryMixin:
 
     def _init_host_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize hosts and host versions tables."""
-        # Hosts v2 table (main host storage)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS hosts_v2 (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hostname TEXT NOT NULL UNIQUE,
-                ip_address TEXT,
-                aliases TEXT,
-                environment TEXT,
-                groups TEXT,
-                role TEXT,
-                service TEXT,
-                ssh_port INTEGER DEFAULT 22,
-                status TEXT DEFAULT 'unknown',
-                source_id INTEGER,
-                metadata TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (source_id) REFERENCES inventory_sources(id) ON DELETE CASCADE
-            )
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_hosts_v2_hostname ON hosts_v2(hostname)
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_hosts_v2_environment ON hosts_v2(environment)
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_hosts_v2_source ON hosts_v2(source_id)
-        """)
-
-        # Host versions table (versioning)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS host_versions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                host_id INTEGER NOT NULL,
-                version INTEGER NOT NULL,
-                changes TEXT NOT NULL,
-                changed_by TEXT DEFAULT 'system',
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (host_id) REFERENCES hosts_v2(id) ON DELETE CASCADE
-            )
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_host_versions_host ON host_versions(host_id, version)
-        """)
+        init_host_tables(cursor)
 
     def add_host(
         self,
@@ -248,7 +191,7 @@ class HostRepositoryMixin:
         # for this CLI tool's use case.
         cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname_lower,))
         existing_row = cursor.fetchone()
-        old_data = self._host_row_to_dict(existing_row) if existing_row else None
+        old_data = host_row_to_dict(existing_row) if existing_row else None
 
         # Atomic upsert
         cursor.execute("""
@@ -291,9 +234,9 @@ class HostRepositoryMixin:
 
         # Record version
         if old_data is None:
-            self._add_host_version(cursor, host_id, {"action": "created"}, changed_by)
+            add_host_version(cursor, host_id, {"action": "created"}, changed_by)
         else:
-            changes = self._compute_changes(old_data, {
+            changes = compute_changes(old_data, {
                 "ip_address": ip_address,
                 "aliases": aliases,
                 "environment": environment,
@@ -304,54 +247,9 @@ class HostRepositoryMixin:
                 "metadata": metadata,
             })
             if changes:
-                self._add_host_version(cursor, host_id, changes, changed_by)
+                add_host_version(cursor, host_id, changes, changed_by)
 
         return host_id
-
-    def _add_host_version(
-        self,
-        cursor: sqlite3.Cursor,
-        host_id: int,
-        changes: Dict,
-        changed_by: str,
-    ) -> None:
-        """Add a version entry for a host.
-
-        Args:
-            cursor: Database cursor.
-            host_id: Host ID to version.
-            changes: Dictionary of changes made.
-            changed_by: Who made the change.
-        """
-        cursor.execute(
-            "SELECT COALESCE(MAX(version), 0) FROM host_versions WHERE host_id = ?",
-            (host_id,)
-        )
-        current_version = cursor.fetchone()[0]
-        new_version = current_version + 1
-
-        cursor.execute("""
-            INSERT INTO host_versions (host_id, version, changes, changed_by, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (host_id, new_version, json.dumps(changes), changed_by, datetime.now().isoformat()))
-
-    def _compute_changes(self, old_data: Optional[Dict], new_data: Dict) -> Dict:
-        """Compute changes between old and new data.
-
-        Args:
-            old_data: Previous host data.
-            new_data: New host data.
-
-        Returns:
-            Dictionary of changed fields with old and new values.
-        """
-        changes = {}
-        for key, new_value in new_data.items():
-            if new_value is not None:
-                old_value = old_data.get(key) if isinstance(old_data, dict) else None
-                if old_value != new_value:
-                    changes[key] = {"old": old_value, "new": new_value}
-        return changes
 
     def get_host_by_id(self, host_id: int) -> Optional[Dict[str, Any]]:
         """Get a host by ID.
@@ -368,7 +266,7 @@ class HostRepositoryMixin:
             row = cursor.fetchone()
 
         if row:
-            return self._host_row_to_dict(row)
+            return host_row_to_dict(row)
         return None
 
     def get_host_by_name(self, hostname: str) -> Optional[Dict[str, Any]]:
@@ -395,7 +293,7 @@ class HostRepositoryMixin:
                 row = self._find_host_by_alias(cursor, hostname_lower)
 
         if row:
-            return self._host_row_to_dict(row)
+            return host_row_to_dict(row)
         return None
 
     def _find_host_by_alias(
@@ -478,7 +376,8 @@ class HostRepositoryMixin:
         params: list = []
 
         if pattern:
-            query += " AND (hostname LIKE ? OR aliases LIKE ? OR ip_address LIKE ?)"
+            # Use LOWER() for case-insensitive matching on aliases (hostname is already lowercase)
+            query += " AND (hostname LIKE ? OR LOWER(aliases) LIKE ? OR ip_address LIKE ?)"
             pattern_like = f"%{pattern.lower()}%"
             params.extend([pattern_like, pattern_like, pattern_like])
 
@@ -510,7 +409,7 @@ class HostRepositoryMixin:
             cursor.execute(query, params)
             rows = cursor.fetchall()
 
-        return [self._host_row_to_dict(row) for row in rows]
+        return [host_row_to_dict(row) for row in rows]
 
     def get_all_hosts(self) -> List[Dict[str, Any]]:
         """Get all hosts without any limit.
@@ -567,55 +466,4 @@ class HostRepositoryMixin:
             """, (host_id,))
             rows = cursor.fetchall()
 
-        return [self._row_to_dict(row) for row in rows]
-
-    def _host_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Convert a host row to dictionary with JSON parsing.
-
-        Args:
-            row: Database row.
-
-        Returns:
-            Host dictionary with parsed JSON fields.
-        """
-        d = dict(row)
-        # Parse JSON fields with appropriate defaults
-        for field in ["aliases", "groups"]:
-            if d.get(field):
-                try:
-                    d[field] = json.loads(d[field])
-                except (json.JSONDecodeError, TypeError):
-                    d[field] = []
-            else:
-                d[field] = []
-        # Metadata defaults to empty dict
-        if d.get("metadata"):
-            try:
-                d["metadata"] = json.loads(d["metadata"])
-            except (json.JSONDecodeError, TypeError):
-                d["metadata"] = {}
-        else:
-            d["metadata"] = {}
-        return d
-
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Convert a generic sqlite3.Row to dictionary with JSON parsing for changes field.
-
-        Used for host_versions table rows.
-
-        Args:
-            row: Database row.
-
-        Returns:
-            Dictionary with parsed 'changes' JSON field (if present).
-        """
-        d = dict(row)
-        # Parse 'changes' JSON field if present
-        if "changes" in d and d["changes"]:
-            try:
-                d["changes"] = json.loads(d["changes"])
-            except (json.JSONDecodeError, TypeError):
-                d["changes"] = {}
-        elif "changes" in d:
-            d["changes"] = {}
-        return d
+        return [version_row_to_dict(row) for row in rows]

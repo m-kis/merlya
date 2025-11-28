@@ -268,6 +268,9 @@ def encode_content_for_prompt(content: str) -> str:
     Returns:
         JSON-encoded string (without outer quotes)
     """
+    if not content:
+        return content or ""
+
     # json.dumps adds quotes, we strip them for embedding
     encoded = json.dumps(content)
     # Remove the outer quotes since we'll wrap it ourselves

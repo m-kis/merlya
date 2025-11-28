@@ -3,6 +3,7 @@ from typing import Any, Callable, List
 from rich.console import Console
 
 from athena_ai.agents import autogen_tools, knowledge_tools
+from athena_ai.utils.logger import logger
 
 # Optional imports
 try:
@@ -33,6 +34,21 @@ class ExecutionPlanner:
 
     def init_agents(self, mode: str, knowledge_db=None):
         """Initialize agents based on mode."""
+        if not HAS_AUTOGEN:
+            raise ImportError(
+                "autogen-agentchat is required. Install with: pip install autogen-agentchat"
+            )
+
+        # Warn if interaction tools are missing (documented in engineer prompt)
+        tool_names = {getattr(t, '__name__', str(t)) for t in self.tools if callable(t)}
+        interaction_tools = {'ask_user', 'request_elevation'}
+        missing_interaction = interaction_tools - tool_names
+        if missing_interaction:
+            logger.warning(
+                f"Missing INTERACTION tools: {missing_interaction}. "
+                "Agent may fail if it tries to use ask_user() or request_elevation()."
+            )
+
         # Engineer (main agent with tools)
         self.engineer = AssistantAgent(
             name="DevSecOps_Engineer",
@@ -237,6 +253,11 @@ Environment: {self.env}"""
         intent: str = "action",
     ) -> str:
         """Process with single engineer agent."""
+        if not HAS_AUTOGEN:
+            raise ImportError(
+                "autogen-agentchat is required for execute_basic(). "
+                "Install with: pip install autogen-agentchat"
+            )
         if self.engineer is None:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 
@@ -277,6 +298,11 @@ Environment: {self.env}"""
         knowledge_context: str = None,
     ) -> str:
         """Process with multi-agent team."""
+        if not HAS_AUTOGEN:
+            raise ImportError(
+                "autogen-agentchat is required for execute_enhanced(). "
+                "Install with: pip install autogen-agentchat"
+            )
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
 
         # Build base task with context
@@ -437,8 +463,6 @@ Provide your synthesis now:"""
 
     def _extract_response(self, result: "TaskResult") -> str:
         """Extract response from TaskResult."""
-        from athena_ai.utils.logger import logger
-
         if not result.messages:
             return "✅ Task completed."
 

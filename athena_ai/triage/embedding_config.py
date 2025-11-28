@@ -145,25 +145,26 @@ class EmbeddingConfig:
 
     def __init__(self):
         """Initialize configuration (once)."""
-        if self._initialized:
-            return
+        with self._lock:
+            if self._initialized:
+                return
 
-        # Load from environment or use default
-        self._current_model = os.getenv(ENV_VAR_MODEL, DEFAULT_MODEL)
+            # Load from environment or use default
+            self._current_model = os.getenv(ENV_VAR_MODEL, DEFAULT_MODEL)
 
-        # Validate model exists
-        if self._current_model not in AVAILABLE_MODELS:
-            logger.warning(
-                f"⚠️ Unknown embedding model '{self._current_model}', "
-                f"falling back to '{DEFAULT_MODEL}'"
-            )
-            self._current_model = DEFAULT_MODEL
+            # Validate model exists
+            if self._current_model not in AVAILABLE_MODELS:
+                logger.warning(
+                    f"⚠️ Unknown embedding model '{self._current_model}', "
+                    f"falling back to '{DEFAULT_MODEL}'"
+                )
+                self._current_model = DEFAULT_MODEL
 
-        # Callback for model change notifications
-        self._on_change_callbacks: List[Callable[[str, str], None]] = []
+            # Callback for model change notifications
+            self._on_change_callbacks: List[Callable[[str, str], None]] = []
 
-        self._initialized = True
-        logger.debug(f"✅ EmbeddingConfig initialized with model: {self._current_model}")
+            self._initialized = True
+            logger.debug(f"✅ EmbeddingConfig initialized with model: {self._current_model}")
 
     @property
     def current_model(self) -> str:
@@ -218,6 +219,19 @@ class EmbeddingConfig:
         """
         self._on_change_callbacks.append(callback)
 
+    def remove_model_change_callback(self, callback: Callable[[str, str], None]) -> bool:
+        """
+        Remove a previously registered callback.
+
+        Returns:
+            True if callback was found and removed, False otherwise.
+        """
+        try:
+            self._on_change_callbacks.remove(callback)
+            return True
+        except ValueError:
+            return False
+
     @staticmethod
     def list_models() -> List[str]:
         """List available model names."""
@@ -236,7 +250,8 @@ class EmbeddingConfig:
     @classmethod
     def reset_instance(cls) -> None:
         """Reset singleton instance (for testing)."""
-        cls._instance = None
+        with cls._lock:
+            cls._instance = None
 
 
 # Convenience functions

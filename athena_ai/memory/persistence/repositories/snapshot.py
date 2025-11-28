@@ -118,7 +118,7 @@ class SnapshotRepositoryMixin:
                 return snapshot_id
 
             except PersistenceError:
-                # Re-raise PersistenceError (already rolled back above)
+                # Re-raise PersistenceError (rolled back if from limit check, or pre-transaction)
                 raise
             except Exception as e:
                 # Rollback on any other exception
