@@ -50,7 +50,6 @@ class ExecutionPlanner:
     def _init_enhanced_agents(self, knowledge_db):
         """Initialize additional agents for ENHANCED mode."""
         # Planner (no tools, just planning)
-        # Planner (no tools, just planning)
         self.planner = AssistantAgent(
             name="Planner",
             model_client=self.model_client,
@@ -135,6 +134,7 @@ FILES: read_remote_file(host, path, lines), write_remote_file(host, path, conten
 SYSTEM: disk_info(host), memory_info(host), process_list(host), network_connections(host)
 SERVICES: service_control(host, service, action)
 CONTAINERS: docker_exec(container, command, host), kubectl_exec(namespace, pod, command)
+INTERACTION: ask_user(question), request_elevation(target, command, error_message, reason)
 
 HOW TO RESPOND:
 1. **Understand first**: What is the user REALLY trying to solve?
@@ -165,7 +165,9 @@ IMPORTANT RULES:
 - ALWAYS scan a host before acting on it
 - EXPLAIN your reasoning, don't just execute blindly
 - For complex issues, ASK if the user wants you to execute fixes
-- Say "TERMINATE" at the END of your final summary
+- When using ask_user() to get information, CONTINUE the task after receiving the response - do NOT terminate until the full task is complete
+- When a command fails with "Permission denied", use request_elevation() to ask user for privilege escalation
+- Say "TERMINATE" ONLY at the END of your FINAL summary, after completing ALL requested actions
 
 Environment: {self.env}"""
 
@@ -250,8 +252,9 @@ Environment: {self.env}"""
             task += f"\n\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
 
         # Create a simple team with just the engineer
-        # Higher limit to give agent room to synthesize after tool calls
-        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(15)
+        # Higher limit to give agent room for multi-step tasks (healthcheck, diagnosis, etc.)
+        # Each tool call = 2 messages (request + result), so 25 allows ~10 tool calls + synthesis
+        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(25)
 
         team = RoundRobinGroupChat(
             participants=[self.engineer],
@@ -282,13 +285,18 @@ Environment: {self.env}"""
         # Add intent-specific guidance
         intent_guidance = self._get_intent_guidance(intent)
 
-        # Add tool restrictions if specified
+        # Build tool restriction text if specified
+        tool_restriction = ""
+        if allowed_tools:
+            tool_restriction = f"\n\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
+
         task = f"""{intent_guidance}
 
 {base_task}
 
 Priority: {priority_name}
 Environment: {self.env}
+{tool_restriction}
 
 Past Knowledge Context:
 {knowledge_context or "No relevant past incidents found."}

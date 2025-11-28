@@ -5,6 +5,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+# File scanning limits
+MAX_FILE_SIZE_BYTES = 10 * 1024  # 10KB - aligned with content truncation
+MAX_CONTENT_CHARS = 5000
+
+# Base directory for /etc file scanning
+ETC_BASE = Path("/etc")
 
 # /etc files to scan
 # NOTE: Deliberately excludes sensitive security files:
@@ -34,46 +40,64 @@ def scan_etc_files() -> Dict[str, Any]:
 
     for file_path in ETC_FILES_TO_SCAN:
         path = Path(file_path)
-        # Resolve symlinks and validate the path is actually in /etc
+        # Resolve symlinks (strict=False to handle non-existent paths gracefully)
         try:
-            resolved_path = path.resolve(strict=True)
+            resolved_path = path.resolve(strict=False)
         except (OSError, RuntimeError):
             files[file_path] = {"error": "path resolution failed"}
             continue
 
-        if not str(resolved_path).startswith("/etc/"):
-            files[file_path] = {"error": "path outside /etc"}
+        # Validate the resolved path is contained within /etc
+        # Use try/except to handle edge cases where paths have no common base
+        try:
+            etc_resolved = ETC_BASE.resolve(strict=False)
+            common = os.path.commonpath([str(resolved_path), str(etc_resolved)])
+            if common != str(etc_resolved):
+                files[file_path] = {"error": "symlink outside /etc"}
+                continue
+        except ValueError:
+            # commonpath raises ValueError if paths are on different drives (Windows)
+            # or have no common path
+            files[file_path] = {"error": "invalid path"}
             continue
 
-        if resolved_path.exists() and resolved_path.is_file():
-            try:
-                # Check file size to avoid reading huge files
-                stat = resolved_path.stat()
-                if stat.st_size > 100 * 1024:  # 100KB limit
-                    files[file_path] = {"error": "file too large", "size": stat.st_size}
-                    continue
+        # Check existence and file type on resolved path
+        if not resolved_path.exists():
+            files[file_path] = {"error": "file not found"}
+            continue
 
-                # Check if readable
-                if not os.access(resolved_path, os.R_OK):
-                    files[file_path] = {"error": "permission denied"}
-                    continue
+        if not resolved_path.is_file():
+            files[file_path] = {"error": "not a regular file"}
+            continue
 
-                content = resolved_path.read_text(errors="replace")
+        try:
+            # Check file size to avoid reading huge files
+            stat = resolved_path.stat()
+            if stat.st_size > MAX_FILE_SIZE_BYTES:
+                files[file_path] = {"error": "file too large", "size": stat.st_size}
+                continue
 
-                # Parse specific files
-                if file_path == "/etc/hosts":
-                    files[file_path] = _parse_etc_hosts(content)
-                elif file_path == "/etc/resolv.conf":
-                    files[file_path] = _parse_resolv_conf(content)
-                else:
-                    # Store raw content (truncated)
-                    files[file_path] = {
-                        "content": content[:5000] if len(content) > 5000 else content,
-                        "truncated": len(content) > 5000,
-                    }
+            # Check if readable
+            if not os.access(resolved_path, os.R_OK):
+                files[file_path] = {"error": "permission denied"}
+                continue
 
-            except Exception as e:
-                files[file_path] = {"error": str(e)}
+            content = resolved_path.read_text(errors="replace")
+
+            # Parse specific files
+            if file_path == "/etc/hosts":
+                files[file_path] = _parse_etc_hosts(content)
+            elif file_path == "/etc/resolv.conf":
+                files[file_path] = _parse_resolv_conf(content)
+            else:
+                # Store raw content (truncated)
+                files[file_path] = {
+                    "content": content[:MAX_CONTENT_CHARS] if len(content) > MAX_CONTENT_CHARS else content,
+                    "truncated": len(content) > MAX_CONTENT_CHARS,
+                }
+
+        except Exception as e:
+            files[file_path] = {"error": str(e)}
 
     return files
 

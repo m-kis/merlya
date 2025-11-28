@@ -112,8 +112,11 @@ class ContextCommandHandler:
         """Full refresh with SSH scan."""
         context = self._execute_with_progress("Refreshing (full)...", scan_remote=True, force=True)
         remote_hosts = context.get('remote_hosts', {})
-        accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-        print_success(f"Full refresh complete (cache cleared, {accessible}/{len(remote_hosts)} hosts accessible)")
+        if remote_hosts:
+            accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
+            print_success(f"Full refresh complete (cache cleared, {accessible}/{len(remote_hosts)} hosts accessible)")
+        else:
+            print_success("Full refresh complete (cache cleared)")
 
     def _refresh_quick(self):
         """Quick refresh without SSH."""

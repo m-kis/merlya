@@ -85,8 +85,9 @@ def sanitize_inventory_content(content: str) -> str:
     # Replace company/domain-specific parts while keeping structural info
 
     # FQDN pattern: redact domain portions after first dot
+    # Limit domain depth to {1,10} to prevent ReDoS on pathological inputs
     sanitized = re.sub(
-        r'\b([a-zA-Z][a-zA-Z0-9_-]*)\.((?:[a-zA-Z0-9_-]+\.)+[a-zA-Z]{2,})\b',
+        r'\b([a-zA-Z][a-zA-Z0-9_-]*)\.((?:[a-zA-Z0-9_-]+\.){1,10}[a-zA-Z]{2,})\b',
         r'\1.[DOMAIN_REDACTED]',
         sanitized
     )
@@ -158,7 +159,7 @@ def sanitize_inventory_content(content: str) -> str:
 
     # 9. Redact email addresses
     sanitized = re.sub(
-        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
         '[EMAIL_REDACTED]',
         sanitized
     )
@@ -226,7 +227,7 @@ def sanitize_prompt_injection(content: str) -> Tuple[str, List[str]]:
          '[INJECTION_BLOCKED:role_manipulation]'),
 
         # Delimiter escape attempts
-        (r'```\s*(end|stop|ignore|exit)',
+        (r'(?i)```\s*(end|stop|ignore|exit)',
          '[INJECTION_BLOCKED:delimiter_escape]'),
         (r'(?i)\b(end|close)\s+(of\s+)?(content|inventory|data|input)',
          '[INJECTION_BLOCKED:delimiter_escape]'),

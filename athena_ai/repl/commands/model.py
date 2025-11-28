@@ -24,8 +24,15 @@ class ModelCommandHandler:
 
         cmd = args[0]
 
+        # Handle embedding subcommand separately (no LLM config needed)
+        if cmd == 'embedding':
+            self._handle_embedding(args[1:])
+            return True
+
         try:
-            if not hasattr(self.repl, 'orchestrator') or not hasattr(self.repl.orchestrator, 'llm_router'):
+            if (not hasattr(self.repl, 'orchestrator') or
+                not hasattr(self.repl.orchestrator, 'llm_router') or
+                not hasattr(self.repl.orchestrator.llm_router, 'model_config')):
                 print_error("Model configuration not available")
                 return True
             model_config = self.repl.orchestrator.llm_router.model_config
@@ -164,11 +171,89 @@ class ModelCommandHandler:
         # Reload agents to apply the new provider
         self.repl.orchestrator.reload_agents()
 
+    def _handle_embedding(self, args: list):
+        """Handle /model embedding subcommand for AI features configuration."""
+        from athena_ai.triage.embedding_config import (
+            AVAILABLE_MODELS,
+            get_embedding_config,
+        )
+
+        config = get_embedding_config()
+
+        if not args:
+            # Show current embedding config
+            self._show_embedding_config(config)
+            return
+
+        subcmd = args[0].lower()
+
+        if subcmd == 'list':
+            # List available embedding models
+            table = Table(title="🧠 Available Embedding Models")
+            table.add_column("Model", style="cyan")
+            table.add_column("Size", style="yellow", justify="right")
+            table.add_column("Dims", style="green", justify="right")
+            table.add_column("Speed", style="blue")
+            table.add_column("Quality", style="magenta")
+            table.add_column("Description", style="dim")
+
+            for name, info in AVAILABLE_MODELS.items():
+                is_current = "→ " if name == config.current_model else "  "
+                table.add_row(
+                    f"{is_current}{name}",
+                    f"{info.size_mb}MB",
+                    str(info.dimensions),
+                    info.speed,
+                    info.quality,
+                    info.description,
+                )
+            console.print(table)
+
+        elif subcmd == 'set' and len(args) > 1:
+            # Set embedding model
+            model_name = args[1]
+            if config.set_model(model_name):
+                print_success(f"Embedding model changed to: {model_name}")
+                console.print("[dim]ℹ️ Model will be loaded on next AI feature use[/dim]")
+            else:
+                print_error(f"Unknown model: {model_name}")
+                console.print("[dim]Use '/model embedding list' to see available models[/dim]")
+
+        elif subcmd == 'show':
+            self._show_embedding_config(config)
+
+        else:
+            console.print("[yellow]Embedding Usage:[/yellow]")
+            console.print("  /model embedding - Show current embedding model")
+            console.print("  /model embedding list - List available models")
+            console.print("  /model embedding set <model> - Set embedding model")
+
+    def _show_embedding_config(self, config):
+        """Show current embedding model configuration."""
+        info = config.model_info
+
+        console.print("\n[bold]🧠 Embedding Model Configuration[/bold]\n")
+        console.print(f"  Current Model: [cyan]{config.current_model}[/cyan]")
+        console.print(f"  Size: [yellow]{info.size_mb}MB[/yellow]")
+        console.print(f"  Dimensions: [green]{info.dimensions}[/green]")
+        console.print(f"  Speed: [blue]{info.speed}[/blue]")
+        console.print(f"  Quality: [magenta]{info.quality}[/magenta]")
+        console.print(f"  Description: [dim]{info.description}[/dim]")
+        console.print()
+        console.print("[dim]ℹ️ Used for: Triage classification, Tool selection, Error analysis[/dim]")
+        console.print("[dim]📝 Tip: Set via ATHENA_EMBEDDING_MODEL env var for persistence[/dim]")
+        console.print()
+
     def _show_help(self):
         """Show help for /model command."""
         console.print("[yellow]Usage:[/yellow]")
-        console.print("  /model show - Show current configuration")
+        console.print("  /model show - Show current LLM configuration")
         console.print("  /model local <on|off|set> [model] - Enable/Disable/Configure local LLM (Ollama)")
-        console.print("  /model list [provider] - List available models")
-        console.print("  /model set [provider] <model> - Set model for provider")
+        console.print("  /model list [provider] - List available LLM models")
+        console.print("  /model set [provider] <model> - Set LLM model for provider")
         console.print("  /model provider <provider> - Switch cloud provider")
+        console.print()
+        console.print("[yellow]Embedding Models (AI features):[/yellow]")
+        console.print("  /model embedding - Show current embedding model")
+        console.print("  /model embedding list - List available embedding models")
+        console.print("  /model embedding set <model> - Set embedding model")

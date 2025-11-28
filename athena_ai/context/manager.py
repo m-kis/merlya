@@ -27,7 +27,7 @@ class ContextManager:
             force: If True, bypass cache and force refresh everything
             progress_callback: Optional callback(current, total, hostname) for progress updates
         """
-        logger.info("Force discovery scan requested")
+        logger.info("🔄 Force discovery scan requested")
 
         if force:
             self.cache.invalidate_all()
@@ -58,7 +58,7 @@ class ContextManager:
         context = self.get_context()
         self.storage.save_context(context)
 
-        logger.info("Discovery scan complete")
+        logger.info("✅ Discovery scan complete")
         return context
 
     def get_context(self, auto_refresh: bool = True, include_remote: bool = False) -> Dict[str, Any]:
@@ -101,7 +101,7 @@ class ContextManager:
 
     def refresh_inventory(self):
         """Force refresh just the inventory (fast)."""
-        logger.info("Refreshing inventory only")
+        logger.info("🔄 Refreshing inventory only")
         self.cache.invalidate("inventory")
         inventory = self.cache.get("inventory", self.discovery.parse_inventory)
         return inventory
@@ -127,10 +127,10 @@ class ContextManager:
             cache_age = __import__('time').time() - cache_entry.get("timestamp", 0)
 
             if cache_age < 1800:  # 30 minutes TTL for host scans
-                logger.debug(f"Using cached info for {hostname_or_ip} (age: {int(cache_age)}s)")
+                logger.debug(f"🔍 Using cached info for {hostname_or_ip} (age: {int(cache_age)}s)")
                 return current_remote_hosts[hostname_or_ip]
 
-        logger.info(f"Scanning {hostname_or_ip} (cache miss or expired)")
+        logger.info(f"🖥️ Scanning {hostname_or_ip} (cache miss or expired)")
 
         # Resolve hostname to IP if needed
         inventory = self.cache.get("inventory", self.discovery.parse_inventory)

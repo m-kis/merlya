@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
 
+from .embedding_config import get_embedding_config
 from .priority import Intent, Priority, PriorityResult
 from .signals import SignalDetector
 
@@ -25,30 +26,48 @@ try:
 except ImportError:
     HAS_EMBEDDINGS = False
     np = None  # type: ignore
-    logger.debug("sentence-transformers not installed. Using keyword-only classification.")
+    logger.debug("⚠️ sentence-transformers not installed. Using keyword-only classification.")
 
 
-# Model name - small and fast, good for intent classification
-DEFAULT_MODEL = "paraphrase-MiniLM-L3-v2"  # 17MB, very fast
+# Re-export for backwards compatibility
+DEFAULT_MODEL = "paraphrase-MiniLM-L3-v2"
 
 
 class EmbeddingCache:
     """LRU cache for text embeddings to avoid recomputation."""
 
-    def __init__(self, model_name: str = DEFAULT_MODEL, max_size: int = 1000):
+    def __init__(self, model_name: Optional[str] = None, max_size: int = 1000):
         self._model: Optional["SentenceTransformer"] = None
-        self._model_name = model_name
+        # Use centralized config if no model specified
+        self._model_name = model_name or get_embedding_config().current_model
         self._cache: Dict[str, "np.ndarray"] = {}
         self._max_size = max_size
         self._access_order: List[str] = []
+
+        # Register for model change notifications (only if using centralized config)
+        if model_name is None:
+            get_embedding_config().on_model_change(self._on_model_change)
+
+    def _on_model_change(self, old_model: str, new_model: str) -> None:
+        """Handle model change - clear cache and reload."""
+        logger.info(f"🔄 EmbeddingCache: Model changed {old_model} → {new_model}")
+        self._model_name = new_model
+        self._model = None  # Force reload on next use
+        self._cache.clear()
+        self._access_order.clear()
 
     @property
     def model(self) -> "SentenceTransformer":
         """Lazy load the model."""
         if self._model is None:
-            logger.info(f"Loading embedding model: {self._model_name}")
+            logger.info(f"🔄 Loading embedding model: {self._model_name}")
             self._model = SentenceTransformer(self._model_name)
         return self._model
+
+    @property
+    def model_name(self) -> str:
+        """Get current model name."""
+        return self._model_name
 
     def _get_key(self, text: str) -> str:
         """Generate cache key from text."""

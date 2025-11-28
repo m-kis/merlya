@@ -155,7 +155,7 @@ class InventoryImporter:
             )
             # Clean up the source since no hosts were added
             try:
-                self.repo.delete_source(source_name)
+                self.repo.delete_source(source_id)
             except Exception as cleanup_err:
                 logger.warning(
                     "Failed to clean up source '%s' (id=%s) after import failure: %s",

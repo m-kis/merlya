@@ -40,10 +40,10 @@ class PermissionManager:
         """
         # Check cache first
         if target in self.capabilities_cache:
-            logger.debug(f"Using cached permission capabilities for {target}")
+            logger.debug(f"🔍 Using cached permission capabilities for {target}")
             return self.capabilities_cache[target]
 
-        logger.debug(f"Detecting permission capabilities on {target}")
+        logger.debug(f"🔒 Detecting permission capabilities on {target}")
 
         capabilities = {
             'user': 'unknown',
@@ -93,7 +93,7 @@ class PermissionManager:
         if result['success'] and result['stdout'].strip():
             if not capabilities['elevation_method']:
                 capabilities['elevation_method'] = 'doas'
-                logger.info(f"{target}: Using doas for elevation")
+                logger.info(f"🔒 {target}: Using doas for elevation")
 
         # Check for su (available on most Unix systems)
         # Prefer su if user is in wheel/admin group OR if sudo requires password
@@ -105,20 +105,20 @@ class PermissionManager:
             if not capabilities['elevation_method']:
                 if capabilities['has_privileged_group']:
                     capabilities['elevation_method'] = 'su'
-                    logger.info(f"{target}: User in privileged group {capabilities['privileged_groups']}, using 'su' for elevation")
+                    logger.info(f"🔒 {target}: User in privileged group {capabilities['privileged_groups']}, using 'su' for elevation")
                 elif capabilities['has_sudo'] and not capabilities['sudo_nopasswd']:
                     # sudo exists but requires password, prefer su instead
                     capabilities['elevation_method'] = 'su'
-                    logger.info(f"{target}: Preferring 'su' over 'sudo -S' (avoids password prompt)")
+                    logger.info(f"🔒 {target}: Preferring 'su' over 'sudo -S' (avoids password prompt)")
                 else:
                     # su available but may not work, use as last resort
                     capabilities['elevation_method'] = 'su'
-                    logger.warning(f"{target}: Using 'su' but user not in wheel/admin group, may fail")
+                    logger.warning(f"⚠️ {target}: Using 'su' but user not in wheel/admin group, may fail")
 
         # 6. Fallback to sudo-with-password if nothing else available
         if not capabilities['elevation_method'] and capabilities['has_sudo']:
             capabilities['elevation_method'] = 'sudo_with_password'
-            logger.warning(f"{target}: Only sudo-with-password available, commands may prompt for password")
+            logger.warning(f"⚠️ {target}: Only sudo-with-password available, commands may prompt for password")
 
         # 6. If root user, no elevation needed
         if capabilities['is_root']:
@@ -127,7 +127,7 @@ class PermissionManager:
         # Cache for future use
         self.capabilities_cache[target] = capabilities
 
-        logger.info(f"Permission capabilities for {target}: user={capabilities['user']}, "
+        logger.info(f"🔒 Permission capabilities for {target}: user={capabilities['user']}, "
                    f"sudo={'yes (nopasswd)' if capabilities['sudo_nopasswd'] else 'yes' if capabilities['has_sudo'] else 'no'}, "
                    f"elevation={capabilities['elevation_method']}")
 
@@ -240,7 +240,7 @@ class PermissionManager:
             return f"su -c '{escaped_command}'"
         else:
             # No elevation available - return original command
-            logger.warning(f"No privilege elevation method available on {target} for command: {command}")
+            logger.warning(f"⚠️ No privilege elevation method available on {target} for command: {command}")
             return command
 
     def get_adaptive_strategies(self, goal: str, target: str) -> List[Dict[str, Any]]:

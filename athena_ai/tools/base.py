@@ -129,9 +129,12 @@ class ToolContext:
 
             # Step 2: Initialize the repository if import succeeded
             if get_inventory_repository is not None:
-                import sqlite3
                 try:
+                    import sqlite3
                     self.inventory_repo = get_inventory_repository()
+                except ImportError as e:
+                    # sqlite3 not available
+                    logger.warning(f"Failed to initialize inventory repository: {type(e).__name__}: {e}")
                 except (ValueError, RuntimeError, OSError, sqlite3.Error) as e:
                     # Known initialization errors:
                     # - ValueError/RuntimeError: invalid config or runtime issues

@@ -35,13 +35,32 @@ class Intent(Enum):
     def allowed_tools(self) -> Optional[List[str]]:
         """Tools allowed for this intent type. None means all tools allowed."""
         if self == Intent.QUERY:
-            # Include request_elevation for read operations on protected files (logs, configs)
+            # Read-only tools for information gathering
+            # All tools listed here MUST exist in orchestrator._collect_tools()
             return [
+                # Host information
                 "list_hosts",
                 "get_infrastructure_context",
+                "scan_host",
+                "check_permissions",
+                # File reading (read-only operations)
+                "read_remote_file",
+                "tail_logs",
+                "glob_files",
+                "grep_files",
+                "find_file",
+                # System info (read-only)
+                "disk_info",
+                "memory_info",
+                "network_connections",
+                "process_list",
+                # Knowledge & learning
                 "recall_skill",
+                "search_knowledge",
+                "get_solution_suggestion",
+                # Interaction
+                "ask_user",
                 "request_elevation",
-                "execute_ssh_command",  # Needed for read commands (cat, tail, grep)
             ]
         # ACTION and ANALYSIS: all tools allowed
         return None

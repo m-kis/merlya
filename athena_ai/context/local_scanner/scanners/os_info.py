@@ -23,6 +23,9 @@ def scan_os() -> Dict[str, Any]:
 
     # Linux-specific: get distribution info
     if platform.system() == "Linux":
+        info["distro"] = "Unknown"
+        info["distro_version"] = ""
+        info["distro_codename"] = ""
         try:
             # Try reading /etc/os-release
             os_release = Path("/etc/os-release")
@@ -49,6 +52,8 @@ def scan_os() -> Dict[str, Any]:
     # macOS-specific
     elif platform.system() == "Darwin":
         info["distro"] = "macOS"
+        info["distro_version"] = ""
+        info["distro_codename"] = ""
         try:
             result = subprocess.run(
                 ["sw_vers", "-productVersion"],

@@ -82,9 +82,9 @@ class CredentialManager:
                         except ValueError:
                             # Unknown type, default to CONFIG
                             self._variables[key] = (value, VariableType.CONFIG)
-                logger.debug(f"Loaded {len(self._variables)} variables from storage")
+                logger.debug(f"🔑 Loaded {len(self._variables)} variables from storage")
         except Exception as e:
-            logger.warning(f"Failed to load variables: {e}")
+            logger.warning(f"⚠️ Failed to load variables: {e}")
 
     def _save_variables(self):
         """Save non-secret variables to storage."""
@@ -99,9 +99,9 @@ class CredentialManager:
                 if var_type != VariableType.SECRET
             }
             self._storage.set_config(self.STORAGE_KEY, to_save)
-            logger.debug(f"Saved {len(to_save)} variables to storage")
+            logger.debug(f"✅ Saved {len(to_save)} variables to storage")
         except Exception as e:
-            logger.warning(f"Failed to save variables: {e}")
+            logger.warning(f"⚠️ Failed to save variables: {e}")
 
     def set_storage(self, storage_manager):
         """
@@ -437,7 +437,7 @@ class CredentialManager:
             still_unresolved = [v for v in still_unresolved if v not in secret_var_names]
             for var in still_unresolved:
                 logger.warning(
-                    f"Variable @{var} referenced but not defined. "
+                    f"⚠️ Variable @{var} referenced but not defined. "
                     f"Use '/variables set {var} <value>' or '/inventory add' to define it."
                 )
 
@@ -470,12 +470,12 @@ class CredentialManager:
                     else:
                         replacement = host["hostname"]
                     text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', replacement, text)
-                    logger.debug(f"Resolved @{var} to inventory host: {replacement}")
+                    logger.debug(f"✅ Resolved @{var} to inventory host: {replacement}")
 
         except ImportError:
-            logger.debug("Inventory repository not available for host resolution")
+            logger.debug("🔍 Inventory repository not available for host resolution")
         except Exception as e:
-            logger.debug(f"Failed to resolve inventory hosts: {e}")
+            logger.debug(f"⚠️ Failed to resolve inventory hosts: {e}")
 
         return text
 

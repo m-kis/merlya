@@ -4,9 +4,11 @@ description: Comprehensive health check of a host
 aliases: [hc, health]
 ---
 
-# Health Check for {{$1}}
+# Health Check for {{$1|<HOST_REQUIRED>}}
 
-Perform a comprehensive health check on {{$1}}:
+**IMPORTANT**: If the host is not specified (shows "<HOST_REQUIRED>"), use `ask_user` to ask which host to check, then CONTINUE with the health check using that host. Do NOT terminate after getting the host name - proceed with the full health check.
+
+Perform a comprehensive health check on {{$1|the specified host}}:
 
 ## System Resources
 - Check CPU usage and load average

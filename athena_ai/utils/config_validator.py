@@ -2,10 +2,12 @@
 Configuration Validator for Athena.
 
 Validates configuration and dependencies before starting.
+Performs comprehensive checks for all critical components.
 """
 import os
 import sys
 from pathlib import Path
+from typing import Dict
 
 from rich.console import Console
 from rich.prompt import Confirm
@@ -16,12 +18,20 @@ console = Console()
 class ConfigValidator:
     """
     Validates configuration and dependencies for Athena.
+
+    Checks:
+    - Configuration directory and files
+    - AI provider configuration
+    - Core dependencies (autogen)
+    - Optional dependencies (sentence-transformers for AI-powered features)
+    - Database connectivity (if configured)
     """
 
     def __init__(self, env: str = "dev"):
         self.env = env
         self.config_dir = Path.home() / ".athena"
         self.env_file = self.config_dir / ".env"
+        self._status: Dict[str, bool] = {}
 
     def check_all(self) -> bool:
         """
@@ -29,19 +39,35 @@ class ConfigValidator:
         """
         console.print("[bold]🔍 Checking System Readiness...[/bold]")
 
-        checks = [
-            self.check_config_dir,
-            self.check_env_file,
-            self.check_provider,
-            self.check_dependencies
+        # Critical checks (must pass)
+        critical_checks = [
+            ("Config directory", self.check_config_dir),
+            ("Environment file", self.check_env_file),
+            ("AI provider", self.check_provider),
+            ("Core dependencies", self.check_dependencies),
         ]
 
-        for check in checks:
-            if not check():
-                return False
+        # Optional checks (warn but don't fail)
+        optional_checks = [
+            ("Embeddings (AI features)", self.check_embeddings),
+            ("Database", self.check_database),
+        ]
 
-        console.print("[green]✅ System is ready![/green]")
-        return True
+        all_critical_passed = True
+        for name, check in critical_checks:
+            result = check()
+            self._status[name] = result
+            if not result:
+                all_critical_passed = False
+
+        # Run optional checks (don't fail startup)
+        for name, check in optional_checks:
+            result = check()
+            self._status[name] = result
+
+        if all_critical_passed:
+            console.print("[green]✅ System is ready![/green]")
+        return all_critical_passed
 
     def check_config_dir(self) -> bool:
         """Check if config directory exists."""
@@ -119,7 +145,7 @@ class ConfigValidator:
         return True
 
     def check_dependencies(self) -> bool:
-        """Check for optional but recommended dependencies."""
+        """Check for core dependencies (autogen)."""
         # Check for new autogen-agentchat API (0.7+)
         try:
             from autogen_agentchat.agents import AssistantAgent
@@ -138,6 +164,52 @@ class ConfigValidator:
         console.print("[yellow]⚠ 'autogen-agentchat' is not installed.[/yellow]")
         console.print("[dim]It is required for the Multi-Agent system.[/dim]")
         return False
+
+    def check_embeddings(self) -> bool:
+        """
+        Check if sentence-transformers is available for AI-powered features.
+
+        This is optional - the system falls back to heuristics if unavailable.
+        """
+        try:
+            from sentence_transformers import SentenceTransformer
+            # Don't load the model here, just check import
+            return True
+        except ImportError:
+            console.print("[dim]ℹ️ sentence-transformers not installed (AI features will use heuristic fallback)[/dim]")
+            return False
+
+    def check_database(self) -> bool:
+        """
+        Check if database is available (FalkorDB for knowledge graph).
+
+        This is optional - the system works without persistent storage.
+        """
+        # Check if FalkorDB is configured
+        falkor_host = os.getenv("FALKORDB_HOST")
+        if not falkor_host:
+            # Not configured, skip silently
+            return False
+
+        try:
+            from athena_ai.memory import get_memory_client
+            client = get_memory_client()
+            return client.is_connected if client else False
+        except Exception:
+            console.print("[dim]ℹ️ Database not available (knowledge persistence disabled)[/dim]")
+            return False
+
+    def get_status(self) -> Dict[str, bool]:
+        """
+        Get status of all checks.
+
+        Returns:
+            Dict mapping check name to pass/fail status
+        """
+        if not self._status:
+            # Run checks if not already done
+            self.check_all()
+        return self._status.copy()
 
     def fix_issues(self) -> bool:
         """

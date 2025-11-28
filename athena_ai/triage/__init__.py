@@ -11,6 +11,7 @@ Supports:
 from .ai_classifier import AITriageClassifier, get_ai_classifier
 from .behavior import BEHAVIOR_PROFILES, BehaviorProfile, describe_behavior, get_behavior
 from .classifier import PriorityClassifier, classify_priority, get_classifier
+from .embedding_config import EmbeddingConfig, get_embedding_config
 from .error_analyzer import ErrorAnalysis, ErrorAnalyzer, ErrorType, get_error_analyzer
 from .priority import Intent, Priority, PriorityResult, TriageResult
 from .signals import SignalDetector
@@ -34,6 +35,9 @@ __all__ = [
     "SmartTriageClassifier",
     "get_smart_classifier",
     "reset_smart_classifier",
+    # Embedding Config
+    "EmbeddingConfig",
+    "get_embedding_config",
     # Behavior
     "BehaviorProfile",
     "BEHAVIOR_PROFILES",

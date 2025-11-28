@@ -25,7 +25,7 @@ def read_remote_file(
         File contents or error
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: read_remote_file {path} on {host}")
+    logger.info(f"📄 Tool: read_remote_file {path} on {host}")
 
     is_valid, msg = validate_host(host)
     if not is_valid:
@@ -56,7 +56,7 @@ def glob_files(
         List of matching files
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: glob_files {pattern} on {host}")
+    logger.info(f"🔍 Tool: glob_files {pattern} on {host}")
 
     is_valid, msg = validate_host(host)
     if not is_valid:
@@ -90,7 +90,7 @@ def grep_files(
         Matching lines
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: grep_files '{pattern}' in {path} on {host}")
+    logger.info(f"🔍 Tool: grep_files '{pattern}' in {path} on {host}")
 
     is_valid, msg = validate_host(host)
     if not is_valid:
@@ -126,7 +126,7 @@ def find_file(
         List of found files
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: find_file {name} in {path} on {host}")
+    logger.info(f"🔍 Tool: find_file {name} in {path} on {host}")
 
     is_valid, msg = validate_host(host)
     if not is_valid:
@@ -165,7 +165,7 @@ def write_remote_file(
         Success or error
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: write_remote_file {path} on {host}")
+    logger.info(f"📝 Tool: write_remote_file {path} on {host}")
 
     is_valid, msg = validate_host(host)
     if not is_valid:
@@ -205,7 +205,7 @@ def tail_logs(
         Log content
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: tail_logs {path} on {host}")
+    logger.info(f"📋 Tool: tail_logs {path} on {host}")
 
     is_valid, msg = validate_host(host)
     if not is_valid:

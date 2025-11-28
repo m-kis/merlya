@@ -50,7 +50,14 @@ class TestLLMParserTimeout:
         assert any("timed out after 1 second" in err for err in errors)
 
     def test_timeout_zero_disables_timeout(self, mock_llm_router):
-        """Test that timeout=0 disables the timeout mechanism."""
+        """Test that timeout=0 disables the timeout mechanism.
+
+        Note: This behavior differs from environment variable parsing where
+        ATHENA_LLM_TIMEOUT=0 falls back to DEFAULT_LLM_TIMEOUT. The distinction
+        is intentional:
+        - Env var: Users shouldn't accidentally disable timeout via config
+        - Function param: Advanced programmatic use can explicitly disable
+        """
         from athena_ai.inventory.parser.parsers.llm import parse_with_llm
 
         hosts, errors, warnings = parse_with_llm(
@@ -159,7 +166,17 @@ class TestLLMTimeoutConfiguration:
         assert config.LLM_TIMEOUT == 90
 
     def test_invalid_env_var_timeout_fallback(self, monkeypatch):
-        """Test that _parse_llm_timeout handles invalid values gracefully."""
+        """Test that _parse_llm_timeout handles invalid values gracefully.
+
+        Note: This tests the internal _parse_llm_timeout function directly.
+        While testing private functions is generally fragile, this validates
+        critical safety behavior (rejecting invalid/zero values) that affects
+        module initialization.
+
+        Design note: ATHENA_LLM_TIMEOUT=0 intentionally falls back to default
+        to prevent accidental timeout disabling via configuration. To disable
+        timeout programmatically, pass timeout=0 to parse_with_llm() directly.
+        """
         from athena_ai.inventory.parser.parsers.llm.config import (
             DEFAULT_LLM_TIMEOUT,
             _parse_llm_timeout,
@@ -173,7 +190,7 @@ class TestLLMTimeoutConfiguration:
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "-10")
         assert _parse_llm_timeout() == DEFAULT_LLM_TIMEOUT
 
-        # Test zero value falls back to default
+        # Test zero value falls back to default (intentional - see docstring)
         monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "0")
         assert _parse_llm_timeout() == DEFAULT_LLM_TIMEOUT
 

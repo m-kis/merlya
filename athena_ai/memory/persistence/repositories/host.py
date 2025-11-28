@@ -487,8 +487,10 @@ class HostRepositoryMixin:
             params.append(environment)
 
         if group:
-            query += " AND groups LIKE ?"
-            params.append(f'%"{group}"%')
+            # Escape SQL wildcard characters for exact group name matching
+            escaped_group = group.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            query += " AND groups LIKE ? ESCAPE '\\'"
+            params.append(f'%"{escaped_group}"%')
 
         if source_id is not None:
             query += " AND source_id = ?"

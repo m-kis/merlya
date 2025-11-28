@@ -258,7 +258,7 @@ from athena_ai.utils.logger import logger
 
 ### Logging & Visual Output
 
-**Use emojis and colors for user-facing output.** This improves readability and helps users quickly identify issues.
+**Use emojis for ALL output** (user-facing AND logs). This improves readability and helps quickly identify issues in both real-time output and log files.
 
 #### Emoji Convention
 
@@ -306,18 +306,34 @@ display.console.print("🔒 [cyan]Risk level:[/cyan] [bold red]critical[/bold re
 display.console.print("🚨 [bold red]P0 ALERT:[/bold red] Production database unreachable!")
 ```
 
-#### Logger for Debug/Internal Logs
+#### Logger for Internal Logs
 
-Use `logger` for internal/debug logs (not user-facing):
+Use `logger` for internal logs with emojis for consistency:
 
 ```python
 from athena_ai.utils.logger import logger
 
-logger.debug("Detailed info for debugging")
-logger.info("General operational info")
-logger.warning("Something unexpected")
-logger.error("Error occurred")
+# Always use emojis in logs for quick visual parsing
+logger.debug("🔍 Detailed info for debugging")
+logger.info("✅ Operation completed successfully")
+logger.info("⚡ Executing command on host")
+logger.info("🖥️ Scanning host web-prod-01")
+logger.warning("⚠️ Something unexpected happened")
+logger.error("❌ Operation failed: connection refused")
 ```
+
+**Logger emoji patterns:**
+
+| Level | Prefix | Example |
+|-------|--------|---------|
+| DEBUG | 🔍 | `logger.debug("🔍 Cache lookup for key: xyz")` |
+| INFO (success) | ✅ | `logger.info("✅ SSH connection established")` |
+| INFO (action) | ⚡ | `logger.info("⚡ Executing: systemctl status")` |
+| INFO (host) | 🖥️ | `logger.info("🖥️ Scanning host db-prod-01")` |
+| INFO (network) | 🌐 | `logger.info("🌐 Connecting to 10.0.0.1")` |
+| WARNING | ⚠️ | `logger.warning("⚠️ Slow response from API")` |
+| ERROR | ❌ | `logger.error("❌ Connection refused")` |
+| CRITICAL | 🚨 | `logger.critical("🚨 Database unreachable!")` |
 
 #### Examples in Context
 

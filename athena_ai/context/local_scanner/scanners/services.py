@@ -44,7 +44,7 @@ def scan_services() -> Dict[str, Any]:
                             "state": "running",
                         })
         except FileNotFoundError:
-            pass
+            logger.debug("systemctl not found")
         except Exception as e:
             logger.debug(f"Could not list systemd services: {e}")
 
@@ -89,7 +89,7 @@ def scan_services() -> Dict[str, Any]:
                         "status": parts[2],
                     })
     except FileNotFoundError:
-        pass
+        logger.debug("docker not found")
     except Exception as e:
         logger.debug(f"Could not list Docker containers: {e}")
 

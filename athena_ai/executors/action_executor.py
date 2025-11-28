@@ -67,7 +67,7 @@ class ActionExecutor:
         try:
             return self.credentials.get_db_credentials(host, service)
         except (KeyboardInterrupt, EOFError):
-            logger.info("Credential prompt cancelled")
+            logger.info("ℹ️ Credential prompt cancelled")
             return None
 
     def execute(self, target: str, command: str, action_type: str = "shell", confirm: bool = False, timeout: int = 60) -> Dict[str, Any]:
@@ -88,7 +88,7 @@ class ActionExecutor:
         risk = self.risk_assessor.assess(command)
         # Log command with sensitive info redacted
         redacted_command = redact_sensitive_info(command)
-        logger.info(f"Executing {action_type} on {target}: {redacted_command} (Risk: {risk['level']})")
+        logger.info(f"⚡ Executing {action_type} on {target}: {redacted_command} (Risk: {risk['level']})")
 
         if self.risk_assessor.requires_confirmation(risk['level']) and not confirm:
             return {
@@ -128,7 +128,7 @@ class ActionExecutor:
 
             return result
         except subprocess.TimeoutExpired:
-            logger.error(f"Command timed out after {timeout}s")
+            logger.error(f"⏱️ Command timed out after {timeout}s")
             return {"success": False, "error": f"Command timed out after {timeout} seconds"}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -155,7 +155,7 @@ class ActionExecutor:
                     "matched_pattern": analysis.matched_pattern,
                 }
                 logger.debug(
-                    f"Error classified as {analysis.error_type.value} "
+                    f"🔍 Error classified as {analysis.error_type.value} "
                     f"(confidence: {analysis.confidence:.2f})"
                 )
 

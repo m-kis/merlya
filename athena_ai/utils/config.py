@@ -21,25 +21,22 @@ def get_local_timezone() -> ZoneInfo:
     Returns:
         ZoneInfo for the configured timezone, or system local timezone if "local".
     """
-    from datetime import datetime, timezone
-
     config = ConfigManager()
     tz_setting = config.get("local_timezone", DEFAULT_LOCAL_TIMEZONE)
 
     if tz_setting == "local":
-        # Get system's local timezone offset and create a timezone
-        # We use the current local offset as an approximation
-        local_offset = datetime.now().astimezone().tzinfo
-        if local_offset is not None:
-            return local_offset
-        # Fallback to UTC if we can't determine local timezone
-        return timezone.utc
+        # Get system's local timezone using ZoneInfo
+        try:
+            return ZoneInfo("localtime")
+        except (KeyError, OSError):
+            # Fallback to UTC if we can't determine local timezone
+            return ZoneInfo("UTC")
 
     try:
         return ZoneInfo(tz_setting)
     except (KeyError, ValueError):
         # Invalid timezone name - fallback to UTC
-        return timezone.utc
+        return ZoneInfo("UTC")
 
 
 class ConfigManager:

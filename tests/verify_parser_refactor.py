@@ -23,6 +23,7 @@ def verify_parser():
         json_content = '[{"hostname": "test-json", "ip": "1.2.3.4", "groups": ["g1"]}]'
         result = parser.parse(json_content, format_hint="json")
         assert result.success, "JSON parsing failed"
+        assert len(result.hosts) > 0, "JSON parsing returned no hosts"
         assert result.hosts[0].hostname == "test-json", f"Expected hostname 'test-json', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.4", f"Expected IP '1.2.3.4', got {result.hosts[0].ip_address}"
         assert "g1" in result.hosts[0].groups, f"Expected 'g1' in groups, got {result.hosts[0].groups}"
@@ -37,6 +38,7 @@ def verify_parser():
         csv_content = "hostname,ip,environment\ntest-csv,1.2.3.5,prod"
         result = parser.parse(csv_content, format_hint="csv")
         assert result.success, "CSV parsing failed"
+        assert len(result.hosts) > 0, "CSV parsing returned no hosts"
         assert result.hosts[0].hostname == "test-csv", f"Expected hostname 'test-csv', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.5", f"Expected IP '1.2.3.5', got {result.hosts[0].ip_address}"
         assert result.hosts[0].environment == "prod", f"Expected environment 'prod', got {result.hosts[0].environment}"
@@ -51,6 +53,7 @@ def verify_parser():
         yaml_content = "---\n- hostname: test-yaml\n  ip: 1.2.3.6\n  ssh_port: 2222"
         result = parser.parse(yaml_content, format_hint="yaml")
         assert result.success, "YAML parsing failed"
+        assert len(result.hosts) > 0, "YAML parsing returned no hosts"
         assert result.hosts[0].hostname == "test-yaml", f"Expected hostname 'test-yaml', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.6", f"Expected IP '1.2.3.6', got {result.hosts[0].ip_address}"
         assert result.hosts[0].ssh_port == 2222, f"Expected ssh_port 2222, got {result.hosts[0].ssh_port}"
@@ -68,6 +71,7 @@ def verify_parser():
     """
         result = parser.parse(ini_content, format_hint="ini")
         assert result.success, "INI parsing failed"
+        assert len(result.hosts) > 0, "INI parsing returned no hosts"
         assert result.hosts[0].hostname == "test-ini", f"Expected hostname 'test-ini', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.7", f"Expected IP '1.2.3.7', got {result.hosts[0].ip_address}"
         assert "web" in result.hosts[0].groups, f"Expected 'web' in groups, got {result.hosts[0].groups}"
@@ -83,6 +87,7 @@ def verify_parser():
         hosts_content = "1.2.3.8 test-hosts alias1"
         result = parser.parse(hosts_content, format_hint="etc_hosts")
         assert result.success, "/etc/hosts parsing failed"
+        assert len(result.hosts) > 0, "/etc/hosts parsing returned no hosts"
         assert result.hosts[0].hostname == "test-hosts", f"Expected hostname 'test-hosts', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.8", f"Expected IP '1.2.3.8', got {result.hosts[0].ip_address}"
         assert "alias1" in result.hosts[0].aliases, f"Expected 'alias1' in aliases, got {result.hosts[0].aliases}"
@@ -102,6 +107,7 @@ def verify_parser():
     """
         result = parser.parse(ssh_content, format_hint="ssh_config")
         assert result.success, "SSH Config parsing failed"
+        assert len(result.hosts) > 0, "SSH Config parsing returned no hosts"
         assert result.hosts[0].hostname == "test-ssh", f"Expected hostname 'test-ssh', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.9", f"Expected IP '1.2.3.9', got {result.hosts[0].ip_address}"
         assert result.hosts[0].metadata["ssh_user"] == "admin", f"Expected ssh_user 'admin', got {result.hosts[0].metadata.get('ssh_user')}"
@@ -117,6 +123,7 @@ def verify_parser():
         txt_content = "test-txt 1.2.3.10"
         result = parser.parse(txt_content, format_hint="txt")
         assert result.success, "TXT parsing failed"
+        assert len(result.hosts) > 0, "TXT parsing returned no hosts"
         assert result.hosts[0].hostname == "test-txt", f"Expected hostname 'test-txt', got {result.hosts[0].hostname}"
         assert result.hosts[0].ip_address == "1.2.3.10", f"Expected IP '1.2.3.10', got {result.hosts[0].ip_address}"
         print("   ✅ TXT passed")

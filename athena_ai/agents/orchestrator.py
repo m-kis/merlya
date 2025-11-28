@@ -43,7 +43,7 @@ try:
     HAS_AUTOGEN = True
 except ImportError:
     HAS_AUTOGEN = False
-    logger.warning("autogen-agentchat not installed. Orchestrator will not work.")
+    logger.warning("⚠️ autogen-agentchat not installed. Orchestrator will not work.")
 
 
 class OrchestratorMode(Enum):
@@ -364,7 +364,7 @@ class Orchestrator(BaseOrchestrator):
         try:
             triage_context = await self.intent_parser.classify_full_async(triage_query, system_state)
         except Exception as e:
-            logger.error(f"Classification failed: {e}", exc_info=True)
+            logger.error(f"❌ Classification failed: {e}", exc_info=True)
             # Fallback: process without triage context
             conversation_history = kwargs.get("conversation_history", [])
             return await self.planner.execute_basic(user_query, conversation_history)
@@ -381,7 +381,7 @@ class Orchestrator(BaseOrchestrator):
         )
         intent_value = getattr(triage_context.intent, "value", "unknown") if triage_context.intent else "unknown"
         logger.info(
-            f"Request classified as {priority_name} "
+            f"🎯 Request classified as {priority_name} "
             f"(intent: {intent_value}, mode: {self.mode.value})"
         )
 
@@ -400,7 +400,7 @@ class Orchestrator(BaseOrchestrator):
                     # exposing resolved credentials in search
                     knowledge_context = knowledge_tools.search_knowledge(triage_query, limit=3)
                 except Exception as e:
-                    logger.warning(f"Failed to fetch knowledge context: {e}")
+                    logger.warning(f"⚠️ Failed to fetch knowledge context: {e}")
 
             if self.mode == OrchestratorMode.ENHANCED:
                 result = await self.planner.execute_enhanced(
@@ -426,7 +426,7 @@ class Orchestrator(BaseOrchestrator):
             return result
 
         except Exception as e:
-            logger.error(f"Orchestrator failed: {e}", exc_info=True)
+            logger.error(f"❌ Orchestrator failed: {e}", exc_info=True)
             return f"❌ Error: {str(e)}"
 
     async def chat_continue(self, message: str) -> str:

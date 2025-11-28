@@ -342,11 +342,7 @@ La commande nécessite des privilèges élevés pour s'exécuter.
 **Commande**: `{command}`
 **Serveur**: {target}
 
-**💡 Suggestions**:
-• Le système a automatiquement tenté d'utiliser sudo
-• Vérifiez que l'utilisateur dispose des droits sudo
-• Certaines commandes nécessitent l'accès root direct
-• Consultez les logs d'audit si nécessaire
+**💡 Suggestion**: Utilisez `request_elevation` pour demander une élévation de privilèges avec confirmation utilisateur.
 """,
             ErrorType.CREDENTIAL: f"""
 ❌ **Authentification requise**

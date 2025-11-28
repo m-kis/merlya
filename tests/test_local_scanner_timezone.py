@@ -274,9 +274,12 @@ class TestGetLocalTimezoneFunction:
             mock_config.get.return_value = "local"
             mock_config_cls.return_value = mock_config
 
-            # The function should return something timezone-like
-            result = get_local_timezone()
-            assert result is not None
+            # Mock ZoneInfo to simulate local timezone unavailable
+            with patch("athena_ai.utils.config.ZoneInfo") as mock_zoneinfo:
+                mock_zoneinfo.side_effect = [KeyError("localtime"), ZoneInfo("UTC")]
+                result = get_local_timezone()
+                # Should fall back to UTC when local is unavailable
+                assert result == ZoneInfo("UTC")
 
     def test_returns_configured_timezone(self):
         """Test that configured IANA timezone is returned."""

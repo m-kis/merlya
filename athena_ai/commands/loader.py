@@ -99,7 +99,7 @@ class CommandLoader:
                 self._load_directory(source_dir)
 
         self._loaded = True
-        logger.debug(f"CommandLoader: loaded {len(self._commands)} commands")
+        logger.debug(f"✅ CommandLoader: loaded {len(self._commands)} commands")
 
     def _load_directory(self, path: Path):
         """Load all .md files from a directory."""

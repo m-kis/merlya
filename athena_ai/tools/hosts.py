@@ -15,7 +15,7 @@ def get_infrastructure_context() -> str:
         Infrastructure summary with stats and sample hosts
     """
     ctx = get_tool_context()
-    logger.info("Tool: get_infrastructure_context")
+    logger.info("🖥️ Tool: get_infrastructure_context")
 
     if not ctx.host_registry:
         return "❌ Host registry not initialized"
@@ -87,7 +87,7 @@ def list_hosts(
         List of available hosts
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: list_hosts (env={environment}, pattern={pattern})")
+    logger.info(f"🖥️ Tool: list_hosts (env={environment}, pattern={pattern})")
 
     if not ctx.host_registry:
         return "❌ Host registry not initialized"
@@ -141,7 +141,7 @@ def scan_host(
         Scan results
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: scan_host {hostname}")
+    logger.info(f"🖥️ Tool: scan_host {hostname}")
 
     is_valid, message = validate_host(hostname)
     if not is_valid:
@@ -198,7 +198,7 @@ def check_permissions(
         Permission capabilities summary
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: check_permissions on {target}")
+    logger.info(f"🔒 Tool: check_permissions on {target}")
 
     is_valid, message = validate_host(target)
     if not is_valid:
@@ -227,7 +227,7 @@ def search_inventory(
         Matching hosts from inventory
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: search_inventory query={query}")
+    logger.info(f"🔍 Tool: search_inventory query={query}")
 
     if not ctx.inventory_repo:
         return "❌ Inventory not available"
@@ -273,7 +273,7 @@ def get_host_details(
         Host details including metadata, groups, relations
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: get_host_details hostname={hostname}")
+    logger.info(f"🖥️ Tool: get_host_details hostname={hostname}")
 
     if not ctx.inventory_repo:
         return "❌ Inventory not available"
@@ -331,7 +331,7 @@ def get_host_details(
                 if len(relations) > 5:
                     lines.append(f"    ... and {len(relations) - 5} more")
         except Exception as e:
-            logger.warning(f"Failed to get relations for {hostname}: {e}")
+            logger.warning(f"⚠️ Failed to get relations for {hostname}: {e}")
 
         return "\n".join(lines)
 
@@ -356,7 +356,7 @@ def list_inventory_hosts(
         List of inventory hosts
     """
     ctx = get_tool_context()
-    logger.info(f"Tool: list_inventory_hosts env={environment} group={group}")
+    logger.info(f"🖥️ Tool: list_inventory_hosts env={environment} group={group}")
 
     if not ctx.inventory_repo:
         return "❌ Inventory not available"

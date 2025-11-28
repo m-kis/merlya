@@ -29,9 +29,9 @@ def ask_user(
     # Use context's get_user_input which handles spinner pause
     try:
         response = ctx.get_user_input("   > ")
-        return f"User response: {response}"
+        return f"User response: {response}\n\n**IMPORTANT**: Now continue with the original task using this information. Do NOT terminate until the task is fully complete."
     except (KeyboardInterrupt, EOFError):
-        return "User cancelled input."
+        return "User cancelled input. Task aborted."
 
 
 def remember_skill(

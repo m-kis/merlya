@@ -27,7 +27,7 @@ class SSHManager:
         """
         Establish a connection to target_host via jump_host.
         """
-        logger.info(f"Initiating jump connection: Local -> {jump_host} -> {target_host}")
+        logger.info(f"🌐 Initiating jump connection: Local -> {jump_host} -> {target_host}")
 
         # 1. Connect to Jump Host
         # We reuse the execute logic recursively, but here we need the raw client
@@ -82,9 +82,9 @@ class SSHManager:
             if not key_path:
                 key_path = self.credentials.get_default_key()
 
-        logger.debug(f"Connecting to {host} as {user}")
+        logger.debug(f"🔍 Connecting to {host} as {user}")
         if key_path:
-            logger.debug(f"Using key: {key_path}")
+            logger.debug(f"🔑 Using key: {key_path}")
 
         # Prepare connection kwargs
         connect_kwargs = {
@@ -115,7 +115,7 @@ class SSHManager:
                 client = self._connect_via_jump_host(host, strategy.jump_host, user, connect_kwargs)
                 should_close = True
             except Exception as e:
-                logger.error(f"Jump host connection failed: {e}")
+                logger.error(f"❌ Jump host connection failed: {e}")
                 return -1, "", f"Failed to connect via {strategy.jump_host}: {e}"
         else:
             # DIRECT CONNECTION
@@ -131,14 +131,14 @@ class SSHManager:
                 try:
                     client.connect(host, username=user, **connect_kwargs)
                 except Exception as e:
-                    logger.error(f"Connection failed: {e}")
+                    logger.error(f"❌ Connection failed: {e}")
                     return -1, "", str(e)
                 should_close = True  # Close non-pooled connections
 
         try:
 
             # Execute command
-            logger.debug(f"Executing: {redact_sensitive_info(command)}")
+            logger.debug(f"⚡ Executing: {redact_sensitive_info(command)}")
             stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
 
             # Set timeout on channel
@@ -150,28 +150,28 @@ class SSHManager:
                 out = stdout.read().decode('utf-8', errors='replace').strip()
                 err = stderr.read().decode('utf-8', errors='replace').strip()
 
-                logger.debug(f"Command completed with exit code {exit_code}")
+                logger.debug(f"✅ Command completed with exit code {exit_code}")
 
                 return exit_code, out, err
 
             except socket.timeout:
-                logger.error(f"Command timed out after {timeout}s on {host}")
+                logger.error(f"⏱️ Command timed out after {timeout}s on {host}")
                 return -1, "", f"Command timed out after {timeout} seconds"
 
         except paramiko.AuthenticationException as e:
-            logger.error(f"SSH authentication failed for {user}@{host}: {e}")
+            logger.error(f"🔒 SSH authentication failed for {user}@{host}: {e}")
             return -1, "", f"Authentication failed: {e}"
 
         except paramiko.SSHException as e:
-            logger.error(f"SSH error on {host}: {e}")
+            logger.error(f"❌ SSH error on {host}: {e}")
             return -1, "", f"SSH error: {e}"
 
         except socket.timeout:
-            logger.error(f"SSH connection timed out on {host}")
+            logger.error(f"⏱️ SSH connection timed out on {host}")
             return -1, "", "SSH connection timed out"
 
         except Exception as e:
-            logger.error(f"Unexpected error connecting to {host}: {e}")
+            logger.error(f"❌ Unexpected error connecting to {host}: {e}")
             return -1, "", str(e)
 
         finally:

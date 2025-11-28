@@ -88,7 +88,7 @@ class SSHConnectionPool:
                 )
             else:
                 # Timeout expired - reset and allow retry
-                logger.info(f"Circuit breaker timeout expired for {host}, resetting")
+                logger.info(f"🔄 Circuit breaker timeout expired for {host}, resetting")
                 del self.failed_hosts[host]
 
     def _record_failure(self, host: str, error: Exception):
@@ -115,7 +115,7 @@ class SSHConnectionPool:
 
         count = self.failed_hosts[host]['count']
         logger.warning(
-            f"SSH failure recorded for {host}: {count} failure(s) "
+            f"⚠️ SSH failure recorded for {host}: {count} failure(s) "
             f"(circuit breaker threshold: {self.circuit_breaker_threshold})"
         )
 
@@ -149,21 +149,21 @@ class SSHConnectionPool:
                         # Test if connection is still active
                         transport = client.get_transport()
                         if transport and transport.is_active():
-                            logger.debug(f"Reusing existing SSH connection to {key}")
+                            logger.debug(f"🔄 Reusing existing SSH connection to {key}")
                             conn_info['last_used'] = time.time()
                             return client
                         else:
-                            logger.debug(f"Connection to {key} is dead, removing from pool")
+                            logger.debug(f"💀 Connection to {key} is dead, removing from pool")
                             self._close_connection(key)
                     except Exception as e:
-                        logger.debug(f"Error checking connection to {key}: {e}")
+                        logger.debug(f"⚠️ Error checking connection to {key}: {e}")
                         self._close_connection(key)
                 else:
-                    logger.debug(f"Connection to {key} is too old, closing")
+                    logger.debug(f"⏱️ Connection to {key} is too old, closing")
                     self._close_connection(key)
 
             # Create new connection
-            logger.debug(f"Creating new SSH connection to {key}")
+            logger.debug(f"🌐 Creating new SSH connection to {key}")
             try:
                 client = paramiko.SSHClient()
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -186,13 +186,13 @@ class SSHConnectionPool:
 
                 # Clear any previous failures for this host (successful connection)
                 if host in self.failed_hosts:
-                    logger.debug(f"Clearing circuit breaker state for {host} (successful connection)")
+                    logger.debug(f"✅ Clearing circuit breaker state for {host} (successful connection)")
                     del self.failed_hosts[host]
 
                 return client
 
             except Exception as e:
-                logger.error(f"Failed to connect to {key}: {e}")
+                logger.error(f"❌ Failed to connect to {key}: {e}")
 
                 # Record failure for circuit breaker
                 self._record_failure(host, e)
@@ -213,7 +213,7 @@ class SSHConnectionPool:
         with self.lock:
             for key in list(self.connections.keys()):
                 self._close_connection(key)
-            logger.debug("Closed all SSH connections")
+            logger.debug("🔒 Closed all SSH connections")
 
     def cleanup_stale(self):
         """Remove connections that haven't been used recently."""
@@ -226,7 +226,7 @@ class SSHConnectionPool:
                     stale_keys.append(key)
 
             for key in stale_keys:
-                logger.debug(f"Cleaning up stale connection to {key}")
+                logger.debug(f"🧹 Cleaning up stale connection to {key}")
                 self._close_connection(key)
 
 

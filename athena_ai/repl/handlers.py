@@ -155,6 +155,7 @@ class CommandHandler:
             '/triage': lambda: self.repl.handle_triage_command(args),
             '/feedback': lambda: self.repl.handle_feedback_command(args),
             '/triage-stats': lambda: self.repl.handle_triage_stats_command(args),
+            '/reload-commands': lambda: self._handle_reload_commands(),
         }
 
         handler = handlers.get(cmd)
@@ -215,4 +216,17 @@ class CommandHandler:
             return CommandResult.FAILED
         except Exception as e:
             print_error(f"Inventory command failed: {e}")
+            return CommandResult.FAILED
+
+    def _handle_reload_commands(self) -> CommandResult:
+        """Force reload of custom commands."""
+        try:
+            self.repl.command_loader.reload()
+            count = len(self.repl.command_loader.list_commands())
+            print_message(f"[green]✅ Reloaded {count} custom commands[/green]")
+            for name in self.repl.command_loader.list_commands():
+                print_message(f"  - /{name}")
+            return CommandResult.HANDLED
+        except Exception as e:
+            print_error(f"Failed to reload commands: {e}")
             return CommandResult.FAILED

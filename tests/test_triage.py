@@ -59,12 +59,27 @@ class TestIntent:
         assert Intent.ANALYSIS.value == "analysis"
 
     def test_query_intent_has_restricted_tools(self):
-        """QUERY intent should restrict tools."""
+        """QUERY intent should restrict tools to read-only operations."""
         allowed = Intent.QUERY.allowed_tools
         assert allowed is not None
+        # Host info tools
         assert "list_hosts" in allowed
+        assert "get_infrastructure_context" in allowed
+        assert "scan_host" in allowed
+        # File reading tools
+        assert "read_remote_file" in allowed
+        assert "tail_logs" in allowed
+        assert "grep_files" in allowed
+        # System info tools
+        assert "disk_info" in allowed
+        assert "memory_info" in allowed
+        # Interaction tools
         assert "request_elevation" in allowed
-        assert "execute_ssh_command" in allowed
+        assert "ask_user" in allowed
+        # Write/dangerous tools should NOT be in QUERY
+        assert "write_remote_file" not in allowed
+        assert "execute_command" not in allowed
+        assert "service_control" not in allowed
 
     def test_action_intent_allows_all_tools(self):
         """ACTION intent should allow all tools."""

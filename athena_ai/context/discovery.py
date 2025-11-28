@@ -105,14 +105,14 @@ class Discovery:
                          if ip not in skip_ips and h not in skip_hostnames}
         total_hosts = len(scannable_hosts)
 
-        logger.info(f"Scanning {total_hosts} hosts from inventory...")
+        logger.info(f"🖥️ Scanning {total_hosts} hosts from inventory...")
 
         for idx, (hostname, ip) in enumerate(scannable_hosts.items()):
             # Report progress
             if progress_callback:
                 progress_callback(idx, total_hosts, hostname)
 
-            logger.debug(f"Attempting to connect to {hostname} ({ip})")
+            logger.debug(f"🌐 Attempting to connect to {hostname} ({ip})")
 
             # Test SSH connectivity
             exit_code, stdout, stderr = ssh.execute(ip, "echo 'test'")
@@ -156,7 +156,7 @@ class Discovery:
                 hosts_info[hostname] = host_info
 
             else:
-                logger.warning(f"✗ {hostname} ({ip}) not accessible: {stderr}")
+                logger.warning(f"❌ {hostname} ({ip}) not accessible: {stderr}")
                 hosts_info[hostname] = {
                     'hostname': hostname,
                     'ip': ip,
@@ -164,6 +164,6 @@ class Discovery:
                     'error': stderr or 'Connection failed'
                 }
 
-        logger.info(f"Scan complete: {sum(1 for h in hosts_info.values() if h.get('accessible'))} hosts accessible")
+        logger.info(f"✅ Scan complete: {sum(1 for h in hosts_info.values() if h.get('accessible'))} hosts accessible")
 
         return hosts_info
