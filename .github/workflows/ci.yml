@@ -100,9 +100,40 @@ jobs:
       - name: Type check
         run: mypy athena_ai/ --ignore-missing-imports --no-error-summary || true
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run security tests
+        run: |
+          poetry run pytest tests/test_ci_module.py -v \
+            -k "Security or ResourceLimits" \
+            --tb=short
+
+      - name: Check for shell=True usage (security audit)
+        run: |
+          # Fail if shell=True is found in CI module (except comments)
+          if grep -rn "shell=True" athena_ai/ci/ --include="*.py" | grep -v "^.*#.*shell=True"; then
+            echo "ERROR: shell=True found in CI module - security vulnerability!"
+            exit 1
+          fi
+          echo "Security audit passed: no shell=True in CI module"
+
   build:
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, security]
     steps:
       - uses: actions/checkout@v4
 
