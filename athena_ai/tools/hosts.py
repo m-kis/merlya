@@ -362,6 +362,7 @@ def list_inventory_hosts(
         return "❌ Inventory not available"
 
     # Validate limit to prevent memory issues
+    original_limit = limit
     limit = min(limit, 1000)
 
     try:
@@ -382,7 +383,10 @@ def list_inventory_hosts(
             if group:
                 filter_info.append(f"group={group}")
             filter_str = f" with filters: {', '.join(filter_info)}" if filter_info else ""
-            return f"❌ No hosts found{filter_str}\n\n💡 Try /inventory list or list_inventory_hosts(environment='all')"
+            result = f"❌ No hosts found{filter_str}\n\n💡 Try /inventory list or list_inventory_hosts(environment='all')"
+            if original_limit > limit:
+                result += f"\n\nℹ️ Note: requested limit {original_limit} capped to 1000"
+            return result
 
         lines = [f"📋 INVENTORY HOSTS ({len(hosts)} found):", ""]
 
@@ -404,6 +408,10 @@ def list_inventory_hosts(
 
         lines.append("💡 Use @hostname syntax to reference hosts in prompts")
         lines.append("💡 Use search_inventory('query') for specific searches")
+
+        if original_limit > limit:
+            lines.append("")
+            lines.append(f"ℹ️ Note: requested limit {original_limit} capped to 1000")
 
         return "\n".join(lines)
 

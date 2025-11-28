@@ -52,7 +52,10 @@ def setup_logger(verbose: bool = False):
             return redact_sensitive_info(value)
         elif isinstance(value, dict):
             _seen.add(value_id)
-            result = {k: _redact_value(v, _seen) for k, v in value.items()}
+            result = {
+                redact_sensitive_info(k) if isinstance(k, str) else k: _redact_value(v, _seen)
+                for k, v in value.items()
+            }
             _seen.discard(value_id)
             return result
         elif isinstance(value, list):
@@ -65,19 +68,15 @@ def setup_logger(verbose: bool = False):
             result = tuple(_redact_value(item, _seen) for item in value)
             _seen.discard(value_id)
             return result
+        elif isinstance(value, (set, frozenset)):
+            _seen.add(value_id)
+            result_list = [_redact_value(item, _seen) for item in value]
+            _seen.discard(value_id)
+            return type(value)(result_list)
         else:
-            # For non-stringifiable objects, try to convert to string and redact
-            try:
-                str_val = str(value)
-                redacted = redact_sensitive_info(str_val)
-                # Only return redacted string if it changed (contains sensitive data)
-                # Otherwise return original object to preserve type
-                if redacted != str_val:
-                    return redacted
-                return value
-            except Exception:
-                # Can't stringify, return as-is
-                return value
+            # For other types, preserve the original object to maintain type consistency
+            # Sensitive data in __str__ is rare for non-string/container types
+            return value
 
     def redaction_filter(record):
         """Redact sensitive info from all logs."""

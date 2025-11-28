@@ -44,25 +44,41 @@ def sanitize_inventory_content(content: str) -> str:
     )
 
     # 3. Redact IPv6 addresses
-    # More specific pattern to avoid matching MAC addresses
-    # Requires at least one group with 3-4 hex digits or :: notation
+    # Order matters: more specific patterns first to avoid partial matches
+    # Note: Use (?<!\w) instead of \b before :: since :: starts with non-word char
+    # Full IPv6: 8 groups of hex separated by colons
     sanitized = re.sub(
-        r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b',  # Full IPv6
+        r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b',
         '[IPV6_REDACTED]',
         sanitized
     )
+    # IPv6 with :: compression in middle (e.g., 2001:db8::1)
     sanitized = re.sub(
-        r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:(?:[0-9a-fA-F]{1,4})?\b',  # IPv6 with ::
+        r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:(?:[0-9a-fA-F]{1,4})?\b',
         '[IPV6_REDACTED]',
         sanitized
     )
+    # IPv6 with trailing :: (e.g., fe80::, 2001:db8::)
     sanitized = re.sub(
-        r'\b::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}\b',  # IPv6 with leading ::
+        r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:(?!\w)',
         '[IPV6_REDACTED]',
         sanitized
     )
-    # IPv6 loopback ::1
-    sanitized = re.sub(r'\b::1\b', '[IPV6_REDACTED]', sanitized)
+    # IPv4-mapped/compatible IPv6 (e.g., ::ffff:192.0.2.1, ::192.168.1.1)
+    # Must come before leading :: and all-zeros patterns
+    sanitized = re.sub(
+        r'(?<!\w)::(?:[0-9a-fA-F]{1,4}:)?(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
+        '[IPV6_REDACTED]',
+        sanitized
+    )
+    # IPv6 with leading :: (e.g., ::1, ::abc:def)
+    sanitized = re.sub(
+        r'(?<!\w)::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}\b',
+        '[IPV6_REDACTED]',
+        sanitized
+    )
+    # IPv6 all-zeros :: (must be last to avoid matching prefixes of other patterns)
+    sanitized = re.sub(r'(?<![:\w])::(?![:\w])', '[IPV6_REDACTED]', sanitized)
 
     # 4. Generalize hostnames - keep structure but redact identifying parts
     # Pattern matches common hostname formats: server01.prod.company.com
@@ -75,22 +91,28 @@ def sanitize_inventory_content(content: str) -> str:
         sanitized
     )
 
-    # 5. Redact AWS-style identifiers (account IDs, instance IDs, etc.)
-    # AWS account ID (12 digits) - only in common AWS contexts to avoid false positives
-    # (bare 12-digit numbers could be timestamps, serial numbers, etc.)
+    # 5. Redact AWS-style identifiers (ARNs first, then other IDs)
+    # AWS ARNs - redact before account IDs to avoid pattern interference
     sanitized = re.sub(
-        r'(?:account[_-]?(?:id)?|arn:aws:[^:]*:[^:]*:)\s*[:=]?\s*(\d{12})\b',
-        lambda m: m.group(0).replace(m.group(1), '[AWS_ACCOUNT_REDACTED]'),
+        r'arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d*:[a-zA-Z0-9_/:-]+',
+        '[ARN_REDACTED]',
         sanitized,
         flags=re.IGNORECASE
     )
     # EC2 instance IDs: i-xxxxxxxxxxxxxxxxx
-    sanitized = re.sub(r'\bi-[0-9a-f]{8,17}\b', '[INSTANCE_ID_REDACTED]', sanitized)
-    # AWS ARNs
     sanitized = re.sub(
-        r'arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d*:[a-zA-Z0-9_/:-]+',
-        '[ARN_REDACTED]',
-        sanitized
+        r'\bi-[0-9a-f]{8,17}\b',
+        '[INSTANCE_ID_REDACTED]',
+        sanitized,
+        flags=re.IGNORECASE
+    )
+    # AWS account ID (12 digits) - only in common AWS contexts to avoid false positives
+    # (bare 12-digit numbers could be timestamps, serial numbers, etc.)
+    sanitized = re.sub(
+        r'(?:account[_-]?(?:id)?)\s*[:=]?\s*(\d{12})\b',
+        lambda m: m.group(0).replace(m.group(1), '[AWS_ACCOUNT_REDACTED]'),
+        sanitized,
+        flags=re.IGNORECASE
     )
 
     # 6. Redact GCP-style project IDs and resource names
@@ -215,13 +237,14 @@ def sanitize_prompt_injection(content: str) -> Tuple[str, List[str]]:
     ]
 
     for pattern, replacement in injection_patterns:
-        matches = re.findall(pattern, sanitized)
-        if matches:
+        found = list(re.finditer(pattern, sanitized))
+        if found:
             # Log the actual matched text for audit
-            for match in matches:
-                match_text = match if isinstance(match, str) else match[0] if match else ''
-                if match_text:
-                    detected_patterns.append(f"Pattern detected: {match_text[:50]}...")
+            for match in found:
+                match_text = match.group(0)
+                truncated = match_text[:50]
+                suffix = "..." if len(match_text) > 50 else ""
+                detected_patterns.append(f"Pattern detected: {truncated}{suffix}")
             sanitized = re.sub(pattern, replacement, sanitized)
 
     return sanitized, detected_patterns

@@ -108,7 +108,22 @@ class RelationsHandler:
             return True
 
         if choice == "all":
-            # Accept ALL suggestions, not just displayed ones
+            # Confirm if there are hidden suggestions
+            if total_count > displayed_count:
+                console.print(
+                    f"[yellow]This will accept all {total_count} suggestions "
+                    f"(including {total_count - displayed_count} not displayed). "
+                    f"Continue? (y/n):[/yellow]"
+                )
+                try:
+                    confirm = input("> ").strip().lower()
+                except (KeyboardInterrupt, EOFError):
+                    print_warning("\nCancelled")
+                    return True
+                if confirm != "y":
+                    print_warning("No relations saved")
+                    return True
+            # Accept ALL suggestions
             indices = list(range(total_count))
         else:
             # Validate all tokens first and provide clear feedback

@@ -99,9 +99,10 @@ def scan_services() -> Dict[str, Any]:
 def scan_processes() -> List[Dict[str, Any]]:
     """Scan top running processes."""
     processes = []
+    platform_system = platform.system()
 
     try:
-        if platform.system() == "Darwin":
+        if platform_system == "Darwin":
             # macOS: use ps without --sort
             cmd = ["ps", "-eo", "pid,user,%cpu,%mem,comm"]
         else:
@@ -119,7 +120,7 @@ def scan_processes() -> List[Dict[str, Any]]:
             lines = result.stdout.splitlines()[1:]  # Skip header
 
             # For macOS, sort manually by CPU
-            if platform.system() == "Darwin":
+            if platform_system == "Darwin":
                 def parse_cpu(line):
                     parts = line.split()
                     try:

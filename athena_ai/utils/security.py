@@ -4,7 +4,7 @@ Security utilities for Athena.
 import re
 from typing import List, Optional
 
-def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) -> str:
+def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) -> Optional[str]:
     """
     Redact sensitive information (passwords, tokens, keys) from text for logging.
 
@@ -113,7 +113,7 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
             return f'{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}{match.group(4)}[REDACTED]{match.group(4)}'
 
         redacted = re.sub(
-            rf'(["\'])({key})\1(:\s*)(["\'])([^"\']*?)\4',
+            rf'(["\'])({key})\1(:\s*)(["\'])((?:(?!\4).)*)\4',
             json_quoted_replacer,
             redacted,
             flags=re.IGNORECASE
@@ -125,7 +125,7 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
             return f'{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}[REDACTED]'
 
         redacted = re.sub(
-            rf'(["\'])({key})\1(:\s*)([^\s,\}}\]"\']+)',
+            rf'(["\'])({key})\1(:\s*)([^\s,}\]"\']+)',
             json_unquoted_replacer,
             redacted,
             flags=re.IGNORECASE
@@ -150,13 +150,13 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
     # Matches: scheme://user:password@host
     # The pattern requires :// before user:pass@host to avoid matching other formats
     redacted = re.sub(
-        r'(://[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.-]+)',
+        r'(://[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.\[\]:-]+(?:/[^\s]*)?)',
         r'\1[REDACTED]\3',
         redacted
     )
     # Also match //user:pass@host format (no scheme)
     redacted = re.sub(
-        r'(//[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.-]+)',
+        r'(//[a-zA-Z0-9_.-]+:)([^@\s]{4,})(@[a-zA-Z0-9_.\[\]:-]+(?:/[^\s]*)?)',
         r'\1[REDACTED]\3',
         redacted
     )

@@ -31,8 +31,8 @@ class ContextCommandHandler:
 
         return True
 
-    def _scan_full(self):
-        """Full SSH scan with progress bar."""
+    def _execute_with_progress(self, description: str, scan_remote: bool, force: bool = False):
+        """Execute discover_environment with a progress bar."""
         from rich.progress import (
             BarColumn,
             Progress,
@@ -49,20 +49,27 @@ class ContextCommandHandler:
             TextColumn("[dim]{task.fields[host]}[/dim]"),
             console=console,
         ) as progress:
-            task = progress.add_task("Scanning hosts...", total=None, host="")
+            task = progress.add_task(description, total=None, host="")
 
             def update_progress(current, total, hostname):
                 progress.update(task, total=total, completed=current, host=hostname)
 
             context = self.repl.context_manager.discover_environment(
-                scan_remote=True,
+                scan_remote=scan_remote,
+                force=force,
                 progress_callback=update_progress
             )
+
             # Mark complete
             task_obj = progress.tasks[task]
             if task_obj.total is not None:
                 progress.update(task, completed=task_obj.total, host="done")
 
+        return context
+
+    def _scan_full(self):
+        """Full SSH scan with progress bar."""
+        context = self._execute_with_progress("Scanning hosts...", scan_remote=True)
         self._display_scan_results(context, is_full=True)
 
     def _scan_quick(self):
@@ -79,7 +86,7 @@ class ContextCommandHandler:
         remote_hosts = context.get('remote_hosts', {})
 
         print_success("Scan complete")
-        console.print(f"  Local: {local.get('hostname')}")
+        console.print(f"  Local: {local.get('hostname', 'unknown')}")
         console.print(f"  Inventory: {len(inventory)} hosts")
 
         if remote_hosts:
@@ -103,37 +110,7 @@ class ContextCommandHandler:
 
     def _refresh_full(self):
         """Full refresh with SSH scan."""
-        from rich.progress import (
-            BarColumn,
-            Progress,
-            SpinnerColumn,
-            TaskProgressColumn,
-            TextColumn,
-        )
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[cyan]{task.description}[/cyan]"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TextColumn("[dim]{task.fields[host]}[/dim]"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Refreshing (full)...", total=None, host="")
-
-            def update_progress(current, total, hostname):
-                progress.update(task, total=total, completed=current, host=hostname)
-
-            context = self.repl.context_manager.discover_environment(
-                scan_remote=True,
-                force=True,
-                progress_callback=update_progress
-            )
-            # Mark complete
-            task_obj = progress.tasks[task]
-            if task_obj.total is not None:
-                progress.update(task, completed=task_obj.total, host="done")
-
+        context = self._execute_with_progress("Refreshing (full)...", scan_remote=True, force=True)
         remote_hosts = context.get('remote_hosts', {})
         accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
         print_success(f"Full refresh complete (cache cleared, {accessible}/{len(remote_hosts)} hosts accessible)")

@@ -57,12 +57,29 @@ def parse_with_llm(
     - Review sanitized output in debug logs before production use
     - Only parse content from trusted sources
 
+    Timeout Behavior:
+        This function uses ThreadPoolExecutor to enforce timeouts on the synchronous
+        LLM call. However, ThreadPoolExecutor CANNOT truly cancel a running thread.
+        When a timeout occurs:
+        - The function returns immediately with an LLM_TIMEOUT error
+        - The underlying LLM call continues executing in a background thread
+        - The orphaned thread will eventually complete (success or failure)
+        - A done-callback logs when the orphaned call completes for monitoring
+
+        This means timed-out calls still consume resources (CPU, memory, network).
+        If you experience frequent timeouts, consider:
+        - Increasing ATHENA_LLM_TIMEOUT (default: 60 seconds)
+        - Using a faster LLM model or provider
+        - Using an LLM client that supports native request cancellation
+
     Args:
         content: Raw inventory content to parse (must be from trusted source)
         llm_router: LLM router instance for generation
         content_limit: Maximum characters to send (default 8000)
         timeout: Timeout in seconds for LLM generation call (default: LLM_TIMEOUT
             env var or 60 seconds). Set to None to use the default, or 0 to disable.
+            Note: Timeout prevents blocking the caller but does not stop the
+            underlying LLM request - see "Timeout Behavior" above.
 
     Returns:
         Tuple of (hosts, errors, warnings)
@@ -210,7 +227,28 @@ OUTPUT (JSON array only):"""
 
     try:
         if effective_timeout is not None:
-            # Use ThreadPoolExecutor to enforce timeout on synchronous LLM call
+            # Use ThreadPoolExecutor to enforce timeout on synchronous LLM call.
+            #
+            # IMPORTANT LIMITATION: ThreadPoolExecutor cannot truly cancel a running thread.
+            # When a timeout occurs:
+            # - future.result(timeout=...) raises TimeoutError, allowing this function to return
+            # - cancel_futures=True only cancels PENDING futures, not the already-running task
+            # - The LLM call continues executing in the background thread until it completes
+            # - This "orphaned" thread consumes resources (CPU, memory, network connection)
+            #
+            # Why we use ThreadPoolExecutor anyway:
+            # - ProcessPoolExecutor would allow true cancellation but adds IPC overhead and
+            #   complexity (pickling llm_router, managing subprocess lifecycle)
+            # - The llm_router.generate API is synchronous and doesn't support cooperative
+            #   cancellation (no cancellation token/flag to check)
+            # - For most use cases, the timeout prevents blocking the caller, which is the
+            #   primary goal; the orphaned thread will eventually complete
+            #
+            # Recommendations if timeouts are frequent:
+            # - Increase ATHENA_LLM_TIMEOUT to allow slower models to complete
+            # - Use a faster LLM model or provider
+            # - Consider using an LLM client that supports native request timeouts
+            #
             # Note: We avoid context manager to control shutdown behavior on timeout
             executor = ThreadPoolExecutor(max_workers=1)
             try:
@@ -224,8 +262,36 @@ OUTPUT (JSON array only):"""
                     f"LLM_TIMEOUT: LLM generation timed out after {effective_timeout} seconds. "
                     f"Consider increasing ATHENA_LLM_TIMEOUT or using a faster model."
                 )
-                # Use wait=False to avoid blocking on the timed-out thread
-                # cancel_futures=True attempts to cancel pending futures (Python 3.9+)
+                # Register a callback to log when the orphaned LLM call eventually completes.
+                # This helps with debugging and monitoring resource usage from timed-out calls.
+                def _log_orphaned_completion(fut):
+                    """Callback to log completion of orphaned (timed-out) LLM call."""
+                    try:
+                        # Check if the future completed successfully or with an exception
+                        exc = fut.exception()
+                        if exc is not None:
+                            logger.warning(
+                                f"Orphaned LLM call (timed out after {effective_timeout}s) "
+                                f"eventually failed with exception: {type(exc).__name__}: {exc}"
+                            )
+                        else:
+                            # Future completed successfully after we gave up waiting
+                            logger.info(
+                                f"Orphaned LLM call (timed out after {effective_timeout}s) "
+                                f"eventually completed successfully"
+                            )
+                    except Exception as callback_exc:
+                        # Defensive: don't let callback errors propagate
+                        logger.debug(
+                            f"Error in orphaned LLM completion callback: {callback_exc}"
+                        )
+
+                future.add_done_callback(_log_orphaned_completion)
+
+                # Use wait=False to avoid blocking on the timed-out thread.
+                # cancel_futures=True attempts to cancel pending futures (Python 3.9+),
+                # but NOTE: this does NOT stop the already-running LLM call - it will
+                # continue executing in the background until completion.
                 try:
                     executor.shutdown(wait=False, cancel_futures=True)
                 except TypeError:

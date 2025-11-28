@@ -1,9 +1,11 @@
 """
 Main scanner module.
 """
+import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from athena_ai.utils.config import get_local_timezone
 from athena_ai.utils.logger import logger
 
 from .models import LocalContext
@@ -28,14 +30,21 @@ class LocalScanner:
     def __init__(self, repo: Optional[Any] = None):
         """Initialize scanner with optional repository."""
         self._repo = repo
+        self._repo_lock = threading.Lock()
 
     @property
     def repo(self):
-        """Lazy load repository to avoid circular imports."""
-        if self._repo is None:
-            from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
-            self._repo = get_inventory_repository()
-        return self._repo
+        """Lazy load repository to avoid circular imports (thread-safe)."""
+        # Fast path: already initialized
+        if self._repo is not None:
+            return self._repo
+
+        with self._repo_lock:
+            # Double-check inside lock
+            if self._repo is None:
+                from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+                self._repo = get_inventory_repository()
+            return self._repo
 
     def get_or_scan(self, force: bool = False, ttl_hours: Optional[int] = None) -> LocalContext:
         """
@@ -73,7 +82,13 @@ class LocalScanner:
                         scanned_at = datetime.fromisoformat(scanned_at_str)
                         # Normalize to UTC for consistent age calculation
                         if scanned_at.tzinfo is None:
-                            scanned_at = scanned_at.replace(tzinfo=timezone.utc)
+                            # Legacy naive timestamp - interpret using configured local timezone
+                            local_tz = get_local_timezone()
+                            logger.debug(
+                                f"Naive timestamp encountered: {scanned_at_str}. "
+                                f"Interpreting as {local_tz} (configure 'local_timezone' in ~/.athena/config.json)"
+                            )
+                            scanned_at = scanned_at.replace(tzinfo=local_tz).astimezone(timezone.utc)
                         else:
                             scanned_at = scanned_at.astimezone(timezone.utc)
                         age_hours = (datetime.now(timezone.utc) - scanned_at).total_seconds() / 3600

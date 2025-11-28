@@ -7,6 +7,39 @@ For LLM/model configuration, use ModelConfig from athena_ai.llm.model_config
 import json
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
+
+
+# Default timezone for interpreting naive timestamps from legacy DB records.
+# Set to "local" to use system local timezone, or an IANA timezone name (e.g., "America/New_York").
+DEFAULT_LOCAL_TIMEZONE = "local"
+
+
+def get_local_timezone() -> ZoneInfo:
+    """Get the configured local timezone for naive timestamp interpretation.
+
+    Returns:
+        ZoneInfo for the configured timezone, or system local timezone if "local".
+    """
+    from datetime import datetime, timezone
+
+    config = ConfigManager()
+    tz_setting = config.get("local_timezone", DEFAULT_LOCAL_TIMEZONE)
+
+    if tz_setting == "local":
+        # Get system's local timezone offset and create a timezone
+        # We use the current local offset as an approximation
+        local_offset = datetime.now().astimezone().tzinfo
+        if local_offset is not None:
+            return local_offset
+        # Fallback to UTC if we can't determine local timezone
+        return timezone.utc
+
+    try:
+        return ZoneInfo(tz_setting)
+    except (KeyError, ValueError):
+        # Invalid timezone name - fallback to UTC
+        return timezone.utc
 
 
 class ConfigManager:
@@ -35,6 +68,7 @@ class ConfigManager:
         return {
             "language": None,  # Will be set on first run
             "theme": "default",
+            "local_timezone": DEFAULT_LOCAL_TIMEZONE,
         }
 
     def _save_config(self):
@@ -73,3 +107,26 @@ class ConfigManager:
     def theme(self, value: str):
         """Set UI theme."""
         self.set("theme", value)
+
+    @property
+    def local_timezone(self) -> str:
+        """Get local timezone setting for naive timestamp interpretation.
+
+        Returns "local" for system local timezone, or an IANA timezone name.
+        """
+        return self.config.get("local_timezone", DEFAULT_LOCAL_TIMEZONE)
+
+    @local_timezone.setter
+    def local_timezone(self, value: str):
+        """Set local timezone for naive timestamp interpretation.
+
+        Args:
+            value: "local" for system timezone, or IANA timezone name (e.g., "America/New_York").
+        """
+        if value != "local":
+            # Validate it's a valid timezone
+            try:
+                ZoneInfo(value)
+            except (KeyError, ValueError) as e:
+                raise ValueError(f"Invalid timezone: {value}") from e
+        self.set("local_timezone", value)

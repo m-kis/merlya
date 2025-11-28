@@ -2,7 +2,7 @@
 Configuration for on-demand scanning.
 """
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import ClassVar, Dict
 
 
 @dataclass
@@ -28,7 +28,7 @@ class ScanConfig:
 
     # SSH host key policy: "reject", "warning", or "auto_add"
     # "auto_add" should only be used in non-production/testing environments
-    # Can be overridden by ATHENA_SSH_AUTO_ADD_HOSTS=1 env var
+    # Note: ATHENA_SSH_AUTO_ADD_HOSTS=1 env var overrides this in ssh_scanner._connect_ssh()
     ssh_host_key_policy: str = "warning"
 
     # Cache TTL (seconds)
@@ -42,7 +42,7 @@ class ScanConfig:
     })
 
     # Valid SSH host key policies
-    _VALID_SSH_POLICIES = frozenset({"reject", "warning", "auto_add"})
+    _VALID_SSH_POLICIES: ClassVar[frozenset[str]] = frozenset({"reject", "warning", "auto_add"})
 
     def __post_init__(self):
         """Validate configuration values."""

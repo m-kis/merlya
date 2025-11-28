@@ -111,6 +111,7 @@ class InventoryParser:
                     hosts=[],
                     source_type="unknown",
                     file_path=file_path,
+                    source_name=source_name,
                     errors=[f"Could not read file: {e}"],
                 )
 
@@ -149,6 +150,7 @@ class InventoryParser:
                         hosts=[],
                         source_type="unknown",
                         file_path=file_path,
+                        source_name=source_name,
                         errors=[
                             f"LLM_UNAVAILABLE: Could not initialize LLM for parsing "
                             f"non-standard format: {e.reason}"
@@ -163,6 +165,7 @@ class InventoryParser:
                     hosts=hosts,
                     source_type=format_type,
                     file_path=file_path,
+                    source_name=source_name,
                     errors=errors,
                     warnings=warnings,
                 )
@@ -171,6 +174,7 @@ class InventoryParser:
                 hosts=hosts,
                 source_type=format_type,
                 file_path=file_path,
+                source_name=source_name,
                 errors=errors,
             )
 
@@ -180,6 +184,7 @@ class InventoryParser:
                 hosts=[],
                 source_type=format_type,
                 file_path=file_path,
+                source_name=source_name,
                 errors=[f"Parsing failed: {e}"],
             )
 

@@ -70,35 +70,36 @@ async def ssh_scan(
             )
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
             # Continue with RejectPolicy - connection will only succeed if host key is already known
-
-        # Set host key policy based on configuration
-        if policy_name == "auto_add":
-            if env_auto_add:
-                logger.warning(
-                    "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
-                    "This should only be used in non-production environments."
-                )
-            else:
-                logger.warning(
-                    "SSH AutoAddPolicy enabled via config. "
-                    "This is insecure and should only be used for testing."
-                )
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        elif policy_name == "reject" or not known_hosts_loaded:
-            # Use RejectPolicy if explicitly configured OR if known_hosts unavailable
-            client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            if not known_hosts_loaded and policy_name != "reject":
-                logger.debug(
-                    "SSH host key policy: RejectPolicy (no known_hosts available)"
-                )
-            else:
-                logger.debug("SSH host key policy: RejectPolicy (strictest)")
         else:
-            # Default: RejectPolicy - safest option for production
-            client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
+            # Set host key policy based on configuration
+            # Only runs if no exception occurred loading known_hosts
+            if policy_name == "auto_add":
+                if env_auto_add:
+                    logger.warning(
+                        "SSH AutoAddPolicy enabled via ATHENA_SSH_AUTO_ADD_HOSTS env var. "
+                        "This should only be used in non-production environments."
+                    )
+                else:
+                    logger.warning(
+                        "SSH AutoAddPolicy enabled via config. "
+                        "This is insecure and should only be used for testing."
+                    )
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            elif policy_name == "reject" or not known_hosts_loaded:
+                # Use RejectPolicy if explicitly configured OR if known_hosts unavailable
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                if not known_hosts_loaded and policy_name != "reject":
+                    logger.debug(
+                        "SSH host key policy: RejectPolicy (no known_hosts available)"
+                    )
+                else:
+                    logger.debug("SSH host key policy: RejectPolicy (strictest)")
+            else:
+                # Default: RejectPolicy - safest option for production
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             lambda: client.connect(
@@ -142,7 +143,7 @@ async def ssh_scan(
 async def _get_system_info(client, config: ScanConfig) -> Dict[str, Any]:
     """Get system information via SSH."""
     data = {}
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     commands = {
         "os": "cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'",
@@ -171,7 +172,7 @@ async def _get_system_info(client, config: ScanConfig) -> Dict[str, Any]:
 async def _get_services_info(client, config: ScanConfig) -> Dict[str, Any]:
     """Get services information via SSH."""
     data = {}
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Try systemd first
     try:
@@ -212,7 +213,7 @@ async def _check_common_ports(client, config: ScanConfig) -> List[int]:
     Returns:
         List of open ports from the common ports list.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     common_ports = {22, 80, 443, 3306, 5432, 6379, 27017, 8080, 9000}
     open_ports = set()
 
@@ -291,7 +292,7 @@ async def _check_common_ports(client, config: ScanConfig) -> List[int]:
 async def _get_full_info(client, config: ScanConfig) -> Dict[str, Any]:
     """Get full system information via SSH."""
     data = {}
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Disk usage
     try:

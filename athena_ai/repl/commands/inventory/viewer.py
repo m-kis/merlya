@@ -65,9 +65,9 @@ class InventoryViewer:
             created_at = source.get("created_at") or ""
             date_str = created_at[:10] if len(created_at) >= 10 else created_at or "-"
             table.add_row(
-                source["name"],
-                source["source_type"],
-                str(source["host_count"]),
+                source.get("name", "unknown"),
+                source.get("source_type", "unknown"),
+                str(source.get("host_count", 0)),
                 date_str,
             )
 
@@ -122,7 +122,7 @@ class InventoryViewer:
             }.get(host.get("status", "unknown"), "dim")
 
             table.add_row(
-                host["hostname"],
+                host.get("hostname", "unknown"),
                 host.get("ip_address") or "-",
                 host.get("environment") or "-",
                 f"[{status_color}]{host.get('status', 'unknown')}[/{status_color}]",
@@ -175,12 +175,12 @@ class InventoryViewer:
 
         for host in hosts:
             groups = host.get("groups", [])
-            groups_str = ", ".join(groups[:2]) if groups else "-"
-            if len(groups) > 2:
+            groups_str = ", ".join(groups[:2]) if isinstance(groups, list) and groups else "-"
+            if isinstance(groups, list) and len(groups) > 2:
                 groups_str += f" +{len(groups) - 2}"
 
             table.add_row(
-                host["hostname"],
+                host.get("hostname", "unknown"),
                 host.get("ip_address") or "-",
                 host.get("environment") or "-",
                 groups_str,

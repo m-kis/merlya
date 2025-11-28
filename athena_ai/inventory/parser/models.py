@@ -41,6 +41,7 @@ class ParseResult:
     hosts: List[ParsedHost]
     source_type: str
     file_path: Optional[str] = None
+    source_name: Optional[str] = None
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
 

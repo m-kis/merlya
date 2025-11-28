@@ -73,8 +73,16 @@ def _get_field(item: Dict, candidates: List[str]) -> Optional[str]:
     lower_map = {k.lower(): v for k, v in item.items()}
     for candidate in candidates:
         if candidate.lower() in lower_map:
-            return str(lower_map[candidate.lower()])
+            value = lower_map[candidate.lower()]
+            return str(value) if value is not None else None
     return None
+
+
+def _get_list_field(item: Dict, key: str) -> List[str]:
+    """Get a list field value from a dict (case-insensitive)."""
+    lower_map = {k.lower(): v for k, v in item.items()}
+    val = lower_map.get(key.lower())
+    return val if isinstance(val, list) else []
 
 
 def _looks_like_host(item: Any) -> bool:
@@ -244,10 +252,10 @@ def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
                 hostname=str(hostname).lower(),
                 ip_address=_get_field(item, IP_FIELDS),
                 environment=_get_field(item, ENV_FIELDS),
-                groups=item.get("groups", []) if isinstance(item.get("groups"), list) else [],
-                aliases=item.get("aliases", []) if isinstance(item.get("aliases"), list) else [],
-                role=item.get("role"),
-                service=item.get("service"),
+                groups=_get_list_field(item, "groups"),
+                aliases=_get_list_field(item, "aliases"),
+                role=_get_field(item, ["role"]),
+                service=_get_field(item, ["service"]),
                 ssh_port=ssh_port,
                 metadata={k: v for k, v in item.items() if k.lower() not in exclude_keys_lower},
             )

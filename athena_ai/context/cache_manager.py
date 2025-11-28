@@ -272,8 +272,8 @@ class CacheManager:
             )
 
         with self._lock:
-            # Check if we need to evict
-            if len(self._cache) >= self.config.max_entries:
+            # Check if we need to evict (only for new keys)
+            if key not in self._cache and len(self._cache) >= self.config.max_entries:
                 self._evict_lru()
 
             entry = CacheEntry(
@@ -490,13 +490,19 @@ class CacheManager:
         key = f"host:{hostname}:{data_type}"
         self.set(key, data, data_type)
 
-        # Also persist to database if available
+        # Persist asynchronously to avoid blocking cache operations
         if self.repo:
-            try:
-                ttl = self.config.ttl_config.get(data_type, 300)
-                self.repo.set_scan_cache(hostname, data_type, data, ttl)
-            except Exception as e:
-                logger.debug(f"Failed to persist cache for {hostname}: {e}")
+            def persist():
+                try:
+                    ttl = self.config.ttl_config.get(data_type, 300)
+                    self.repo.set_scan_cache(hostname, data_type, data, ttl)
+                except Exception as e:
+                    logger.debug(f"Failed to persist cache for {hostname}: {e}")
+
+            threading.Thread(target=persist, daemon=True).start()
+
+    # Sentinel value to distinguish "no data in DB" from "not yet checked"
+    _NO_DATA_SENTINEL = {"__no_data__": True}
 
     def get_host_data(
         self,
@@ -507,16 +513,21 @@ class CacheManager:
         key = f"host:{hostname}:{data_type}"
         data = self.get(key, data_type)
 
+        # Check if we have a cached "no data" sentinel
+        if data == self._NO_DATA_SENTINEL:
+            return None
+
         # Try persistent cache if not in memory
         if data is None and self.repo:
             try:
                 cached = self.repo.get_scan_cache_by_hostname(hostname, data_type)
                 if cached:
                     data_value = cached.get("data")
-                    # Only cache if data is not None to avoid caching malformed entries
                     if data_value is not None:
                         self.set(key, data_value, data_type)
                         return data_value
+                # Cache "no data" with short TTL to avoid repeated DB lookups
+                self.set(key, self._NO_DATA_SENTINEL, data_type, ttl=60)
             except Exception:
                 pass
 
