@@ -46,6 +46,7 @@ class CommandHandler:
         self._variables_handler = None
         self._session_handler = None
         self._help_handler = None
+        self._cicd_handler = None
 
     @property
     def context_handler(self):
@@ -86,6 +87,14 @@ class CommandHandler:
             from athena_ai.repl.commands.help import HelpCommandHandler
             self._help_handler = HelpCommandHandler(self.repl)
         return self._help_handler
+
+    @property
+    def cicd_handler(self):
+        """Lazy load CI/CD handler."""
+        if self._cicd_handler is None:
+            from athena_ai.repl.commands.cicd import CICDCommandHandler
+            self._cicd_handler = CICDCommandHandler(self.repl)
+        return self._cicd_handler
 
     async def handle_command(self, command: str) -> CommandResult:
         """
@@ -148,6 +157,10 @@ class CommandHandler:
 
             # Inventory (already modularized)
             '/inventory': lambda: self._handle_inventory(args),
+
+            # CI/CD commands
+            '/cicd': lambda: self.cicd_handler.handle_cicd(args),
+            '/debug-workflow': lambda: self.cicd_handler.handle_debug_workflow(args),
 
             # Delegated to core.py (triage, mcp, language)
             '/mcp': lambda: self.repl.handle_mcp_command(args),

@@ -1,0 +1,91 @@
+"""
+Base CI Client - Abstract base for CI platform clients.
+
+Provides common functionality for CLI, MCP, and REST clients.
+"""
+
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+
+from athena_ai.utils.logger import logger
+
+
+class CIClientError(Exception):
+    """Exception raised when a CI client operation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        operation: Optional[str] = None,
+        exit_code: Optional[int] = None,
+        stderr: Optional[str] = None,
+    ):
+        super().__init__(message)
+        self.operation = operation
+        self.exit_code = exit_code
+        self.stderr = stderr
+
+
+class BaseCIClient(ABC):
+    """
+    Abstract base class for CI platform clients.
+
+    Implements the Strategy pattern for different access methods:
+    - CLI: Execute commands via subprocess (gh, glab)
+    - MCP: Use MCP server protocol
+    - REST: Direct API calls
+
+    Each subclass handles its specific communication method.
+    """
+
+    def __init__(self, platform: str):
+        """
+        Initialize the client.
+
+        Args:
+            platform: Platform name (e.g., "github", "gitlab")
+        """
+        self.platform = platform
+        self._available: Optional[bool] = None
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """
+        Check if this client method is available and configured.
+
+        Returns:
+            True if client can be used
+        """
+        ...
+
+    @abstractmethod
+    def execute(
+        self,
+        operation: str,
+        params: Dict[str, Any],
+        timeout: int = 60,
+    ) -> Dict[str, Any]:
+        """
+        Execute an operation and return result.
+
+        Args:
+            operation: Operation name (e.g., "list_runs", "get_logs")
+            params: Operation parameters
+            timeout: Timeout in seconds
+
+        Returns:
+            Operation result as dictionary
+
+        Raises:
+            CIClientError: If operation fails
+        """
+        ...
+
+    def _log_operation(self, operation: str, params: Dict[str, Any]) -> None:
+        """Log operation for debugging."""
+        # Redact sensitive params
+        safe_params = {
+            k: "***" if "token" in k.lower() or "secret" in k.lower() else v
+            for k, v in params.items()
+        }
+        logger.debug(f"CI Client [{self.platform}] {operation}: {safe_params}")

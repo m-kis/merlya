@@ -50,6 +50,18 @@ from .system import (
     service_control,
 )
 from .web import web_fetch, web_search
+from .cicd import (
+    get_ci_status,
+    list_ci_workflows,
+    list_ci_runs,
+    analyze_ci_failure,
+    trigger_ci_workflow,
+    retry_ci_run,
+    cancel_ci_run,
+    check_ci_permissions,
+    debug_most_recent_failure,
+    CI_TOOLS,
+)
 
 __all__ = [
     # Generation tools
@@ -101,4 +113,15 @@ __all__ = [
     "remember_skill",
     "recall_skill",
     "request_elevation",
+    # CI/CD
+    "get_ci_status",
+    "list_ci_workflows",
+    "list_ci_runs",
+    "analyze_ci_failure",
+    "trigger_ci_workflow",
+    "retry_ci_run",
+    "cancel_ci_run",
+    "check_ci_permissions",
+    "debug_most_recent_failure",
+    "CI_TOOLS",
 ]

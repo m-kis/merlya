@@ -27,6 +27,8 @@ SLASH_COMMANDS = {
     '/triage': 'Test priority classification for a query',
     '/feedback': 'Correct triage classification (intent/priority)',
     '/triage-stats': 'Show learned triage patterns statistics',
+    '/cicd': 'CI/CD management (status, workflows, runs, analyze, trigger)',
+    '/debug-workflow': 'Debug a CI/CD workflow failure [run_id]',
     '/conversations': 'List all conversations',
     '/new': 'Start new conversation [title]',
     '/load': 'Load conversation <id>',
