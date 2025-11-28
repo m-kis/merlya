@@ -35,20 +35,29 @@ def add_host_version(
     """, (host_id, new_version, json.dumps(changes), changed_by, datetime.now().isoformat()))
 
 
-def compute_changes(old_data: Optional[Dict], new_data: Dict) -> Dict:
+def compute_changes(
+    old_data: Optional[Dict],
+    new_data: Dict,
+    track_none_changes: bool = False,
+) -> Dict:
     """Compute changes between old and new data.
 
     Args:
         old_data: Previous host data.
-        new_data: New host data.
+        new_data: New host data (fields with None are skipped unless track_none_changes=True).
+        track_none_changes: If True, record changes even when new_value is None
+            (i.e., field is being cleared). Default False for backward compatibility
+            with the current upsert semantics where None means "preserve existing".
 
     Returns:
         Dictionary of changed fields with old and new values.
     """
     changes = {}
     for key, new_value in new_data.items():
-        if new_value is not None:
-            old_value = old_data.get(key) if isinstance(old_data, dict) else None
-            if old_value != new_value:
-                changes[key] = {"old": old_value, "new": new_value}
+        old_value = old_data.get(key) if isinstance(old_data, dict) else None
+        # Skip None values unless explicitly tracking field clears
+        if new_value is None and not track_none_changes:
+            continue
+        if old_value != new_value:
+            changes[key] = {"old": old_value, "new": new_value}
     return changes

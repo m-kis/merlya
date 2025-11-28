@@ -192,11 +192,28 @@ Return ONLY valid JSON, no explanations. Return empty array [] if no clear relat
                         break
 
         # Strategy 3: Regex fallback - find all potential arrays and try each
+        # Limit iterations to prevent O(n²) DoS on pathological input
+        MAX_BRACKET_SEARCHES = 50  # Stop after checking this many '[' positions
+        MAX_END_SEARCHES_PER_BRACKET = 100  # Limit ']' searches per '[' position
+
+        bracket_count = 0
         for match in re.finditer(r'\[', response):
+            bracket_count += 1
+            if bracket_count > MAX_BRACKET_SEARCHES:
+                logger.debug(
+                    f"Too many brackets ({bracket_count}) in response, stopping JSON extraction"
+                )
+                break
+
             start = match.start()
-            # Try increasingly longer substrings
+            # Try increasingly longer substrings, but with a limit
+            end_searches = 0
             for end in range(start + 2, len(response) + 1):
                 if response[end - 1] == ']':
+                    end_searches += 1
+                    if end_searches > MAX_END_SEARCHES_PER_BRACKET:
+                        break  # Move to next '[' position
+
                     candidate = response[start:end]
                     try:
                         data = json.loads(candidate)

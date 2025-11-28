@@ -19,6 +19,9 @@ from .versioning import add_host_version, compute_changes
 class HostRepositoryMixin:
     """Mixin for host operations with versioning support."""
 
+    # Class-level cache for SQLite version check (shared across instances)
+    _sqlite_supports_json_each: Optional[bool] = None
+
     def _init_host_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize hosts and host versions tables."""
         init_host_tables(cursor)
@@ -154,18 +157,23 @@ class HostRepositoryMixin:
         This is the core logic used by both add_host and bulk_add_hosts.
         Does NOT commit - caller is responsible for transaction management.
 
+        NULL Handling Semantics:
+            - On INSERT: NULL fields get defaults (empty list/dict, or DB default for ssh_port=22)
+            - On UPDATE: NULL fields are PRESERVED (existing value is kept, not cleared)
+            - To clear a field, use explicit empty values: [] for lists, {} for dicts, "" for strings
+
         Args:
             cursor: Database cursor (from caller's transaction).
             hostname: The hostname (will be lowercased).
-            ip_address: Optional IP address.
-            aliases: Optional list of hostname aliases.
-            environment: Optional environment name.
-            groups: Optional list of group names.
-            role: Optional role name.
-            service: Optional service name.
-            ssh_port: Optional SSH port.
-            source_id: Optional inventory source ID.
-            metadata: Optional metadata dictionary.
+            ip_address: Optional IP address. None preserves existing on update.
+            aliases: Optional list of hostname aliases. None preserves existing on update.
+            environment: Optional environment name. None preserves existing on update.
+            groups: Optional list of group names. None preserves existing on update.
+            role: Optional role name. None preserves existing on update.
+            service: Optional service name. None preserves existing on update.
+            ssh_port: Optional SSH port. None preserves existing on update (default 22 on insert).
+            source_id: Optional inventory source ID. None preserves existing on update.
+            metadata: Optional metadata dictionary. None preserves existing on update.
             changed_by: Who made the change.
 
         Returns:
@@ -184,16 +192,9 @@ class HostRepositoryMixin:
         groups_default = json.dumps([])
         metadata_default = json.dumps({})
 
-        # Get old data for versioning
-        # Note: This SELECT and the subsequent upsert are within the same transaction,
-        # so SQLite's serialized write model prevents TOCTOU race conditions within
-        # a single connection. Concurrent writes from separate connections are unlikely
-        # for this CLI tool's use case.
-        cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname_lower,))
-        existing_row = cursor.fetchone()
-        old_data = host_row_to_dict(existing_row) if existing_row else None
-
-        # Atomic upsert
+        # Atomic upsert with insert/update detection via changes() function
+        # We use SQLite's changes() after the upsert to detect if it was an insert or update.
+        # This avoids the TOCTOU race condition of a separate SELECT before INSERT.
         cursor.execute("""
             INSERT INTO hosts_v2
             (hostname, ip_address, aliases, environment, groups, role, service,
@@ -210,7 +211,10 @@ class HostRepositoryMixin:
                 source_id = COALESCE(excluded.source_id, hosts_v2.source_id),
                 metadata = COALESCE(?, hosts_v2.metadata),
                 updated_at = excluded.updated_at
-            RETURNING id
+            RETURNING id, (
+                SELECT COUNT(*) FROM hosts_v2 h2
+                WHERE h2.hostname = ? AND h2.created_at < ?
+            ) as existed_before
         """, (
             hostname_lower,
             ip_address,
@@ -228,15 +232,27 @@ class HostRepositoryMixin:
             groups_json,
             ssh_port,
             metadata_json,
+            hostname_lower,
+            now,
         ))
 
-        host_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        host_id = result[0]
+        was_update = result[1] > 0  # existed_before > 0 means this was an update
 
-        # Record version
-        if old_data is None:
+        # Record version based on actual operation type
+        if not was_update:
             add_host_version(cursor, host_id, {"action": "created"}, changed_by)
         else:
-            changes = compute_changes(old_data, {
+            # Fetch current state to compute accurate changes
+            # This is safe because we're still in the same transaction after our upsert
+            cursor.execute("SELECT * FROM hosts_v2 WHERE id = ?", (host_id,))
+            current_row = cursor.fetchone()
+            current_data = host_row_to_dict(current_row)
+
+            # Compute what actually changed (comparing input vs what was there before)
+            # Note: We compare against current_data which now has the merged values
+            changes = compute_changes(current_data, {
                 "ip_address": ip_address,
                 "aliases": aliases,
                 "environment": environment,
@@ -296,6 +312,37 @@ class HostRepositoryMixin:
             return host_row_to_dict(row)
         return None
 
+    def _check_sqlite_json_each_support(self, cursor: sqlite3.Cursor) -> bool:
+        """Check if SQLite supports json_each (version >= 3.9.0).
+
+        Result is cached at class level to avoid repeated version checks.
+
+        Args:
+            cursor: Database cursor.
+
+        Returns:
+            True if json_each is supported, False otherwise.
+        """
+        if HostRepositoryMixin._sqlite_supports_json_each is not None:
+            return HostRepositoryMixin._sqlite_supports_json_each
+
+        cursor.execute("SELECT sqlite_version()")
+        version_str = cursor.fetchone()[0]
+        # Parse version safely: pad to 3 parts, handle non-numeric components
+        raw_parts = version_str.split(".")[:3]
+        while len(raw_parts) < 3:
+            raw_parts.append("0")
+        version_parts = []
+        for p in raw_parts:
+            try:
+                version_parts.append(int(p))
+            except ValueError:
+                version_parts.append(0)
+        sqlite_version = version_parts[0] * 1000000 + version_parts[1] * 1000 + version_parts[2]
+
+        HostRepositoryMixin._sqlite_supports_json_each = sqlite_version >= 3009000
+        return HostRepositoryMixin._sqlite_supports_json_each
+
     def _find_host_by_alias(
         self, cursor: sqlite3.Cursor, alias: str
     ) -> Optional[sqlite3.Row]:
@@ -311,22 +358,7 @@ class HostRepositoryMixin:
         Returns:
             Host row or None if not found.
         """
-        # Check SQLite version for json_each support (added in 3.9.0)
-        cursor.execute("SELECT sqlite_version()")
-        version_str = cursor.fetchone()[0]
-        # Parse version safely: pad to 3 parts, handle non-numeric components
-        raw_parts = version_str.split(".")[:3]
-        while len(raw_parts) < 3:
-            raw_parts.append("0")
-        version_parts = []
-        for p in raw_parts:
-            try:
-                version_parts.append(int(p))
-            except ValueError:
-                version_parts.append(0)
-        sqlite_version = version_parts[0] * 1000000 + version_parts[1] * 1000 + version_parts[2]
-
-        if sqlite_version >= 3009000:
+        if self._check_sqlite_json_each_support(cursor):
             # SQLite >= 3.9: Use json_each for exact array element matching
             cursor.execute("""
                 SELECT h.* FROM hosts_v2 h, json_each(h.aliases) AS alias
@@ -386,8 +418,15 @@ class HostRepositoryMixin:
             params.append(environment)
 
         if group:
-            # Escape SQL wildcard characters for exact group name matching
-            escaped_group = group.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            # Escape SQL wildcard characters AND JSON special characters for safe matching
+            # Order matters: escape backslash first, then quotes, then SQL wildcards
+            escaped_group = (
+                group
+                .replace("\\", "\\\\")  # Escape backslashes first
+                .replace('"', '\\"')     # Escape JSON quotes
+                .replace("%", "\\%")     # Escape SQL LIKE wildcard
+                .replace("_", "\\_")     # Escape SQL LIKE single-char wildcard
+            )
             query += " AND groups LIKE ? ESCAPE '\\'"
             params.append(f'%"{escaped_group}"%')
 

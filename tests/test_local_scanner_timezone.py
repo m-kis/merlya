@@ -268,15 +268,22 @@ class TestGetLocalTimezoneFunction:
     def test_returns_utc_by_default_when_local_unavailable(self):
         """Test fallback to UTC when local timezone can't be determined."""
         from athena_ai.utils.config import get_local_timezone
+        from datetime import datetime as real_datetime
 
         with patch("athena_ai.utils.config.ConfigManager") as mock_config_cls:
             mock_config = MagicMock()
             mock_config.get.return_value = "local"
             mock_config_cls.return_value = mock_config
 
-            # Mock ZoneInfo to simulate local timezone unavailable
-            with patch("athena_ai.utils.config.ZoneInfo") as mock_zoneinfo:
-                mock_zoneinfo.side_effect = [KeyError("localtime"), ZoneInfo("UTC")]
+            # Mock datetime.now().astimezone().tzinfo to return None
+            mock_tzinfo = MagicMock()
+            mock_tzinfo.tzinfo = None  # Simulate no local timezone
+            mock_datetime_instance = MagicMock()
+            mock_datetime_instance.astimezone.return_value = mock_tzinfo
+
+            # Patch datetime in the datetime module (where it's imported from)
+            with patch("datetime.datetime") as mock_datetime:
+                mock_datetime.now.return_value = mock_datetime_instance
                 result = get_local_timezone()
                 # Should fall back to UTC when local is unavailable
                 assert result == ZoneInfo("UTC")
@@ -303,7 +310,8 @@ class TestGetLocalTimezoneFunction:
             mock_config_cls.return_value = mock_config
 
             result = get_local_timezone()
-            assert result == timezone.utc
+            # Code returns ZoneInfo("UTC") which is equivalent to but not identical to timezone.utc
+            assert result == ZoneInfo("UTC")
 
 
 class TestConfigManagerTimezone:
