@@ -29,7 +29,7 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
+    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
@@ -76,7 +76,7 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
+    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
@@ -117,7 +117,7 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "ollama"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
+    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
@@ -161,7 +161,7 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
+    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
