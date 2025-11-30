@@ -20,8 +20,14 @@ console = Console()
 
 
 def init_interactive():
-    """Interactive configuration initialization wizard."""
+    """Interactive configuration initialization wizard.
+
+    Separates concerns:
+    - .env file: API keys only (secrets)
+    - config.json: Provider, models, settings (configuration)
+    """
     from rich.prompt import Prompt
+    from athena_ai.llm.model_config import ModelConfig
 
     config_dir = Path.home() / ".athena"
     env_file = config_dir / ".env"
@@ -31,43 +37,58 @@ def init_interactive():
     console.print("\n[bold]Configure AI Provider[/bold]\n")
     console.print("Available providers:")
     console.print("  1. OpenRouter (recommended - multiple models)")
-    console.print("  2. Anthropic (Claude direct)")
+    console.print("  2. Anthropic (direct)")
     console.print("  3. OpenAI (GPT models)")
     console.print("  4. Ollama (local models)")
 
     choice = Prompt.ask("Select provider", choices=["1", "2", "3", "4"], default="1")
 
-    env_content = []
+    # ✅ NEW: Separate env_content (secrets) and config (settings)
+    env_content = []  # Only API keys
+    provider = None
+    model = None
 
     if choice == "1":
         api_key = Prompt.ask("Enter OpenRouter API key")
         model = Prompt.ask("Model", default="anthropic/claude-3.5-sonnet")
+        # ✅ Only API key in .env
         env_content.append(f"OPENROUTER_API_KEY={api_key}")
-        env_content.append(f"OPENROUTER_MODEL={model}")
-        env_content.append("ATHENA_PROVIDER=openrouter")
+        provider = "openrouter"
 
     elif choice == "2":
         api_key = Prompt.ask("Enter Anthropic API key")
+        # ✅ Only API key in .env
         env_content.append(f"ANTHROPIC_API_KEY={api_key}")
-        env_content.append("ATHENA_PROVIDER=anthropic")
+        provider = "anthropic"
+        model = "claude-3-5-sonnet-20241022"  # Default
 
     elif choice == "3":
         api_key = Prompt.ask("Enter OpenAI API key")
+        # ✅ Only API key in .env
         env_content.append(f"OPENAI_API_KEY={api_key}")
-        env_content.append("ATHENA_PROVIDER=openai")
+        provider = "openai"
+        model = "gpt-4o"  # Default
 
     elif choice == "4":
         model = Prompt.ask("Ollama model", default="llama3.2")
-        env_content.append(f"OLLAMA_MODEL={model}")
-        env_content.append("ATHENA_PROVIDER=ollama")
+        provider = "ollama"
+        # No API key needed for Ollama
 
-    # Write env file
+    # ✅ Write .env file (API keys ONLY)
     with open(env_file, "w") as f:
         f.write("\n".join(env_content) + "\n")
 
-    console.print(f"\n[green]Configuration saved to {env_file}[/green]")
+    console.print(f"\n[green]✅ API keys saved to {env_file}[/green]")
 
-    # Reload environment
+    # ✅ Write config.json (provider + model)
+    model_config = ModelConfig()
+    model_config.set_provider(provider)
+    if model:
+        model_config.set_model(provider, model)
+
+    console.print(f"[green]✅ Configuration saved to {model_config.config_file}[/green]")
+
+    # Reload environment (API keys only)
     for line in env_content:
         if "=" in line:
             key, value = line.split("=", 1)

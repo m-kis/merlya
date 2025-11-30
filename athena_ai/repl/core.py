@@ -83,18 +83,39 @@ class AthenaREPL:
         self.session_manager.start_session(metadata={"env": env, "mode": "repl"})
 
     def _load_env_file(self):
-        """Load .env file to set API keys and config in environment (same as CLI)."""
+        """Load .env file to set API keys in environment.
+
+        Only loads API keys (*_API_KEY) from .env.
+        Configuration (provider, models) is loaded from config.json via ModelConfig.
+
+        This prevents .env from overriding user's model configuration.
+        """
         config_path = Path.home() / ".athena" / ".env"
         if config_path.exists():
-            logger.debug(f"Loading config from {config_path}")
+            logger.debug(f"Loading secrets from {config_path}")
             try:
+                # ✅ Variables to IGNORE (config, not secrets)
+                IGNORED_VARS = {
+                    "ATHENA_PROVIDER",      # Use config.json
+                    "OPENROUTER_MODEL",     # Use config.json
+                    "ANTHROPIC_MODEL",      # Use config.json
+                    "OPENAI_MODEL",         # Use config.json
+                    "OLLAMA_MODEL",         # Use config.json
+                }
+
                 with open(config_path, "r") as f:
                     for line in f:
                         line = line.strip()
                         if line and not line.startswith("#") and "=" in line:
                             key, value = line.split("=", 1)
+
+                            # ✅ Skip config variables (only load secrets)
+                            if key in IGNORED_VARS:
+                                logger.debug(f"⏭️ Skipping config var: {key} (use /model commands instead)")
+                                continue
+
                             os.environ[key] = value
-                            logger.debug(f"Set env var: {key}")
+                            logger.debug(f"🔑 Loaded secret: {key}")
             except Exception as e:
                 logger.warning(f"Failed to load .env file: {e}")
         else:

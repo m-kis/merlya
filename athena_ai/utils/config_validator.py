@@ -87,14 +87,22 @@ class ConfigValidator:
         return True
 
     def _load_env(self):
-        """Load environment variables from .env file."""
+        """Load environment variables from .env file (API keys only)."""
         if self.env_file.exists():
+            # ✅ Variables to IGNORE (config, not secrets)
+            IGNORED_VARS = {
+                "ATHENA_PROVIDER", "OPENROUTER_MODEL",
+                "ANTHROPIC_MODEL", "OPENAI_MODEL", "OLLAMA_MODEL"
+            }
+
             with open(self.env_file, "r") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         key, value = line.split("=", 1)
-                        os.environ[key] = value
+                        # ✅ Skip config variables (only load API keys)
+                        if key not in IGNORED_VARS:
+                            os.environ[key] = value
 
     def check_provider(self) -> bool:
         """
