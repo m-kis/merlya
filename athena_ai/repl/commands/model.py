@@ -406,31 +406,39 @@ class ModelCommandHandler:
         elif subcmd == 'set' and len(args) > 1:
             # Set embedding model
             model_name = args[1]
-            if config.set_model(model_name):
-                print_success(f"Embedding model changed to: {model_name}")
 
-                # Download model immediately
-                console.print("[dim]⏳ Downloading model...[/dim]")
-                try:
-                    from athena_ai.triage.smart_classifier.embedding_cache import (
-                        EmbeddingCache,
-                        HAS_EMBEDDINGS,
-                    )
+            # Always succeeds now (allows custom models)
+            config.set_model(model_name)
 
-                    if not HAS_EMBEDDINGS:
-                        console.print("[yellow]⚠️ sentence-transformers not installed[/yellow]")
-                        console.print("[dim]Install with: pip install sentence-transformers[/dim]")
-                    else:
-                        # Force download by creating a cache and accessing the model
-                        cache = EmbeddingCache(model_name=model_name)
-                        _ = cache.model  # This triggers the download
-                        console.print("[dim]✅ Model downloaded and ready to use[/dim]")
-                except Exception as e:
-                    print_error(f"Failed to download model: {e}")
-                    console.print("[dim]ℹ️ Model will be loaded on next AI feature use[/dim]")
-            else:
-                print_error(f"Unknown model: {model_name}")
-                console.print("[dim]Use '/model embedding list' to see available models[/dim]")
+            # Check if it's a custom model (not in recommended list)
+            from athena_ai.triage.embedding_config import AVAILABLE_MODELS
+            if model_name not in AVAILABLE_MODELS:
+                console.print(f"[yellow]⚠️ Using custom model:[/yellow] [cyan]{model_name}[/cyan]")
+                console.print("[dim]   This model will be downloaded from HuggingFace.[/dim]")
+                console.print("[dim]   Use '/model embedding list' to see recommended models.[/dim]")
+
+            print_success(f"Embedding model changed to: {model_name}")
+
+            # Download model immediately
+            console.print("[dim]⏳ Downloading model...[/dim]")
+            try:
+                from athena_ai.triage.smart_classifier.embedding_cache import (
+                    EmbeddingCache,
+                    HAS_EMBEDDINGS,
+                )
+
+                if not HAS_EMBEDDINGS:
+                    console.print("[yellow]⚠️ sentence-transformers not installed[/yellow]")
+                    console.print("[dim]Install with: pip install sentence-transformers[/dim]")
+                else:
+                    # Force download by creating a cache and accessing the model
+                    cache = EmbeddingCache(model_name=model_name)
+                    _ = cache.model  # This triggers the download
+                    console.print("[dim]✅ Model downloaded and ready to use[/dim]")
+            except Exception as e:
+                print_error(f"Failed to download model: {e}")
+                console.print("[dim]ℹ️ Model will be loaded on next AI feature use[/dim]")
+                console.print("[dim]💡 Make sure the model exists on HuggingFace Hub[/dim]")
 
         elif subcmd == 'show':
             self._show_embedding_config(config)
@@ -443,18 +451,27 @@ class ModelCommandHandler:
 
     def _show_embedding_config(self, config):
         """Show current embedding model configuration."""
-        info = config.model_info
+        from athena_ai.triage.embedding_config import AVAILABLE_MODELS
 
         console.print("\n[bold]🧠 Embedding Model Configuration[/bold]\n")
         console.print(f"  Current Model: [cyan]{config.current_model}[/cyan]")
-        console.print(f"  Size: [yellow]{info.size_mb}MB[/yellow]")
-        console.print(f"  Dimensions: [green]{info.dimensions}[/green]")
-        console.print(f"  Speed: [blue]{info.speed}[/blue]")
-        console.print(f"  Quality: [magenta]{info.quality}[/magenta]")
-        console.print(f"  Description: [dim]{info.description}[/dim]")
+
+        # Check if it's a custom model
+        if config.current_model in AVAILABLE_MODELS:
+            info = config.model_info
+            console.print(f"  Size: [yellow]{info.size_mb}MB[/yellow]")
+            console.print(f"  Dimensions: [green]{info.dimensions}[/green]")
+            console.print(f"  Speed: [blue]{info.speed}[/blue]")
+            console.print(f"  Quality: [magenta]{info.quality}[/magenta]")
+            console.print(f"  Description: [dim]{info.description}[/dim]")
+        else:
+            console.print(f"  [yellow]Custom Model[/yellow] (from HuggingFace)")
+            console.print(f"  [dim]Model specs will be determined on first load[/dim]")
+
         console.print()
         console.print("[dim]ℹ️ Used for: Triage classification, Tool selection, Error analysis[/dim]")
         console.print("[dim]📝 Tip: Set via ATHENA_EMBEDDING_MODEL env var for persistence[/dim]")
+        console.print("[dim]💡 You can use any HuggingFace model compatible with sentence-transformers[/dim]")
         console.print()
 
     def _show_help(self):

@@ -135,11 +135,12 @@ class TestEmbeddingConfig:
         assert config.set_model("all-MiniLM-L6-v2") is True
         assert config.current_model == "all-MiniLM-L6-v2"
 
-    def test_set_model_invalid(self):
-        """set_model should return False for invalid models."""
+    def test_set_model_custom(self):
+        """set_model should accept custom models not in AVAILABLE_MODELS."""
         config = EmbeddingConfig()
-        assert config.set_model("invalid-model") is False
-        assert config.current_model == DEFAULT_MODEL
+        # Custom models are now allowed
+        assert config.set_model("google/gemma-2b") is True
+        assert config.current_model == "google/gemma-2b"
 
     def test_set_model_same(self):
         """set_model should return True for same model."""

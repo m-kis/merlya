@@ -180,15 +180,24 @@ class EmbeddingConfig:
         """
         Set the embedding model.
 
+        Accepts any model name that sentence-transformers can load from HuggingFace.
+        The AVAILABLE_MODELS list contains recommended models, but you can use any
+        compatible model (e.g., "google/gemma-2b", "Alibaba-NLP/gte-large-en-v1.5", etc.)
+
         Args:
-            model_name: Name of the model to use
+            model_name: Name of the model to use (HuggingFace model ID or local path)
 
         Returns:
             True if model was changed successfully
         """
+        # Warn if using a model not in the recommended list, but allow it
         if model_name not in AVAILABLE_MODELS:
-            logger.error(f"❌ Unknown embedding model: {model_name}")
-            return False
+            logger.warning(
+                f"⚠️ Using custom embedding model: {model_name}\n"
+                f"   This model is not in the recommended list. "
+                f"It will be downloaded from HuggingFace on first use.\n"
+                f"   Use '/model embedding list' to see recommended models."
+            )
 
         if model_name == self._current_model:
             logger.debug(f"Model already set to {model_name}")
