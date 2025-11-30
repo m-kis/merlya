@@ -6,6 +6,7 @@ from openai import OpenAI
 
 from athena_ai.llm.model_config import ModelConfig
 from athena_ai.llm.ollama_client import OllamaClient, get_ollama_client
+from athena_ai.utils.display import get_display_manager
 from athena_ai.utils.logger import logger
 
 
@@ -139,7 +140,14 @@ class LLMRouter:
         logger.info(f"Switched provider: {old_provider} -> {provider}")
         return True
 
-    def generate(self, prompt: str, system_prompt: str = "", model: Optional[str] = None, task: Optional[str] = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        model: Optional[str] = None,
+        task: Optional[str] = None,
+        show_spinner: bool = True
+    ) -> str:
         """
         Generate a response from the LLM.
 
@@ -147,51 +155,71 @@ class LLMRouter:
             prompt: User prompt
             system_prompt: System context
             model: Explicit model override
-            task: Task type for task-specific model selection (correction, planning, synthesis)
+            task: Task type for task-specific model selection
+            show_spinner: Show spinner during LLM request (default: True)
         """
         # Get model from config if not explicitly provided
         if not model:
             model = self.model_config.get_model(self.provider, task=task)
 
+        display = get_display_manager()
+        spinner_msg = f"🧠 Thinking ({self.provider})..."
+
         try:
             if self.provider == "anthropic" and self.anthropic_client:
+                if show_spinner:
+                    with display.spinner(spinner_msg):
+                        return self._call_anthropic(prompt, system_prompt, model)
                 return self._call_anthropic(prompt, system_prompt, model)
+
             elif self.provider == "openai" and self.openai_client:
+                if show_spinner:
+                    with display.spinner(spinner_msg):
+                        return self._call_openai(prompt, system_prompt, model)
                 return self._call_openai(prompt, system_prompt, model)
+
             elif self.provider == "openrouter" and hasattr(self, 'openrouter_client') and self.openrouter_client:
+                if show_spinner:
+                    with display.spinner(spinner_msg):
+                        return self._call_openrouter(prompt, system_prompt, model)
                 return self._call_openrouter(prompt, system_prompt, model)
+
             elif self.provider == "ollama" and self.ollama_openai_client:
+                if show_spinner:
+                    with display.spinner(spinner_msg):
+                        return self._call_ollama(prompt, system_prompt, model)
                 return self._call_ollama(prompt, system_prompt, model)
+
             else:
                 # Fallback or mock
                 logger.warning("No valid LLM provider configured. Returning mock response.")
-                if "Return ONLY a JSON" in prompt or "Return a JSON" in prompt:
-                    if "AgentCoordinator" in system_prompt or "agent coordinator" in system_prompt.lower():
-                        return '{"steps": [{"agent": "DiagnosticAgent", "task": "Check system status"}]}'
-                    elif "DiagnosticAgent" in system_prompt or "diagnostic agent" in system_prompt.lower():
-                        return '["uptime", "df -h"]'
-                    elif "MonitoringAgent" in system_prompt:
-                        return '["top -b -n 1"]'
-                    elif "RemediationAgent" in system_prompt:
-                        return '[{"command": "echo remediation", "type": "shell"}]'
-                    elif "ProvisioningAgent" in system_prompt:
-                        # Mock response for provisioning
-                        if "Ansible" in prompt:
-                            return '{"tool": "ansible", "playbook": "playbook.yml"}'
-                        else:
-                            return '{"tool": "terraform", "dir": "./tf", "action": "plan"}'
-                    elif "CloudAgent" in system_prompt:
-                        # Mock response for cloud
-                        if "AWS" in prompt:
-                            return '{"provider": "aws", "action": "list_instances"}'
-                        else:
-                            return '{"provider": "k8s", "action": "list_pods", "namespace": "default"}'
-                    else:
-                        return '{}'
-                return "Mock response: LLM not configured."
+                return self._get_mock_response(prompt, system_prompt)
+
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
             return f"Error: {str(e)}"
+
+    def _get_mock_response(self, prompt: str, system_prompt: str) -> str:
+        """Generate mock response for testing without LLM."""
+        if "Return ONLY a JSON" in prompt or "Return a JSON" in prompt:
+            if "AgentCoordinator" in system_prompt or "agent coordinator" in system_prompt.lower():
+                return '{"steps": [{"agent": "DiagnosticAgent", "task": "Check system status"}]}'
+            elif "DiagnosticAgent" in system_prompt or "diagnostic agent" in system_prompt.lower():
+                return '["uptime", "df -h"]'
+            elif "MonitoringAgent" in system_prompt:
+                return '["top -b -n 1"]'
+            elif "RemediationAgent" in system_prompt:
+                return '[{"command": "echo remediation", "type": "shell"}]'
+            elif "ProvisioningAgent" in system_prompt:
+                if "Ansible" in prompt:
+                    return '{"tool": "ansible", "playbook": "playbook.yml"}'
+                return '{"tool": "terraform", "dir": "./tf", "action": "plan"}'
+            elif "CloudAgent" in system_prompt:
+                if "AWS" in prompt:
+                    return '{"provider": "aws", "action": "list_instances"}'
+                return '{"provider": "k8s", "action": "list_pods", "namespace": "default"}'
+            return '{}'
+        return "Mock response: LLM not configured."
 
     def _call_anthropic(self, prompt: str, system_prompt: str, model: str) -> str:
         """Call Anthropic API with configured model."""

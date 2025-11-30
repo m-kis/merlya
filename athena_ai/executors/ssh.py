@@ -6,6 +6,7 @@ import paramiko
 from athena_ai.executors.connectivity import ConnectivityPlanner
 from athena_ai.executors.ssh_connection_pool import get_connection_pool
 from athena_ai.security.credentials import CredentialManager
+from athena_ai.utils.display import get_display_manager
 from athena_ai.utils.logger import logger
 from athena_ai.utils.security import redact_sensitive_info
 
@@ -59,7 +60,15 @@ class SSHManager:
 
         return target_client
 
-    def execute(self, host: str, command: str, user: Optional[str] = None, key_path: Optional[str] = None, timeout: int = 60) -> Tuple[int, str, str]:
+    def execute(
+        self,
+        host: str,
+        command: str,
+        user: Optional[str] = None,
+        key_path: Optional[str] = None,
+        timeout: int = 60,
+        show_spinner: bool = True
+    ) -> Tuple[int, str, str]:
         """
         Execute a command on a remote host via SSH using user's credentials.
 
@@ -69,6 +78,7 @@ class SSHManager:
             user: SSH user (auto-detected from config if not provided)
             key_path: SSH key path (auto-detected if not provided)
             timeout: Command timeout in seconds (default: 60)
+            show_spinner: Show spinner during SSH operations (default: True)
 
         Returns: (exit_code, stdout, stderr)
         """
@@ -85,6 +95,8 @@ class SSHManager:
         logger.debug(f"🔍 Connecting to {host} as {user}")
         if key_path:
             logger.debug(f"🔑 Using key: {key_path}")
+
+        display = get_display_manager()
 
         # Prepare connection kwargs
         connect_kwargs = {
@@ -109,31 +121,36 @@ class SSHManager:
 
         strategy = self.connectivity.get_connection_strategy(host, target_ip)
 
-        if strategy.method == 'jump':
-            # JUMP HOST CONNECTION
-            try:
-                client = self._connect_via_jump_host(host, strategy.jump_host, user, connect_kwargs)
-                should_close = True
-            except Exception as e:
-                logger.error(f"❌ Jump host connection failed: {e}")
-                return -1, "", f"Failed to connect via {strategy.jump_host}: {e}"
-        else:
-            # DIRECT CONNECTION
-            # Get connection from pool or create new one
-            if self.use_pool and self.pool:
-                client = self.pool.get_connection(host, user, **connect_kwargs)
-                if client is None:
-                    return -1, "", "Failed to establish SSH connection"
-                should_close = False  # Don't close pooled connections
+        # Use spinner for connection phase if enabled
+        def _establish_connection():
+            nonlocal strategy
+            if strategy.method == 'jump':
+                return self._connect_via_jump_host(
+                    host, strategy.jump_host, user, connect_kwargs
+                ), True
             else:
-                client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                try:
+                if self.use_pool and self.pool:
+                    conn = self.pool.get_connection(host, user, **connect_kwargs)
+                    return conn, False
+                else:
+                    client = paramiko.SSHClient()
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                     client.connect(host, username=user, **connect_kwargs)
-                except Exception as e:
-                    logger.error(f"❌ Connection failed: {e}")
-                    return -1, "", str(e)
-                should_close = True  # Close non-pooled connections
+                    return client, True
+
+        try:
+            if show_spinner:
+                with display.spinner(f"🔌 Connecting to {host}..."):
+                    client, should_close = _establish_connection()
+            else:
+                client, should_close = _establish_connection()
+
+            if client is None:
+                return -1, "", "Failed to establish SSH connection"
+
+        except Exception as e:
+            logger.error(f"❌ Connection failed: {e}")
+            return -1, "", str(e)
 
         try:
 
