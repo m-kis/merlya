@@ -217,12 +217,20 @@ jobs:
       - name: Send Slack notification
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+          SLACK_USERNAME: ${{ vars.SLACK_USERNAME }}
+          SLACK_ICON_EMOJI: ${{ vars.SLACK_ICON_EMOJI }}
         run: |
           # Skip if webhook URL is not configured
           if [ -z "${SLACK_WEBHOOK_URL}" ]; then
             echo "⚠️  SLACK_WEBHOOK_URL secret not configured - skipping notification"
             exit 0
           fi
+
+          # Use variables with defaults
+          CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
+          USERNAME="${SLACK_USERNAME:-BuildsBot}"
+          ICON_EMOJI="${SLACK_ICON_EMOJI:-:building_construction:}"
 
           # Determine overall status
           if [ "${{ needs.test-run-command.result }}" == "success" ] && \
@@ -257,8 +265,9 @@ jobs:
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
             -d "{
-              \"username\": \"BuildsBot\",
-              \"icon_emoji\": \":building_construction:\",
+              \"channel\": \"${CHANNEL}\",
+              \"username\": \"${USERNAME}\",
+              \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
                 \"title\": \"Athena Command Tests - ${STATUS}\",
