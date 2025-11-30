@@ -335,6 +335,74 @@ class Orchestrator(BaseOrchestrator):
         self.console.print("[dim]🔄 Session reset[/dim]")
 
     # =========================================================================
+    # Error Handling
+    # =========================================================================
+
+    def _build_function_calling_error_message(self) -> str:
+        """
+        Build actionable error message when model doesn't support function calling.
+
+        Returns:
+            User-friendly error message with specific solutions
+        """
+        model_config = ModelConfig()
+        current_provider = model_config.get_provider()
+        current_model = model_config.get_model(current_provider)
+
+        message_parts = [
+            "❌ Model Error: The current model doesn't support function calling (required for multi-agent mode)",
+            "",
+            f"Current configuration:",
+            f"  • Provider: {current_provider}",
+            f"  • Model: {current_model}",
+            "",
+            "💡 Solutions:",
+        ]
+
+        # Suggest provider-specific solutions
+        if current_provider == "openrouter":
+            message_parts.extend([
+                "  1. Switch to a compatible OpenRouter model:",
+                "     /model set openrouter google/gemini-2.0-flash-exp:free",
+                "     /model set openrouter anthropic/claude-3.5-sonnet",
+                "     /model set openrouter qwen/qwen-2.5-72b-instruct",
+                "",
+                "  2. Switch to Ollama (if configured):",
+                "     /model provider ollama",
+            ])
+        elif current_provider == "ollama":
+            message_parts.extend([
+                "  1. Verify Ollama model supports function calling",
+                "  2. Try a different Ollama model:",
+                "     /model set ollama qwen2.5-coder:latest",
+                "",
+                "  3. Switch to a cloud provider:",
+                "     /model provider openrouter",
+            ])
+        elif current_provider == "anthropic":
+            message_parts.extend([
+                "  1. Use Claude without date suffix:",
+                "     /model set anthropic claude-3-5-sonnet-20241022",
+                "",
+                "  2. Switch to OpenRouter for more model options:",
+                "     /model provider openrouter",
+            ])
+        else:
+            message_parts.extend([
+                "  1. Check available models: /model list",
+                "  2. Switch provider: /model provider <provider>",
+                "  3. Set compatible model: /model set <provider> <model>",
+            ])
+
+        message_parts.extend([
+            "",
+            "📖 For more information:",
+            "   /model help",
+        ])
+
+        return "\n".join(message_parts)
+
+    # =========================================================================
     # Main Processing (new async API)
     # =========================================================================
 
@@ -372,7 +440,17 @@ class Orchestrator(BaseOrchestrator):
             logger.error(f"❌ Classification failed: {e}", exc_info=True)
             # Fallback: process without triage context
             conversation_history = kwargs.get("conversation_history", [])
-            return await self.planner.execute_basic(user_query, conversation_history)
+            try:
+                return await self.planner.execute_basic(user_query, conversation_history)
+            except Exception as fallback_error:
+                # Handle errors from fallback execution
+                error_str = str(fallback_error)
+                if "No endpoints found that support tool use" in error_str or "404" in error_str:
+                    logger.error(f"❌ Model doesn't support function calling: {fallback_error}")
+                    return self._build_function_calling_error_message()
+                # Generic error fallback
+                logger.error(f"❌ Orchestrator failed: {fallback_error}", exc_info=True)
+                return f"❌ Error: {str(fallback_error)}"
 
         # Store for backward compatibility
         self.current_priority = triage_context.priority_result
@@ -431,6 +509,15 @@ class Orchestrator(BaseOrchestrator):
             return result
 
         except Exception as e:
+            # Handle specific error cases with actionable messages
+            error_str = str(e)
+
+            # Check for function calling / tool use not supported
+            if "No endpoints found that support tool use" in error_str or "404" in error_str:
+                logger.error(f"❌ Model doesn't support function calling: {e}")
+                return self._build_function_calling_error_message()
+
+            # Generic error fallback
             logger.error(f"❌ Orchestrator failed: {e}", exc_info=True)
             return f"❌ Error: {str(e)}"
 
