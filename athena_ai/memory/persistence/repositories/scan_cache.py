@@ -10,30 +10,28 @@ across timezone boundaries. Comparisons and generation use timezone-aware UTC.
 import json
 import logging
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ScanCacheRepositoryMixin:
-    """Mixin for scan cache operations."""
+    """Mixin for scan cache operations.
 
-    # Type stubs for methods provided by BaseRepository or other mixins
-    @contextmanager
-    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
-        yield  # type: ignore[misc]  # Generator requires yield
+    This mixin requires the following methods from the including class:
+        - _get_connection() -> sqlite3.Connection
+        - _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]
+        - get_host_by_name(hostname: str) -> Optional[Dict[str, Any]]
+    """
 
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
-
-    def get_host_by_name(self, hostname: str) -> Optional[Dict[str, Any]]:
-        """Provided by HostRepositoryMixin."""
-        raise NotImplementedError  # pragma: no cover
+    # Type declarations for methods provided by BaseRepository or other mixins
+    # These are defined here for type checking purposes only.
+    # Actual implementations come from BaseRepository and HostRepositoryMixin.
+    if False:  # TYPE_CHECKING equivalent that doesn't require import
+        _get_connection: Any
+        _row_to_dict: Any
+        get_host_by_name: Any
 
     def _init_scan_cache_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize scan cache table."""

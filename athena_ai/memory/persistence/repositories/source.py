@@ -13,16 +13,19 @@ from athena_ai.utils.logger import logger
 
 
 class SourceRepositoryMixin:
-    """Mixin for inventory source operations."""
+    """Mixin for inventory source operations.
 
-    # Type stubs for methods provided by BaseRepository
-    def _get_connection(self) -> sqlite3.Connection:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
+    This mixin requires the following methods from the including class:
+        - _get_connection() -> sqlite3.Connection
+        - _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]
+    """
 
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
+    # Type declarations for methods provided by BaseRepository
+    # These are defined here for type checking purposes only.
+    # Actual implementations come from BaseRepository.
+    if False:  # TYPE_CHECKING equivalent that doesn't require import
+        _get_connection: Any
+        _row_to_dict: Any
 
     def _init_source_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize inventory sources table."""

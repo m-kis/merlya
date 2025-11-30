@@ -7,9 +7,8 @@ Handles creation and retrieval of point-in-time inventory snapshots for backup/r
 import json
 import logging
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, List, Optional
 
 from athena_ai.core.exceptions import PersistenceError
 
@@ -20,25 +19,23 @@ MAX_SNAPSHOT_LIMIT = 1000
 
 
 class SnapshotRepositoryMixin:
-    """Mixin for inventory snapshot operations."""
+    """Mixin for inventory snapshot operations.
 
-    # Type stubs for methods provided by BaseRepository or other mixins
-    @contextmanager
-    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
+    This mixin requires the following methods from the including class:
+        - _connection(commit: bool = False) -> ContextManager[sqlite3.Connection]
+        - _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]
+        - get_all_hosts() -> List[Dict[str, Any]]
+        - get_relations() -> List[Dict[str, Any]]
+    """
 
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
-
-    def get_all_hosts(self) -> List[Dict[str, Any]]:
-        """Provided by HostRepositoryMixin."""
-        raise NotImplementedError  # pragma: no cover
-
-    def get_relations(self) -> List[Dict[str, Any]]:
-        """Provided by RelationRepositoryMixin."""
-        raise NotImplementedError  # pragma: no cover
+    # Type declarations for methods provided by BaseRepository or other mixins
+    # These are defined here for type checking purposes only.
+    # Actual implementations come from the combined class hierarchy.
+    if False:  # TYPE_CHECKING equivalent that doesn't require import
+        _connection: Any
+        _row_to_dict: Any
+        get_all_hosts: Any
+        get_relations: Any
 
     def _init_snapshot_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize inventory snapshots table."""

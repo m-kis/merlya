@@ -6,9 +6,8 @@ Handles persistence of local machine state (environment, tools, services, etc.).
 
 import json
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Generator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 # Reserved key for metadata to avoid collision with user categories
 _METADATA_KEY = "_metadata"
@@ -47,16 +46,12 @@ class LocalContextRepositoryMixin:
           {"category": {"_value": "string_value"}} on retrieval.
     """
 
-    # Type stubs for methods provided by BaseRepository
-    # These are defined here for mypy, actual implementation is in BaseRepository
-    @contextmanager
-    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
-
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Provided by BaseRepository."""
-        raise NotImplementedError  # pragma: no cover
+    # Type declarations for methods provided by BaseRepository
+    # These are defined here for type checking purposes only.
+    # Actual implementations come from BaseRepository.
+    if False:  # TYPE_CHECKING equivalent that doesn't require import
+        _connection: Any
+        _row_to_dict: Any
 
     def _init_local_context_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize local context table."""
