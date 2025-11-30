@@ -24,20 +24,11 @@ class ContextCommandHandler:
             /scan           - Scan local machine only
             /scan <host>    - Scan a specific remote host
         """
-        # Handle deprecated --full flag
-        if '--full' in args:
-            print_warning("The --full flag is deprecated and ignored.")
-            console.print("[dim]  Use /scan <hostname> to scan specific hosts.[/dim]")
-            console.print("[dim]  Hosts are scanned automatically on first SSH connection (JIT).[/dim]")
-            args = [a for a in args if a != '--full']
-
         try:
             if args:
-                # Scan specific host
                 hostname = args[0]
                 self._scan_host(hostname)
             else:
-                # Scan local only
                 self._scan_local()
         except Exception as e:
             print_error(f"Scan failed: {e}")
@@ -67,7 +58,7 @@ class ContextCommandHandler:
         if result.get('accessible'):
             print_success(f"Host {hostname} scanned successfully")
             console.print(f"  IP: {result.get('ip', 'unknown')}")
-            console.print(f"  Reachable: Yes")
+            console.print("  Reachable: Yes")
             if result.get('os'):
                 console.print(f"  OS: {result.get('os', 'unknown')}")
         else:
@@ -83,19 +74,11 @@ class ContextCommandHandler:
             /refresh           - Refresh local context cache
             /refresh <host>    - Refresh cache for a specific host
         """
-        # Handle deprecated --full flag
-        if '--full' in args:
-            print_warning("The --full flag is deprecated and ignored.")
-            console.print("[dim]  Use /refresh <hostname> to refresh specific hosts.[/dim]")
-            args = [a for a in args if a != '--full']
-
         try:
             if args:
-                # Refresh specific host
                 hostname = args[0]
                 self._refresh_host(hostname)
             else:
-                # Refresh local only
                 self._refresh_local()
         except Exception as e:
             print_error(f"Refresh failed: {e}")
