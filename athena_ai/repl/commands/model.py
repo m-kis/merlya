@@ -339,7 +339,26 @@ class ModelCommandHandler:
             model_name = args[1]
             if config.set_model(model_name):
                 print_success(f"Embedding model changed to: {model_name}")
-                console.print("[dim]ℹ️ Model will be loaded on next AI feature use[/dim]")
+
+                # Download model immediately
+                console.print("[dim]⏳ Downloading model...[/dim]")
+                try:
+                    from athena_ai.triage.smart_classifier.embedding_cache import (
+                        EmbeddingCache,
+                        HAS_EMBEDDINGS,
+                    )
+
+                    if not HAS_EMBEDDINGS:
+                        console.print("[yellow]⚠️ sentence-transformers not installed[/yellow]")
+                        console.print("[dim]Install with: pip install sentence-transformers[/dim]")
+                    else:
+                        # Force download by creating a cache and accessing the model
+                        cache = EmbeddingCache(model_name=model_name)
+                        _ = cache.model  # This triggers the download
+                        console.print("[dim]✅ Model downloaded and ready to use[/dim]")
+                except Exception as e:
+                    print_error(f"Failed to download model: {e}")
+                    console.print("[dim]ℹ️ Model will be loaded on next AI feature use[/dim]")
             else:
                 print_error(f"Unknown model: {model_name}")
                 console.print("[dim]Use '/model embedding list' to see available models[/dim]")

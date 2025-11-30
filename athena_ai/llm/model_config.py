@@ -113,7 +113,10 @@ class ModelConfig:
         if self.config_file.exists():
             try:
                 with open(self.config_file, 'r') as f:
-                    return json.load(f)
+                    config = json.load(f)
+                    # Validate and fix invalid model values
+                    self._validate_config(config)
+                    return config
             except Exception as e:
                 logger.warning(f"Failed to load config: {e}")
 
@@ -123,6 +126,38 @@ class ModelConfig:
             "models": self.DEFAULT_MODELS.copy(),
             "task_models": self.TASK_MODELS.copy(),
         }
+
+    def _validate_config(self, config: Dict) -> None:
+        """
+        Validate and auto-fix invalid config values.
+
+        Args:
+            config: Configuration dictionary to validate/fix in-place
+        """
+        # Ensure models dict exists
+        if "models" not in config:
+            config["models"] = self.DEFAULT_MODELS.copy()
+            logger.debug("Added missing 'models' section to config")
+
+        # Validate each provider's model
+        models = config.get("models", {})
+        fixed = False
+
+        for provider, model in list(models.items()):
+            # Check for obviously invalid model names
+            if not model or model in ["provider", "model", "null", "none", ""]:
+                logger.warning(
+                    f"⚠️ Invalid model '{model}' for {provider}, "
+                    f"resetting to default: {self.DEFAULT_MODELS.get(provider, 'unknown')}"
+                )
+                models[provider] = self.DEFAULT_MODELS.get(provider, "")
+                fixed = True
+
+        # Save fixed config
+        if fixed:
+            self.config = config
+            self.save_config()
+            logger.info("✅ Config auto-fixed and saved")
 
     def _interactive_setup(self):
         """Interactive setup for first-time configuration."""

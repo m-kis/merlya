@@ -65,13 +65,15 @@ def setup_logger(verbose: bool = False, session_id: str = None):
     """
     logger.remove()
 
-    # Build format string with optional session_id
-    # If session_id is provided, it will be included in extra fields via logger.bind()
-    # Format includes {extra[session_id]} which will be empty if not bound
-    if session_id:
-        log_format = "{time:YYYY-MM-DD HH:mm:ss} | {extra[session_id]} | {level: <8} | {name}:{function}:{line} - {message}"
-    else:
-        log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
+    # Custom format function to handle optional session_id
+    def format_record(record):
+        """Format log record with optional session_id."""
+        # Check if session_id exists in extra, otherwise use empty string
+        sid = record["extra"].get("session_id", "")
+        if sid:
+            return "{time:YYYY-MM-DD HH:mm:ss} | " + sid + " | {level: <8} | {name}:{function}:{line} - {message}\n"
+        else:
+            return "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}\n"
 
     # 1. File Logging (Always active, detailed)
     log_path = Path("athena_ai.log")
@@ -80,7 +82,7 @@ def setup_logger(verbose: bool = False, session_id: str = None):
         rotation="10 MB",
         retention="1 week",
         level="DEBUG",
-        format=log_format,
+        format=format_record,
         enqueue=True
     )
 
