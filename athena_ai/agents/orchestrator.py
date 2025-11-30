@@ -150,15 +150,17 @@ class Orchestrator(BaseOrchestrator):
         # Load model config from ~/.athena/config.json
         model_config = ModelConfig()
         config_provider = model_config.get_provider()
-        config_model = model_config.get_model(config_provider)
 
         # Determine provider: env var overrides config
         provider = os.getenv("ATHENA_PROVIDER", "").lower() or config_provider
 
+        # ✅ FIX: Get model for THE ACTUAL PROVIDER, not config_provider
+        # This ensures we use the correct model for the selected provider
+
         # Ollama (local LLM)
         if provider == "ollama" or os.getenv("OLLAMA_MODEL"):
             model = os.getenv("OLLAMA_MODEL") or model_config.get_model("ollama")
-            logger.info(f"Using Ollama: {model}")
+            logger.info(f"✅ Using Ollama: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key="ollama",
@@ -176,8 +178,9 @@ class Orchestrator(BaseOrchestrator):
             api_key = os.getenv("OPENROUTER_API_KEY")
             if not api_key:
                 raise ValueError("OPENROUTER_API_KEY not set.")
-            model = os.getenv("OPENROUTER_MODEL") or config_model
-            logger.info(f"Using OpenRouter: {model}")
+            # ✅ FIX: Get model for "openrouter", not config_provider
+            model = os.getenv("OPENROUTER_MODEL") or model_config.get_model("openrouter")
+            logger.info(f"✅ Using OpenRouter: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
@@ -195,8 +198,9 @@ class Orchestrator(BaseOrchestrator):
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
                 raise ValueError("ANTHROPIC_API_KEY not set.")
-            model = os.getenv("ANTHROPIC_MODEL") or config_model
-            logger.info(f"Using Anthropic: {model}")
+            # ✅ FIX: Get model for "anthropic", not config_provider
+            model = os.getenv("ANTHROPIC_MODEL") or model_config.get_model("anthropic")
+            logger.info(f"✅ Using Anthropic: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
@@ -214,8 +218,9 @@ class Orchestrator(BaseOrchestrator):
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError("OPENAI_API_KEY not set.")
-            model = os.getenv("OPENAI_MODEL") or config_model
-            logger.info(f"Using OpenAI: {model}")
+            # ✅ FIX: Get model for "openai", not config_provider
+            model = os.getenv("OPENAI_MODEL") or model_config.get_model("openai")
+            logger.info(f"✅ Using OpenAI: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
