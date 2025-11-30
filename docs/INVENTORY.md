@@ -4,7 +4,7 @@ Athena's inventory system manages your infrastructure hosts with support for mul
 
 ## Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │                    Inventory                        │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
@@ -277,7 +277,7 @@ Enter numbers to accept (e.g., '1,2'), 'all', or 'none':
 
 ### Host Schema
 
-```
+```text
 hosts_v2
 ├── id (PRIMARY KEY)
 ├── hostname (UNIQUE)
@@ -308,8 +308,11 @@ All changes to hosts are versioned:
 
 ```bash
 /inventory stats
+```
 
-# Output:
+**Output:**
+
+```text
 Inventory Statistics
 
   Total hosts: 45
@@ -324,7 +327,6 @@ Inventory Statistics
     infrastructure.csv: 40
 
   Relations: 12 (8 validated)
-  Cached scans: 3
 ```
 
 ---

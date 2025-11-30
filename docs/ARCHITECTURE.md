@@ -4,7 +4,7 @@
 
 Athena is an AI-powered infrastructure orchestration CLI that uses natural language to manage servers, services, and infrastructure.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      User Interface                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
@@ -48,13 +48,16 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### 1. User Interface Layer
 
-#### REPL (`athena_ai/repl.py`)
+#### REPL (`athena_ai/repl/`)
+
 - Interactive command-line interface
 - Conversation memory
 - Slash command handling
 - Rich terminal output
+- Command handlers: [commands/](athena_ai/repl/commands/)
 
 #### CLI (`athena_ai/cli.py`)
+
 - Click-based command structure
 - Single query mode (`athena ask "..."`)
 - Configuration commands
@@ -131,11 +134,48 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 - Visual spinner during connection
 
 #### Action Executor (`athena_ai/executors/action_executor.py`)
+
 - Unified execution interface
 - Local and remote commands
 - Batch execution with progress tracking (`execute_batch()`)
 
-### 7. UX Layer
+### 7. CI/CD Integration Layer
+
+#### CI Manager (`athena_ai/ci/manager.py`)
+
+- Central CI/CD orchestration
+- Multi-platform support (GitHub Actions, GitLab CI)
+- Workflow triggering and monitoring
+
+#### CI Adapters (`athena_ai/ci/adapters/`)
+
+- Platform-specific adapters (GitHub, GitLab)
+- Error classification and analysis
+- Learning from past failures
+
+#### CI Clients (`athena_ai/ci/clients/`)
+
+- CLI-based execution (`gh`, `gitlab`)
+- API-based execution (REST clients)
+- Authentication and security
+
+### 8. Triage Layer
+
+#### Priority Classifier (`athena_ai/triage/`)
+
+- 3-tier classification: Smart (embeddings) → AI (LLM) → Signal (keywords)
+- Intent detection: QUERY, ACTION, ANALYSIS
+- Priority levels: P0 (critical) → P3 (normal)
+
+#### Signal Detector
+
+- Deterministic keyword-based classification
+- Environment detection (prod, staging, dev)
+- Impact amplifiers
+
+See [TRIAGE.md](TRIAGE.md) for detailed documentation.
+
+### 9. UX Layer
 
 #### Display Manager (`athena_ai/utils/display.py`)
 
@@ -148,7 +188,7 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### Query Processing
 
-```
+```text
 1. User Input
    │
    v
@@ -185,7 +225,7 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### SSH Execution Flow
 
-```
+```text
 1. execute_command(host, command)
    │
    v
@@ -237,7 +277,7 @@ ATHENA_DEBUG=1           # Debug mode
 
 ### File Structure
 
-```
+```text
 ~/.athena/
 ├── .env                 # Environment variables
 ├── config.yaml          # Configuration

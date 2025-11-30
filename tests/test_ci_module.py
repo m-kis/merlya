@@ -550,6 +550,12 @@ class TestSecurityValidation:
             def is_available(self) -> bool:
                 return True
 
+            def is_authenticated(self) -> bool:
+                return True
+
+            def get_supported_operations(self) -> list[str]:
+                return ["test"]
+
             def execute(self, operation, params, timeout=60):
                 return {}
 

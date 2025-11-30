@@ -7,17 +7,18 @@ Complete reference for all slash commands available in the Athena interactive RE
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands |
-| `/scan` | Scan infrastructure |
+| `/help <topic>` | Detailed help (model, variables, inventory, cicd, mcp, context, session, triage) |
+| `/scan` | Scan local or specific host |
 | `/refresh` | Force refresh context |
 | `/cache-stats` | Show cache statistics |
 | `/ssh-info` | Show SSH configuration |
 | `/permissions` | Show permission capabilities |
-| `/session` | Session management |
 | `/context` | Show current context |
 | `/model` | Model configuration |
 | `/variables` | Manage variables |
+| `/inventory` | Manage hosts |
+| `/cicd` | CI/CD management |
 | `/mcp` | MCP server management |
-| `/language` | Change language |
 | `/triage` | Test priority classification |
 | `/feedback` | Correct triage classification |
 | `/triage-stats` | Show learned patterns |
@@ -27,42 +28,44 @@ Complete reference for all slash commands available in the Athena interactive RE
 | `/compact` | Compact conversation |
 | `/delete` | Delete conversation |
 | `/reset` | Reset agents memory |
+| `/language` | Change language |
+| `/reload-commands` | Reload custom commands |
 | `/exit`, `/quit` | Exit Athena |
 
 ---
 
 ## Infrastructure Commands
 
-### `/scan [--full]`
+### `/scan [hostname]`
 
-Scan infrastructure and discover hosts.
+Scan local machine or a specific remote host.
 
 ```bash
-# Quick scan (inventory only)
+# Scan local machine only
 /scan
 
-# Full scan (includes SSH connectivity test)
-/scan --full
+# Scan a specific remote host
+/scan web-01
+/scan 192.168.1.10
 ```
 
-**Output:**
-- Discovered hosts from SSH config
-- Hosts from `/etc/hosts`
-- Ansible inventory hosts (if configured)
-- Connection status (with `--full`)
+**Scanning Philosophy (JIT):**
+- Local machine: Comprehensive scan, cached for 12h in SQLite
+- Remote hosts: Scanned Just-In-Time when first connecting
+- No bulk scanning: Individual hosts scanned on demand
 
 ---
 
-### `/refresh [--full]`
+### `/refresh [hostname]`
 
 Force refresh the cached context.
 
 ```bash
-# Refresh inventory caches
+# Refresh local context cache
 /refresh
 
-# Full refresh including SSH scans
-/refresh --full
+# Refresh cache for a specific host
+/refresh web-01
 ```
 
 ---
@@ -80,9 +83,8 @@ Show cache statistics and TTL information.
 Cache Statistics
 ================
 Inventory Cache: 45 hosts (TTL: 1h, updated: 5m ago)
-Local Info: Cached (TTL: 5m)
+Local Info: Cached (TTL: 12h)
 Remote Hosts: 3 cached (TTL: 30m)
-Smart Cache: Fingerprint-based (12 entries)
 ```
 
 ---
@@ -94,12 +96,6 @@ Show SSH configuration details.
 ```bash
 /ssh-info
 ```
-
-**Output:**
-- SSH config file locations
-- Configured hosts with aliases
-- Jump hosts (ProxyJump)
-- Identity files
 
 ---
 
@@ -115,16 +111,6 @@ Check permission capabilities on a host.
 /permissions local
 ```
 
-**Output:**
-```
-Permissions on web-01
-=====================
-User: deploy
-Sudo: Yes (passwordless)
-SSH Key: ~/.ssh/id_rsa
-Writable: /tmp, /home/deploy
-```
-
 ---
 
 ### `/context`
@@ -134,12 +120,6 @@ Show current infrastructure context.
 ```bash
 /context
 ```
-
-**Output:**
-- Environment (dev/staging/prod)
-- Known hosts count
-- Current session info
-- Active conversation
 
 ---
 
@@ -153,40 +133,29 @@ Display current LLM configuration.
 /model show
 ```
 
-**Output:**
-```
-Current Model Configuration
-===========================
-Provider: anthropic
-Model: claude-3-sonnet-20240229
-Temperature: 0.1
-Task Models:
-  - triage: claude-3-haiku (fast)
-  - planning: claude-3-opus (complex)
-  - default: claude-3-sonnet
-```
-
 ---
 
-### `/model list`
+### `/model list [provider]`
 
-List available models for current provider.
+List available models for current or specified provider.
 
 ```bash
 /model list
+/model list openrouter
 ```
 
 ---
 
-### `/model set <provider> <model>`
+### `/model set <model>` or `/model set <provider> <model>`
 
 Set model for a specific provider.
 
 ```bash
-# Set Anthropic model
-/model set anthropic claude-3-opus-20240229
+# Set model for current provider
+/model set claude-3-opus-20240229
 
-# Set OpenRouter model
+# Set model for specific provider
+/model set anthropic claude-3-opus-20240229
 /model set openrouter anthropic/claude-3-sonnet
 ```
 
@@ -197,18 +166,83 @@ Set model for a specific provider.
 Switch LLM provider.
 
 ```bash
-# Switch to Ollama (local)
 /model provider ollama
-
-# Switch to OpenRouter
 /model provider openrouter
+/model provider anthropic
+/model provider openai
 ```
 
-**Supported Providers:**
-- `anthropic` - Anthropic API
-- `openai` - OpenAI API
-- `openrouter` - OpenRouter (multi-provider)
-- `ollama` - Local Ollama
+---
+
+### `/model local`
+
+Manage local Ollama models.
+
+```bash
+# Switch to Ollama (auto-downloads model)
+/model local on [model]
+
+# Switch back to cloud provider
+/model local off
+
+# Set specific Ollama model
+/model local set llama3.2
+```
+
+---
+
+### `/model task`
+
+Configure task-specific model routing for cost/performance optimization.
+
+```bash
+# Show task configuration
+/model task
+
+# List valid tasks and aliases
+/model task list
+
+# Set model for specific task
+/model task set correction haiku
+/model task set planning opus
+/model task set synthesis sonnet
+
+# Reset to defaults
+/model task reset
+```
+
+**Task Types:**
+
+| Task | Purpose | Recommended |
+|------|---------|-------------|
+| `correction` | Quick fixes, typos, simple edits | haiku (fast, cheap) |
+| `planning` | Complex reasoning, architecture | opus (powerful) |
+| `synthesis` | General tasks, summaries | sonnet (balanced) |
+
+---
+
+### `/model embedding`
+
+Manage local embedding models for semantic understanding.
+
+```bash
+# Show current embedding model
+/model embedding
+
+# List available models
+/model embedding list
+
+# Set model (any HuggingFace model)
+/model embedding set all-MiniLM-L6-v2
+```
+
+**Embeddings are used for:**
+
+- Triage classification (query priority P0-P3)
+- Intent detection (action/analysis/question)
+- Tool selection
+- Error pattern matching
+- Similar query lookup
 
 ---
 
@@ -222,46 +256,71 @@ List all defined variables.
 /variables list
 ```
 
-**Output:**
-```
-Variables
-=========
-Host Aliases:
-  @preproddb → db-qarc-1
-  @webprod → web-prod-01
-
-Credentials:
-  @mongo-user → admin (encrypted)
-  @mongo-pass → ******* (encrypted)
-```
-
 ---
 
 ### `/variables set <name> <value>`
 
-Define a new variable.
+Define a config variable (persisted).
 
 ```bash
-# Host alias
-/variables set preproddb db-qarc-1
+/variables set region eu-west-1
+/variables set CONFIG {"env":"prod"}
+```
 
-# Credential (stored encrypted)
-/variables set mongo-pass SuperSecretPassword
+---
+
+### `/variables set-host <name> <hostname>`
+
+Define a host alias (persisted).
+
+```bash
+/variables set-host proddb db-prod-001.example.com
 ```
 
 **Usage in queries:**
 ```
-check mongodb status on @preproddb with user @mongo-user
+check mongodb status on @proddb
+```
+
+---
+
+### `/variables set-secret <name>` or `/variables secret <name>`
+
+Define a secret (memory-only, NOT persisted). Uses secure hidden input.
+
+```bash
+/variables set-secret dbpass
+/variables secret token
 ```
 
 ---
 
 ### `/variables delete <name>`
 
-Delete a variable.
+Delete a variable. Aliases: `del`, `remove`
 
 ```bash
-/variables delete preproddb
+/variables delete proddb
+```
+
+---
+
+### `/variables clear`
+
+Clear all variables.
+
+```bash
+/variables clear
+```
+
+---
+
+### `/variables clear-secrets`
+
+Clear only secrets (memory-only variables).
+
+```bash
+/variables clear-secrets
 ```
 
 ---
@@ -269,6 +328,253 @@ Delete a variable.
 ### `/credentials`
 
 Alias for `/variables` (backward compatibility).
+
+---
+
+## Inventory System
+
+### `/inventory list`
+
+List inventory sources. Alias: `ls`
+
+```bash
+/inventory list
+```
+
+---
+
+### `/inventory show [source] [--limit N]`
+
+Show hosts from all or specific source.
+
+```bash
+/inventory show
+/inventory show /etc/hosts
+/inventory show --limit 50
+```
+
+---
+
+### `/inventory search <pattern> [--limit N]`
+
+Search hosts by hostname, IP, or groups. Alias: `find`
+
+```bash
+/inventory search prod
+/inventory search 192.168
+/inventory search web --limit 20
+```
+
+---
+
+### `/inventory add <file>`
+
+Import hosts from file. Alias: `import`
+
+Supported formats: CSV, JSON, YAML, INI (Ansible), /etc/hosts, ~/.ssh/config
+
+```bash
+/inventory add /etc/hosts
+/inventory add ~/.ssh/config
+/inventory add hosts.csv
+/inventory add inventory.json
+```
+
+---
+
+### `/inventory add-host [hostname]`
+
+Add single host interactively.
+
+```bash
+/inventory add-host
+/inventory add-host web-prod-01
+```
+
+---
+
+### `/inventory remove <source>`
+
+Remove a source and its hosts. Aliases: `delete`, `rm`
+
+```bash
+/inventory remove hosts.csv
+```
+
+---
+
+### `/inventory export <file>`
+
+Export inventory to file (json/csv/yaml).
+
+```bash
+/inventory export inventory.json
+/inventory export hosts.csv
+```
+
+---
+
+### `/inventory snapshot [name]`
+
+Create a point-in-time snapshot.
+
+```bash
+/inventory snapshot
+/inventory snapshot before-cleanup
+```
+
+---
+
+### `/inventory stats`
+
+Show inventory statistics.
+
+```bash
+/inventory stats
+```
+
+---
+
+### `/inventory ssh-key <hostname>`
+
+Manage SSH key configuration for a host.
+
+```bash
+# Show SSH config for host
+/inventory ssh-key web-prod-01
+
+# Set SSH key (interactive)
+/inventory ssh-key web-prod-01 set
+
+# Clear SSH configuration
+/inventory ssh-key web-prod-01 clear
+```
+
+Passphrases are stored as secrets (memory-only, NOT persisted).
+
+---
+
+### `/inventory relations`
+
+Manage host relationships.
+
+```bash
+# Get AI-suggested relations
+/inventory relations
+/inventory relations suggest
+
+# List validated relations
+/inventory relations list
+```
+
+---
+
+## CI/CD Commands
+
+### `/cicd`
+
+Overview and detected CI/CD platforms.
+
+```bash
+/cicd
+```
+
+---
+
+### `/cicd status`
+
+Recent run status summary.
+
+```bash
+/cicd status
+```
+
+---
+
+### `/cicd workflows`
+
+List available workflows.
+
+```bash
+/cicd workflows
+```
+
+---
+
+### `/cicd runs [N]`
+
+List last N runs (default: 10).
+
+```bash
+/cicd runs
+/cicd runs 20
+```
+
+---
+
+### `/cicd trigger <workflow> [--ref <branch>]`
+
+Trigger a workflow.
+
+```bash
+/cicd trigger deploy
+/cicd trigger deploy --ref main
+```
+
+---
+
+### `/cicd cancel <run_id>`
+
+Cancel a running workflow.
+
+```bash
+/cicd cancel 12345678
+```
+
+---
+
+### `/cicd retry <run_id> [--full]`
+
+Retry a failed run.
+
+```bash
+/cicd retry 12345678
+/cicd retry 12345678 --full
+```
+
+---
+
+### `/cicd analyze <run_id>`
+
+Analyze a specific run.
+
+```bash
+/cicd analyze 12345678
+```
+
+---
+
+### `/cicd permissions`
+
+Check CI/CD permissions.
+
+```bash
+/cicd permissions
+```
+
+---
+
+### `/debug-workflow [run_id]`
+
+Debug a CI/CD workflow failure.
+
+```bash
+# Debug most recent failure
+/debug-workflow
+
+# Debug specific run
+/debug-workflow 12345678
+```
 
 ---
 
@@ -284,19 +590,22 @@ List configured MCP servers.
 
 ---
 
-### `/mcp add <name> <command> [args...] [--env KEY=VALUE]`
+### `/mcp add`
 
-Add an MCP server configuration.
+Add an MCP server (interactive).
 
 ```bash
-# Filesystem server
-/mcp add filesystem npx -y @modelcontextprotocol/server-filesystem
+/mcp add
+```
 
-# GitHub server with token
-/mcp add github npx -y @modelcontextprotocol/server-github --env GITHUB_TOKEN=ghp_xxx
+---
 
-# AWS EKS with multiple env vars
-/mcp add eks uvx awslabs.eks-mcp-server --env AWS_PROFILE=prod --env AWS_REGION=eu-west-1
+### `/mcp show <name>`
+
+Show MCP server configuration details.
+
+```bash
+/mcp show github
 ```
 
 ---
@@ -311,12 +620,12 @@ Remove an MCP server configuration.
 
 ---
 
-### `/mcp show <name>`
+### `/mcp examples`
 
-Show MCP server configuration details.
+Show example MCP server configurations.
 
 ```bash
-/mcp show github
+/mcp examples
 ```
 
 ---
@@ -332,32 +641,32 @@ Test priority classification for a query.
 ```
 
 **Output:**
-```
+
+```text
 Triage Classification
 =====================
 Priority: P1 (High)
 Intent: ANALYSIS
 Confidence: 0.92
-Signals: [P1:slow, env:prod, service:database]
 Environment: production
-Behavior: Investigate, explain, recommend
 ```
 
 ---
 
-### `/feedback <intent|priority> <value>`
+### `/feedback <intent> <priority> <query>`
 
-Correct the last triage classification.
+Correct a triage classification.
 
 ```bash
-# Correct intent
-/feedback intent action
+# Correct specific query
+/feedback action P0 restart nginx on prod
 
-# Correct priority
-/feedback priority P0
+# Correct last query
+/feedback --last action P0
 ```
 
-This helps the smart classifier learn from corrections.
+**Intents:** `query`, `action`, `analysis`
+**Priorities:** `P0` (critical), `P1` (urgent), `P2` (important), `P3` (normal)
 
 ---
 
@@ -367,19 +676,6 @@ Show learned triage patterns statistics.
 
 ```bash
 /triage-stats
-```
-
-**Output:**
-```
-Triage Statistics
-=================
-Total patterns learned: 156
-By intent:
-  QUERY: 45
-  ACTION: 78
-  ANALYSIS: 33
-Accuracy (last 100): 94%
-Cache size: 234/500
 ```
 
 ---
@@ -394,15 +690,6 @@ List all saved conversations.
 /conversations
 ```
 
-**Output:**
-```
-Conversations
-=============
-[1] 2024-01-15 10:30 - "Debugging MongoDB issues" (12 messages)
-[2] 2024-01-14 15:45 - "Deploy new nginx config" (8 messages)
-[3] 2024-01-14 09:00 - "Security audit web-01" (15 messages)
-```
-
 ---
 
 ### `/new [title]`
@@ -410,10 +697,7 @@ Conversations
 Start a new conversation.
 
 ```bash
-# New conversation with auto-generated title
 /new
-
-# New conversation with custom title
 /new Debugging Redis cluster
 ```
 
@@ -437,8 +721,6 @@ Compact current conversation to reduce context size.
 /compact
 ```
 
-This summarizes older messages while preserving recent context.
-
 ---
 
 ### `/delete <id>`
@@ -453,36 +735,22 @@ Delete a conversation.
 
 ## Session Management
 
+### `/session`
+
+Show current session info.
+
+```bash
+/session
+```
+
+---
+
 ### `/session list`
 
-List all sessions.
+List recent sessions.
 
 ```bash
 /session list
-```
-
----
-
-### `/session show`
-
-Show current session details.
-
-```bash
-/session show
-```
-
----
-
-### `/session export [format]`
-
-Export session to file.
-
-```bash
-# Export as JSON
-/session export json
-
-# Export as Markdown
-/session export md
 ```
 
 ---
@@ -494,11 +762,18 @@ Export session to file.
 Change response language.
 
 ```bash
-# French
 /language fr
-
-# English
 /language en
+```
+
+---
+
+### `/reload-commands`
+
+Reload custom slash commands from `~/.athena/commands/`.
+
+```bash
+/reload-commands
 ```
 
 ---
@@ -529,7 +804,7 @@ Athena supports custom slash commands defined in markdown files.
 
 ### Location
 
-```
+```text
 ~/.athena/commands/
 ├── deploy.md
 ├── healthcheck.md
@@ -551,7 +826,6 @@ args:
 
 Deploy {app} to the {env} environment.
 Check the current version, pull latest changes, and restart services.
-Verify health after deployment.
 ```
 
 ### Usage
@@ -562,24 +836,7 @@ Verify health after deployment.
 
 ---
 
-## Smart Context System
-
-Athena uses intelligent caching that auto-detects changes:
-
-| Cache Type | TTL | Auto-Refresh |
-|------------|-----|--------------|
-| Inventory (`/etc/hosts`) | 1 hour | On file change |
-| Local info | 5 minutes | Periodic |
-| Remote hosts | 30 minutes | On demand |
-| SSH scan | 1 hour | Manual (`--full`) |
-
-Use `/cache-stats` to monitor cache state.
-
----
-
 ## Environment Variables
-
-Some commands respect environment variables:
 
 | Variable | Description |
 |----------|-------------|
@@ -587,35 +844,17 @@ Some commands respect environment variables:
 | `ATHENA_LANGUAGE` | Default language (en/fr) |
 | `ATHENA_MODEL` | Default LLM model |
 | `ATHENA_PROVIDER` | Default LLM provider |
-| `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing fallback. Set to `"true"` to enable (default: `"false"`). Only enable after reviewing privacy implications below. |
-| `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Set to `"true"` to confirm your LLM provider meets your organization's data protection requirements (e.g., GDPR, SOC2, HIPAA). Required when `ATHENA_ENABLE_LLM_FALLBACK=true`. |
-
-**LLM Fallback Privacy Notice:** When enabled, inventory content is sent to your configured LLM provider for parsing. This may include hostnames, IP addresses, environment names, and metadata. Athena sanitizes content before sending, but you should verify your LLM provider's data handling policies meet your compliance requirements. Both variables must be set to `"true"` together.
-
-**Sanitization Details:** Before sending to the LLM provider, Athena redacts:
-
-- IPv4 and IPv6 addresses → `[IP_REDACTED]`, `[IPV6_REDACTED]`
-- MAC addresses → `[MAC_REDACTED]`
-- AWS account IDs, instance IDs, ARNs → `[AWS_ACCOUNT_REDACTED]`, `[INSTANCE_ID_REDACTED]`, `[ARN_REDACTED]`
-- GCP project IDs → `[PROJECT_REDACTED]`
-- Azure subscription IDs (UUIDs) → `[UUID_REDACTED]`
-- Email addresses → `[EMAIL_REDACTED]`
-- Sensitive metadata keys (passwords, tokens, API keys, credentials)
-- Domain portions of FQDNs → `[DOMAIN_REDACTED]`
-
-**Compliance Verification Checklist:**
-
-- Review provider's data retention policy (how long is data stored?)
-- Confirm encryption in transit (TLS 1.2+) and at rest
-- Verify compliance certifications (SOC2, GDPR, HIPAA as applicable)
-- Confirm data is not used for model training
-- Consider using on-premise LLM (Ollama) for sensitive environments
+| `ATHENA_EMBEDDING_MODEL` | Local embedding model |
+| `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing (default: false) |
+| `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Confirm LLM data handling compliance |
 
 ---
 
 ## See Also
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System design
+- [INVENTORY.md](INVENTORY.md) - Inventory system details
+- [VARIABLES.md](VARIABLES.md) - Variable system
 - [TOOLS.md](TOOLS.md) - Available tools
 - [TRIAGE.md](TRIAGE.md) - Triage system
 - [CREDENTIALS.md](CREDENTIALS.md) - Credential management
