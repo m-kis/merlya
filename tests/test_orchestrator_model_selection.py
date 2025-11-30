@@ -44,8 +44,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.ModelConfig')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('athena_ai.agents.base_orchestrator.StorageManager')
     def test_openrouter_uses_openrouter_model_not_ollama(
-        self, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """
         When using OpenRouter, should use OpenRouter model from config,
@@ -58,13 +59,13 @@ class TestOrchestratorModelSelection:
 
         mock_config_class.return_value = mock_model_config
 
-        # Create orchestrator (will trigger _create_model_client)
-        try:
-            Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            # Initialization might fail due to missing dependencies, that's ok
-            # We only care about the model client creation
-            pass
+        # Mock StorageManager to prevent stdin reads
+        mock_storage_instance = MagicMock()
+        mock_storage.return_value = mock_storage_instance
+
+        # Create orchestrator - StorageManager is mocked to prevent stdin reads
+        # This allows _create_model_client to run (we only care about the side effect)
+        _ = Orchestrator(mode=OrchestratorMode.BASIC)
 
         # Verify that OpenAIChatCompletionClient was called with correct model
         mock_client.assert_called_once()
@@ -83,8 +84,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.ModelConfig')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('athena_ai.agents.base_orchestrator.StorageManager')
     def test_anthropic_uses_anthropic_model_not_ollama(
-        self, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using Anthropic, should use Anthropic model, not Ollama model."""
         import athena_ai.agents.orchestrator as orch_module
@@ -93,10 +95,10 @@ class TestOrchestratorModelSelection:
 
         mock_config_class.return_value = mock_model_config
 
-        try:
-            Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            pass
+        mock_storage_instance = MagicMock()
+        mock_storage.return_value = mock_storage_instance
+
+        _ = Orchestrator(mode=OrchestratorMode.BASIC)
 
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs
@@ -113,8 +115,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.ModelConfig')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('athena_ai.agents.base_orchestrator.StorageManager')
     def test_openai_uses_openai_model_not_ollama(
-        self, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using OpenAI, should use OpenAI model, not Ollama model."""
         import athena_ai.agents.orchestrator as orch_module
@@ -123,10 +126,10 @@ class TestOrchestratorModelSelection:
 
         mock_config_class.return_value = mock_model_config
 
-        try:
-            Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            pass
+        mock_storage_instance = MagicMock()
+        mock_storage.return_value = mock_storage_instance
+
+        _ = Orchestrator(mode=OrchestratorMode.BASIC)
 
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs
@@ -140,8 +143,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('athena_ai.agents.base_orchestrator.StorageManager')
     def test_ollama_uses_ollama_model(
-        self, mock_ollama_client, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_storage, mock_ollama_client, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using Ollama (default provider), should use Ollama model."""
         import athena_ai.agents.orchestrator as orch_module
@@ -154,10 +158,10 @@ class TestOrchestratorModelSelection:
         mock_ollama_instance.get_model_names.return_value = ["mistral-small3.1:latest"]
         mock_ollama_client.return_value = mock_ollama_instance
 
-        try:
-            Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            pass
+        mock_storage_instance = MagicMock()
+        mock_storage.return_value = mock_storage_instance
+
+        _ = Orchestrator(mode=OrchestratorMode.BASIC)
 
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs
