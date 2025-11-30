@@ -34,6 +34,14 @@ Resolved:   "check nginx on web-prod-01 using [secret]"
 /variables set region eu-west-1
 /variables set environment production
 
+# IMPORTANT: Values can contain ANY characters without quotes
+# JSON, URLs, hashes, SQL, etc. are all supported
+/variables set API_CONFIG {"env":"prod","region":"eu-west-1"}
+/variables set WEBHOOK https://api.example.com?token=abc123&callback=true
+/variables set SECRET_HASH abc-123-{special}-456-[brackets]
+/variables set QUERY SELECT * FROM users WHERE active=1 AND role='admin'
+/variables set SSH_KEY ssh-rsa AAAAB3NzaC1yc2EA... user@host
+
 # Set a host alias (persisted)
 /variables set-host <key> <hostname>
 /variables set-host proddb db-prod-001
@@ -44,6 +52,14 @@ Resolved:   "check nginx on web-prod-01 using [secret]"
 /variables set-secret dbpass
 /variables set-secret api-key
 ```
+
+**Enhanced Parsing:** The `/variables set` command uses **raw parsing** mode that preserves ALL characters in the value without requiring quotes. This means you can set:
+- JSON objects with braces and quotes
+- URLs with query parameters
+- Hashes with special characters
+- SQL queries with spaces and quotes
+- SSH keys with multiple parts
+- Any other complex value type
 
 ### Managing Variables
 
@@ -166,11 +182,40 @@ check health of @staging-api
 
 ## Security
 
-- **Secrets never written to disk** - Only stored in memory
-- **Secrets masked in output** - Displayed as `********`
-- **Secrets cleared on exit** - Automatically removed when REPL exits
-- **Secure input** - Uses `getpass` (no terminal echo)
-- **No logging** - Secrets never appear in logs
+### Multi-Layer Protection
+
+Athena implements **LLM isolation** to protect secrets:
+
+1. **Secrets never written to disk** - Only stored in memory
+2. **Secrets masked in output** - Displayed as `********`
+3. **Secrets cleared on exit** - Automatically removed when REPL exits
+4. **Secure input** - Uses `getpass` (no terminal echo)
+5. **No logging** - Secrets never appear in logs
+6. **LLM Isolation** - LLMs see `@variable` placeholders, never actual values
+
+### How Secrets Are Used
+
+```
+┌─────────────────────────────────────────┐
+│ LLM Context (Untrusted)                 │
+│ • Query: "ssh @dbhost using @dbpass"    │
+│ • LLM sees: @dbhost, @dbpass            │
+│ • LLM cannot access actual values       │
+└─────────────────────────────────────────┘
+                 ↓
+┌─────────────────────────────────────────┐
+│ Execution Context (Trusted)             │
+│ • Resolves: "ssh prod-db-001 using ..." │
+│ • Executes with real credentials        │
+│ • Redacts secrets from output           │
+└─────────────────────────────────────────┘
+```
+
+**Key Principle:**
+
+- LLMs **plan** with variable names (`@dbpass`)
+- Tools **execute** with actual values (`secret123`)
+- This enables remote access while protecting secrets from LLM context
 
 ---
 
