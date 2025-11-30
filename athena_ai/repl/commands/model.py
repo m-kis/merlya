@@ -98,7 +98,11 @@ class ModelCommandHandler:
                 print_error("Failed to switch to Ollama - server may not be available")
                 return
             if len(args) > 1:
-                model_config.set_model("ollama", args[1])
+                model_name = args[1]
+                # Check if model exists, offer to download if not
+                if not self._handle_ollama_model_setup(model_name):
+                    return  # User cancelled or download failed
+                model_config.set_model("ollama", model_name)
             current_model = model_config.get_model("ollama")
             print_success(f"Switched to Ollama (Model: {current_model})")
             self.repl.orchestrator.reload_agents()
@@ -119,9 +123,12 @@ class ModelCommandHandler:
 
         elif subcmd == 'set':
             if len(args) > 1:
-                model_config.set_model("ollama", args[1])
-                print_success(f"Ollama model set to: {args[1]}")
-                self.repl.orchestrator.reload_agents()
+                model_name = args[1]
+                # Check if model exists, offer to download if not
+                if self._handle_ollama_model_setup(model_name):
+                    model_config.set_model("ollama", model_name)
+                    print_success(f"Ollama model set to: {model_name}")
+                    self.repl.orchestrator.reload_agents()
             else:
                 print_error("Missing model name. Usage: /model local set <model>")
         else:
@@ -197,10 +204,72 @@ class ModelCommandHandler:
             print_error("Usage: /model set <model> OR /model set <provider> <model>")
             return
 
+        # Special handling for Ollama: check if model exists, offer to download if not
+        if provider == "ollama":
+            if not self._handle_ollama_model_setup(model):
+                return  # User cancelled or download failed
+
         model_config.set_model(provider, model)
         print_success(f"Model for {provider} set to: {model}")
         # Reload agents to apply the new model
         self.repl.orchestrator.reload_agents()
+
+    def _handle_ollama_model_setup(self, model_name: str) -> bool:
+        """
+        Handle Ollama model setup: check if model exists, offer to download if not.
+
+        Args:
+            model_name: Name of the Ollama model
+
+        Returns:
+            True if model is ready to use, False if user cancelled or download failed
+        """
+        from athena_ai.llm.ollama_client import get_ollama_client
+
+        ollama_client = get_ollama_client()
+
+        # Check if Ollama is available
+        if not ollama_client.is_available():
+            print_error("Ollama server is not available")
+            console.print(f"[dim]ℹ️ Make sure Ollama is running at {ollama_client.base_url}[/dim]")
+            console.print("[dim]ℹ️ Install: https://ollama.ai[/dim]")
+            return False
+
+        # Check if model is already downloaded
+        if ollama_client.has_model(model_name):
+            console.print(f"[dim]✅ Model '{model_name}' is already available[/dim]")
+            return True
+
+        # Model not found - offer to download
+        console.print(f"[yellow]⚠️ Model '{model_name}' is not downloaded yet[/yellow]")
+        console.print(f"[dim]Would you like to download it now?[/dim]")
+
+        # Prompt user for confirmation
+        try:
+            from prompt_toolkit import prompt
+            response = prompt("Download model? [Y/n]: ").strip().lower()
+            if response in ['n', 'no']:
+                console.print("[dim]Model not downloaded. You can download it manually with:[/dim]")
+                console.print(f"[dim]  ollama pull {model_name}[/dim]")
+                return False
+        except (ImportError, EOFError, KeyboardInterrupt):
+            # Fallback if prompt_toolkit not available or user interrupts
+            console.print("[yellow]Skipping download. Download manually with:[/yellow]")
+            console.print(f"[dim]  ollama pull {model_name}[/dim]")
+            return False
+
+        # Download the model
+        console.print(f"[dim]⏳ Downloading model '{model_name}'...[/dim]")
+        console.print("[dim]   This may take a few minutes depending on model size[/dim]")
+
+        if ollama_client.pull_model(model_name):
+            console.print(f"[dim]✅ Model '{model_name}' downloaded successfully![/dim]")
+            return True
+        else:
+            print_error(f"Failed to download model '{model_name}'")
+            console.print("[dim]You can try downloading manually with:[/dim]")
+            console.print(f"[dim]  ollama pull {model_name}[/dim]")
+            return False
 
     def _set_provider(self, provider: str):
         """Switch provider with validation."""
