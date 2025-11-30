@@ -107,18 +107,52 @@ class CommandHandler:
         if not command:
             return CommandResult.NOT_HANDLED
 
-        # Use shlex.split() to properly handle quoted arguments
-        # This preserves spaces in quoted strings like: /variables set APP "front v2 - Front App"
-        try:
-            parts = shlex.split(command)
-        except ValueError as e:
-            # Handle invalid quoting (unclosed quotes, etc.)
-            logger.warning(f"Invalid command quoting: {e}")
-            print_error(f"Invalid command syntax: {e}")
-            return CommandResult.FAILED
+        # Special handling for /variables set commands to preserve raw values
+        # This allows setting variables with any content: JSON, hashes, special chars, etc.
+        # Example: /variables set CONFIG {"env":"prod","region":"eu-west-1"}
+        if command.startswith(('/variables set ', '/credentials set ', '/variables set-host ')):
+            # Split: ['/variables', 'set', 'KEY VALUE_WITH_ANYTHING']
+            parts = command.split(maxsplit=2)
+            if len(parts) >= 3:
+                cmd = parts[0].lower()  # '/variables'
+                subcmd = parts[1].lower()  # 'set'
+                rest = parts[2]  # 'KEY VALUE_WITH_ANYTHING'
 
-        cmd = parts[0].lower()
-        args = parts[1:]
+                # Split KEY from VALUE (only on first space)
+                key_value_parts = rest.split(maxsplit=1)
+                if len(key_value_parts) == 2:
+                    key = key_value_parts[0]
+                    value = key_value_parts[1]  # Preserve everything as-is
+                    # args = [subcmd, key, value] to match expected format
+                    args = [subcmd, key, value]
+                elif len(key_value_parts) == 1:
+                    # Only KEY provided, no VALUE (will trigger error in handler)
+                    args = [subcmd, key_value_parts[0]]
+                else:
+                    args = [subcmd]
+            else:
+                # Fallback if command format is unexpected
+                try:
+                    parts = shlex.split(command)
+                except ValueError as e:
+                    logger.warning(f"Invalid command quoting: {e}")
+                    print_error(f"Invalid command syntax: {e}")
+                    return CommandResult.FAILED
+                cmd = parts[0].lower()
+                args = parts[1:]
+        else:
+            # Use shlex.split() to properly handle quoted arguments for other commands
+            # This preserves spaces in quoted strings like: /model set "claude-3-5-sonnet"
+            try:
+                parts = shlex.split(command)
+            except ValueError as e:
+                # Handle invalid quoting (unclosed quotes, etc.)
+                logger.warning(f"Invalid command quoting: {e}")
+                print_error(f"Invalid command syntax: {e}")
+                return CommandResult.FAILED
+
+            cmd = parts[0].lower()
+            args = parts[1:]
 
         # Validate that this is a slash command
         if not cmd.startswith('/'):
