@@ -40,12 +40,17 @@ class TestOrchestratorErrorHandling:
         """
         mock_config_class.return_value = mock_model_config
 
+        # Mock HAS_AUTOGEN to avoid import errors
+        import athena_ai.agents.orchestrator as orch_module
+        original_has_autogen = orch_module.HAS_AUTOGEN
+        orch_module.HAS_AUTOGEN = True
+        orch_module.OpenAIChatCompletionClient = MagicMock()
+
         # Create orchestrator
-        try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            # Initialization might fail due to missing dependencies, that's ok
-            pass
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Restore original value
+        orch_module.HAS_AUTOGEN = original_has_autogen
 
         # Mock the planner to raise the function calling error
         mock_planner_instance = MagicMock()
@@ -86,10 +91,16 @@ class TestOrchestratorErrorHandling:
         """
         mock_config_class.return_value = mock_model_config
 
-        try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            pass
+        # Mock HAS_AUTOGEN to avoid import errors
+        import athena_ai.agents.orchestrator as orch_module
+        original_has_autogen = orch_module.HAS_AUTOGEN
+        orch_module.HAS_AUTOGEN = True
+        orch_module.OpenAIChatCompletionClient = MagicMock()
+
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Restore original value
+        orch_module.HAS_AUTOGEN = original_has_autogen
 
         # Mock the planner to raise the error
         mock_planner_instance = MagicMock()
@@ -130,10 +141,16 @@ class TestOrchestratorErrorHandling:
         ollama_config.get_model.return_value = "llama3:latest"
         mock_config_class.return_value = ollama_config
 
-        try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            pass
+        # Mock HAS_AUTOGEN to avoid import errors
+        import athena_ai.agents.orchestrator as orch_module
+        original_has_autogen = orch_module.HAS_AUTOGEN
+        orch_module.HAS_AUTOGEN = True
+        orch_module.OpenAIChatCompletionClient = MagicMock()
+
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Restore original value
+        orch_module.HAS_AUTOGEN = original_has_autogen
 
         # Mock the planner to raise the error
         mock_planner_instance = MagicMock()
@@ -169,10 +186,16 @@ class TestOrchestratorErrorHandling:
         """
         mock_config_class.return_value = mock_model_config
 
-        try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
-        except Exception:
-            pass
+        # Mock HAS_AUTOGEN to avoid import errors
+        import athena_ai.agents.orchestrator as orch_module
+        original_has_autogen = orch_module.HAS_AUTOGEN
+        orch_module.HAS_AUTOGEN = True
+        orch_module.OpenAIChatCompletionClient = MagicMock()
+
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Restore original value
+        orch_module.HAS_AUTOGEN = original_has_autogen
 
         # Mock the planner to raise a different error
         mock_planner_instance = MagicMock()
