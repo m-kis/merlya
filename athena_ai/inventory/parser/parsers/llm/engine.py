@@ -17,6 +17,7 @@ from .config import (
     LLM_TIMEOUT,
 )
 from .sanitizer import (
+    detect_plaintext_credentials,
     encode_content_for_prompt,
     sanitize_inventory_content,
     sanitize_prompt_injection,
@@ -124,6 +125,21 @@ def parse_with_llm(
     # Sanitize content to remove PII and sensitive infrastructure details
     sanitized_content = sanitize_inventory_content(content)
     logger.debug("Content sanitized for LLM processing - sensitive data redacted")
+
+    # Check for plaintext credentials before sanitization (warn user)
+    plaintext_creds = detect_plaintext_credentials(content)
+    if plaintext_creds:
+        cred_types = ", ".join(plaintext_creds)
+        logger.warning(
+            f"⚠️  SECURITY WARNING: Plaintext credentials detected in inventory file! "
+            f"Types found: [{cred_types}]. "
+            f"These will be redacted before sending to LLM, but storing credentials in "
+            f"inventory files is not recommended. Use secure credential management instead."
+        )
+        warnings.append(
+            f"Plaintext credentials detected ({cred_types}) - redacted before LLM processing. "
+            f"Consider using secure credential management."
+        )
 
     # Apply prompt injection sanitization
     sanitized_content, injection_detections = sanitize_prompt_injection(sanitized_content)

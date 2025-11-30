@@ -263,6 +263,37 @@ def sanitize_prompt_injection(content: str) -> Tuple[str, List[str]]:
     return sanitized, detected_patterns
 
 
+def detect_plaintext_credentials(content: str) -> List[str]:
+    """
+    Detect potential plaintext credentials in content.
+
+    Returns:
+        List of credential types found (e.g., ['password', 'api_key', 'token'])
+    """
+    if not content:
+        return []
+
+    detected = []
+
+    # Patterns indicating credentials in plaintext
+    credential_patterns = [
+        (r'password\s*[:=]\s*["\']?[^\s\'"]{6,}', 'password'),
+        (r'passwd\s*[:=]\s*["\']?[^\s\'"]{6,}', 'password'),
+        (r'api[_-]?key\s*[:=]\s*["\']?[a-zA-Z0-9_-]{16,}', 'api_key'),
+        (r'token\s*[:=]\s*["\']?[a-zA-Z0-9_.-]{16,}', 'token'),
+        (r'secret\s*[:=]\s*["\']?[a-zA-Z0-9_-]{16,}', 'secret'),
+        (r'auth\s*[:=]\s*["\']?[a-zA-Z0-9_-]{16,}', 'auth_token'),
+        (r'Bearer\s+[a-zA-Z0-9_.-]{16,}', 'bearer_token'),
+    ]
+
+    for pattern, cred_type in credential_patterns:
+        if re.search(pattern, content, re.IGNORECASE):
+            if cred_type not in detected:
+                detected.append(cred_type)
+
+    return detected
+
+
 def encode_content_for_prompt(content: str) -> str:
     """
     JSON-encode content for safe embedding in prompts.
