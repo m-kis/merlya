@@ -29,12 +29,11 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_function_calling_not_supported_error(
-        self, mock_planner_class, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_planner_class, mock_tools, mock_config_class, mock_model_config
     ):
         """
         Should return actionable error message when model doesn't support function calling.
@@ -76,12 +75,11 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_openrouter_error_suggests_compatible_models(
-        self, mock_planner_class, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_planner_class, mock_tools, mock_config_class, mock_model_config
     ):
         """
         Should suggest OpenRouter-specific compatible models when using OpenRouter.
@@ -117,12 +115,11 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "ollama"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_ollama_error_suggests_cloud_fallback(
-        self, mock_planner_class, mock_tools, mock_client, mock_config_class
+        self, mock_planner_class, mock_tools, mock_config_class
     ):
         """
         Should suggest cloud provider fallback when using Ollama.
@@ -161,12 +158,11 @@ class TestOrchestratorErrorHandling:
         "ATHENA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('autogen_ext.models.openai.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_generic_error_still_shown(
-        self, mock_planner_class, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_planner_class, mock_tools, mock_config_class, mock_model_config
     ):
         """
         Should still show generic errors that are not function calling related.

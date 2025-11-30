@@ -342,9 +342,25 @@ class SignalDetector:
                 pass
             else:
                 # Filter out values that look like credentials (passwords, secrets, tokens)
-                # Check for common secret patterns that should NOT be detected as hosts
+                # Only filter if the value is JUST a credential word or starts/ends with one without server naming patterns
+                # Legitimate server names like "api-token-01" or "secrets-server-01" should pass through
                 credential_indicators = ["pass", "secret", "token", "key", "pwd", "motdepasse", "apikey"]
-                is_likely_credential = any(indicator in potential_lower for indicator in credential_indicators)
+
+                # A value is a credential if it's ONLY the indicator or if it has the indicator
+                # but lacks typical server naming patterns (numbers, server/node/host suffixes)
+                server_pattern = r'(server|node|host|\d+)'
+                has_server_pattern = re.search(server_pattern, potential_lower)
+
+                is_likely_credential = False
+                for indicator in credential_indicators:
+                    # If the entire string is just the indicator, it's a credential
+                    if potential_lower == indicator:
+                        is_likely_credential = True
+                        break
+                    # If it contains the indicator but has no server naming patterns, it's likely a credential
+                    if indicator in potential_lower and not has_server_pattern:
+                        is_likely_credential = True
+                        break
 
                 # Also filter out values that are too long (likely passwords/tokens)
                 # Real hostnames are typically < 63 chars per label, < 253 total

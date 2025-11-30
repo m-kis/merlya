@@ -40,17 +40,22 @@ class TestOrchestratorModelSelection:
         "OPENROUTER_API_KEY": "test-key",
         "ATHENA_PROVIDER": "openrouter"  # ✅ Force provider to openrouter
     }, clear=True)
+    @patch('athena_ai.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     def test_openrouter_uses_openrouter_model_not_ollama(
-        self, mock_planner, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """
         When using OpenRouter, should use OpenRouter model from config,
         NOT the Ollama model (regression test for bug).
         """
+        # Import and mock OpenAIChatCompletionClient
+        import athena_ai.agents.orchestrator as orch_module
+        mock_client = MagicMock()
+        orch_module.OpenAIChatCompletionClient = mock_client
+
         mock_config_class.return_value = mock_model_config
 
         # Create orchestrator (will trigger _create_model_client)
@@ -74,14 +79,18 @@ class TestOrchestratorModelSelection:
         "ANTHROPIC_API_KEY": "test-key",
         "ATHENA_PROVIDER": "anthropic"  # ✅ Force provider to anthropic
     }, clear=True)
+    @patch('athena_ai.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     def test_anthropic_uses_anthropic_model_not_ollama(
-        self, mock_planner, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using Anthropic, should use Anthropic model, not Ollama model."""
+        import athena_ai.agents.orchestrator as orch_module
+        mock_client = MagicMock()
+        orch_module.OpenAIChatCompletionClient = mock_client
+
         mock_config_class.return_value = mock_model_config
 
         try:
@@ -100,14 +109,18 @@ class TestOrchestratorModelSelection:
         "OPENAI_API_KEY": "test-key",
         "ATHENA_PROVIDER": "openai"  # ✅ Force provider to openai
     }, clear=True)
+    @patch('athena_ai.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     def test_openai_uses_openai_model_not_ollama(
-        self, mock_planner, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using OpenAI, should use OpenAI model, not Ollama model."""
+        import athena_ai.agents.orchestrator as orch_module
+        mock_client = MagicMock()
+        orch_module.OpenAIChatCompletionClient = mock_client
+
         mock_config_class.return_value = mock_model_config
 
         try:
@@ -122,15 +135,19 @@ class TestOrchestratorModelSelection:
         assert call_kwargs["model"] != "mistral-small3.1:latest"
 
     @patch.dict(os.environ, {"ATHENA_PROVIDER": "ollama"}, clear=True)
+    @patch('athena_ai.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.OpenAIChatCompletionClient')
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @patch('athena_ai.llm.ollama_client.get_ollama_client')
     def test_ollama_uses_ollama_model(
-        self, mock_ollama_client, mock_planner, mock_tools, mock_client, mock_config_class, mock_model_config
+        self, mock_ollama_client, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using Ollama (default provider), should use Ollama model."""
+        import athena_ai.agents.orchestrator as orch_module
+        mock_client = MagicMock()
+        orch_module.OpenAIChatCompletionClient = mock_client
+
         mock_config_class.return_value = mock_model_config
         mock_ollama_instance = MagicMock()
         mock_ollama_instance.is_available.return_value = True
