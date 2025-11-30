@@ -10,14 +10,30 @@ across timezone boundaries. Comparisons and generation use timezone-aware UTC.
 import json
 import logging
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ScanCacheRepositoryMixin:
     """Mixin for scan cache operations."""
+
+    # Type stubs for methods provided by BaseRepository or other mixins
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+        yield  # type: ignore[misc]  # Generator requires yield
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+
+    def get_host_by_name(self, hostname: str) -> Optional[Dict[str, Any]]:
+        """Provided by HostRepositoryMixin."""
+        raise NotImplementedError  # pragma: no cover
 
     def _init_scan_cache_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize scan cache table."""

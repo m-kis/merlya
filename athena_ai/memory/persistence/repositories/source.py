@@ -15,6 +15,15 @@ from athena_ai.utils.logger import logger
 class SourceRepositoryMixin:
     """Mixin for inventory source operations."""
 
+    # Type stubs for methods provided by BaseRepository
+    def _get_connection(self) -> sqlite3.Connection:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+
     def _init_source_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize inventory sources table."""
         cursor.execute("""

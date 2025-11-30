@@ -68,7 +68,7 @@ class StorageManager:
     # Session Management (SQLite)
     # =========================================================================
 
-    def create_session(self, session_id: str, env: str = "dev", metadata: Dict = None) -> bool:
+    def create_session(self, session_id: str, env: str = "dev", metadata: Optional[Dict] = None) -> bool:
         """Create a new session record."""
         return self.sqlite.create_session(session_id, env, metadata)
 
@@ -148,10 +148,10 @@ class StorageManager:
 
     def find_similar_incidents(
         self,
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
-        limit: int = 5
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
+        limit: int = 5,
     ) -> List[Dict]:
         """
         Find similar past incidents.

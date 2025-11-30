@@ -7,9 +7,10 @@ Handles CRUD operations for host-to-host relations (dependencies, connections, e
 import json
 import logging
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,21 @@ class BatchRelationResult:
 
 class RelationRepositoryMixin:
     """Mixin for host relation operations."""
+
+    # Type stubs for methods provided by BaseRepository or other mixins
+    @contextmanager
+    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+        yield  # type: ignore[misc]  # Generator requires yield
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+
+    def get_host_by_name(self, hostname: str) -> Optional[Dict[str, Any]]:
+        """Provided by HostRepositoryMixin."""
+        raise NotImplementedError  # pragma: no cover
 
     def _parse_metadata(self, metadata_str: Optional[str]) -> Dict[str, Any]:
         """Parse metadata JSON string to dict.

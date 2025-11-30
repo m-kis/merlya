@@ -64,13 +64,16 @@ class CommandLoader:
     Loads commands from markdown files with YAML frontmatter.
     Commands from later sources override earlier ones (project > user > builtin).
     """
-    _instance = None
+    _instance: Optional["CommandLoader"] = None
+    _commands: Dict[str, CommandDef]
+    _aliases: Dict[str, str]
+    _loaded: bool
 
-    def __new__(cls):
+    def __new__(cls) -> "CommandLoader":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._commands: Dict[str, CommandDef] = {}
-            cls._instance._aliases: Dict[str, str] = {}
+            cls._instance._commands = {}
+            cls._instance._aliases = {}
             cls._instance._loaded = False
         return cls._instance
 

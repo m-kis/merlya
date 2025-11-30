@@ -43,6 +43,10 @@ class CIPlatformRegistry:
 
     _instance: Optional["CIPlatformRegistry"] = None
     _lock: threading.Lock = threading.Lock()
+    _platforms: Dict[str, Type[Any]]
+    _factories: Dict[str, Callable[..., Any]]
+    _active: Dict[str, Any]
+    _registry_lock: threading.RLock
 
     def __new__(cls) -> "CIPlatformRegistry":
         """Thread-safe singleton pattern for global registry access."""
@@ -51,9 +55,9 @@ class CIPlatformRegistry:
                 # Double-check locking pattern
                 if cls._instance is None:
                     instance = super().__new__(cls)
-                    instance._platforms: Dict[str, Type] = {}
-                    instance._factories: Dict[str, Callable[..., Any]] = {}
-                    instance._active: Dict[str, Any] = {}
+                    instance._platforms = {}
+                    instance._factories = {}
+                    instance._active = {}
                     instance._registry_lock = threading.RLock()
                     cls._instance = instance
         return cls._instance

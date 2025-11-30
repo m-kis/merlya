@@ -122,7 +122,7 @@ class SQLiteStore:
     # Session Management
     # =========================================================================
 
-    def create_session(self, session_id: str, env: str = "dev", metadata: Dict = None) -> bool:
+    def create_session(self, session_id: str, env: str = "dev", metadata: Optional[Dict] = None) -> bool:
         """Create a new session record."""
         with self._connection() as conn:
             cursor = conn.cursor()

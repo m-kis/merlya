@@ -38,13 +38,15 @@ class AgentRegistry:
     """
 
     _instance: Optional["AgentRegistry"] = None
+    _agents: Dict[str, Type[Any]]
+    _factories: Dict[str, Callable[..., Any]]
 
     def __new__(cls) -> "AgentRegistry":
         """Singleton pattern for global registry access."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._agents: Dict[str, Type] = {}
-            cls._instance._factories: Dict[str, Callable[..., Any]] = {}
+            cls._instance._agents = {}
+            cls._instance._factories = {}
         return cls._instance
 
     def register(

@@ -117,13 +117,16 @@ class HookManager:
         # Unsubscribe when done
         unsubscribe()
     """
-    _instance = None
+    _instance: Optional["HookManager"] = None
+    _handlers: Dict[HookEvent, List[Callable[[HookContext], None]]]
+    _yaml_hooks: List[HookDefinition]
+    _initialized: bool
 
-    def __new__(cls):
+    def __new__(cls) -> "HookManager":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._handlers: Dict[HookEvent, List[Callable]] = {}
-            cls._instance._yaml_hooks: List[HookDefinition] = []
+            cls._instance._handlers = {}
+            cls._instance._yaml_hooks = []
             cls._instance._initialized = False
         return cls._instance
 

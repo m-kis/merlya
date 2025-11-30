@@ -7,7 +7,7 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Set
 
 from athena_ai.utils.logger import logger
 
@@ -43,11 +43,11 @@ class ConversationMigrator:
                 "errors": []
             }
 
-        summary = {
+        summary: Dict[str, Any] = {
             "status": "success",
             "migrated": 0,
             "skipped": 0,
-            "errors": []
+            "errors": [],
         }
 
         conn = sqlite3.connect(self.db_path)
@@ -68,7 +68,7 @@ class ConversationMigrator:
 
         # Get all existing conversation IDs in database
         cursor.execute("SELECT id FROM conversations")
-        existing_ids = {row[0] for row in cursor.fetchall()}
+        existing_ids: Set[str] = {row[0] for row in cursor.fetchall()}
 
         conn.close()
 
@@ -170,12 +170,12 @@ class ConversationMigrator:
         finally:
             conn.close()
 
-    def backup_json_conversations(self) -> Path:
+    def backup_json_conversations(self) -> Optional[Path]:
         """
         Create a backup of JSON conversations before migration.
 
         Returns:
-            Path to backup directory
+            Path to backup directory, or None if nothing to backup.
         """
         if not self.conversations_dir.exists():
             logger.info("No conversations to backup")
@@ -205,12 +205,12 @@ class ConversationMigrator:
         Returns:
             Verification results
         """
-        results = {
+        results: Dict[str, Any] = {
             "status": "success",
             "json_count": 0,
             "db_count": 0,
             "current_matches": False,
-            "message_counts_match": []
+            "message_counts_match": [],
         }
 
         # Count JSON files

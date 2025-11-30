@@ -114,11 +114,11 @@ class PatternLearner:
         self,
         name: str,
         description: str = "",
-        symptoms: List[str] = None,
-        keywords: List[str] = None,
+        symptoms: Optional[List[str]] = None,
+        keywords: Optional[List[str]] = None,
         service: str = "",
         suggested_solution: str = "",
-        suggested_commands: List[str] = None,
+        suggested_commands: Optional[List[str]] = None,
     ) -> int:
         """
         Add a new pattern.

@@ -20,7 +20,7 @@ class CheckExecutor:
         start_time = time.time()
         success = False
         error = None
-        details = {}
+        details: Dict[str, Any] = {}
 
         try:
             if check.check_type == "ping":

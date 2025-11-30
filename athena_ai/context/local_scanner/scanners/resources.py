@@ -26,9 +26,9 @@ def scan_resources() -> Dict[str, Any]:
         # Load average (Unix only)
         if hasattr(os, "getloadavg"):
             load = os.getloadavg()
-            resources["cpu"]["load_1m"] = load[0]
-            resources["cpu"]["load_5m"] = load[1]
-            resources["cpu"]["load_15m"] = load[2]
+            resources["cpu"]["load_1m"]: float = load[0]
+            resources["cpu"]["load_5m"]: float = load[1]
+            resources["cpu"]["load_15m"]: float = load[2]
 
     except Exception as e:
         logger.debug(f"Could not get CPU info: {e}")

@@ -74,7 +74,7 @@ class CVEMonitor:
         entry = self._cache[key]
         return datetime.now() - entry["timestamp"] < self.cache_ttl
 
-    def _make_request(self, endpoint: str, data: Dict = None) -> Optional[Dict]:
+    def _make_request(self, endpoint: str, data: Optional[Dict] = None) -> Optional[Dict]:
         """Make HTTP request to OSV API."""
         url = f"{OSV_API_URL}/{endpoint}"
 

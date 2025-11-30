@@ -170,7 +170,7 @@ class CommandHandler:
         # Route to appropriate handler
         handlers = {
             # Help
-            '/help': lambda: self.help_handler.show_help(),
+            '/help': lambda: self.help_handler.show_help(args),
 
             # Context commands
             '/scan': lambda: self.context_handler.handle_scan(args),

@@ -4,8 +4,9 @@ Host Repository Mixin.
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 from athena_ai.core.exceptions import PersistenceError
 from athena_ai.utils.logger import logger
@@ -21,6 +22,13 @@ class HostRepositoryMixin:
 
     # Class-level cache for SQLite version check (shared across instances)
     _sqlite_supports_json_each: Optional[bool] = None
+
+    # Type stubs for methods provided by BaseRepository
+    @contextmanager
+    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+        yield  # type: ignore[misc]  # Generator requires yield
 
     def _init_host_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize hosts and host versions tables."""

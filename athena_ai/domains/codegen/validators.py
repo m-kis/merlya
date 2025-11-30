@@ -3,13 +3,18 @@ Validators for generated IaC code.
 
 Provides syntax and semantic validation.
 """
-from typing import List
+from typing import List, Optional
 
 
 class ValidationResult:
     """Result of code validation."""
 
-    def __init__(self, valid: bool, errors: List[str] = None, warnings: List[str] = None):
+    def __init__(
+        self,
+        valid: bool,
+        errors: Optional[List[str]] = None,
+        warnings: Optional[List[str]] = None,
+    ):
         self.valid = valid
         self.errors = errors or []
         self.warnings = warnings or []
@@ -37,8 +42,8 @@ class TerraformValidator:
         Returns:
             ValidationResult
         """
-        errors = []
-        warnings = []
+        errors: List[str] = []
+        warnings: List[str] = []
 
         # Check for balanced braces
         if code.count("{") != code.count("}"):
@@ -84,8 +89,8 @@ class AnsibleValidator:
         Returns:
             ValidationResult
         """
-        errors = []
-        warnings = []
+        errors: List[str] = []
+        warnings: List[str] = []
 
         try:
             import yaml
@@ -142,8 +147,8 @@ class DockerfileValidator:
         Returns:
             ValidationResult
         """
-        errors = []
-        warnings = []
+        errors: List[str] = []
+        warnings: List[str] = []
 
         lines = [line.strip() for line in code.split('\n') if line.strip() and not line.strip().startswith('#')]
 
@@ -198,8 +203,8 @@ class KubernetesValidator:
         Returns:
             ValidationResult
         """
-        errors = []
-        warnings = []
+        errors: List[str] = []
+        warnings: List[str] = []
 
         try:
             import yaml

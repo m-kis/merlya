@@ -51,6 +51,9 @@ class HistoryManager:
         if not self.current_conversation:
             self.create_conversation()
 
+        # At this point current_conversation is guaranteed to exist
+        assert self.current_conversation is not None
+
         # Auto-title from first user message
         if role == "user" and not self.current_conversation.messages:
             self._update_title_from_prompt(content)
@@ -78,6 +81,8 @@ class HistoryManager:
                 title = title[:last_space]
             title += "..."
 
+        # Guaranteed by caller (add_message ensures current_conversation exists)
+        assert self.current_conversation is not None
         self.current_conversation.title = title
         self.store.save_conversation(self.current_conversation)
 

@@ -7,8 +7,9 @@ Handles creation and retrieval of point-in-time inventory snapshots for backup/r
 import json
 import logging
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 from athena_ai.core.exceptions import PersistenceError
 
@@ -20,6 +21,24 @@ MAX_SNAPSHOT_LIMIT = 1000
 
 class SnapshotRepositoryMixin:
     """Mixin for inventory snapshot operations."""
+
+    # Type stubs for methods provided by BaseRepository or other mixins
+    @contextmanager
+    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Provided by BaseRepository."""
+        raise NotImplementedError  # pragma: no cover
+
+    def get_all_hosts(self) -> List[Dict[str, Any]]:
+        """Provided by HostRepositoryMixin."""
+        raise NotImplementedError  # pragma: no cover
+
+    def get_relations(self) -> List[Dict[str, Any]]:
+        """Provided by RelationRepositoryMixin."""
+        raise NotImplementedError  # pragma: no cover
 
     def _init_snapshot_tables(self, cursor: sqlite3.Cursor) -> None:
         """Initialize inventory snapshots table."""

@@ -9,9 +9,31 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Generator, Optional, Set, Type
+from typing import Any, ClassVar, Dict, Generator, Optional, Protocol, Set, Type
 
 from athena_ai.utils.logger import logger
+
+
+class RepositoryProtocol(Protocol):
+    """Protocol defining the interface that repository mixins can rely on.
+
+    This allows mypy to understand that mixins will be combined with a class
+    that provides these methods.
+    """
+
+    db_path: str
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get a database connection."""
+        ...
+
+    def _connection(self, *, commit: bool = False) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager for database connections."""
+        ...
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert a database row to dictionary."""
+        ...
 
 # Thread-safe singleton lock
 _repository_lock = threading.Lock()
@@ -39,6 +61,8 @@ class BaseRepository:
     # Class-level storage for per-subclass singletons
     _instances: ClassVar[Dict[Type["BaseRepository"], "BaseRepository"]] = {}
     _initialized_classes: ClassVar[Set[Type["BaseRepository"]]] = set()
+    # Instance attribute for database path
+    db_path: str
 
     def __new__(cls, db_path: Optional[str] = None):
         """Thread-safe singleton pattern for repository (per-subclass).
