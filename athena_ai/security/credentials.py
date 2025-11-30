@@ -9,6 +9,7 @@ Manages:
 import getpass
 import os
 import re
+import time
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -36,10 +37,17 @@ class CredentialManager:
     - HOST: Alias for hostnames (persisted)
     - CONFIG: General configuration values (persisted)
     - SECRET: Passwords, tokens (in-memory only, never persisted)
+
+    Security:
+    - Session credentials TTL: 15 minutes
+    - Automatic expiration cleanup on access
     """
 
     # Storage key for variables in SQLite
     STORAGE_KEY = "user_variables"
+
+    # Session credential TTL (15 minutes)
+    CREDENTIAL_TTL = 900  # seconds
 
     def __init__(self, storage_manager=None):
         """
@@ -51,7 +59,8 @@ class CredentialManager:
         """
         self.ssh_dir = Path.home() / ".ssh"
         self.ssh_config = self._parse_ssh_config()
-        self.session_credentials: Dict[str, Tuple[str, str]] = {}  # In-memory only
+        # Session credentials: {cache_key: (username, password, timestamp)}
+        self.session_credentials: Dict[str, Tuple[str, str, float]] = {}
 
         # Variables with types: {key: (value, VariableType)}
         self._variables: Dict[str, Tuple[str, VariableType]] = {}
@@ -112,6 +121,47 @@ class CredentialManager:
         """
         self._storage = storage_manager
         self._load_variables()
+
+    # =========================================================================
+    # Session Credential Management
+    # =========================================================================
+
+    def _is_credential_expired(self, timestamp: float) -> bool:
+        """Check if a credential has expired based on TTL."""
+        return (time.time() - timestamp) > self.CREDENTIAL_TTL
+
+    def _cleanup_expired_credentials(self):
+        """Remove expired credentials from session cache."""
+        current_time = time.time()
+        expired_keys = [
+            key for key, (_, __, timestamp) in self.session_credentials.items()
+            if (current_time - timestamp) > self.CREDENTIAL_TTL
+        ]
+        for key in expired_keys:
+            del self.session_credentials[key]
+            logger.debug(f"🔒 Expired credential removed: {key}")
+
+    def _get_cached_credential(self, cache_key: str) -> Optional[Tuple[str, str]]:
+        """
+        Get cached credential if not expired.
+
+        Returns:
+            Tuple of (username, password) if valid, None if expired or not found
+        """
+        if cache_key not in self.session_credentials:
+            return None
+
+        username, password, timestamp = self.session_credentials[cache_key]
+        if self._is_credential_expired(timestamp):
+            del self.session_credentials[cache_key]
+            logger.debug(f"🔒 Credential expired: {cache_key}")
+            return None
+
+        return (username, password)
+
+    def _cache_credential(self, cache_key: str, username: str, password: str):
+        """Cache credential with current timestamp."""
+        self.session_credentials[cache_key] = (username, password, time.time())
 
     # =========================================================================
     # SSH Configuration
@@ -225,19 +275,25 @@ class CredentialManager:
         Priority:
         1. Explicit credentials passed as arguments
         2. Environment variables (MONGODB_USER, MONGODB_PASS)
-        3. Session cache (already prompted in this session)
+        3. Session cache (already prompted in this session, not expired)
         4. Interactive prompt with getpass (secure input)
+
+        Note: Session credentials expire after 15 minutes (CREDENTIAL_TTL)
         """
         cache_key = f"{service}@{host}"
 
+        # Cleanup expired credentials periodically
+        self._cleanup_expired_credentials()
+
         # Priority 1: Explicit credentials
         if username and password:
-            self.session_credentials[cache_key] = (username, password)
+            self._cache_credential(cache_key, username, password)
             return (username, password)
 
-        # Priority 2: Session cache
-        if cache_key in self.session_credentials:
-            return self.session_credentials[cache_key]
+        # Priority 2: Session cache (with TTL check)
+        cached = self._get_cached_credential(cache_key)
+        if cached:
+            return cached
 
         # Priority 3: Environment variables
         env_user_key = f"{service.upper()}_USER"
@@ -246,7 +302,7 @@ class CredentialManager:
         if env_user_key in os.environ and env_pass_key in os.environ:
             username = os.environ[env_user_key]
             password = os.environ[env_pass_key]
-            self.session_credentials[cache_key] = (username, password)
+            self._cache_credential(cache_key, username, password)
             return (username, password)
 
         # Priority 4: Interactive prompt
@@ -254,14 +310,15 @@ class CredentialManager:
         username = input(f"{service} username: ")
         password = getpass.getpass(f"{service} password: ")
 
-        self.session_credentials[cache_key] = (username, password)
+        self._cache_credential(cache_key, username, password)
         return (username, password)
 
     def has_db_credentials(self, host: str, service: str = "mongodb") -> bool:
-        """Check if credentials are available without prompting."""
+        """Check if credentials are available without prompting (and not expired)."""
         cache_key = f"{service}@{host}"
 
-        if cache_key in self.session_credentials:
+        # Check if cached credential exists and is not expired
+        if self._get_cached_credential(cache_key):
             return True
 
         env_user_key = f"{service.upper()}_USER"
