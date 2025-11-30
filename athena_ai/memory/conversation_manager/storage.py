@@ -1,11 +1,17 @@
 import json
 import sqlite3
+import uuid
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 from athena_ai.memory.conversation_manager.models import Conversation, Message
+from athena_ai.utils.logger import logger
+
+# Export format version for forward compatibility
+EXPORT_VERSION = "1.0"
 
 
 class ConversationStore(ABC):
@@ -51,6 +57,21 @@ class ConversationStore(ABC):
         """List all conversations."""
         pass
 
+    @abstractmethod
+    def export_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Export conversation to portable format for backup/transfer."""
+        pass
+
+    @abstractmethod
+    def import_conversation(self, data: Dict[str, Any]) -> Optional[str]:
+        """Import conversation from portable format. Returns conversation ID or None on failure."""
+        pass
+
+    @abstractmethod
+    def export_all(self) -> Dict[str, Any]:
+        """Export all conversations to portable format."""
+        pass
+
 
 class SQLiteStore(ConversationStore):
     """SQLite-based conversation storage."""
@@ -59,172 +80,252 @@ class SQLiteStore(ConversationStore):
         self.db_path = db_path
         self._ensure_schema()
 
-    def _get_conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+    @contextmanager
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager for database connections with proper cleanup."""
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON")  # Enable FK enforcement
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _ensure_schema(self) -> None:
         """Ensure database schema exists."""
-        conn = self._get_conn()
-        cursor = conn.cursor()
+        with self._connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                token_count INTEGER DEFAULT 0,
-                compacted INTEGER DEFAULT 0,
-                is_current INTEGER DEFAULT 0
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    token_count INTEGER DEFAULT 0,
+                    compacted INTEGER DEFAULT 0,
+                    is_current INTEGER DEFAULT 0
+                )
+            """)
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                conversation_id TEXT,
-                role TEXT,
-                content TEXT,
-                timestamp TEXT,
-                tokens INTEGER DEFAULT 0,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT,
+                    role TEXT,
+                    content TEXT,
+                    timestamp TEXT,
+                    tokens INTEGER DEFAULT 0,
+                    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+                )
+            """)
 
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)")
-        conn.commit()
-        conn.close()
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)")
+            conn.commit()
 
     def save_conversation(self, conversation: Conversation) -> None:
-        conn = self._get_conn()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT OR REPLACE INTO conversations (id, title, created_at, updated_at, token_count, compacted, is_current)
-            VALUES (?, ?, ?, ?, ?, ?, 1)
-        """, (
-            conversation.id,
-            conversation.title,
-            conversation.created_at.isoformat(),
-            conversation.updated_at.isoformat(),
-            conversation.token_count,
-            1 if conversation.compacted else 0,
-        ))
-
-        conn.commit()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO conversations (id, title, created_at, updated_at, token_count, compacted, is_current)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, (
+                conversation.id,
+                conversation.title,
+                conversation.created_at.isoformat(),
+                conversation.updated_at.isoformat(),
+                conversation.token_count,
+                1 if conversation.compacted else 0,
+            ))
+            conn.commit()
 
     def save_message(self, conversation_id: str, message: Message) -> None:
-        conn = self._get_conn()
-        cursor = conn.cursor()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO messages (conversation_id, role, content, timestamp, tokens)
+                VALUES (?, ?, ?, ?, ?)
+            """, (conversation_id, message.role, message.content, message.timestamp.isoformat(), message.tokens))
 
-        cursor.execute("""
-            INSERT INTO messages (conversation_id, role, content, timestamp, tokens)
-            VALUES (?, ?, ?, ?, ?)
-        """, (conversation_id, message.role, message.content, message.timestamp.isoformat(), message.tokens))
-
-        # Update conversation stats
-        cursor.execute("""
-            UPDATE conversations SET updated_at = ?, token_count = token_count + ? WHERE id = ?
-        """, (datetime.now().isoformat(), message.tokens, conversation_id))
-
-        conn.commit()
-        conn.close()
+            # Update conversation stats
+            cursor.execute("""
+                UPDATE conversations SET updated_at = ?, token_count = token_count + ? WHERE id = ?
+            """, (datetime.now().isoformat(), message.tokens, conversation_id))
+            conn.commit()
 
     def load_conversation(self, conversation_id: str) -> Optional[Conversation]:
-        conn = self._get_conn()
-        cursor = conn.cursor()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, title, created_at, updated_at, token_count, compacted
+                FROM conversations WHERE id = ?
+            """, (conversation_id,))
 
-        cursor.execute("""
-            SELECT id, title, created_at, updated_at, token_count, compacted
-            FROM conversations WHERE id = ?
-        """, (conversation_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
 
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            return None
+            conversation = Conversation(
+                id=row[0], title=row[1],
+                created_at=datetime.fromisoformat(row[2]),
+                updated_at=datetime.fromisoformat(row[3]),
+                token_count=row[4], compacted=bool(row[5]),
+            )
 
-        conversation = Conversation(
-            id=row[0], title=row[1],
-            created_at=datetime.fromisoformat(row[2]),
-            updated_at=datetime.fromisoformat(row[3]),
-            token_count=row[4], compacted=bool(row[5]),
-        )
+            # Load messages
+            cursor.execute("""
+                SELECT id, conversation_id, role, content, timestamp, tokens
+                FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC
+            """, (conversation_id,))
 
-        # Load messages
-        cursor.execute("""
-            SELECT id, conversation_id, role, content, timestamp, tokens
-            FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC
-        """, (conversation_id,))
+            for msg_row in cursor.fetchall():
+                conversation.messages.append(Message.from_db_row(msg_row))
 
-        for msg_row in cursor.fetchall():
-            conversation.messages.append(Message.from_db_row(msg_row))
-
-        conn.close()
-        return conversation
+            return conversation
 
     def load_current(self) -> Optional[Conversation]:
-        conn = self._get_conn()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT id FROM conversations WHERE is_current = 1 LIMIT 1")
-        row = cursor.fetchone()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM conversations WHERE is_current = 1 LIMIT 1")
+            row = cursor.fetchone()
 
         if row:
             return self.load_conversation(row[0])
         return None
 
     def set_current(self, conversation_id: str) -> None:
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE conversations SET is_current = 0")
-        cursor.execute("UPDATE conversations SET is_current = 1 WHERE id = ?", (conversation_id,))
-        conn.commit()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE conversations SET is_current = 0")
+            cursor.execute("UPDATE conversations SET is_current = 1 WHERE id = ?", (conversation_id,))
+            conn.commit()
 
     def archive(self, conversation_id: str) -> None:
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE conversations SET is_current = 0 WHERE id = ?", (conversation_id,))
-        conn.commit()
-        conn.close()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE conversations SET is_current = 0 WHERE id = ?", (conversation_id,))
+            conn.commit()
 
     def delete(self, conversation_id: str) -> bool:
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
-        cursor.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
-        deleted = cursor.rowcount > 0
-        conn.commit()
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            # Delete conversation first - messages are deleted by CASCADE
+            cursor.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            return deleted
 
     def list_all(self, limit: int = 20) -> List[dict[str, Any]]:
-        conn = self._get_conn()
-        cursor = conn.cursor()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT c.id, c.title, c.created_at, c.updated_at, c.token_count, c.is_current,
+                       COUNT(m.id) as message_count
+                FROM conversations c
+                LEFT JOIN messages m ON c.id = m.conversation_id
+                GROUP BY c.id
+                ORDER BY c.updated_at DESC
+                LIMIT ?
+            """, (limit,))
 
-        cursor.execute("""
-            SELECT c.id, c.title, c.created_at, c.updated_at, c.token_count, c.is_current,
-                   COUNT(m.id) as message_count
-            FROM conversations c
-            LEFT JOIN messages m ON c.id = m.conversation_id
-            GROUP BY c.id
-            ORDER BY c.updated_at DESC
-            LIMIT ?
-        """, (limit,))
+            return [
+                {
+                    "id": row[0], "title": row[1], "created_at": row[2], "updated_at": row[3],
+                    "token_count": row[4], "current": bool(row[5]), "message_count": row[6],
+                }
+                for row in cursor.fetchall()
+            ]
 
-        conversations = [
-            {
-                "id": row[0], "title": row[1], "created_at": row[2], "updated_at": row[3],
-                "token_count": row[4], "current": bool(row[5]), "message_count": row[6],
-            }
-            for row in cursor.fetchall()
-        ]
+    def export_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Export a single conversation to portable format."""
+        conv = self.load_conversation(conversation_id)
+        if not conv:
+            return None
 
-        conn.close()
-        return conversations
+        return {
+            "version": EXPORT_VERSION,
+            "exported_at": datetime.now().isoformat(),
+            "conversation": conv.to_dict(),
+        }
+
+    def import_conversation(self, data: Dict[str, Any]) -> Optional[str]:
+        """Import conversation from portable format.
+
+        Args:
+            data: Exported conversation data with version and conversation fields.
+
+        Returns:
+            Conversation ID if successful, None otherwise.
+        """
+        if "conversation" not in data:
+            logger.warning("Import failed: missing 'conversation' field in data")
+            return None
+
+        conv_data = data["conversation"]
+
+        # Handle version migrations if needed
+        version = data.get("version", "1.0")
+        if version != EXPORT_VERSION:
+            # Future: add migration logic here
+            logger.debug(f"Importing conversation from version {version}")
+
+        try:
+            conversation = Conversation.from_dict(conv_data)
+
+            # Check if conversation with same ID exists
+            existing = self.load_conversation(conversation.id)
+            if existing:
+                # Generate new ID using UUID to avoid collisions
+                conversation.id = f"conv_{uuid.uuid4().hex[:12]}_imported"
+
+            # Save conversation with proper connection management
+            with self._connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    INSERT INTO conversations (id, title, created_at, updated_at, token_count, compacted, is_current)
+                    VALUES (?, ?, ?, ?, ?, ?, 0)
+                """, (
+                    conversation.id,
+                    conversation.title,
+                    conversation.created_at.isoformat(),
+                    conversation.updated_at.isoformat(),
+                    conversation.token_count,
+                    1 if conversation.compacted else 0,
+                ))
+
+                # Save all messages
+                for msg in conversation.messages:
+                    cursor.execute("""
+                        INSERT INTO messages (conversation_id, role, content, timestamp, tokens)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (conversation.id, msg.role, msg.content, msg.timestamp.isoformat(), msg.tokens))
+
+                conn.commit()
+            return conversation.id
+
+        except Exception as e:
+            logger.error(f"Failed to import conversation: {e}")
+            return None
+
+    def export_all(self) -> Dict[str, Any]:
+        """Export all conversations to portable format."""
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM conversations ORDER BY updated_at DESC")
+            conv_ids = [row[0] for row in cursor.fetchall()]
+
+        conversations = []
+        for conv_id in conv_ids:
+            conv = self.load_conversation(conv_id)
+            if conv:
+                conversations.append(conv.to_dict())
+
+        return {
+            "version": EXPORT_VERSION,
+            "exported_at": datetime.now().isoformat(),
+            "conversations": conversations,
+            "count": len(conversations),
+        }
 
 
 class JsonStore(ConversationStore):
@@ -289,3 +390,52 @@ class JsonStore(ConversationStore):
                     "message_count": len(data["messages"]),
                 })
         return conversations
+
+    def export_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Export a single conversation to portable format."""
+        conv = self.load_conversation(conversation_id)
+        if not conv:
+            return None
+
+        return {
+            "version": EXPORT_VERSION,
+            "exported_at": datetime.now().isoformat(),
+            "conversation": conv.to_dict(),
+        }
+
+    def import_conversation(self, data: Dict[str, Any]) -> Optional[str]:
+        """Import conversation from portable format."""
+        if "conversation" not in data:
+            return None
+
+        try:
+            conversation = Conversation.from_dict(data["conversation"])
+
+            # Check if conversation with same ID exists
+            existing_file = self.storage_dir / f"{conversation.id}.json"
+            if existing_file.exists():
+                import time
+                conversation.id = f"conv_{int(time.time())}_imported"
+
+            # Save to file
+            conv_file = self.storage_dir / f"{conversation.id}.json"
+            with open(conv_file, 'w') as f:
+                json.dump(conversation.to_dict(), f, indent=2)
+
+            return conversation.id
+        except Exception:
+            return None
+
+    def export_all(self) -> Dict[str, Any]:
+        """Export all conversations to portable format."""
+        conversations = []
+        for conv_file in self.storage_dir.glob("conv_*.json"):
+            with open(conv_file, 'r') as f:
+                conversations.append(json.load(f))
+
+        return {
+            "version": EXPORT_VERSION,
+            "exported_at": datetime.now().isoformat(),
+            "conversations": conversations,
+            "count": len(conversations),
+        }

@@ -2,6 +2,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, List
 
+from athena_ai.utils.tokenizer import count_tokens
+
 
 @dataclass
 class Message:
@@ -10,6 +12,11 @@ class Message:
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
     tokens: int = 0
+
+    def __post_init__(self):
+        """Calculate tokens if not provided."""
+        if self.tokens == 0 and self.content:
+            self.tokens = count_tokens(self.content)
 
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), "timestamp": self.timestamp.isoformat()}
@@ -39,15 +46,40 @@ class Conversation:
     compacted: bool = False
 
     def add_message(self, role: str, content: str, tokens: int = 0) -> Message:
-        """Add message to conversation."""
+        """Add message to conversation.
+
+        Args:
+            role: Message role ('user' or 'assistant').
+            content: Message content.
+            tokens: Optional pre-calculated token count. If 0, will be calculated.
+
+        Returns:
+            The created Message object.
+        """
         if tokens == 0:
-            tokens = len(content) // 4  # ~4 chars per token
+            tokens = count_tokens(content)
 
         msg = Message(role=role, content=content, tokens=tokens)
         self.messages.append(msg)
         self.token_count += tokens
         self.updated_at = datetime.now()
         return msg
+
+    def recalculate_tokens(self) -> int:
+        """Recalculate total token count from all messages.
+
+        Useful after importing or when token counts may be inaccurate.
+
+        Returns:
+            Updated total token count.
+        """
+        self.token_count = sum(
+            count_tokens(msg.content) for msg in self.messages
+        )
+        # Update individual message token counts too
+        for msg in self.messages:
+            msg.tokens = count_tokens(msg.content)
+        return self.token_count
 
     def to_dict(self) -> dict[str, Any]:
         return {
