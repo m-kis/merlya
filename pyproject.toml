@@ -77,6 +77,7 @@ pytest = "^8.0"
 pytest-cov = "^4.1"
 pytest-asyncio = "^0.23"
 pytest-mock = "^3.12"
+pytest-timeout = "^2.3"
 
 [tool.poetry.scripts]
 athena = "athena_ai.cli:main"
