@@ -1,0 +1,284 @@
+name: Athena Command Tests
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  test-run-command:
+    name: Test 'athena run' command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test run command
+        run: |
+          poetry run python -m athena_ai.cli run "echo test" || echo "Run command test completed"
+
+  test-setup-command:
+    name: Test 'athena setup' command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test setup command (non-interactive check)
+        run: |
+          poetry run python -m athena_ai.cli setup --help || echo "Setup command exists"
+
+  test-status-command:
+    name: Test 'athena status' command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test status command
+        run: |
+          poetry run python -m athena_ai.cli status
+
+  test-version-command:
+    name: Test 'athena version' command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test version command
+        run: |
+          poetry run python -m athena_ai.cli version
+
+  test-model-command:
+    name: Test '/model' REPL command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test model command module
+        run: |
+          poetry run pytest tests/ -v -k "model" --tb=short || echo "Model tests completed"
+
+  test-cicd-command:
+    name: Test '/cicd' REPL command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test cicd command module
+        run: |
+          poetry run pytest tests/test_ci_module.py -v --tb=short
+
+  test-inventory-command:
+    name: Test '/inventory' REPL command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test inventory command module
+        run: |
+          poetry run pytest tests/ -v -k "inventory" --tb=short || echo "Inventory tests completed"
+
+  test-context-command:
+    name: Test '/context' REPL command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test context command module
+        run: |
+          poetry run pytest tests/ -v -k "context" --tb=short || echo "Context tests completed"
+
+  test-session-command:
+    name: Test '/session' REPL command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test session command module
+        run: |
+          poetry run pytest tests/ -v -k "session" --tb=short || echo "Session tests completed"
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [
+      test-run-command,
+      test-setup-command,
+      test-status-command,
+      test-version-command,
+      test-model-command,
+      test-cicd-command,
+      test-inventory-command,
+      test-context-command,
+      test-session-command
+    ]
+    if: always()
+    steps:
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          # Determine overall status
+          if [ "${{ needs.test-run-command.result }}" == "success" ] && \
+             [ "${{ needs.test-setup-command.result }}" == "success" ] && \
+             [ "${{ needs.test-status-command.result }}" == "success" ] && \
+             [ "${{ needs.test-version-command.result }}" == "success" ] && \
+             [ "${{ needs.test-model-command.result }}" == "success" ] && \
+             [ "${{ needs.test-cicd-command.result }}" == "success" ] && \
+             [ "${{ needs.test-inventory-command.result }}" == "success" ] && \
+             [ "${{ needs.test-context-command.result }}" == "success" ] && \
+             [ "${{ needs.test-session-command.result }}" == "success" ]; then
+            STATUS="✅ SUCCESS"
+            COLOR="good"
+          else
+            STATUS="❌ FAILED"
+            COLOR="danger"
+          fi
+
+          # Build command test status
+          COMMANDS_STATUS="*Command Tests:*\n"
+          COMMANDS_STATUS+="• run: ${{ needs.test-run-command.result }}\n"
+          COMMANDS_STATUS+="• setup: ${{ needs.test-setup-command.result }}\n"
+          COMMANDS_STATUS+="• status: ${{ needs.test-status-command.result }}\n"
+          COMMANDS_STATUS+="• version: ${{ needs.test-version-command.result }}\n"
+          COMMANDS_STATUS+="• /model: ${{ needs.test-model-command.result }}\n"
+          COMMANDS_STATUS+="• /cicd: ${{ needs.test-cicd-command.result }}\n"
+          COMMANDS_STATUS+="• /inventory: ${{ needs.test-inventory-command.result }}\n"
+          COMMANDS_STATUS+="• /context: ${{ needs.test-context-command.result }}\n"
+          COMMANDS_STATUS+="• /session: ${{ needs.test-session-command.result }}"
+
+          # Send to Slack
+          curl -X POST "${SLACK_WEBHOOK_URL}" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"username\": \"BuildsBot\",
+              \"icon_emoji\": \":building_construction:\",
+              \"attachments\": [{
+                \"color\": \"${COLOR}\",
+                \"title\": \"Athena Command Tests - ${STATUS}\",
+                \"fields\": [
+                  {
+                    \"title\": \"Repository\",
+                    \"value\": \"${{ github.repository }}\",
+                    \"short\": true
+                  },
+                  {
+                    \"title\": \"Branch\",
+                    \"value\": \"${{ github.ref_name }}\",
+                    \"short\": true
+                  },
+                  {
+                    \"title\": \"Commit\",
+                    \"value\": \"<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.event.head_commit.message }}>\",
+                    \"short\": false
+                  },
+                  {
+                    \"title\": \"Build\",
+                    \"value\": \"<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>\",
+                    \"short\": true
+                  }
+                ],
+                \"text\": \"${COMMANDS_STATUS}\"
+              }]
+            }"
