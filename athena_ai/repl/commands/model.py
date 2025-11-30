@@ -244,16 +244,16 @@ class ModelCommandHandler:
         console.print(f"[yellow]⚠️ Model '{model_name}' is not downloaded yet[/yellow]")
         console.print(f"[dim]Would you like to download it now?[/dim]")
 
-        # Prompt user for confirmation
+        # Prompt user for confirmation using built-in input()
+        # (avoid prompt_toolkit.prompt() which conflicts with asyncio event loop)
         try:
-            from prompt_toolkit import prompt
-            response = prompt("Download model? [Y/n]: ").strip().lower()
+            response = input("Download model? [Y/n]: ").strip().lower()
             if response in ['n', 'no']:
                 console.print("[dim]Model not downloaded. You can download it manually with:[/dim]")
                 console.print(f"[dim]  ollama pull {model_name}[/dim]")
                 return False
-        except (ImportError, EOFError, KeyboardInterrupt):
-            # Fallback if prompt_toolkit not available or user interrupts
+        except (EOFError, KeyboardInterrupt):
+            # User interrupts
             console.print("[yellow]Skipping download. Download manually with:[/yellow]")
             console.print(f"[dim]  ollama pull {model_name}[/dim]")
             return False
