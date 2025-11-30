@@ -167,12 +167,10 @@ class TestInventoryE2EFlow:
         assert len(cluster_relations) >= 1, "Should find cluster relations"
 
         # Check replica relation (db-prod-01, db-prod-replica)
-        replica_relations = [s for s in suggestions if s.relation_type == "database_replica"]
+        _ = [s for s in suggestions if s.relation_type == "database_replica"]
         # May or may not find (depends on heuristics implementation)
 
         # 3. Save relations
-        from athena_ai.inventory.relation_classifier.models import RelationSuggestion
-
         for suggestion in suggestions[:5]:  # Save first 5
             test_db.add_relation(
                 source_hostname=suggestion.source_hostname,
