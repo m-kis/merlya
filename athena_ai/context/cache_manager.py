@@ -450,13 +450,13 @@ class CacheManager:
         """Get cache statistics."""
         with self._lock:
             entries_by_type: Dict[str, int] = {}
-            total_ttl = 0
+            total_ttl: float = 0.0
 
             for entry in self._cache.values():
                 entries_by_type[entry.data_type] = entries_by_type.get(entry.data_type, 0) + 1
                 total_ttl += entry.time_to_live
 
-            avg_ttl = total_ttl / len(self._cache) if self._cache else 0
+            avg_ttl = total_ttl / len(self._cache) if self._cache else 0.0
 
             return {
                 "entries": len(self._cache),

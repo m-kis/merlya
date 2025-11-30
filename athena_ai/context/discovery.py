@@ -103,6 +103,7 @@ class Discovery:
             stacklevel=2
         )
         import asyncio
+
         from athena_ai.context.on_demand_scanner import get_on_demand_scanner
 
         # Filter out local/broadcast IPs

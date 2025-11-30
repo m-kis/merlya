@@ -69,7 +69,7 @@ class ToolSelector:
         self._use_embeddings = use_embeddings and HAS_EMBEDDINGS
         self._embedding_cache: Optional["EmbeddingCache"] = None
 
-        if self._use_embeddings and EmbeddingCache:
+        if self._use_embeddings and HAS_EMBEDDINGS:
             self._embedding_cache = EmbeddingCache()
             logger.debug("✅ ToolSelector initialized with embeddings")
         else:
@@ -160,7 +160,7 @@ class ToolSelector:
 
         try:
             context_embedding = self._embedding_cache.get_embedding(context_text)
-            scores = {}
+            scores: Dict[ToolAction, float] = {}
 
             for action in ToolAction:
                 if action == ToolAction.NO_ACTION:
@@ -328,7 +328,7 @@ class ToolSelector:
 
             if semantic_scores:
                 # Find best match
-                best_action = max(semantic_scores, key=semantic_scores.get)
+                best_action = max(semantic_scores, key=lambda k: semantic_scores[k])
                 best_score = semantic_scores[best_action]
 
                 # Threshold for semantic match (0.65 = reasonable match)

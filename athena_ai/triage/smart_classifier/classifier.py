@@ -247,7 +247,7 @@ class SmartTriageClassifier:
             sem_score = semantic_scores.get(intent, 0.0)
             combined_scores[intent] = 0.4 * kw_score + 0.6 * sem_score
 
-        return max(combined_scores, key=combined_scores.get)
+        return max(combined_scores, key=lambda k: combined_scores[k])
 
     def _classify_priority(
         self,

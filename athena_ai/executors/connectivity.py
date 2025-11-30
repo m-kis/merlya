@@ -20,7 +20,7 @@ class ConnectivityPlanner:
     Plans how to connect to a target host.
     """
 
-    def __init__(self, knowledge_store: KnowledgeStore = None):
+    def __init__(self, knowledge_store: Optional[KnowledgeStore] = None):
         self.knowledge_store = knowledge_store or KnowledgeStore()
 
     def is_port_open(self, host: str, port: int = 22, timeout: int = 2) -> bool:
@@ -34,7 +34,7 @@ class ConnectivityPlanner:
         except (OSError, socket.error, socket.timeout):
             return False
 
-    def get_connection_strategy(self, target_host: str, target_ip: str = None) -> ConnectionStrategy:
+    def get_connection_strategy(self, target_host: str, target_ip: Optional[str] = None) -> ConnectionStrategy:
         """
         Determine how to connect to the target.
         """

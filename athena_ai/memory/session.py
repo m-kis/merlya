@@ -74,8 +74,9 @@ class SessionManager:
         if not self.current_session_id:
             self.start_session()
 
+        session_id = self.current_session_id or ""
         query_id = self.session_repo.log_query(
-            self.current_session_id,
+            session_id,
             query,
             response,
             response_type,

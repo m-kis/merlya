@@ -1,7 +1,7 @@
 """
 Host management tools.
 """
-from typing import Annotated
+from typing import Annotated, Any
 
 from athena_ai.tools.base import get_tool_context, validate_host
 from athena_ai.utils.logger import logger
@@ -107,7 +107,7 @@ def list_hosts(
     lines = [f"📋 AVAILABLE HOSTS ({len(hosts)} found):", ""]
 
     # Group by environment
-    by_env = {}
+    by_env: dict[str, list[Any]] = {}
     for host in hosts:
         env = host.environment or "unknown"
         if env not in by_env:
@@ -388,7 +388,7 @@ def list_inventory_hosts(
         lines = [f"📋 INVENTORY HOSTS ({len(hosts)} found):", ""]
 
         # Group by environment
-        by_env = {}
+        by_env: dict[str, list[Any]] = {}
         for host in hosts:
             env = host.get('environment', 'unknown') or 'unknown'
             if env not in by_env:

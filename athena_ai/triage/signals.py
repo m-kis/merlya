@@ -207,7 +207,7 @@ class SignalDetector:
         }
 
         # Find best match
-        best_intent = max(scores, key=scores.get)
+        best_intent = max(scores, key=lambda k: scores[k])
         best_score = scores[best_intent]
 
         # If no matches, default to ACTION (most common)

@@ -90,7 +90,7 @@ class ContextMemory:
 
     def filter_relevant_hosts(self,
                              inventory: Dict[str, str],
-                             query: str = None) -> Dict[str, str]:
+                             query: Optional[str] = None) -> Dict[str, str]:
         """
         Filter inventory to only include relevant hosts.
 

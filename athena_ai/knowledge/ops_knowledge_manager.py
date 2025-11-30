@@ -83,7 +83,7 @@ class OpsKnowledgeManager:
     # Session Management
     # =========================================================================
 
-    def start_session(self, session_id: str, env: str = "dev", metadata: Dict = None):
+    def start_session(self, session_id: str, env: str = "dev", metadata: Optional[Dict[str, Any]] = None):
         """Start a new session for tracking."""
         self._current_session_id = session_id
         self.storage.create_session(session_id, env, metadata)
@@ -107,8 +107,8 @@ class OpsKnowledgeManager:
         environment: str = "",
         service: str = "",
         host: str = "",
-        symptoms: List[str] = None,
-        tags: List[str] = None,
+        symptoms: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
     ) -> str:
         """
         Record a new incident.
@@ -151,7 +151,7 @@ class OpsKnowledgeManager:
         incident_id: str,
         root_cause: str,
         solution: str,
-        commands_executed: List[str] = None,
+        commands_executed: Optional[List[str]] = None,
         learn_pattern: bool = True,
     ) -> bool:
         """
@@ -184,9 +184,9 @@ class OpsKnowledgeManager:
 
     def find_similar_incidents(
         self,
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
         limit: int = 5,
     ) -> List[SimilarityMatch]:
         """
@@ -209,9 +209,9 @@ class OpsKnowledgeManager:
     def match_patterns(
         self,
         text: str = "",
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
         limit: int = 5,
     ) -> List[PatternMatch]:
         """
@@ -232,11 +232,11 @@ class OpsKnowledgeManager:
         self,
         name: str,
         description: str = "",
-        symptoms: List[str] = None,
-        keywords: List[str] = None,
+        symptoms: Optional[List[str]] = None,
+        keywords: Optional[List[str]] = None,
         service: str = "",
         suggested_solution: str = "",
-        suggested_commands: List[str] = None,
+        suggested_commands: Optional[List[str]] = None,
     ) -> int:
         """
         Add a manual pattern definition.
@@ -261,9 +261,9 @@ class OpsKnowledgeManager:
     def get_suggestion(
         self,
         text: str = "",
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Get a solution suggestion based on patterns and past incidents.
@@ -303,10 +303,10 @@ class OpsKnowledgeManager:
 
     def get_remediation_for_incident(
         self,
-        incident_id: str = None,
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        incident_id: Optional[str] = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
         title: str = "",
     ) -> Optional[Dict[str, Any]]:
         """

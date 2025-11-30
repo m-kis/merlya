@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from athena_ai.context.sources.base import BaseSource, Host, InventorySource
 from athena_ai.utils.logger import logger
@@ -35,7 +35,7 @@ class AnsibleSource(BaseSource):
         """Parse an Ansible inventory file (INI format)."""
         hosts = []
         try:
-            current_group = "ungrouped"
+            current_group: Optional[str] = "ungrouped"
 
             with open(path, "r") as f:
                 for line in f:

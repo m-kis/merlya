@@ -232,7 +232,7 @@ class HostRegistry:
             ValueError: If host not found
         """
         result = self.validate(hostname)
-        if not result.is_valid:
+        if not result.is_valid or result.host is None:
             raise ValueError(result.get_suggestion_text())
         return result.host
 

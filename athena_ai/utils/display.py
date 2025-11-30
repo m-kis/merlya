@@ -3,7 +3,7 @@ Display Manager for Athena.
 Centralizes all UI/UX logic to ensure a clean, production-ready output.
 """
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Optional
+from typing import Any, Generator, Optional
 
 from rich.console import Console
 from rich.live import Live
@@ -13,7 +13,6 @@ from rich.progress import (
     BarColumn,
     Progress,
     SpinnerColumn,
-    TaskID,
     TextColumn,
     TimeElapsedColumn,
 )

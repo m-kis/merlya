@@ -324,7 +324,7 @@ class IncidentMemory:
         """
         self._ensure_loaded()
 
-        symptom_counts = Counter()
+        symptom_counts: Counter[str] = Counter()
 
         if service and service in self._service_index:
             # Only count symptoms from incidents with this service
@@ -340,7 +340,7 @@ class IncidentMemory:
 
         return symptom_counts.most_common(limit)
 
-    def get_resolution_stats(self, service: str = None) -> Dict[str, Any]:
+    def get_resolution_stats(self, service: Optional[str] = None) -> Dict[str, Any]:
         """Get resolution statistics."""
         with self.storage.sqlite._connection() as conn:
             cursor = conn.cursor()

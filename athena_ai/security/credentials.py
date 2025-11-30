@@ -170,7 +170,7 @@ class CredentialManager:
     def _parse_ssh_config(self) -> dict:
         """Parse ~/.ssh/config for host-specific settings."""
         config_file = self.ssh_dir / "config"
-        config = {}
+        config: dict[str, dict[str, str]] = {}
 
         if not config_file.exists():
             return config
@@ -488,7 +488,7 @@ class CredentialManager:
             # (consistent with _resolve_inventory_hosts and variable_pattern)
             # Use lambda to avoid backreference interpretation if value contains \1, \2, etc.
             # Note: Use default arg to capture value at definition time (not runtime)
-            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', lambda m, v=value: v, resolved)
+            resolved = re.sub(f'@{re.escape(key)}(?![\\w\\-])', lambda m, v=value: str(v), resolved)
 
         # Find remaining unresolved variables
         variable_pattern = r'@([\w\-]+)'
@@ -538,7 +538,7 @@ class CredentialManager:
                     ip = host.get("ip")
                     # Use lambda to avoid backreference interpretation
                     # Note: Use default arg to capture replacement at definition time
-                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', lambda m, r=replacement: r, text)
+                    text = re.sub(f'@{re.escape(var)}(?![\\w\\-])', lambda m, r=replacement: str(r), text)
                     if ip:
                         logger.debug(f"✅ Resolved @{var} to inventory host: {replacement} (IP: {ip})")
                     else:
@@ -561,7 +561,7 @@ class CredentialManager:
         try:
             from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
             repo = get_inventory_repository()
-            hosts = repo.list_hosts()
+            hosts = repo.get_all_hosts()
             return [h["hostname"] for h in hosts]
         except Exception:
             return []

@@ -17,113 +17,95 @@ class ContextCommandHandler:
         self.repl = repl
 
     def handle_scan(self, args: list) -> bool:
-        """Scan infrastructure. Use --full to scan remote hosts via SSH."""
-        full = '--full' in args
+        """
+        Scan local machine or a specific remote host.
 
+        Usage:
+            /scan           - Scan local machine only
+            /scan <host>    - Scan a specific remote host
+        """
         try:
-            if full:
-                self._scan_full()
+            if args:
+                # Scan specific host
+                hostname = args[0]
+                self._scan_host(hostname)
             else:
-                self._scan_quick()
-
+                # Scan local only
+                self._scan_local()
         except Exception as e:
             print_error(f"Scan failed: {e}")
 
         return True
 
-    def _execute_with_progress(self, description: str, scan_remote: bool, force: bool = False):
-        """Execute discover_environment with a progress bar."""
-        from rich.progress import (
-            BarColumn,
-            Progress,
-            SpinnerColumn,
-            TaskProgressColumn,
-            TextColumn,
-        )
+    def _scan_local(self):
+        """Scan local machine only."""
+        with console.status("[cyan]Scanning local machine...[/cyan]", spinner="dots"):
+            context = self.repl.context_manager.discover_environment()
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[cyan]{task.description}[/cyan]"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TextColumn("[dim]{task.fields[host]}[/dim]"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(description, total=None, host="")
-
-            def update_progress(current, total, hostname):
-                progress.update(task, total=total, completed=current, host=hostname)
-
-            context = self.repl.context_manager.discover_environment(
-                scan_remote=scan_remote,
-                force=force,
-                progress_callback=update_progress
-            )
-
-            # Mark complete
-            task_obj = progress.tasks[task]
-            if task_obj.total is not None:
-                progress.update(task, completed=task_obj.total, host="done")
-
-        return context
-
-    def _scan_full(self):
-        """Full SSH scan with progress bar."""
-        context = self._execute_with_progress("Scanning hosts...", scan_remote=True)
-        self._display_scan_results(context, is_full=True)
-
-    def _scan_quick(self):
-        """Quick scan without SSH."""
-        with console.status("[cyan]Scanning infrastructure...[/cyan]", spinner="dots"):
-            context = self.repl.context_manager.discover_environment(scan_remote=False)
-
-        self._display_scan_results(context, is_full=False)
-
-    def _display_scan_results(self, context: dict, is_full: bool):
-        """Display scan results."""
         local = context.get('local', {})
-        inventory = context.get('inventory', {})
-        remote_hosts = context.get('remote_hosts', {})
+        os_info = local.get('os_info', {})
 
-        print_success("Scan complete")
-        console.print(f"  Local: {local.get('hostname', 'unknown')}")
+        print_success("Local scan complete")
+        console.print(f"  Hostname: {os_info.get('hostname', 'unknown')}")
+        console.print(f"  OS: {os_info.get('os', 'unknown')} {os_info.get('release', '')}")
+
+        inventory = context.get('inventory', {})
         console.print(f"  Inventory: {len(inventory)} hosts")
 
-        if remote_hosts:
-            accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-            console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible")
+    def _scan_host(self, hostname: str):
+        """Scan a specific remote host."""
+        with console.status(f"[cyan]Scanning {hostname}...[/cyan]", spinner="dots"):
+            result = self.repl.context_manager.scan_host(hostname, force=True)
+
+        if result.get('accessible'):
+            print_success(f"Host {hostname} scanned successfully")
+            console.print(f"  IP: {result.get('ip', 'unknown')}")
+            console.print(f"  Reachable: Yes")
+            if result.get('os'):
+                console.print(f"  OS: {result.get('os', 'unknown')}")
+        else:
+            print_warning(f"Host {hostname} not accessible")
+            if result.get('error'):
+                console.print(f"  Error: {result.get('error')}")
 
     def handle_refresh(self, args: list) -> bool:
-        """Force refresh context. Use --full to include SSH scan of remote hosts."""
-        full = '--full' in args
+        """
+        Force refresh context cache.
 
+        Usage:
+            /refresh           - Refresh local context cache
+            /refresh <host>    - Refresh cache for a specific host
+        """
         try:
-            if full:
-                self._refresh_full()
+            if args:
+                # Refresh specific host
+                hostname = args[0]
+                self._refresh_host(hostname)
             else:
-                self._refresh_quick()
-
+                # Refresh local only
+                self._refresh_local()
         except Exception as e:
             print_error(f"Refresh failed: {e}")
 
         return True
 
-    def _refresh_full(self):
-        """Full refresh with SSH scan."""
-        context = self._execute_with_progress("Refreshing (full)...", scan_remote=True, force=True)
-        remote_hosts = context.get('remote_hosts', {})
-        if remote_hosts:
-            accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-            print_success(f"Full refresh complete (cache cleared, {accessible}/{len(remote_hosts)} hosts accessible)")
-        else:
-            print_success("Full refresh complete (cache cleared)")
+    def _refresh_local(self):
+        """Refresh local context cache."""
+        with console.status("[cyan]Refreshing local context...[/cyan]", spinner="dots"):
+            self.repl.context_manager.discover_environment(force=True)
+        print_success("Local context refreshed (cache cleared)")
 
-    def _refresh_quick(self):
-        """Quick refresh without SSH."""
-        with console.status("[cyan]Force refreshing context...[/cyan]", spinner="dots"):
-            self.repl.context_manager.discover_environment(scan_remote=False, force=True)
-        print_success("Context refreshed (cache cleared)")
-        console.print("[dim]Use /refresh --full to also scan remote hosts via SSH[/dim]")
+    def _refresh_host(self, hostname: str):
+        """Refresh cache for a specific host."""
+        with console.status(f"[cyan]Refreshing {hostname}...[/cyan]", spinner="dots"):
+            result = self.repl.context_manager.scan_host(hostname, force=True)
+
+        if result.get('accessible'):
+            print_success(f"Cache refreshed for {hostname}")
+        else:
+            print_warning(f"Host {hostname} not accessible")
+            if result.get('error'):
+                console.print(f"  Error: {result.get('error')}")
 
     def handle_cache_stats(self) -> bool:
         """Show cache statistics."""
@@ -142,7 +124,7 @@ class ContextCommandHandler:
             table.add_column("Fingerprint", style="magenta")
 
             for key, info in stats.items():
-                status = "✅ Valid" if info['valid'] else "❌ Expired"
+                status = "Valid" if info['valid'] else "Expired"
                 status_style = "green" if info['valid'] else "red"
                 fingerprint = "Yes" if info.get('has_fingerprint') else "No"
 
@@ -167,16 +149,12 @@ class ContextCommandHandler:
         try:
             context = self.repl.context_manager.get_context()
             local = context.get('local', {})
+            os_info = local.get('os_info', {})
             inventory = context.get('inventory', {})
-            remote_hosts = context.get('remote_hosts', {})
 
-            console.print("\n[bold]🖥️ Current Context[/bold]")
-            console.print(f"  Local: {local.get('hostname', 'unknown')} ({local.get('os', 'unknown')})")
-            console.print(f"  Inventory: {len(inventory)} hosts")
-
-            if remote_hosts:
-                accessible = sum(1 for h in remote_hosts.values() if h.get('accessible'))
-                console.print(f"  Remote: {accessible}/{len(remote_hosts)} accessible\n")
+            console.print("\n[bold]Current Context[/bold]")
+            console.print(f"  Local: {os_info.get('hostname', 'unknown')} ({os_info.get('os', 'unknown')})")
+            console.print(f"  Inventory: {len(inventory)} hosts\n")
 
         except Exception as e:
             print_error(f"Failed to get context: {e}")
@@ -186,12 +164,12 @@ class ContextCommandHandler:
     def handle_ssh_info(self) -> bool:
         """Show SSH configuration and available keys."""
         try:
-            console.print("\n[bold]🔑 SSH Configuration[/bold]\n")
+            console.print("\n[bold]SSH Configuration[/bold]\n")
 
             if self.repl.credentials.supports_agent():
                 agent_keys = self.repl.credentials.get_agent_keys()
                 if agent_keys:
-                    console.print(f"[green]✅ ssh-agent: {len(agent_keys)} keys loaded[/green]")
+                    console.print(f"[green]ssh-agent: {len(agent_keys)} keys loaded[/green]")
                 else:
                     print_warning("ssh-agent detected but no keys")
             else:
@@ -217,7 +195,7 @@ class ContextCommandHandler:
                 print_warning("No permission data cached yet.")
                 console.print("[dim]Run commands on hosts to detect permissions automatically.[/dim]")
             else:
-                console.print("\n[bold]🔒 Permission Capabilities (Cached)[/bold]\n")
+                console.print("\n[bold]Permission Capabilities (Cached)[/bold]\n")
                 for target in self.repl.orchestrator.permissions.capabilities_cache:
                     console.print(f"[cyan]{target}[/cyan]:")
                     console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))
@@ -225,7 +203,7 @@ class ContextCommandHandler:
         else:
             # Show permissions for specific host
             target = args[0]
-            console.print(f"\n[bold]🔍 Detecting permissions on {target}...[/bold]\n")
+            console.print(f"\n[bold]Detecting permissions on {target}...[/bold]\n")
             try:
                 self.repl.orchestrator.permissions.detect_capabilities(target)
                 console.print(self.repl.orchestrator.permissions.format_capabilities_summary(target))

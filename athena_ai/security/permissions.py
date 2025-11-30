@@ -299,7 +299,7 @@ class PermissionManager:
         # Add elevation prefix to commands that need it
         for strategy in strategies:
             if strategy['requires_elevation']:
-                strategy['command'] = self.elevate_command(strategy['command'], target)
+                strategy['command'] = self.elevate_command(str(strategy['command']), target)
 
         return strategies
 

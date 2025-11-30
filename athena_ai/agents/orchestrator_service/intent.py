@@ -177,7 +177,7 @@ class IntentParser:
         """Display full triage with intent information."""
         self._display_priority(context.priority_result, context.intent)
 
-    def _display_priority(self, result: PriorityResult, intent: Intent = None):
+    def _display_priority(self, result: PriorityResult, intent: Optional[Intent] = None):
         """Internal method to display priority info."""
         should_display = True
         if self.verbosity:

@@ -29,7 +29,7 @@ class FalkorDBStore:
 
     def store_incident(self, incident: Dict[str, Any]) -> bool:
         """Store incident in graph."""
-        if not self.available:
+        if not self.available or self.client is None:
             return False
 
         try:
@@ -47,9 +47,9 @@ class FalkorDBStore:
             logger.warning(f"Failed to sync incident to FalkorDB: {e}")
             return False
 
-    def find_similar_incidents(self, limit: int = 5) -> List[Dict]:
+    def find_similar_incidents(self, limit: int = 5) -> List[Dict[Any, Any]]:
         """Find similar incidents in graph."""
-        if not self.available:
+        if not self.available or self.client is None:
             return []
 
         try:
@@ -64,15 +64,15 @@ class FalkorDBStore:
                 LIMIT $limit
             """, {"limit": limit})
 
-            return [r.get("i") for r in results if r.get("i")]
+            return [r.get("i") for r in results if r and r.get("i")]
 
         except Exception as e:
             logger.debug(f"FalkorDB query failed: {e}")
             return []
 
-    def get_node(self, label: str, properties: Dict[str, Any]) -> Optional[Dict]:
+    def get_node(self, label: str, properties: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Get a node by properties."""
-        if not self.available:
+        if not self.available or self.client is None:
             return None
         try:
             return self.client.find_node(label, properties)
@@ -85,6 +85,6 @@ class FalkorDBStore:
             "enabled": self.enabled,
             "available": self.available,
         }
-        if self.available:
+        if self.available and self.client is not None:
             stats.update(self.client.get_stats())
         return stats

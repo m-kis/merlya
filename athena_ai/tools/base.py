@@ -203,7 +203,10 @@ def initialize_tools(
     if _ctx.host_registry and _ctx.host_registry.is_empty():
         _ctx.host_registry.load_all_sources()
 
-    logger.debug(f"Tools initialized with {len(_ctx.host_registry.hostnames)} hosts")
+    if _ctx.host_registry:
+        logger.debug(f"Tools initialized with {len(_ctx.host_registry.hostnames)} hosts")
+    else:
+        logger.debug("Tools initialized without host registry")
     return _ctx
 
 
@@ -243,7 +246,7 @@ def validate_host(hostname: str) -> tuple[bool, str]:
 
     validation = ctx.host_registry.validate(hostname)
 
-    if validation.is_valid:
+    if validation.is_valid and validation.host:
         return True, f"Host '{validation.host.hostname}' validated"
 
     return False, validation.get_suggestion_text()

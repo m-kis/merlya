@@ -9,7 +9,7 @@ Similar architecture to SmartTriageClassifier but specialized for error analysis
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
 
@@ -67,7 +67,7 @@ class ErrorAnalyzer:
 
         # Reference patterns for each error type
         self._reference_patterns = self._build_reference_patterns()
-        self._reference_embeddings_cache: Dict[ErrorType, Tuple[List[str], any]] = {}
+        self._reference_embeddings_cache: Dict[ErrorType, Tuple[List[str], Any]] = {}
 
         # Keyword patterns for fallback
         self._keyword_patterns = self._build_keyword_patterns()
@@ -325,7 +325,7 @@ class ErrorAnalyzer:
 
         return best_type, best_confidence, best_match
 
-    def _semantic_error_scores(self, error_text: str) -> Dict[ErrorType, Tuple[float, str]]:
+    def _semantic_error_scores(self, error_text: str) -> Dict[ErrorType, Tuple[float, Optional[str]]]:
         """
         Calculate semantic similarity scores for each error type.
 
@@ -336,7 +336,7 @@ class ErrorAnalyzer:
 
         try:
             error_embedding = self._embedding_cache.get_embedding(error_text)
-            scores = {}
+            scores: Dict[ErrorType, Tuple[float, Optional[str]]] = {}
 
             for error_type in ErrorType:
                 if error_type == ErrorType.UNKNOWN:

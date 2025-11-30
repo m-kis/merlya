@@ -195,7 +195,7 @@ class VerbosityManager:
 
         # Use callback if set, otherwise print
         if self._output_callback:
-            self._output_callback(formatted, level, component)
+            self._output_callback(formatted, level, component or "")
         else:
             print(formatted)
 

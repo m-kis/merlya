@@ -26,7 +26,7 @@ async def ssh_scan(
     Returns:
         Scan data from SSH
     """
-    data = {}
+    data: Dict[str, Any] = {}
     client = None
 
     try:

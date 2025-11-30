@@ -170,7 +170,7 @@ class OnDemandScanner:
                     success=False,
                     error=str(result),
                 ))
-            else:
+            elif isinstance(result, ScanResult):
                 processed.append(result)
 
         return processed
@@ -240,7 +240,7 @@ class OnDemandScanner:
         Returns:
             Scan data dictionary
         """
-        data = {
+        data: Dict[str, Any] = {
             "hostname": hostname,
             "scan_type": scan_type,
             "scanned_at": datetime.now(timezone.utc).isoformat(),

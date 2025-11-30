@@ -150,7 +150,7 @@ class SessionRepository:
             execution_time_ms
         ))
 
-        query_id = cursor.lastrowid
+        query_id = cursor.lastrowid or 0
 
         # Update session stats
         cursor.execute("""

@@ -81,6 +81,26 @@ class BaseCIClient(ABC):
         """
         ...
 
+    @abstractmethod
+    def is_authenticated(self) -> bool:
+        """
+        Check if the client is authenticated.
+
+        Returns:
+            True if authenticated
+        """
+        ...
+
+    @abstractmethod
+    def get_supported_operations(self) -> list[str]:
+        """
+        Get list of supported operations.
+
+        Returns:
+            List of operation names
+        """
+        ...
+
     # Patterns for sensitive data that should be redacted from logs
     SENSITIVE_PATTERNS = frozenset({
         "token", "secret", "password", "passwd", "pwd",
