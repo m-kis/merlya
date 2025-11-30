@@ -4,6 +4,7 @@ Main inventory parser module.
 import ipaddress
 import json
 import re
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -290,13 +291,27 @@ class InventoryParser:
         return "txt"
 
 
-# Singleton
+# Singleton with thread-safe initialization
 _parser: Optional[InventoryParser] = None
+_parser_lock = threading.Lock()
 
 
 def get_inventory_parser() -> InventoryParser:
-    """Get the inventory parser singleton."""
+    """Get the inventory parser singleton (thread-safe).
+
+    Uses double-checked locking to ensure thread safety while
+    minimizing lock contention for subsequent calls.
+
+    Returns:
+        The global InventoryParser singleton instance.
+    """
     global _parser
-    if _parser is None:
-        _parser = InventoryParser()
-    return _parser
+    # Fast path: check without lock first (optimization for subsequent calls)
+    if _parser is not None:
+        return _parser
+
+    # Slow path: acquire lock and recheck (handles race condition)
+    with _parser_lock:
+        if _parser is None:
+            _parser = InventoryParser()
+        return _parser

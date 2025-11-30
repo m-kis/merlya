@@ -49,11 +49,59 @@ class InventoryImporter:
         # Parse the file
         result = self.parser.parse(str(path))
 
-        if result.errors:
+        # Handle parse errors with graceful fallback
+        if result.errors and not result.hosts:
+            # Show errors
             for error in result.errors:
                 print_error(error)
-            if not result.hosts:
+
+            # Offer graceful fallback
+            from athena_ai.inventory.parser.fallback_helper import (
+                prompt_fallback_action,
+                suggest_format_conversion,
+            )
+
+            # Get available formats from parser
+            available_formats = self.parser.SUPPORTED_FORMATS
+
+            # Prompt user for action
+            selected_format, should_skip_errors = prompt_fallback_action(
+                format_type=result.source_type,
+                error_message=result.errors[0] if result.errors else "Unknown error",
+                available_formats=available_formats,
+            )
+
+            if selected_format:
+                # Retry with user-specified format
+                console.print(f"\n[cyan]Retrying with format: {selected_format}...[/cyan]")
+                result = self.parser.parse(str(path), format_hint=selected_format)
+
+                # Check if retry succeeded
+                if result.errors:
+                    for error in result.errors:
+                        print_error(error)
+
+                if not result.hosts:
+                    suggest_format_conversion(
+                        content=path.read_text(errors="replace"),
+                        detected_format=selected_format,
+                    )
+                    return True
+
+            elif should_skip_errors:
+                # User chose to skip errors - this is handled by parsers
+                # that support lenient parsing (most do)
+                console.print("[yellow]Note: Current parser doesn't support skipping errors[/yellow]")
+                console.print("[yellow]Please fix the file format and retry[/yellow]")
                 return True
+            else:
+                # User aborted or chose export help
+                return True
+
+        # Show non-fatal errors and warnings
+        if result.errors and result.hosts:
+            for error in result.errors:
+                print_warning(f"Non-fatal error: {error}")
 
         if result.warnings:
             for warning in result.warnings:

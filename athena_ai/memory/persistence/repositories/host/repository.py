@@ -390,8 +390,9 @@ class HostRepositoryMixin:
         source_id: Optional[int] = None,
         status: Optional[str] = None,
         limit: Optional[int] = 100,
+        offset: Optional[int] = 0,
     ) -> List[Dict[str, Any]]:
-        """Search hosts with various filters.
+        """Search hosts with various filters and pagination support.
 
         Args:
             pattern: Search pattern for hostname, aliases, or IP address.
@@ -400,9 +401,20 @@ class HostRepositoryMixin:
             source_id: Filter by source ID.
             status: Filter by status.
             limit: Maximum results to return. None means unlimited.
+            offset: Number of results to skip (for pagination). Default: 0.
 
         Returns:
             List of host dictionaries matching the filters.
+
+        Examples:
+            # First page (20 results)
+            page1 = repo.search_hosts(limit=20, offset=0)
+
+            # Second page
+            page2 = repo.search_hosts(limit=20, offset=20)
+
+            # Third page
+            page3 = repo.search_hosts(limit=20, offset=40)
         """
         query = "SELECT * FROM hosts_v2 WHERE 1=1"
         params: list = []
@@ -439,9 +451,17 @@ class HostRepositoryMixin:
             params.append(status)
 
         query += " ORDER BY hostname"
+
+        # Add pagination (LIMIT and OFFSET)
         if limit is not None:
-            query += " LIMIT ?"
+            query += " LIMIT ? OFFSET ?"
             params.append(limit)
+            params.append(offset if offset is not None else 0)
+        elif offset is not None and offset > 0:
+            # OFFSET without LIMIT is not standard SQL, use large LIMIT
+            query += " LIMIT ? OFFSET ?"
+            params.append(999999)  # Effectively unlimited
+            params.append(offset)
 
         with self._connection() as conn:
             cursor = conn.cursor()
@@ -450,8 +470,68 @@ class HostRepositoryMixin:
 
         return [host_row_to_dict(row) for row in rows]
 
+    def count_hosts(
+        self,
+        pattern: Optional[str] = None,
+        environment: Optional[str] = None,
+        group: Optional[str] = None,
+        source_id: Optional[int] = None,
+        status: Optional[str] = None,
+    ) -> int:
+        """Count hosts matching the given filters (for pagination).
+
+        Args:
+            pattern: Search pattern for hostname, aliases, or IP address.
+            environment: Filter by environment.
+            group: Filter by group membership.
+            source_id: Filter by source ID.
+            status: Filter by status.
+
+        Returns:
+            Total count of matching hosts.
+        """
+        query = "SELECT COUNT(*) FROM hosts_v2 WHERE 1=1"
+        params: list = []
+
+        if pattern:
+            query += " AND (hostname LIKE ? OR LOWER(aliases) LIKE ? OR ip_address LIKE ?)"
+            pattern_like = f"%{pattern.lower()}%"
+            params.extend([pattern_like, pattern_like, pattern_like])
+
+        if environment:
+            query += " AND environment = ?"
+            params.append(environment)
+
+        if group:
+            escaped_group = (
+                group
+                .replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            query += " AND groups LIKE ? ESCAPE '\\'"
+            params.append(f'%"{escaped_group}"%')
+
+        if source_id is not None:
+            query += " AND source_id = ?"
+            params.append(source_id)
+
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchone()[0]
+
     def get_all_hosts(self) -> List[Dict[str, Any]]:
         """Get all hosts without any limit.
+
+        Warning:
+            This loads ALL hosts into memory. For large inventories (10k+ hosts),
+            use search_hosts() with pagination instead.
 
         Returns:
             List of all host dictionaries.
