@@ -28,7 +28,7 @@ def prompt_fallback_action(
     Raises:
         KeyboardInterrupt: If user cancels (Ctrl+C)
     """
-    console.print(f"\n[bold red]❌ Parsing Failed[/bold red]")
+    console.print("\n[bold red]❌ Parsing Failed[/bold red]")
     console.print(f"[yellow]Format detected:[/yellow] {format_type}")
     console.print(f"[yellow]Error:[/yellow] {error_message}\n")
 
@@ -43,7 +43,7 @@ def prompt_fallback_action(
 
         if choice == "1":
             # Manual format selection
-            console.print(f"\n[bold]Available formats:[/bold]")
+            console.print("\n[bold]Available formats:[/bold]")
             for i, fmt in enumerate(available_formats, 1):
                 console.print(f"  {i}. {fmt}")
 

@@ -5,11 +5,9 @@ Ensures that errors are caught and presented with clear, actionable messages.
 """
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from athena_ai.agents.orchestrator import Orchestrator, OrchestratorMode
 
 
 @pytest.fixture
