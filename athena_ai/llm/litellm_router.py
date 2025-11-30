@@ -6,7 +6,7 @@ This preserves multi-provider flexibility (OpenRouter, Anthropic, OpenAI, Ollama
 while enabling agent behavior through AutoGen.
 """
 import os
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 from athena_ai.llm.model_config import ModelConfig
 from athena_ai.utils.logger import logger
@@ -43,7 +43,7 @@ class LiteLLMRouter:
         self.provider = self.model_config.get_provider()
         logger.debug(f"LiteLLMRouter initialized with provider: {self.provider}")
 
-    def get_model(self, task: str = None) -> ModelInfo:
+    def get_model(self, task: Optional[str] = None) -> ModelInfo:
         """
         Get model configuration for the current provider.
 
