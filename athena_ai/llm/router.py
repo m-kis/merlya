@@ -162,42 +162,41 @@ class LLMRouter:
         if not model:
             model = self.model_config.get_model(self.provider, task=task)
 
-        display = get_display_manager()
-        spinner_msg = f"🧠 Thinking ({self.provider})..."
+        # Determine which provider call function to use
+        call_func = self._get_provider_call_func()
+        if call_func is None:
+            logger.warning("No valid LLM provider configured. Returning mock response.")
+            return self._get_mock_response(prompt, system_prompt)
 
         try:
-            if self.provider == "anthropic" and self.anthropic_client:
-                if show_spinner:
-                    with display.spinner(spinner_msg):
-                        return self._call_anthropic(prompt, system_prompt, model)
-                return self._call_anthropic(prompt, system_prompt, model)
-
-            elif self.provider == "openai" and self.openai_client:
-                if show_spinner:
-                    with display.spinner(spinner_msg):
-                        return self._call_openai(prompt, system_prompt, model)
-                return self._call_openai(prompt, system_prompt, model)
-
-            elif self.provider == "openrouter" and hasattr(self, 'openrouter_client') and self.openrouter_client:
-                if show_spinner:
-                    with display.spinner(spinner_msg):
-                        return self._call_openrouter(prompt, system_prompt, model)
-                return self._call_openrouter(prompt, system_prompt, model)
-
-            elif self.provider == "ollama" and self.ollama_openai_client:
-                if show_spinner:
-                    with display.spinner(spinner_msg):
-                        return self._call_ollama(prompt, system_prompt, model)
-                return self._call_ollama(prompt, system_prompt, model)
-
-            else:
-                # Fallback or mock
-                logger.warning("No valid LLM provider configured. Returning mock response.")
-                return self._get_mock_response(prompt, system_prompt)
-
+            return self._call_with_spinner(
+                call_func, prompt, system_prompt, model, show_spinner
+            )
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
             return f"Error: {str(e)}"
+
+    def _get_provider_call_func(self):
+        """Get the appropriate provider call function."""
+        if self.provider == "anthropic" and self.anthropic_client:
+            return self._call_anthropic
+        elif self.provider == "openai" and self.openai_client:
+            return self._call_openai
+        elif self.provider == "openrouter" and hasattr(self, 'openrouter_client') and self.openrouter_client:
+            return self._call_openrouter
+        elif self.provider == "ollama" and self.ollama_openai_client:
+            return self._call_ollama
+        return None
+
+    def _call_with_spinner(self, call_func, prompt: str, system_prompt: str,
+                          model: str, show_spinner: bool) -> str:
+        """Execute provider call with optional spinner."""
+        if show_spinner:
+            display = get_display_manager()
+            spinner_msg = f"🧠 Thinking ({self.provider})..."
+            with display.spinner(spinner_msg):
+                return call_func(prompt, system_prompt, model)
+        return call_func(prompt, system_prompt, model)
 
     def _get_mock_response(self, prompt: str, system_prompt: str) -> str:
         """Generate mock response for testing without LLM."""

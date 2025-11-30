@@ -10,7 +10,7 @@ This prevents OpenRouter 500 errors from oversized prompts.
 """
 import re
 from collections import defaultdict
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from athena_ai.memory.persistent_store import KnowledgeStore
 from athena_ai.memory.skill_store import SkillStore
@@ -112,8 +112,8 @@ class ContextMemory:
 
         logger.debug(f"Filtering {len(inventory)} hosts to {self.max_hosts_in_context} most relevant")
 
-        relevant = {}
-        patterns = []
+        relevant: Dict[str, str] = {}
+        patterns: List[str] = []
 
         # Extract patterns from current query
         if query:

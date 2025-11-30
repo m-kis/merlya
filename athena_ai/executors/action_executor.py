@@ -70,7 +70,15 @@ class ActionExecutor:
             logger.info("ℹ️ Credential prompt cancelled")
             return None
 
-    def execute(self, target: str, command: str, action_type: str = "shell", confirm: bool = False, timeout: int = 60) -> Dict[str, Any]:
+    def execute(
+        self,
+        target: str,
+        command: str,
+        action_type: str = "shell",
+        confirm: bool = False,
+        timeout: int = 60,
+        show_spinner: bool = True
+    ) -> Dict[str, Any]:
         """
         Execute an action on a target.
         Target can be 'local', 'localhost', a hostname, or an IP.
@@ -81,6 +89,7 @@ class ActionExecutor:
             action_type: Type of action (default: 'shell')
             confirm: Skip risk confirmation if True
             timeout: Command timeout in seconds (default: 60)
+            show_spinner: Show spinner during remote execution (default: True)
 
         Returns:
             Dict with success, exit_code, stdout, stderr
@@ -100,7 +109,7 @@ class ActionExecutor:
         if target in ["local", "localhost"]:
             return self._execute_local(command, timeout=timeout)
         else:
-            return self._execute_remote(target, command, timeout=timeout)
+            return self._execute_remote(target, command, timeout=timeout, show_spinner=show_spinner)
 
     def _execute_local(self, command: str, timeout: int = 60) -> Dict[str, Any]:
         try:

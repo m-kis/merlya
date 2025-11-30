@@ -2,6 +2,7 @@
 Display Manager for Athena.
 Centralizes all UI/UX logic to ensure a clean, production-ready output.
 """
+import threading
 from contextlib import contextmanager
 from typing import Any, Generator, Optional
 
@@ -34,7 +35,7 @@ athena_theme = Theme({
 class DisplayManager:
     """
     Manages all console output with strict separation of concerns.
-    Singleton pattern to ensure consistent access.
+    Thread-safe singleton pattern to ensure consistent access.
 
     Features:
     - Spinners for long-running operations
@@ -43,18 +44,25 @@ class DisplayManager:
     """
 
     _instance: Optional["DisplayManager"] = None
+    _lock = threading.Lock()
+
     console: Console
     live: Optional[Live]
     _spinner_active: bool
+    _spinner_lock: threading.Lock
     _current_status: Optional[Any]
 
     def __new__(cls) -> "DisplayManager":
         if cls._instance is None:
-            cls._instance = super(DisplayManager, cls).__new__(cls)
-            cls._instance.console = Console(theme=athena_theme)
-            cls._instance.live = None
-            cls._instance._spinner_active = False
-            cls._instance._current_status = None
+            with cls._lock:
+                # Double-checked locking pattern
+                if cls._instance is None:
+                    cls._instance = super(DisplayManager, cls).__new__(cls)
+                    cls._instance.console = Console(theme=athena_theme)
+                    cls._instance.live = None
+                    cls._instance._spinner_active = False
+                    cls._instance._spinner_lock = threading.Lock()
+                    cls._instance._current_status = None
         return cls._instance
 
     def show_welcome(self, env: str):
@@ -73,6 +81,8 @@ class DisplayManager:
         """
         Context manager for spinner display during long operations.
 
+        Thread-safe: handles concurrent access and nested spinners gracefully.
+
         Usage:
             with display.spinner("Connecting to host..."):
                 # long operation
@@ -81,13 +91,15 @@ class DisplayManager:
             message: Status message to display
             spinner_type: Type of spinner animation (dots, line, arc, etc.)
         """
-        if self._spinner_active:
-            # Nested spinner - just print status
-            self.console.print(f"[thinking]🧠 {message}[/thinking]")
-            yield None
-            return
+        # Thread-safe check and set
+        with self._spinner_lock:
+            if self._spinner_active:
+                # Nested spinner - just print status (no lock needed for print)
+                self.console.print(f"[thinking]🧠 {message}[/thinking]")
+                yield None
+                return
+            self._spinner_active = True
 
-        self._spinner_active = True
         try:
             with self.console.status(
                 f"[bold blue]{message}[/bold blue]",
@@ -96,8 +108,9 @@ class DisplayManager:
                 self._current_status = status
                 yield status
         finally:
-            self._spinner_active = False
-            self._current_status = None
+            with self._spinner_lock:
+                self._spinner_active = False
+                self._current_status = None
 
     @contextmanager
     def progress_bar(

@@ -10,7 +10,7 @@ Discovers:
 This provides the "intelligence" to understand the environment and route
 queries to appropriate sources instead of manual filtering or SSH scanning.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from athena_ai.domains.sources.connectors import (
     APIConnector,
@@ -49,16 +49,16 @@ class SourceDiscovery:
         # Discover PostgreSQL
         postgres_instances = PostgreSQLConnector.detect_on_localhost()
         for instance in postgres_instances:
-            connector = PostgreSQLConnector(**instance)
-            if connector.test_connection():
-                metadata = connector.get_metadata()
+            pg_connector = PostgreSQLConnector(**instance)
+            if pg_connector.test_connection():
+                metadata = pg_connector.get_metadata()
                 metadata.detected = True
                 metadata.confidence = instance.get('confidence', 0.8)
 
                 # Try to discover inventory tables
                 try:
-                    tables = connector.discover_inventory_tables()
-                    if tables:
+                    tables = pg_connector.discover_inventory_tables()
+                    if tables and metadata.capabilities is not None:
                         logger.info(f"  Found {len(tables)} inventory tables in PostgreSQL")
                         metadata.capabilities.append("has_inventory_tables")
                         metadata.confidence = min(metadata.confidence + 0.1, 1.0)
@@ -66,21 +66,21 @@ class SourceDiscovery:
                     logger.debug(f"Failed to discover PostgreSQL tables: {e}")
 
                 self.discovered_sources.append(metadata)
-                connector.close()
+                pg_connector.close()
 
         # Discover MySQL
         mysql_instances = MySQLConnector.detect_on_localhost()
         for instance in mysql_instances:
-            connector = MySQLConnector(**instance)
-            if connector.test_connection():
-                metadata = connector.get_metadata()
+            mysql_connector = MySQLConnector(**instance)
+            if mysql_connector.test_connection():
+                metadata = mysql_connector.get_metadata()
                 metadata.detected = True
                 metadata.confidence = instance.get('confidence', 0.8)
 
                 # Try to discover inventory tables
                 try:
-                    tables = connector.discover_inventory_tables()
-                    if tables:
+                    tables = mysql_connector.discover_inventory_tables()
+                    if tables and metadata.capabilities is not None:
                         logger.info(f"  Found {len(tables)} inventory tables in MySQL")
                         metadata.capabilities.append("has_inventory_tables")
                         metadata.confidence = min(metadata.confidence + 0.1, 1.0)
@@ -88,21 +88,21 @@ class SourceDiscovery:
                     logger.debug(f"Failed to discover MySQL tables: {e}")
 
                 self.discovered_sources.append(metadata)
-                connector.close()
+                mysql_connector.close()
 
         # Discover MongoDB
         mongodb_instances = MongoDBConnector.detect_on_localhost()
         for instance in mongodb_instances:
-            connector = MongoDBConnector(**instance)
-            if connector.test_connection():
-                metadata = connector.get_metadata()
+            mongo_connector = MongoDBConnector(**instance)
+            if mongo_connector.test_connection():
+                metadata = mongo_connector.get_metadata()
                 metadata.detected = True
                 metadata.confidence = instance.get('confidence', 0.8)
 
                 # Try to discover inventory collections
                 try:
-                    collections = connector.discover_inventory_collections()
-                    if collections:
+                    collections = mongo_connector.discover_inventory_collections()
+                    if collections and metadata.capabilities is not None:
                         logger.info(f"  Found {len(collections)} inventory collections in MongoDB")
                         metadata.capabilities.append("has_inventory_collections")
                         metadata.confidence = min(metadata.confidence + 0.1, 1.0)
@@ -110,21 +110,21 @@ class SourceDiscovery:
                     logger.debug(f"Failed to discover MongoDB collections: {e}")
 
                 self.discovered_sources.append(metadata)
-                connector.close()
+                mongo_connector.close()
 
         # Discover REST APIs
         api_instances = APIConnector.detect_on_localhost()
         for instance in api_instances:
-            connector = APIConnector(**instance)
-            if connector.test_connection():
-                metadata = connector.get_metadata()
+            api_connector = APIConnector(**instance)
+            if api_connector.test_connection():
+                metadata = api_connector.get_metadata()
                 metadata.detected = True
                 metadata.confidence = instance.get('confidence', 0.6)
 
                 # Try to discover endpoints
                 try:
-                    endpoints = connector.discover_endpoints()
-                    if endpoints:
+                    endpoints = api_connector.discover_endpoints()
+                    if endpoints and metadata.capabilities is not None:
                         logger.info(f"  Found {len(endpoints)} API endpoints")
                         metadata.capabilities.append("has_endpoints")
                         metadata.confidence = min(metadata.confidence + 0.2, 1.0)
@@ -132,7 +132,7 @@ class SourceDiscovery:
                     logger.debug(f"Failed to discover API endpoints: {e}")
 
                 self.discovered_sources.append(metadata)
-                connector.close()
+                api_connector.close()
 
         logger.info(f"✅ Discovery complete: Found {len(self.discovered_sources)} data sources")
 
@@ -160,9 +160,9 @@ class SourceDiscovery:
         Returns:
             List of sources with capability
         """
-        return [s for s in self.discovered_sources if capability in s.capabilities]
+        return [s for s in self.discovered_sources if s.capabilities and capability in s.capabilities]
 
-    def get_best_source_for_inventory(self) -> SourceMetadata:
+    def get_best_source_for_inventory(self) -> Optional[SourceMetadata]:
         """
         Get the best source for inventory queries.
 
@@ -183,8 +183,8 @@ class SourceDiscovery:
         # 1. Has inventory tables/collections (higher priority)
         # 2. Confidence score (higher is better)
         # 3. Source type (database > API)
-        def score_source(source: SourceMetadata) -> tuple:
-            has_inventory = 1 if any(cap in source.capabilities for cap in ["has_inventory_tables", "has_inventory_collections"]) else 0
+        def score_source(source: SourceMetadata) -> tuple[int, float, int]:
+            has_inventory = 1 if source.capabilities and any(cap in source.capabilities for cap in ["has_inventory_tables", "has_inventory_collections"]) else 0
             is_database = 1 if source.source_type in [SourceType.POSTGRESQL, SourceType.MYSQL, SourceType.MONGODB] else 0
             return (has_inventory, source.confidence, is_database)
 
