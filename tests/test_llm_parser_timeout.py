@@ -32,8 +32,10 @@ class TestLLMParserTimeout:
     @pytest.fixture(autouse=True)
     def enable_llm_fallback(self, monkeypatch):
         """Enable LLM fallback for tests."""
-        monkeypatch.setenv("ATHENA_ENABLE_LLM_FALLBACK", "true")
-        monkeypatch.setenv("ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED", "true")
+        # Patch the imported constants directly since they're imported at module level
+        from athena_ai.inventory.parser.parsers.llm import engine
+        monkeypatch.setattr(engine, "ENABLE_LLM_FALLBACK", True)
+        monkeypatch.setattr(engine, "LLM_COMPLIANCE_ACKNOWLEDGED", True)
 
     def test_timeout_triggers_on_slow_llm(self, slow_llm_router):
         """Test that timeout is triggered when LLM takes too long."""
