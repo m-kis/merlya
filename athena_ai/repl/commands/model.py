@@ -51,6 +51,8 @@ class ModelCommandHandler:
                 self._set_model(args[1:], model_config)
             elif cmd == 'provider' and len(args) >= 2:
                 self._set_provider(args[1])
+            elif cmd == 'task':
+                self._handle_task(args[1:], model_config)
             else:
                 self._show_help()
 
@@ -159,7 +161,8 @@ class ModelCommandHandler:
                     model.modified_at[:10]  # Just the date
                 )
             console.print(table)
-            console.print(f"\n[dim]Total: {len(ollama_models)} models ({sum(m.size_gb for m in ollama_models):.1f} GB)[/dim]")
+            total_size = sum(m.size_gb for m in ollama_models)
+            console.print(f"\n[dim]Total: {len(ollama_models)} models ({total_size:.1f} GB)[/dim]")
             return
 
         # Default behavior for cloud providers
@@ -220,6 +223,78 @@ class ModelCommandHandler:
         print_success(f"Provider set to: {provider}")
         # Reload agents to apply the new provider
         self.repl.orchestrator.reload_agents()
+
+    def _handle_task(self, args: list, model_config):
+        """Handle /model task subcommand for task-specific routing."""
+        if not args:
+            # Show current task model configuration
+            task_models = model_config.get_task_models()
+            if not task_models:
+                console.print("[yellow]No task-specific models configured[/yellow]")
+                console.print("[dim]Use '/model task set <task> <model>' to configure[/dim]")
+                return
+
+            table = Table(title="⚙️ Task-Specific Model Configuration")
+            table.add_column("Task", style="cyan", no_wrap=True)
+            table.add_column("Model/Alias", style="yellow")
+            table.add_column("Description", style="dim")
+
+            task_descriptions = {
+                "correction": "Fast corrections (simple, cheap)",
+                "planning": "Complex planning (powerful, expensive)",
+                "synthesis": "General synthesis (balanced)",
+            }
+
+            for task, model in task_models.items():
+                desc = task_descriptions.get(task, "Custom task")
+                table.add_row(task, model, desc)
+
+            console.print(table)
+            console.print("\n[dim]💡 Use aliases (haiku/sonnet/opus) or full model paths[/dim]")
+            return
+
+        subcmd = args[0].lower()
+
+        if subcmd == 'set' and len(args) >= 3:
+            task = args[1]
+            model = args[2]
+            try:
+                model_config.set_task_model(task, model)
+                print_success(f"Task '{task}' will now use: {model}")
+                # Reload agents to apply changes
+                self.repl.orchestrator.reload_agents()
+            except ValueError as e:
+                print_error(str(e))
+
+        elif subcmd == 'list':
+            # List valid tasks and their current configuration
+            console.print("\n[bold]Valid Tasks:[/bold]")
+            console.print("  • correction - Fast corrections (typos, simple fixes)")
+            console.print("  • planning   - Complex reasoning (architecture, design)")
+            console.print("  • synthesis  - General tasks (balanced workload)")
+            console.print("\n[bold]Model Aliases:[/bold]")
+            console.print("  • haiku  - Fastest, cheapest (Claude Haiku or GPT-4o-mini)")
+            console.print("  • sonnet - Balanced (Claude Sonnet or GPT-4o)")
+            console.print("  • opus   - Most capable (Claude Opus or GPT-4o-latest)")
+            console.print("\n[dim]Or use full model path: meta-llama/llama-3.1-70b-instruct[/dim]")
+
+        elif subcmd == 'reset':
+            # Reset to defaults
+            model_config.config["task_models"] = model_config.TASK_MODELS.copy()
+            model_config.save_config()
+            print_success("Task models reset to defaults")
+            self.repl.orchestrator.reload_agents()
+
+        else:
+            console.print("[yellow]Task Model Usage:[/yellow]")
+            console.print("  /model task - Show current task configuration")
+            console.print("  /model task list - List valid tasks and aliases")
+            console.print("  /model task set <task> <model> - Set model for task")
+            console.print("  /model task reset - Reset to defaults")
+            console.print("\n[yellow]Examples:[/yellow]")
+            console.print("  /model task set correction haiku")
+            console.print("  /model task set planning opus")
+            console.print("  /model task set synthesis meta-llama/llama-3.1-70b-instruct")
 
     def _handle_embedding(self, args: list):
         """Handle /model embedding subcommand for AI features configuration."""
@@ -302,6 +377,12 @@ class ModelCommandHandler:
         console.print("  /model list [provider] - List available LLM models")
         console.print("  /model set [provider] <model> - Set LLM model for provider")
         console.print("  /model provider <provider> - Switch cloud provider")
+        console.print()
+        console.print("[yellow]Task-Specific Routing:[/yellow]")
+        console.print("  /model task - Show current task configuration")
+        console.print("  /model task list - List valid tasks and aliases")
+        console.print("  /model task set <task> <model> - Set model for task")
+        console.print("  /model task reset - Reset to defaults")
         console.print()
         console.print("[yellow]Embedding Models (AI features):[/yellow]")
         console.print("  /model embedding - Show current embedding model")

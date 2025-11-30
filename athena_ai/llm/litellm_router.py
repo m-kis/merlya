@@ -32,8 +32,14 @@ class LiteLLMRouter:
     - Automatic model ID formatting for each provider
     """
 
-    def __init__(self):
-        self.model_config = ModelConfig()
+    def __init__(self, auto_configure: bool = True):
+        """
+        Initialize LiteLLMRouter.
+
+        Args:
+            auto_configure: If True, run interactive setup on first launch
+        """
+        self.model_config = ModelConfig(auto_configure=auto_configure)
         self.provider = self.model_config.get_provider()
         logger.debug(f"LiteLLMRouter initialized with provider: {self.provider}")
 

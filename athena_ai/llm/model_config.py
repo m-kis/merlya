@@ -93,10 +93,20 @@ class ModelConfig:
         "synthesis": "sonnet",  # Balanced synthesis (sonnet = balanced)
     }
 
-    def __init__(self):
+    def __init__(self, auto_configure: bool = False):
+        """
+        Initialize ModelConfig.
+
+        Args:
+            auto_configure: If True and config doesn't exist, run interactive setup
+        """
         self.config_dir = Path.home() / ".athena"
         self.config_file = self.config_dir / "config.json"
         self.config = self._load_config()
+
+        # Run interactive setup if config is new and auto_configure is enabled
+        if auto_configure and not self.config_file.exists():
+            self._interactive_setup()
 
     def _load_config(self) -> Dict:
         """Load configuration from file or create default."""
@@ -113,6 +123,117 @@ class ModelConfig:
             "models": self.DEFAULT_MODELS.copy(),
             "task_models": self.TASK_MODELS.copy(),
         }
+
+    def _interactive_setup(self):
+        """Interactive setup for first-time configuration."""
+        print("\n" + "="*60)
+        print("🤖 Welcome to Athena AI - Model Configuration")
+        print("="*60)
+        print("\nLet's configure your LLM providers and models.\n")
+
+        # 1. Choose default provider
+        print("Available providers:")
+        print("  1. openrouter - Access 400+ models (Claude, GPT-4, Llama, etc.)")
+        print("  2. anthropic  - Direct Anthropic API (Claude models)")
+        print("  3. openai     - Direct OpenAI API (GPT models)")
+        print("  4. ollama     - Local models (requires Ollama server)")
+        print()
+
+        provider_map = {"1": "openrouter", "2": "anthropic", "3": "openai", "4": "ollama"}
+        while True:
+            choice = input("Select default provider [1-4] (default: 1): ").strip() or "1"
+            if choice in provider_map:
+                provider = provider_map[choice]
+                break
+            print("Invalid choice. Please enter 1, 2, 3, or 4.")
+
+        self.config["provider"] = provider
+        print(f"✓ Default provider set to: {provider}\n")
+
+        # 2. Configure default model for chosen provider
+        print(f"Choose default model for {provider}:")
+        default_model = self.DEFAULT_MODELS[provider]
+        print(f"  Press Enter to use: {default_model}")
+        print("  Or type a custom model name")
+        custom_model = input(f"Model [{default_model}]: ").strip()
+        if custom_model:
+            self.config["models"][provider] = custom_model
+            print(f"✓ Model set to: {custom_model}\n")
+        else:
+            print(f"✓ Using default: {default_model}\n")
+
+        # 3. Task-specific model configuration
+        print("Task-Specific Routing (optimize cost & performance):")
+        print("  - correction: Fast, cheap model for simple tasks")
+        print("  - planning:   Powerful model for complex reasoning")
+        print("  - synthesis:  Balanced model for general tasks")
+        print()
+
+        configure_tasks = input("Configure task-specific models? [y/N]: ").strip().lower()
+        if configure_tasks in ['y', 'yes']:
+            print()
+            task_descriptions = {
+                "correction": "Quick fixes, simple corrections (use fast/cheap model)",
+                "planning": "Complex planning, architecture decisions (use powerful model)",
+                "synthesis": "General tasks, balanced workload (use balanced model)",
+            }
+
+            for task, description in task_descriptions.items():
+                print(f"\n{task.upper()}: {description}")
+                print(f"  Current: {self.TASK_MODELS[task]}")
+                print("  Options: haiku (fastest), sonnet (balanced), opus (best)")
+                print("  Or enter full model path (e.g., meta-llama/llama-3.1-70b-instruct)")
+
+                task_model = input(f"  Model for {task} [{self.TASK_MODELS[task]}]: ").strip()
+                if task_model:
+                    self.config["task_models"][task] = task_model
+                    print(f"  ✓ {task} model set to: {task_model}")
+
+        # 4. Mixed provider configuration (advanced)
+        print("\n" + "-"*60)
+        print("Advanced: Use different providers for different tasks")
+        print("-"*60)
+        use_mixed = input("Configure mixed providers? [y/N]: ").strip().lower()
+        if use_mixed in ['y', 'yes']:
+            print("\nExample: Use Ollama (free, local) for corrections")
+            print("         Use OpenRouter (cloud) for planning/synthesis")
+            print()
+
+            # Check if Ollama is available
+            ollama_available = False
+            if provider != "ollama":
+                try:
+                    from athena_ai.llm.ollama_client import get_ollama_client
+                    ollama_client = get_ollama_client()
+                    if ollama_client.is_available():
+                        ollama_available = True
+                        print("✓ Ollama server detected")
+                except Exception:
+                    pass
+
+            if ollama_available:
+                use_ollama_corrections = input("Use Ollama for correction tasks? [y/N]: ").strip().lower()
+                if use_ollama_corrections in ['y', 'yes']:
+                    models = ollama_client.list_models(refresh=True)
+                    if models:
+                        print("\nAvailable Ollama models:")
+                        for i, model in enumerate(models[:5], 1):
+                            print(f"  {i}. {model.name}")
+                        ollama_model = input("Select model or press Enter for llama3: ").strip() or "llama3"
+                        self.config["task_models"]["correction"] = ollama_model
+                        # Also configure Ollama provider
+                        if "models" not in self.config:
+                            self.config["models"] = {}
+                        self.config["models"]["ollama"] = ollama_model
+                        print(f"✓ Correction tasks will use Ollama ({ollama_model})")
+
+        # Save configuration
+        self.save_config()
+        print("\n" + "="*60)
+        print("✓ Configuration saved to:", self.config_file)
+        print("="*60)
+        print("\nYou can change these settings anytime with /model commands")
+        print("Type '/model help' in the REPL for more information.\n")
 
     def save_config(self):
         """Save current configuration to file."""
