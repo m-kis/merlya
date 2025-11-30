@@ -96,10 +96,14 @@ class RoleInferenceService:
             role["primary_services"] = list(set(services_list))
 
         # Generate description
-        role_type: str = role["type"]
-        role["description"] = self.TYPE_NAMES.get(role_type, "Serveur")
-        if role["environment"] != "unknown":
-            role["description"] += f" de {role['environment']}"
+        role_type = role["type"]
+        if isinstance(role_type, str):
+            role["description"] = self.TYPE_NAMES.get(role_type, "Serveur")
+            env = role["environment"]
+            if isinstance(env, str) and env != "unknown":
+                desc = role["description"]
+                if isinstance(desc, str):
+                    role["description"] = desc + f" de {env}"
 
         return role
 

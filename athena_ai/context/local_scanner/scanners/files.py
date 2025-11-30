@@ -3,7 +3,7 @@ File scanner.
 """
 import os
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
 # File scanning limits
 MAX_FILE_SIZE_BYTES = 10 * 1024  # 10KB - aligned with content truncation

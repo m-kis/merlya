@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from kubernetes import client, config
 
@@ -7,7 +7,7 @@ from athena_ai.utils.logger import logger
 
 
 class K8sExecutor:
-    def __init__(self, kubeconfig: str = None):
+    def __init__(self, kubeconfig: Optional[str] = None):
         try:
             if kubeconfig and os.path.exists(kubeconfig):
                 config.load_kube_config(config_file=kubeconfig)

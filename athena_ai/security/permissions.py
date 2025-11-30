@@ -45,7 +45,7 @@ class PermissionManager:
 
         logger.debug(f"🔒 Detecting permission capabilities on {target}")
 
-        capabilities = {
+        capabilities: Dict[str, Any] = {
             'user': 'unknown',
             'has_sudo': False,
             'sudo_nopasswd': False,

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import ansible_runner
 
@@ -7,10 +7,15 @@ from athena_ai.utils.logger import logger
 
 
 class AnsibleExecutor:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
-    def run_playbook(self, playbook_path: str, inventory: Dict[str, Any] = None, extra_vars: Dict[str, Any] = None) -> Dict[str, Any]:
+    def run_playbook(
+        self,
+        playbook_path: str,
+        inventory: Optional[Dict[str, Any]] = None,
+        extra_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Run an Ansible playbook.
         """
