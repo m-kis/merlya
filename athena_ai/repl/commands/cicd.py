@@ -407,7 +407,7 @@ class CICDCommandHandler:
 
             table.add_row(
                 str(run.id),
-                run.name[:40],
+                (run.name or "-")[:40],
                 status,
                 run.branch or "-",
                 time_str,
@@ -425,7 +425,7 @@ class CICDCommandHandler:
                 icon = "⏳"
             else:
                 icon = "✅"
-            lines.append(f"{icon} {run.name[:30]} ({run.id})")
+            lines.append(f"{icon} {(run.name or '')[:30]} ({run.id})")
 
         console.print(Panel("\n".join(lines), title=title))
 

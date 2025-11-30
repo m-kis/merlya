@@ -338,6 +338,27 @@ class Orchestrator(BaseOrchestrator):
     # Error Handling
     # =========================================================================
 
+    def _handle_execution_error(self, error: Exception) -> str:
+        """
+        Classify and format execution errors with actionable messages.
+
+        Args:
+            error: The exception that occurred
+
+        Returns:
+            User-friendly error message
+        """
+        error_str = str(error)
+
+        # Check for function calling / tool use not supported
+        if "No endpoints found that support tool use" in error_str or "404" in error_str:
+            logger.error("❌ Model doesn't support function calling: {}", error, exc_info=True)
+            return self._build_function_calling_error_message()
+
+        # Generic error fallback
+        logger.error("❌ Orchestrator failed: {}", error, exc_info=True)
+        return f"❌ Error: {error_str}"
+
     def _build_function_calling_error_message(self) -> str:
         """
         Build actionable error message when model doesn't support function calling.
@@ -443,14 +464,7 @@ class Orchestrator(BaseOrchestrator):
             try:
                 return await self.planner.execute_basic(user_query, conversation_history)
             except Exception as fallback_error:
-                # Handle errors from fallback execution
-                error_str = str(fallback_error)
-                if "No endpoints found that support tool use" in error_str or "404" in error_str:
-                    logger.error(f"❌ Model doesn't support function calling: {fallback_error}")
-                    return self._build_function_calling_error_message()
-                # Generic error fallback
-                logger.error(f"❌ Orchestrator failed: {fallback_error}", exc_info=True)
-                return f"❌ Error: {str(fallback_error)}"
+                return self._handle_execution_error(fallback_error)
 
         # Store for backward compatibility
         self.current_priority = triage_context.priority_result
@@ -509,17 +523,7 @@ class Orchestrator(BaseOrchestrator):
             return result
 
         except Exception as e:
-            # Handle specific error cases with actionable messages
-            error_str = str(e)
-
-            # Check for function calling / tool use not supported
-            if "No endpoints found that support tool use" in error_str or "404" in error_str:
-                logger.error(f"❌ Model doesn't support function calling: {e}")
-                return self._build_function_calling_error_message()
-
-            # Generic error fallback
-            logger.error(f"❌ Orchestrator failed: {e}", exc_info=True)
-            return f"❌ Error: {str(e)}"
+            return self._handle_execution_error(e)
 
     async def chat_continue(self, message: str) -> str:
         """Continue conversation (BASIC mode compatibility)."""

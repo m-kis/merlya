@@ -473,17 +473,68 @@ class HostRepositoryMixin:
                 WHERE id = ?
             """, (status, datetime.now().isoformat(), host_id))
 
-    def delete_host(self, hostname: str) -> bool:
+    def delete_host(
+        self,
+        hostname: str,
+        deleted_by: str = "system",
+        reason: Optional[str] = None,
+    ) -> bool:
         """Delete a host by hostname.
+
+        Creates a permanent audit record in the host_deletions table before deletion.
+        This record captures the full host state at the time of deletion along with
+        deletion metadata (who deleted it and why). The audit record persists even
+        after the host and its version history are removed.
 
         Args:
             hostname: Hostname to delete.
+            deleted_by: Who is performing the deletion (for audit trail).
+            reason: Optional reason for deletion (for audit trail).
 
         Returns:
             True if deleted, False if not found.
         """
         with self._connection(commit=True) as conn:
             cursor = conn.cursor()
+
+            # Fetch the host to delete (for audit trail)
+            cursor.execute("SELECT * FROM hosts_v2 WHERE hostname = ?", (hostname.lower(),))
+            row = cursor.fetchone()
+
+            if not row:
+                return False
+
+            # Extract host data for audit record
+            host_data = host_row_to_dict(row)
+            host_id = host_data["id"]
+
+            # Insert permanent deletion audit record
+            # Note: We store the raw JSON strings (aliases, groups, metadata) as-is
+            cursor.execute("""
+                INSERT INTO host_deletions
+                (host_id, hostname, ip_address, aliases, environment, groups,
+                 role, service, ssh_port, status, metadata, deleted_by,
+                 deletion_reason, deleted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                host_id,
+                host_data["hostname"],
+                host_data.get("ip_address"),
+                json.dumps(host_data.get("aliases", [])),
+                host_data.get("environment"),
+                json.dumps(host_data.get("groups", [])),
+                host_data.get("role"),
+                host_data.get("service"),
+                host_data.get("ssh_port"),
+                host_data.get("status"),
+                json.dumps(host_data.get("metadata", {})),
+                deleted_by,
+                reason,
+                datetime.now().isoformat(),
+            ))
+
+            # Now perform the actual deletion
+            # This will CASCADE delete all host_versions entries
             cursor.execute("DELETE FROM hosts_v2 WHERE hostname = ?", (hostname.lower(),))
             return cursor.rowcount > 0
 

@@ -37,7 +37,26 @@ class BaseCIAdapter(ABC):
 
         Args:
             config: Platform configuration
+
+        Raises:
+            TypeError: If subclass does not define platform_type or sets invalid type
         """
+        # Validate platform_type is defined and is a CIPlatformType instance
+        if not hasattr(self, 'platform_type'):
+            raise TypeError(
+                f"{self.__class__.__name__} must define 'platform_type' class attribute. "
+                f"Expected: platform_type = CIPlatformType.<VALUE> "
+                f"(athena_ai/ci/adapters/base.py:34-50)"
+            )
+
+        if not isinstance(self.platform_type, CIPlatformType):
+            raise TypeError(
+                f"{self.__class__.__name__}.platform_type must be an instance of CIPlatformType, "
+                f"got {type(self.platform_type).__name__}: {self.platform_type!r}. "
+                f"Expected: platform_type = CIPlatformType.<VALUE> "
+                f"(athena_ai/ci/adapters/base.py:34-50)"
+            )
+
         self.config = config
         self._clients: Dict[str, BaseCIClient] = {}
         self._active_client: Optional[BaseCIClient] = None
@@ -60,8 +79,13 @@ class BaseCIAdapter(ABC):
         Returns:
             Best available client, or None if none available
         """
+        # Re-validate cached client is still available
         if self._active_client is not None:
-            return self._active_client
+            if self._active_client.is_available():
+                return self._active_client
+            # Cached client no longer available, clear cache and re-select
+            logger.debug(f"Cached client for {self.platform_type.value} is no longer available")
+            self._active_client = None
 
         # Try clients in preference order
         for client_type in self.config.preferred_clients:
@@ -168,8 +192,9 @@ class BaseCIAdapter(ABC):
         client = self.get_active_client()
         if not client:
             raise RuntimeError(
-                f"No available client for {self.platform_type.value}. "
-                "Please ensure the CLI tool is installed or configure an alternative."
+                f"No active client available for {self.platform_type.value}. "
+                "Please ensure the appropriate client is installed and configured, "
+                "or select a different client type (API, MCP, or CLI)."
             )
         return client.execute(operation, params)
 

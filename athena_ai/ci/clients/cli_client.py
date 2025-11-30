@@ -115,7 +115,7 @@ class CLIClient(BaseCIClient):
             "get_run_jobs": "gh run view {run_id} --json jobs",
             # Actions
             "trigger_workflow": "gh workflow run {workflow_id} --ref {ref}",
-            "trigger_workflow_inputs": "gh workflow run {workflow_id} --ref {ref} --field {inputs}",
+            "trigger_workflow_inputs": "gh workflow run {workflow_id} --ref {ref}",
             "cancel_run": "gh run cancel {run_id}",
             "retry_run": "gh run rerun {run_id}",
             "retry_run_failed": "gh run rerun {run_id} --failed",
@@ -166,6 +166,8 @@ class CLIClient(BaseCIClient):
         self.cli_command = cli_command or self.CLI_COMMANDS.get(platform, platform)
         # Validate repo_slug if provided
         self.repo_slug = validate_repo_slug(repo_slug) if repo_slug else None
+        # Initialize availability cache
+        self._available: Optional[bool] = None
 
     def is_available(self) -> bool:
         """Check if CLI tool is available in PATH."""

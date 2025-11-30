@@ -232,6 +232,53 @@ class TestCIErrorClassifier:
             assert isinstance(suggestions, list)
             assert len(suggestions) > 0
 
+    def test_get_suggestions_context_aware(self):
+        """Test that context-aware suggestions are generated from error_text."""
+        from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
+        from athena_ai.ci.models import CIErrorType
+
+        classifier = CIErrorClassifier()
+
+        # Test dependency error with module name extraction
+        suggestions = classifier.get_suggestions(
+            CIErrorType.DEPENDENCY_ERROR,
+            "ModuleNotFoundError: No module named 'requests'"
+        )
+        assert any("requests" in s for s in suggestions), "Should suggest installing 'requests'"
+
+        # Test test failure with file name extraction
+        suggestions = classifier.get_suggestions(
+            CIErrorType.TEST_FAILURE,
+            "FAILED tests/test_auth.py::test_login - AssertionError"
+        )
+        assert any("test_auth.py" in s for s in suggestions), "Should mention test file"
+
+        # Test permission error with token hint
+        suggestions = classifier.get_suggestions(
+            CIErrorType.PERMISSION_ERROR,
+            "Error: GITHUB_TOKEN does not have required scopes"
+        )
+        assert any("token" in s.lower() for s in suggestions), "Should mention token"
+
+        # Test timeout with specific duration
+        suggestions = classifier.get_suggestions(
+            CIErrorType.TIMEOUT,
+            "Error: Timeout of 30000ms exceeded"
+        )
+        assert any("30000" in s for s in suggestions), "Should mention timeout duration"
+
+        # Test network error with hostname
+        suggestions = classifier.get_suggestions(
+            CIErrorType.NETWORK_ERROR,
+            "Could not resolve host: registry.npmjs.org"
+        )
+        assert any("registry.npmjs.org" in s for s in suggestions), "Should mention hostname"
+
+        # Test without error_text - should still return base suggestions
+        suggestions = classifier.get_suggestions(CIErrorType.DEPENDENCY_ERROR)
+        assert isinstance(suggestions, list)
+        assert len(suggestions) > 0
+
 
 class TestCIPlatformManager:
     """Tests for CIPlatformManager."""

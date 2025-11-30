@@ -293,11 +293,26 @@ class CIErrorClassifier:
         best_pattern = ""
 
         for error_type, pattern_embedding in pattern_embeddings.items():
-            # Cosine similarity
-            similarity = float(
-                np.dot(error_embedding, pattern_embedding)
-                / (np.linalg.norm(error_embedding) * np.linalg.norm(pattern_embedding))
-            )
+            # Cosine similarity with safe division
+            error_norm = np.linalg.norm(error_embedding)
+            pattern_norm = np.linalg.norm(pattern_embedding)
+            epsilon = 1e-8
+
+            # Handle zero-norm case
+            if error_norm < epsilon or pattern_norm < epsilon:
+                # Zero embedding - set similarity to 0 (no match)
+                similarity = 0.0
+                if error_norm < epsilon or pattern_norm < epsilon:
+                    import logging
+                    logging.debug(
+                        f"Zero-norm embedding detected for {error_type.value}: "
+                        f"error_norm={error_norm:.2e}, pattern_norm={pattern_norm:.2e}"
+                    )
+            else:
+                # Safe cosine similarity computation
+                similarity = float(
+                    np.dot(error_embedding, pattern_embedding) / (error_norm * pattern_norm)
+                )
 
             # Normalize to 0-1 range (cosine can be -1 to 1)
             score = (similarity + 1) / 2
@@ -442,12 +457,13 @@ class CIErrorClassifier:
 
         Args:
             error_type: Classified error type
-            error_text: Original error text for context
+            error_text: Original error text for context-aware suggestions
 
         Returns:
-            List of suggestions
+            List of suggestions, with context-specific hints if error_text provided
         """
-        suggestions: Dict[CIErrorType, List[str]] = {
+        # Base suggestions for each error type
+        base_suggestions: Dict[CIErrorType, List[str]] = {
             CIErrorType.TEST_FAILURE: [
                 "Review failing test assertions and expected values",
                 "Check for recent code changes that might have broken tests",
@@ -523,8 +539,101 @@ class CIErrorClassifier:
             ],
         }
 
-        return suggestions.get(error_type, [
+        suggestions = base_suggestions.get(error_type, [
             "Review the error logs for more details",
             "Check recent changes that might have caused the failure",
             "Search for similar issues in project history",
         ])
+
+        # Add context-aware suggestions based on error_text patterns
+        if error_text:
+            context_suggestions = self._get_context_suggestions(error_type, error_text)
+            if context_suggestions:
+                # Prepend context-specific suggestions
+                suggestions = context_suggestions + suggestions
+
+        return suggestions
+
+    def _get_context_suggestions(
+        self,
+        error_type: CIErrorType,
+        error_text: str
+    ) -> List[str]:
+        """
+        Generate context-aware suggestions by parsing error_text.
+
+        Args:
+            error_type: Classified error type
+            error_text: Original error text to analyze
+
+        Returns:
+            List of context-specific suggestions (empty if no patterns match)
+        """
+        import re
+
+        suggestions = []
+        text_lower = error_text.lower()
+
+        # Dependency-specific hints
+        if error_type == CIErrorType.DEPENDENCY_ERROR:
+            # Extract module/package names
+            module_match = re.search(r"no module named ['\"]([^'\"]+)['\"]", text_lower)
+            if module_match:
+                module_name = module_match.group(1)
+                suggestions.append(f"Install missing module: {module_name}")
+
+            if "pip" in text_lower and "no matching distribution" in text_lower:
+                suggestions.append("Check package name spelling and Python version compatibility")
+
+        # Test failure hints
+        elif error_type == CIErrorType.TEST_FAILURE:
+            if "assertionerror" in text_lower or "assert" in text_lower:
+                suggestions.append("Focus on the assertion that failed - compare expected vs actual values")
+
+            test_match = re.search(r"test[s]?[/\\]([^\s:]+)", error_text)
+            if test_match:
+                test_file = test_match.group(1)
+                suggestions.append(f"Check test file: {test_file}")
+
+        # Permission/auth hints
+        elif error_type == CIErrorType.PERMISSION_ERROR:
+            if "token" in text_lower:
+                suggestions.append("Verify GITHUB_TOKEN or authentication token is valid and not expired")
+
+            if "403" in error_text or "forbidden" in text_lower:
+                suggestions.append("Insufficient permissions - check repository access rights")
+
+        # Timeout hints
+        elif error_type == CIErrorType.TIMEOUT:
+            timeout_match = re.search(r"(\d+)\s*(ms|sec|min)", text_lower)
+            if timeout_match:
+                suggestions.append(f"Current timeout: {timeout_match.group(0)} - consider increasing it")
+
+        # Network error hints
+        elif error_type == CIErrorType.NETWORK_ERROR:
+            # Match patterns like "host: example.com" or "resolve host: example.com"
+            host_match = re.search(r"(?:resolve\s+)?host[:\s]+([a-z0-9.-]+)", text_lower)
+            if host_match:
+                hostname = host_match.group(1)
+                # Skip if we just matched the word "host" itself
+                if hostname != "host":
+                    suggestions.append(f"Check connectivity to: {hostname}")
+
+            if "ssl" in text_lower or "certificate" in text_lower:
+                suggestions.append("SSL/TLS issue - verify certificate validity or try disabling SSL verification temporarily")
+
+        # Resource limit hints
+        elif error_type == CIErrorType.RESOURCE_LIMIT:
+            if "heap" in text_lower or "memory" in text_lower:
+                suggestions.append("JavaScript heap out of memory - increase Node memory limit (--max-old-space-size)")
+
+            if "disk" in text_lower or "space" in text_lower:
+                suggestions.append("Clean up build artifacts and temporary files to free disk space")
+
+        # Syntax error hints
+        elif error_type == CIErrorType.SYNTAX_ERROR:
+            line_match = re.search(r"line (\d+)", text_lower)
+            if line_match:
+                suggestions.append(f"Check syntax around line {line_match.group(1)}")
+
+        return suggestions
