@@ -3820,6 +3820,21 @@ pytest = ">=6.2.5"
 dev = ["pre-commit", "pytest-asyncio", "tox"]
 
 [[package]]
+name = "pytest-timeout"
+version = "2.4.0"
+description = "pytest plugin to abort hanging tests"
+optional = false
+python-versions = ">=3.7"
+groups = ["dev"]
+files = [
+    {file = "pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2"},
+    {file = "pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a"},
+]
+
+[package.dependencies]
+pytest = ">=7.0.0"
+
+[[package]]
 name = "python-daemon"
 version = "3.1.2"
 description = "Library to implement a well-behaved Unix daemon process."
@@ -5624,4 +5639,4 @@ smart-triage = ["falkordb", "sentence-transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "e1ed7ce53761345477d212561dd6d1105a46e2ebee9c38e0f802e0a8956e88cc"
+content-hash = "6d66ac226f759797c7788d8a4927548beab21e1da5a8509c85fe18a6fa94452c"
