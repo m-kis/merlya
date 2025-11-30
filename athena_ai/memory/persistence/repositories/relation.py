@@ -331,6 +331,27 @@ class RelationRepositoryMixin:
         with self._connection(commit=True) as conn:
             cursor = conn.cursor()
 
+            # Optimization: Pre-fetch all unique hostnames to avoid N+1 queries
+            # Collect all unique hostnames from source and target fields
+            all_hostnames = set()
+            for rel in relations:
+                source = rel.get("source_hostname")
+                target = rel.get("target_hostname")
+                if isinstance(source, str) and source.strip():
+                    all_hostnames.add(source.lower())
+                if isinstance(target, str) and target.strip():
+                    all_hostnames.add(target.lower())
+
+            # Fetch all host IDs in a single query using IN clause
+            hostname_to_id = {}
+            if all_hostnames:
+                placeholders = ",".join("?" * len(all_hostnames))
+                cursor.execute(
+                    f"SELECT hostname, id FROM hosts_v2 WHERE hostname IN ({placeholders})",
+                    list(all_hostnames),
+                )
+                hostname_to_id = {row[0]: row[1] for row in cursor.fetchall()}
+
             for idx, rel in enumerate(relations):
                 # Validate source_hostname
                 source_hostname, error = self._validate_relation_field(
@@ -381,29 +402,21 @@ class RelationRepositoryMixin:
                 metadata_json = json.dumps(metadata or {})
                 validated_int = 1 if validated else 0
 
-                # Look up source host
-                cursor.execute(
-                    "SELECT id FROM hosts_v2 WHERE hostname = ?", (source_hostname,)
-                )
-                source_row = cursor.fetchone()
-                if not source_row:
+                # Look up source host from pre-fetched map (avoids N+1 query)
+                source_host_id = hostname_to_id.get(source_hostname)
+                if source_host_id is None:
                     error = f"relation[{idx}]: source host '{source_hostname}' not found"
                     logger.debug("Skipping relation: %s", error)
                     result.skipped.append((idx, error))
                     continue
-                source_host_id = source_row[0]
 
-                # Look up target host
-                cursor.execute(
-                    "SELECT id FROM hosts_v2 WHERE hostname = ?", (target_hostname,)
-                )
-                target_row = cursor.fetchone()
-                if not target_row:
+                # Look up target host from pre-fetched map (avoids N+1 query)
+                target_host_id = hostname_to_id.get(target_hostname)
+                if target_host_id is None:
                     error = f"relation[{idx}]: target host '{target_hostname}' not found"
                     logger.debug("Skipping relation: %s", error)
                     result.skipped.append((idx, error))
                     continue
-                target_host_id = target_row[0]
 
                 cursor.execute("""
                     INSERT INTO host_relations

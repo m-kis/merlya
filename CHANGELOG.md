@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Comprehensive test suite for inventory system (79 tests)
+- Comprehensive test suite for inventory system (82 tests)
   - LLM sanitizer tests: prompt injection protection, PII redaction
   - Relation heuristics tests: cluster, replica, group, service detection
   - E2E integration tests: complete workflows (parse, import, export, search)
-  - Performance tests: 10k host bulk import validation
+  - Performance tests: 10k host bulk import, N+1 query validation
 - Thread-safe singleton pattern for inventory parser
 - Graceful LLM fallback with interactive user prompts on parse failures
 - Pagination support for inventory queries (LIMIT/OFFSET)
@@ -21,12 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session credential TTL (15 minutes auto-expiration)
 - Plaintext credential detection with security warnings
 - Audit logging for secret variable access
+- Database indices for groups, aliases, and status fields
 
 ### Fixed
 
 - Thread safety race condition in InventoryParser singleton
 - LLM parser blocking on failure (now offers fallback options)
 - Memory exhaustion on large inventories (added pagination)
+- N+1 query problem in batch relation inserts (now uses single batched query)
 
 ### Security
 
