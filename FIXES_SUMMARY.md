@@ -31,28 +31,66 @@ Ce document résume toutes les modifications apportées au projet Athena pour r�
 
 ---
 
-### 2. **Credentials mal parsés (espaces, tirets et caractères spéciaux)** ✅
+### 2. **Credentials mal parsés (espaces, tirets et caractères spéciaux)** ✅ ✅ (AMÉLIORÉ)
 
-**Problème** : Lorsqu'un utilisateur définissait une variable avec des espaces ou caractères spéciaux via `/variables set APP "front v2 - Front App"`, seul le premier mot était stocké ("front" au lieu de "front v2 - Front App").
+**Problème initial** : Lorsqu'un utilisateur définissait une variable avec des espaces via `/variables set APP "front v2 - Front App"`, seul le premier mot était stocké ("front" au lieu de "front v2 - Front App").
 
-**Cause racine** : La méthode `command.split()` dans [athena_ai/repl/handlers.py](athena_ai/repl/handlers.py#L109) divisait sur TOUS les espaces, ignorant les guillemets.
+**Problème étendu** : Même avec `shlex.split()`, les valeurs contenant des caractères spéciaux sans guillemets (JSON, hashes, URLs) échouaient ou nécessitaient des guillemets systématiques.
 
-**Solution implémentée** :
-- Remplacement de `command.split()` par `shlex.split(command)` (fichier modifié : [athena_ai/repl/handlers.py](athena_ai/repl/handlers.py#L110-L118))
-- Ajout de gestion d'erreur pour les guillemets mal fermés
-- Import de `shlex` pour parser correctement les commandes shell-like
+**Exemples qui échouaient** :
 
-**Avant** :
-```python
-parts = command.split()  # "/variables set APP front v2" → ['/ variables', 'set', 'APP', 'front', 'v2']
+```bash
+/variables set CONFIG {"env":"prod"}  # ❌ Échec sur les accolades non quotées
+/variables set URL https://api.com?token=abc&env=prod  # ❌ & mal interprété
+/variables set HASH abc-123-{special}-456  # ❌ Accolades non quotées
 ```
 
-**Après** :
+**Solution finale implémentée** :
+
+#### Phase 1 : shlex.split() de base
+
+- Remplacement de `command.split()` par `shlex.split(command)`
+- Gérait les guillemets mais échouait sur les caractères spéciaux non quotés
+
+#### Phase 2 : Raw parsing pour `/variables set` (AMÉLIORATION)
+
+- Parsing spécial pour `/variables set`, `/credentials set`, `/variables set-host`
+- Mode "raw" : préserve TOUT après la clé sans interprétation
+- Split uniquement sur le premier espace après la clé : `KEY VALUE_EVERYTHING_ELSE`
+- Fichiers modifiés :
+  - [athena_ai/repl/handlers.py](athena_ai/repl/handlers.py#L110-L142)
+  - [athena_ai/repl/commands/variables.py](athena_ai/repl/commands/variables.py#L59-L102)
+
+**Code de parsing raw** :
+
 ```python
-parts = shlex.split(command)  # "/variables set APP "front v2"" → ['/variables', 'set', 'APP', 'front v2']
+# Dans handlers.py
+if command.startswith(('/variables set ', ...)):
+    parts = command.split(maxsplit=2)  # ['/variables', 'set', 'KEY VALUE']
+    rest = parts[2]
+    key_value_parts = rest.split(maxsplit=1)  # ['KEY', 'VALUE_RAW']
+    key = key_value_parts[0]
+    value = key_value_parts[1]  # ✅ Tout est préservé
+    args = [subcmd, key, value]
 ```
 
-**Impact** : Gère correctement tous les caractères spéciaux dans les valeurs : espaces, tirets, @, #, $, %, etc.
+**Exemples qui fonctionnent maintenant** :
+
+```bash
+/variables set CONFIG {"env":"prod","region":"eu"}          # ✅ JSON sans guillemets
+/variables set URL https://api.com?token=abc&env=prod       # ✅ URLs complètes
+/variables set HASH abc-123-{special}-456                   # ✅ Caractères spéciaux
+/variables set DESC Long text with @#$%^&*() chars          # ✅ Tous caractères
+/variables set TOKEN eyJhbGc...base64...                    # ✅ Tokens longs
+/variables set QUERY SELECT * FROM users WHERE active=1     # ✅ SQL/code
+```
+
+**Impact** :
+
+- Gère TOUS les types de valeurs sans guillemets obligatoires
+- Compatibilité legacy : les guillemets fonctionnent toujours
+- Affichage avec truncation pour les valeurs longues (>60 chars)
+- Documentation complète dans [VARIABLE_PARSING_EXAMPLES.md](VARIABLE_PARSING_EXAMPLES.md)
 
 ---
 
