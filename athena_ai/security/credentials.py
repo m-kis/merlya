@@ -293,6 +293,8 @@ class CredentialManager:
         # Priority 2: Session cache (with TTL check)
         cached = self._get_cached_credential(cache_key)
         if cached:
+            # Audit log credential access
+            logger.info(f"🔐 Database credential accessed: {service}@{host} (from cache)")
             return cached
 
         # Priority 3: Environment variables
@@ -386,9 +388,19 @@ class CredentialManager:
             return False
 
     def get_variable(self, key: str) -> Optional[str]:
-        """Get a variable value."""
+        """
+        Get a variable value.
+
+        Note: Access to SECRET type variables is audit logged for security tracking.
+        """
         if key in self._variables:
-            return self._variables[key][0]
+            value, var_type = self._variables[key]
+
+            # Audit log secret access (security requirement)
+            if var_type == VariableType.SECRET:
+                logger.info(f"🔐 Secret accessed: {key} (type=SECRET)")
+
+            return value
         return None
 
     def get_variable_type(self, key: str) -> Optional[VariableType]:
