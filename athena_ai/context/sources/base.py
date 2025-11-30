@@ -78,7 +78,7 @@ class HostValidationResult:
 
     def get_suggestion_text(self) -> str:
         """Get human-readable suggestion text."""
-        if self.is_valid:
+        if self.is_valid and self.host is not None:
             return f"✓ Host '{self.host.hostname}' is valid"
 
         if not self.suggestions:

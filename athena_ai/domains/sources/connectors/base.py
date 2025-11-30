@@ -32,9 +32,9 @@ class SourceMetadata:
     description: Optional[str] = None
     detected: bool = False  # Was this source auto-detected?
     confidence: float = 0.0  # Confidence score for detection (0-1)
-    capabilities: List[str] = None  # What can this source do? ["inventory", "monitoring", etc.]
+    capabilities: Optional[List[str]] = None  # What can this source do? ["inventory", "monitoring", etc.]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.capabilities is None:
             self.capabilities = []
 

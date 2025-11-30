@@ -73,8 +73,8 @@ def validate_llm_response(response: str) -> Tuple[List[ParsedHost], List[str]]:
     Returns:
         Tuple of (list of validated ParsedHost objects, list of validation errors)
     """
-    hosts = []
-    errors = []
+    hosts: List[ParsedHost] = []
+    errors: List[str] = []
 
     if not response or not response.strip():
         errors.append("LLM_EMPTY_RESPONSE: LLM returned empty response")

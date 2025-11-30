@@ -94,8 +94,8 @@ class WebSearchEngine:
     def search(
         self,
         query: str,
-        max_results: int = None,
-        time_range: str = None,  # d=day, w=week, m=month, y=year
+        max_results: Optional[int] = None,
+        time_range: Optional[str] = None,  # d=day, w=week, m=month, y=year
     ) -> SearchResponse:
         """
         Perform a web search.
@@ -182,7 +182,7 @@ class WebSearchEngine:
             search_time_ms=search_time,
         )
 
-    def search_error(self, error_message: str, service: str = None) -> SearchResponse:
+    def search_error(self, error_message: str, service: Optional[str] = None) -> SearchResponse:
         """
         Search for solutions to an error message.
 
@@ -209,8 +209,8 @@ class WebSearchEngine:
     def search_documentation(
         self,
         topic: str,
-        service: str = None,
-        version: str = None,
+        service: Optional[str] = None,
+        version: Optional[str] = None,
     ) -> SearchResponse:
         """
         Search for documentation.
@@ -239,7 +239,7 @@ class WebSearchEngine:
     def search_security(
         self,
         topic: str,
-        cve_id: str = None,
+        cve_id: Optional[str] = None,
     ) -> SearchResponse:
         """
         Search for security information.
@@ -261,8 +261,8 @@ class WebSearchEngine:
     def search_troubleshooting(
         self,
         symptoms: List[str],
-        service: str = None,
-        environment: str = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> SearchResponse:
         """
         Search for troubleshooting guides based on symptoms.
@@ -320,8 +320,8 @@ class WebSearchEngine:
     def get_relevant_results(
         self,
         response: SearchResponse,
-        prefer_domains: List[str] = None,
-        exclude_domains: List[str] = None,
+        prefer_domains: Optional[List[str]] = None,
+        exclude_domains: Optional[List[str]] = None,
     ) -> List[SearchResult]:
         """
         Filter and rank search results by relevance.
@@ -372,7 +372,7 @@ class WebSearchEngine:
                     break
 
             # Prefer results with longer snippets (more info)
-            score += min(len(result.snippet) / 50, 5)
+            score += int(min(len(result.snippet) / 50, 5))
 
             # Prefer results with relevant keywords in title
             relevant_keywords = ["how to", "fix", "solve", "error", "guide", "tutorial"]

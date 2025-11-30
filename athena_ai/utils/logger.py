@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 from loguru import logger
 
@@ -49,7 +50,7 @@ def log_prefix(emoji: str) -> str:
     return _EMOJI_TO_ASCII.get(emoji, "")
 
 
-def setup_logger(verbose: bool = False, session_id: str = None):
+def setup_logger(verbose: bool = False, session_id: Optional[str] = None) -> None:
     """
     Configure the logger with session-specific logging.
 
@@ -161,8 +162,6 @@ def setup_logger(verbose: bool = False, session_id: str = None):
         return True
 
     logger.configure(patcher=redaction_filter)
-
-    return logger
 
 
 def get_session_logger(session_id: str):

@@ -319,34 +319,40 @@ GRAPH_SCHEMA = {
 
 def get_create_index_queries(graph_name: str = "ops_knowledge") -> List[str]:
     """Generate Cypher queries to create indexes for all indexed properties."""
-    queries = []
+    queries: List[str] = []
 
-    for _node_type, schema in GRAPH_SCHEMA["nodes"].items():
-        for prop in schema.indexes:
-            # FalkorDB index syntax
-            query = f"CREATE INDEX FOR (n:{schema.label}) ON (n.{prop})"
-            queries.append(query)
+    nodes = GRAPH_SCHEMA["nodes"]
+    if isinstance(nodes, dict):
+        for _node_type, schema in nodes.items():
+            for prop in schema.indexes:
+                # FalkorDB index syntax
+                query = f"CREATE INDEX FOR (n:{schema.label}) ON (n.{prop})"
+                queries.append(query)
 
     return queries
 
 
 def get_schema_description() -> str:
     """Get a human-readable description of the schema."""
-    lines = ["# Knowledge Graph Schema\n"]
+    lines: List[str] = ["# Knowledge Graph Schema\n"]
 
     lines.append("## Node Types\n")
-    for _node_type, schema in GRAPH_SCHEMA["nodes"].items():
-        lines.append(f"### {schema.label}")
-        lines.append(f"Properties: {', '.join(schema.properties.keys())}")
-        lines.append(f"Indexes: {', '.join(schema.indexes) if schema.indexes else 'none'}")
-        lines.append("")
+    nodes = GRAPH_SCHEMA["nodes"]
+    if isinstance(nodes, dict):
+        for _node_type, schema in nodes.items():
+            lines.append(f"### {schema.label}")
+            lines.append(f"Properties: {', '.join(schema.properties.keys())}")
+            lines.append(f"Indexes: {', '.join(schema.indexes) if schema.indexes else 'none'}")
+            lines.append("")
 
     lines.append("## Relationship Types\n")
-    for _rel_type, schema in GRAPH_SCHEMA["relationships"].items():
-        lines.append(f"### {schema.type}")
-        lines.append(f"From: {', '.join(schema.from_labels)} -> To: {', '.join(schema.to_labels)}")
-        if schema.properties:
-            lines.append(f"Properties: {', '.join(schema.properties.keys())}")
-        lines.append("")
+    relationships = GRAPH_SCHEMA["relationships"]
+    if isinstance(relationships, dict):
+        for _rel_type, schema in relationships.items():
+            lines.append(f"### {schema.type}")
+            lines.append(f"From: {', '.join(schema.from_labels)} -> To: {', '.join(schema.to_labels)}")
+            if schema.properties:
+                lines.append(f"Properties: {', '.join(schema.properties.keys())}")
+            lines.append("")
 
     return "\n".join(lines)

@@ -3,7 +3,7 @@ File scanner.
 """
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 # File scanning limits
 MAX_FILE_SIZE_BYTES = 10 * 1024  # 10KB - aligned with content truncation
@@ -34,9 +34,9 @@ ETC_FILES_TO_SCAN = [
 ]
 
 
-def scan_etc_files() -> Dict[str, Any]:
+def scan_etc_files() -> Dict[str, Dict[str, Any]]:
     """Scan relevant files in /etc."""
-    files = {}
+    files: Dict[str, Dict[str, Any]] = {}
 
     for file_path in ETC_FILES_TO_SCAN:
         path = Path(file_path)

@@ -2,6 +2,8 @@
 UI components for Athena REPL.
 Handles console output, messages, and formatting.
 """
+from typing import Optional
+
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -77,7 +79,7 @@ def print_markdown(text: str):
     """Print markdown text."""
     console.print(Markdown(text))
 
-def print_message(text: str, style: str = None):
+def print_message(text: str, style: Optional[str] = None) -> None:
     """Print a styled message."""
     if style:
         console.print(f"[{style}]{text}[/{style}]")

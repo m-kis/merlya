@@ -197,7 +197,7 @@ class AuditLogger:
         target: str,
         result: str = "success",
         risk_level: str = "low",
-        details: Dict = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Log a command execution."""
         event_type = AuditEventType.COMMAND_EXECUTED
@@ -234,7 +234,7 @@ class AuditLogger:
         self,
         message: str,
         target: str = "",
-        details: Dict = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Log a security warning."""
         self.log(AuditEvent(
@@ -250,7 +250,7 @@ class AuditLogger:
         self,
         message: str,
         target: str = "",
-        details: Dict = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Log a security alert (critical)."""
         self.log(AuditEvent(
@@ -283,7 +283,7 @@ class AuditLogger:
         cve_id: str,
         package: str,
         severity: str,
-        details: Dict = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Log a CVE detection."""
         self.log(AuditEvent(
@@ -301,7 +301,7 @@ class AuditLogger:
         title: str,
         priority: str,
         resolved: bool = False,
-        details: Dict = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Log incident creation or resolution."""
         self.log(AuditEvent(
@@ -314,7 +314,7 @@ class AuditLogger:
             details=details or {},
         ))
 
-    def log_session_start(self, metadata: Dict = None) -> None:
+    def log_session_start(self, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Log session start."""
         self.log(AuditEvent(
             event_type=AuditEventType.SESSION_START,
@@ -323,7 +323,7 @@ class AuditLogger:
             details=metadata or {},
         ))
 
-    def log_session_end(self, stats: Dict = None) -> None:
+    def log_session_end(self, stats: Optional[Dict[str, Any]] = None) -> None:
         """Log session end."""
         self.log(AuditEvent(
             event_type=AuditEventType.SESSION_END,
@@ -443,7 +443,7 @@ class AuditLogger:
         log_files = list(self.log_dir.glob("audit-*.jsonl"))
 
         # Count events in buffer by type
-        event_counts = {}
+        event_counts: Dict[str, int] = {}
         for event in self._buffer:
             event_type = event.event_type.value
             event_counts[event_type] = event_counts.get(event_type, 0) + 1

@@ -72,7 +72,7 @@ class RoleInferenceService:
                 "description": "Human-readable description"
             }
         """
-        role = {
+        role: Dict[str, str | List[str]] = {
             "type": "unknown",
             "environment": "unknown",
             "primary_services": [],
@@ -91,10 +91,13 @@ class RoleInferenceService:
         role = self._refine_type_with_services(role, services)
 
         # Remove duplicates
-        role["primary_services"] = list(set(role["primary_services"]))
+        services_list = role["primary_services"]
+        if isinstance(services_list, list):
+            role["primary_services"] = list(set(services_list))
 
         # Generate description
-        role["description"] = self.TYPE_NAMES.get(role["type"], "Serveur")
+        role_type: str = role["type"]
+        role["description"] = self.TYPE_NAMES.get(role_type, "Serveur")
         if role["environment"] != "unknown":
             role["description"] += f" de {role['environment']}"
 

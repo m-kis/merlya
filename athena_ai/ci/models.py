@@ -180,7 +180,7 @@ class FailureAnalysis:
 class DetectedPlatform:
     """Result of platform detection."""
 
-    platform: "CIPlatformType"  # type: ignore - forward ref
+    platform: "CIPlatformType"  # type: ignore[name-defined]
     confidence: float = 1.0  # Detection confidence
     detection_source: str = ""  # "config_file", "git_remote", "env_var", "cli"
     details: Dict[str, Any] = field(default_factory=dict)

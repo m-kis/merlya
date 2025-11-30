@@ -16,9 +16,9 @@ class SuggestionEngine:
     def get_suggestion(
         self,
         text: str = "",
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Get a solution suggestion based on patterns and past incidents.
@@ -56,10 +56,10 @@ class SuggestionEngine:
 
     def get_remediation_for_incident(
         self,
-        incident_id: str = None,
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        incident_id: Optional[str] = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
         title: str = "",
     ) -> Optional[Dict[str, Any]]:
         """

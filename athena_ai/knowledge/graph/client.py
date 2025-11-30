@@ -185,9 +185,13 @@ class FalkorDBClient:
         Returns:
             List of result dictionaries
         """
-        if not self.is_connected:
+        if not self.is_connected or self._graph is None:
             if not self.connect():
                 raise ConnectionError("Not connected to FalkorDB")
+
+        # At this point _graph should be set by connect()
+        if self._graph is None:
+            raise ConnectionError("Graph connection not established")
 
         try:
             result = self._graph.query(cypher, params or {})
@@ -303,7 +307,7 @@ class FalkorDBClient:
         cypher = f"MATCH (n:{label}){where_str} RETURN n LIMIT {limit}"
         result = self.query(cypher, match_properties)
 
-        return [r.get("n") for r in result if r.get("n")]
+        return [r["n"] for r in result if r.get("n") is not None]
 
     def update_node(
         self,
@@ -452,7 +456,7 @@ class FalkorDBClient:
         """
 
         result = self.query(cypher, from_match)
-        return [r.get("b") for r in result if r.get("b")]
+        return [r["b"] for r in result if r.get("b") is not None]
 
     def get_stats(self) -> Dict[str, Any]:
         """Get graph statistics."""

@@ -32,7 +32,7 @@ class LLMRelationExtractor:
 
     def extract_relations(self, hosts: List[Dict]) -> List[RelationSuggestion]:
         """Use LLM to discover complex relations."""
-        suggestions = []
+        suggestions: List[RelationSuggestion] = []
 
         if not self.llm:
             return suggestions

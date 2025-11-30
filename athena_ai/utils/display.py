@@ -2,9 +2,10 @@
 Display Manager for Athena.
 Centralizes all UI/UX logic to ensure a clean, production-ready output.
 """
-from typing import Any
+from typing import Any, Optional
 
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.theme import Theme
@@ -20,14 +21,19 @@ athena_theme = Theme({
     "result": "white",
 })
 
+
 class DisplayManager:
     """
     Manages all console output with strict separation of concerns.
     Singleton pattern to ensure consistent access.
     """
-    _instance = None
 
-    def __new__(cls):
+    _instance: Optional["DisplayManager"] = None
+    console: Console
+    live: Optional[Live]
+    _spinner_active: bool
+
+    def __new__(cls) -> "DisplayManager":
         if cls._instance is None:
             cls._instance = super(DisplayManager, cls).__new__(cls)
             cls._instance.console = Console(theme=athena_theme)
@@ -60,8 +66,9 @@ class DisplayManager:
         """Show a command being executed."""
         self.console.print(f"[command]⚡ Executing on {target}:[/command] {command}")
 
-    def show_result(self, content: Any, title: str = None):
+    def show_result(self, content: Any, title: Optional[str] = None) -> None:
         """Show the final result of an operation."""
+        renderable: Any
         if isinstance(content, str):
             # Try to parse as markdown if it looks like it
             if "\n" in content or "#" in content or "*" in content:
@@ -76,7 +83,7 @@ class DisplayManager:
         else:
             self.console.print(renderable)
 
-    def show_error(self, message: str, details: str = None):
+    def show_error(self, message: str, details: Optional[str] = None) -> None:
         """Show an error message."""
         self.console.print(f"[error]❌ {message}[/error]")
         if details:

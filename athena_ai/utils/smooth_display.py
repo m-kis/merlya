@@ -31,7 +31,7 @@ class SmoothDisplay:
         self.console = Console()
         self._current_status = None
 
-    def show_welcome(self, version: str = None):
+    def show_welcome(self, version: Optional[str] = None) -> None:
         """Show welcome banner."""
         if version is None:
             version = __version__

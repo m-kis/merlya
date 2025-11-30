@@ -120,7 +120,7 @@ class PlanValidator:
 
         # Check for sequential IDs
         expected_ids = list(range(1, len(steps) + 1))
-        actual_ids = sorted(ids)
+        actual_ids = sorted(i for i in ids if i is not None)
         if actual_ids != expected_ids:
             errors.append(ValidationError(
                 "warning",
@@ -228,7 +228,7 @@ class PlanValidator:
 
         # Check for resource conflicts within each level
         for parallel_steps in levels.values():
-            targets = {}
+            targets: Dict[str, int] = {}
             for step in parallel_steps:
                 target = step.get("target", "local")
                 if target in targets:
