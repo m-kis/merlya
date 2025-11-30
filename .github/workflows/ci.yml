@@ -8,6 +8,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
+  SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/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'
+  SLACK_USERNAME: 'BuildsBot'
+  SLACK_ICON_EMOJI: ':building_construction:'
 
 jobs:
   lint:
@@ -139,7 +142,7 @@ jobs:
           pip install mypy types-paramiko types-PyYAML types-requests
 
       - name: Type check
-        run: mypy athena_ai/ --ignore-missing-imports --no-error-summary || true
+        run: mypy athena_ai/ --ignore-missing-imports --no-error-summary
 
   security:
     runs-on: ubuntu-latest
@@ -194,3 +197,73 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [lint, test, typecheck, async-test-validation, security, build]
+    if: always()
+    steps:
+      - name: Send Slack notification
+        run: |
+          # Determine overall status
+          if [ "${{ needs.lint.result }}" == "success" ] && \
+             [ "${{ needs.test.result }}" == "success" ] && \
+             [ "${{ needs.typecheck.result }}" == "success" ] && \
+             [ "${{ needs.async-test-validation.result }}" == "success" ] && \
+             [ "${{ needs.security.result }}" == "success" ] && \
+             [ "${{ needs.build.result }}" == "success" ]; then
+            STATUS="✅ SUCCESS"
+            COLOR="good"
+          else
+            STATUS="❌ FAILED"
+            COLOR="danger"
+          fi
+
+          # Build job details
+          JOBS_STATUS="*Jobs Status:*\n"
+          JOBS_STATUS+="• Lint: ${{ needs.lint.result }}\n"
+          JOBS_STATUS+="• Tests: ${{ needs.test.result }}\n"
+          JOBS_STATUS+="• Type Check: ${{ needs.typecheck.result }}\n"
+          JOBS_STATUS+="• Async Validation: ${{ needs.async-test-validation.result }}\n"
+          JOBS_STATUS+="• Security: ${{ needs.security.result }}\n"
+          JOBS_STATUS+="• Build: ${{ needs.build.result }}"
+
+          # Send to Slack
+          curl -X POST ${{ env.SLACK_WEBHOOK_URL }} \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"username\": \"${{ env.SLACK_USERNAME }}\",
+              \"icon_emoji\": \"${{ env.SLACK_ICON_EMOJI }}\",
+              \"attachments\": [{
+                \"color\": \"${COLOR}\",
+                \"title\": \"CI/CD Pipeline - ${STATUS}\",
+                \"fields\": [
+                  {
+                    \"title\": \"Repository\",
+                    \"value\": \"${{ github.repository }}\",
+                    \"short\": true
+                  },
+                  {
+                    \"title\": \"Branch\",
+                    \"value\": \"${{ github.ref_name }}\",
+                    \"short\": true
+                  },
+                  {
+                    \"title\": \"Commit\",
+                    \"value\": \"<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.event.head_commit.message }}>\",
+                    \"short\": false
+                  },
+                  {
+                    \"title\": \"Author\",
+                    \"value\": \"${{ github.actor }}\",
+                    \"short\": true
+                  },
+                  {
+                    \"title\": \"Build\",
+                    \"value\": \"<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>\",
+                    \"short\": true
+                  }
+                ],
+                \"text\": \"${JOBS_STATUS}\"
+              }]
+            }"
