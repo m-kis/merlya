@@ -55,7 +55,7 @@ class TestOrchestratorModelSelection:
 
         # Create orchestrator (will trigger _create_model_client)
         try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+            Orchestrator(mode=OrchestratorMode.BASIC)
         except Exception:
             # Initialization might fail due to missing dependencies, that's ok
             # We only care about the model client creation
@@ -85,7 +85,7 @@ class TestOrchestratorModelSelection:
         mock_config_class.return_value = mock_model_config
 
         try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+            Orchestrator(mode=OrchestratorMode.BASIC)
         except Exception:
             pass
 
@@ -111,7 +111,7 @@ class TestOrchestratorModelSelection:
         mock_config_class.return_value = mock_model_config
 
         try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+            Orchestrator(mode=OrchestratorMode.BASIC)
         except Exception:
             pass
 
@@ -138,7 +138,7 @@ class TestOrchestratorModelSelection:
         mock_ollama_client.return_value = mock_ollama_instance
 
         try:
-            orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+            Orchestrator(mode=OrchestratorMode.BASIC)
         except Exception:
             pass
 

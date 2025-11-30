@@ -27,6 +27,7 @@ def init_interactive():
     - config.json: Provider, models, settings (configuration)
     """
     from rich.prompt import Prompt
+
     from athena_ai.llm.model_config import ModelConfig
 
     config_dir = Path.home() / ".athena"

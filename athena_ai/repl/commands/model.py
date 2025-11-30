@@ -242,7 +242,7 @@ class ModelCommandHandler:
 
         # Model not found - offer to download
         console.print(f"[yellow]⚠️ Model '{model_name}' is not downloaded yet[/yellow]")
-        console.print(f"[dim]Would you like to download it now?[/dim]")
+        console.print("[dim]Would you like to download it now?[/dim]")
 
         # Prompt user for confirmation using built-in input()
         # (avoid prompt_toolkit.prompt() which conflicts with asyncio event loop)
@@ -423,8 +423,8 @@ class ModelCommandHandler:
             console.print("[dim]⏳ Downloading model...[/dim]")
             try:
                 from athena_ai.triage.smart_classifier.embedding_cache import (
-                    EmbeddingCache,
                     HAS_EMBEDDINGS,
+                    EmbeddingCache,
                 )
 
                 if not HAS_EMBEDDINGS:
@@ -465,8 +465,8 @@ class ModelCommandHandler:
             console.print(f"  Quality: [magenta]{info.quality}[/magenta]")
             console.print(f"  Description: [dim]{info.description}[/dim]")
         else:
-            console.print(f"  [yellow]Custom Model[/yellow] (from HuggingFace)")
-            console.print(f"  [dim]Model specs will be determined on first load[/dim]")
+            console.print("  [yellow]Custom Model[/yellow] (from HuggingFace)")
+            console.print("  [dim]Model specs will be determined on first load[/dim]")
 
         console.print()
         console.print("[dim]ℹ️ Used for: Triage classification, Tool selection, Error analysis[/dim]")

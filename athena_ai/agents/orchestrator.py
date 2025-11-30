@@ -373,7 +373,7 @@ class Orchestrator(BaseOrchestrator):
         message_parts = [
             "❌ Model Error: The current model doesn't support function calling (required for multi-agent mode)",
             "",
-            f"Current configuration:",
+            "Current configuration:",
             f"  • Provider: {current_provider}",
             f"  • Model: {current_model}",
             "",

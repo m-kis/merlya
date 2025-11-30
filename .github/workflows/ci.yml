@@ -65,8 +65,11 @@ jobs:
             --ignore=tests/manual_test_falkordb.py \
             --ignore=tests/manual_test_improvements.py \
             --cov=athena_ai --cov-report=xml --cov-report=term \
+            --asyncio-mode=auto \
+            --timeout=300 \
             -m "not manual" \
             || echo "Tests completed (some may have been skipped)"
+        timeout-minutes: 20
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -74,6 +77,44 @@ jobs:
         with:
           file: coverage.xml
           fail_ci_if_error: false
+
+  async-test-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: poetry-${{ runner.os }}-asynctest-${{ hashFiles('poetry.lock') }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Verify async test discovery
+        run: |
+          poetry run pytest tests/test_orchestrator_error_handling.py \
+            --collect-only -q
+          echo "Async test file discovery: SUCCESS"
+
+      - name: Run async tests with explicit marker
+        run: |
+          poetry run pytest tests/test_orchestrator_error_handling.py \
+            -v --tb=short \
+            -m "asyncio" \
+            --asyncio-mode=auto \
+            --timeout=60
 
   typecheck:
     runs-on: ubuntu-latest
@@ -133,7 +174,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, test, security]
+    needs: [lint, test, async-test-validation, security]
     steps:
       - uses: actions/checkout@v4
 
