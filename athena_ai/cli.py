@@ -117,8 +117,11 @@ def cli(ctx, env, verbose, debug):
     ctx.obj['debug'] = debug
 
     # Configure logging - must be called early to prevent console spam
+    # Generate a session ID for log deduplication in multi-instance scenarios
+    import datetime
+    session_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:19]  # Include milliseconds
     from athena_ai.utils.logger import setup_logger
-    setup_logger(verbose=debug or verbose)
+    setup_logger(verbose=debug or verbose, session_id=session_id)
 
     # Set verbosity level for UI components
     if debug or verbose:

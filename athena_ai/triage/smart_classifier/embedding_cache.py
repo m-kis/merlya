@@ -3,11 +3,16 @@ Embedding Cache for Smart Triage Classifier.
 """
 
 import hashlib
+import os
 from typing import Dict, List, Optional
 
 from athena_ai.utils.logger import logger
 
 from ..embedding_config import get_embedding_config
+
+# Disable tokenizers parallelism to avoid fork warnings
+# This must be set before loading sentence-transformers
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 # Optional imports for embeddings
 try:

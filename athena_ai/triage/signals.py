@@ -324,22 +324,41 @@ class SignalDetector:
                 break
 
         # Host patterns (hostname-like strings)
-        host_pattern = r"\b([a-zA-Z][\w-]*(?:\d+|prod|stg|dev)[\w-]*)\b"
+        # Refined pattern: require either a dot (FQDN), dash with numbers, or common hostname patterns
+        # This reduces false positives from random text being detected as hosts
+        host_pattern = r"\b([a-zA-Z][\w-]*(?:\.[\w-]+|[\w-]*\d+|[\w-]*(?:prod|stg|dev|preprod|test|staging)[\w-]*))\b"
         host_match = re.search(host_pattern, text)
         if host_match:
             potential_host = host_match.group(1)
             # Filter out common words and credential-like patterns.
             # This helps avoid false positives when credentials are resolved
             # from @variables before reaching this detection.
-            excluded_words = {"prod", "production", "staging", "dev", "password", "pass", "user", "credential"}
+            excluded_words = {"prod", "production", "staging", "dev", "password", "pass", "user", "credential",
+                             "preprod", "test", "development", "admin", "root", "localhost"}
             potential_lower = potential_host.lower()
-            if potential_lower not in excluded_words:
-                # Filter out values that look like resolved credentials (contain only credential terms)
-                # but allow legitimate hostnames like "secrets-server", "api-token-01", "web-admin-01"
-                # by checking if the entire string is a credential pattern (not just contains it)
-                pure_credential_patterns = {"motdepasse", "secret", "token", "apikey", "password", "passwd"}
-                is_pure_credential = potential_lower in pure_credential_patterns
-                if not is_pure_credential:
+
+            # Skip if it's an excluded word
+            if potential_lower in excluded_words:
+                pass
+            else:
+                # Filter out values that look like credentials (passwords, secrets, tokens)
+                # Check for common secret patterns that should NOT be detected as hosts
+                credential_indicators = ["pass", "secret", "token", "key", "pwd", "motdepasse", "apikey"]
+                is_likely_credential = any(indicator in potential_lower for indicator in credential_indicators)
+
+                # Also filter out values that are too long (likely passwords/tokens)
+                # Real hostnames are typically < 63 chars per label, < 253 total
+                is_too_long = len(potential_host) > 100
+
+                # Also filter out values with uppercase/lowercase mixed in unusual ways (common in passwords)
+                # Real hostnames are typically lowercase or have predictable patterns
+                has_unusual_casing = (
+                    potential_host != potential_host.lower() and
+                    potential_host != potential_host.upper() and
+                    not potential_host.replace("-", "").replace("_", "").replace(".", "").isalnum()
+                )
+
+                if not (is_likely_credential or is_too_long or has_unusual_casing):
                     host = potential_host
 
         return host, service

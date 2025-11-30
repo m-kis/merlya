@@ -30,11 +30,16 @@ class ModelCommandHandler:
             return True
 
         try:
-            if (not hasattr(self.repl, 'orchestrator') or
-                not hasattr(self.repl.orchestrator, 'llm_router') or
-                not hasattr(self.repl.orchestrator.llm_router, 'model_config')):
+            if not hasattr(self.repl, 'orchestrator'):
+                print_error("Orchestrator not initialized")
+                return True
+            if not hasattr(self.repl.orchestrator, 'llm_router'):
+                print_error("LLM router not initialized")
+                return True
+            if not hasattr(self.repl.orchestrator.llm_router, 'model_config'):
                 print_error("Model configuration not available")
                 return True
+
             model_config = self.repl.orchestrator.llm_router.model_config
             if cmd == 'show':
                 self._show_config(model_config)
@@ -123,6 +128,41 @@ class ModelCommandHandler:
     def _list_models(self, args: list, model_config):
         """List available models."""
         provider = args[0] if args else None
+
+        # Special handling for Ollama: Query actual server for available models
+        if provider == "ollama" or (not provider and model_config.get_provider() == "ollama"):
+            from athena_ai.llm.ollama_client import get_ollama_client
+            from athena_ai.repl.ui import print_error, print_warning
+            ollama_client = get_ollama_client()
+
+            if not ollama_client.is_available():
+                print_error("Ollama server is not available")
+                console.print(f"[dim]ℹ️ Make sure Ollama is running at {ollama_client.base_url}[/dim]")
+                console.print("[dim]ℹ️ Install: https://ollama.ai[/dim]")
+                return
+
+            ollama_models = ollama_client.list_models(refresh=True)
+            if not ollama_models:
+                print_warning("No Ollama models found")
+                console.print("[dim]ℹ️ Pull a model first: ollama pull llama3.2[/dim]")
+                return
+
+            table = Table(title="🦙 Available Ollama Models")
+            table.add_column("Model", style="cyan", no_wrap=True)
+            table.add_column("Size", style="yellow", justify="right")
+            table.add_column("Modified", style="dim")
+
+            for model in ollama_models:
+                table.add_row(
+                    model.name,
+                    model.display_size,
+                    model.modified_at[:10]  # Just the date
+                )
+            console.print(table)
+            console.print(f"\n[dim]Total: {len(ollama_models)} models ({sum(m.size_gb for m in ollama_models):.1f} GB)[/dim]")
+            return
+
+        # Default behavior for cloud providers
         models = model_config.list_models(provider)
         provider_name = provider or model_config.get_provider()
 
@@ -138,6 +178,16 @@ class ModelCommandHandler:
             provider = model_config.get_provider()
             model = args[0]
         elif len(args) >= 2:
+            # Check if user meant "/model provider <name>" instead of "/model set provider <name>"
+            if args[0] == "provider":
+                valid_providers = list(model_config.AVAILABLE_MODELS.keys())
+                if args[1] in valid_providers:
+                    console.print(
+                        f"[yellow]⚠️ Did you mean '/model provider {args[1]}'?[/yellow]\n"
+                        f"   Use '/model provider <name>' to switch providers.\n"
+                        f"   Use '/model set <model>' to change the model."
+                    )
+                    return
             provider = args[0]
             model = args[1]
         else:

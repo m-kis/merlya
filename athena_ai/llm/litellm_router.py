@@ -156,12 +156,16 @@ class LiteLLMRouter:
                 os.environ["OLLAMA_API_BASE"] = ollama_host
                 logger.debug(f"Set OLLAMA_API_BASE to {ollama_host}")
 
-    def switch_provider(self, provider: str):
+    def switch_provider(self, provider: str, verify: bool = False) -> bool:
         """
         Dynamically switch to a different provider.
 
         Args:
             provider: New provider name (openrouter, anthropic, openai, ollama)
+            verify: If True, verify Ollama is available before switching (for Ollama only)
+
+        Returns:
+            True if switch successful, False if verification failed
 
         Raises:
             ValueError: If provider is not supported
@@ -170,10 +174,19 @@ class LiteLLMRouter:
         if provider not in valid_providers:
             raise ValueError(f"Invalid provider: {provider}. Must be one of: {valid_providers}")
 
+        # Verify Ollama availability if requested
+        if provider == "ollama" and verify:
+            from athena_ai.llm.ollama_client import get_ollama_client
+            ollama_client = get_ollama_client()
+            if not ollama_client.is_available():
+                logger.warning("⚠️ Ollama server not available")
+                return False
+
         self.provider = provider
         self.model_config.config["provider"] = provider
         self.model_config.save_config()
-        logger.info(f"Switched to provider: {provider}")
+        logger.info(f"✅ Switched to provider: {provider}")
+        return True
 
     def get_available_providers(self) -> list:
         """Get list of available providers."""

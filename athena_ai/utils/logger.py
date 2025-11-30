@@ -49,17 +49,29 @@ def log_prefix(emoji: str) -> str:
     return _EMOJI_TO_ASCII.get(emoji, "")
 
 
-def setup_logger(verbose: bool = False):
+def setup_logger(verbose: bool = False, session_id: str = None):
     """
-    Configure the logger.
+    Configure the logger with session-specific logging.
 
     Rules:
-    1. FILE: Always log DEBUG+ to athena_ai.log (rotated).
+    1. FILE: Always log DEBUG+ to athena_ai.log (rotated) with session_id prefix.
     2. CONSOLE:
        - If verbose: Log DEBUG+ to stderr.
        - If NOT verbose: DO NOT log to stderr (DisplayManager handles UI).
+
+    Args:
+        verbose: Enable console logging
+        session_id: Optional session ID to add to log format (for multi-instance deduplication)
     """
     logger.remove()
+
+    # Build format string with optional session_id
+    # If session_id is provided, it will be included in extra fields via logger.bind()
+    # Format includes {extra[session_id]} which will be empty if not bound
+    if session_id:
+        log_format = "{time:YYYY-MM-DD HH:mm:ss} | {extra[session_id]} | {level: <8} | {name}:{function}:{line} - {message}"
+    else:
+        log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
 
     # 1. File Logging (Always active, detailed)
     log_path = Path("athena_ai.log")
@@ -68,7 +80,7 @@ def setup_logger(verbose: bool = False):
         rotation="10 MB",
         retention="1 week",
         level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        format=log_format,
         enqueue=True
     )
 
@@ -149,3 +161,23 @@ def setup_logger(verbose: bool = False):
     logger.configure(patcher=redaction_filter)
 
     return logger
+
+
+def get_session_logger(session_id: str):
+    """
+    Get a logger bound to a specific session ID.
+
+    This allows filtering logs by session in multi-instance scenarios.
+
+    Args:
+        session_id: Unique session identifier
+
+    Returns:
+        Logger instance bound to the session_id
+
+    Example:
+        >>> session_logger = get_session_logger("20241130_143022")
+        >>> session_logger.info("Processing request")
+        # Logs: "2024-11-30 14:30:22 | 20241130_143022 | INFO     | ... - Processing request"
+    """
+    return logger.bind(session_id=session_id)

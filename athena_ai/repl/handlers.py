@@ -5,6 +5,7 @@ This module provides the main CommandHandler class that routes
 commands to specialized handler modules.
 """
 import logging
+import shlex
 from enum import Enum, auto
 
 from rich.markdown import Markdown
@@ -106,7 +107,16 @@ class CommandHandler:
         if not command:
             return CommandResult.NOT_HANDLED
 
-        parts = command.split()
+        # Use shlex.split() to properly handle quoted arguments
+        # This preserves spaces in quoted strings like: /variables set APP "front v2 - Front App"
+        try:
+            parts = shlex.split(command)
+        except ValueError as e:
+            # Handle invalid quoting (unclosed quotes, etc.)
+            logger.warning(f"Invalid command quoting: {e}")
+            print_error(f"Invalid command syntax: {e}")
+            return CommandResult.FAILED
+
         cmd = parts[0].lower()
         args = parts[1:]
 
