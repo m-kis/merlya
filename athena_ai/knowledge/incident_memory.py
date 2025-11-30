@@ -102,8 +102,8 @@ class IncidentMemory:
         environment: str = "",
         service: str = "",
         host: str = "",
-        symptoms: List[str] = None,
-        tags: List[str] = None,
+        symptoms: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
     ) -> str:
         """
         Record a new incident.
@@ -143,7 +143,7 @@ class IncidentMemory:
         incident_id: str,
         root_cause: str,
         solution: str,
-        commands_executed: List[str] = None,
+        commands_executed: Optional[List[str]] = None,
     ) -> bool:
         """
         Mark an incident as resolved and record the solution.
@@ -191,10 +191,10 @@ class IncidentMemory:
 
     def find_similar(
         self,
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
-        title: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
+        title: Optional[str] = None,
         limit: int = 5,
     ) -> List[SimilarityMatch]:
         """
@@ -272,9 +272,9 @@ class IncidentMemory:
 
     def suggest_solution(
         self,
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Suggest a solution based on similar past incidents.
@@ -315,7 +315,7 @@ class IncidentMemory:
         normalized = re.sub(r'\s+', ' ', normalized).strip()
         return normalized
 
-    def get_common_symptoms(self, service: str = None, limit: int = 10) -> List[Tuple[str, int]]:
+    def get_common_symptoms(self, service: Optional[str] = None, limit: int = 10) -> List[Tuple[str, int]]:
         """
         Get the most common symptoms.
 

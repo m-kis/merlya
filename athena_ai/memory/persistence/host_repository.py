@@ -234,7 +234,7 @@ class HostRepository:
             status, command_line, datetime.now().isoformat()
         ))
 
-        process_id = cursor.lastrowid
+        process_id = cursor.lastrowid or 0
         conn.commit()
         conn.close()
 
@@ -251,7 +251,7 @@ class HostRepository:
         cursor = conn.cursor()
 
         query = "SELECT * FROM processes WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if host_id:
             query += " AND host_id = ?"
@@ -305,7 +305,7 @@ class HostRepository:
             datetime.now().isoformat()
         ))
 
-        item_id = cursor.lastrowid
+        item_id = cursor.lastrowid or 0
         conn.commit()
         conn.close()
 
@@ -322,7 +322,7 @@ class HostRepository:
         cursor = conn.cursor()
 
         query = "SELECT * FROM inventory WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if host_id:
             query += " AND host_id = ?"
@@ -374,7 +374,7 @@ class HostRepository:
             json.dumps(metadata or {})
         ))
 
-        scan_id = cursor.lastrowid
+        scan_id = cursor.lastrowid or 0
         conn.commit()
         conn.close()
 

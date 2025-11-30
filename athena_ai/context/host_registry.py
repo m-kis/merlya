@@ -281,8 +281,8 @@ class HostRegistry:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get registry statistics."""
-        env_counts = {}
-        source_counts = {}
+        env_counts: Dict[str, int] = {}
+        source_counts: Dict[str, int] = {}
 
         for host in self._hosts.values():
             env = host.environment or "unknown"

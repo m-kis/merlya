@@ -213,13 +213,14 @@ class PatternLearner:
         similar = self.match_patterns(
             text=incident.get("title", ""),
             symptoms=symptoms,
-            service=incident.get("service"),
+            service=incident.get("service") or "",
         )
 
         if similar and similar[0].score > 0.7:
             # Update existing pattern instead
             existing = similar[0].pattern
-            self._update_pattern_stats(existing.id, success=True)
+            if existing.id is not None:
+                self._update_pattern_stats(existing.id, success=True)
             logger.debug(f"Updated existing pattern {existing.id} instead of creating new")
             return existing.id
 
@@ -290,9 +291,9 @@ class PatternLearner:
     def match_patterns(
         self,
         text: str = "",
-        symptoms: List[str] = None,
-        service: str = None,
-        environment: str = None,
+        symptoms: Optional[List[str]] = None,
+        service: Optional[str] = None,
+        environment: Optional[str] = None,
         min_score: float = 0.3,
         limit: int = 5,
     ) -> List[PatternMatch]:

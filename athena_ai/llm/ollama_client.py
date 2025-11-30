@@ -67,9 +67,9 @@ class OllamaClient:
         Args:
             base_url: Ollama server URL (default: http://localhost:11434)
         """
-        self.base_url = base_url or os.getenv("OLLAMA_HOST", self.DEFAULT_BASE_URL)
+        url = base_url or os.getenv("OLLAMA_HOST") or self.DEFAULT_BASE_URL
         # Remove trailing slash
-        self.base_url = self.base_url.rstrip("/")
+        self.base_url = url.rstrip("/")
         self._available: Optional[bool] = None
         self._models_cache: Optional[List[OllamaModel]] = None
 
@@ -237,16 +237,17 @@ class OllamaClient:
         Returns:
             Status dict with availability, version, models, etc.
         """
-        status = {
-            "available": self.is_available(),
+        is_available = self.is_available()
+        status: Dict[str, Any] = {
+            "available": is_available,
             "base_url": self.base_url,
             "version": None,
             "models": [],
             "model_count": 0,
-            "total_size_gb": 0,
+            "total_size_gb": 0.0,
         }
 
-        if status["available"]:
+        if is_available:
             status["version"] = self.get_version()
             models = self.list_models(refresh=True)
             status["models"] = [m.name for m in models]

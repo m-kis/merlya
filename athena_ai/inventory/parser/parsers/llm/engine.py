@@ -87,9 +87,9 @@ def parse_with_llm(
     Returns:
         Tuple of (hosts, errors, warnings)
     """
-    hosts = []
-    errors = []
-    warnings = []
+    hosts: List[ParsedHost] = []
+    errors: List[str] = []
+    warnings: List[str] = []
 
     # Check if LLM fallback is enabled via configuration
     if not ENABLE_LLM_FALLBACK:

@@ -103,7 +103,7 @@ class BaseCIClient(ABC):
         Returns:
             Copy of dictionary with sensitive values replaced by "***"
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for key, value in data.items():
             key_lower = key.lower()
             # Check if key matches any sensitive pattern

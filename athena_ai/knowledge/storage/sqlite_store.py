@@ -226,7 +226,7 @@ class SQLiteStore:
     ) -> List[AuditEntry]:
         """Query audit log with filters."""
         query = "SELECT * FROM audit_log WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if session_id:
             query += " AND session_id = ?"
@@ -301,13 +301,13 @@ class SQLiteStore:
         environment: Optional[str] = None,
         status: str = 'resolved',
         limit: int = 5
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """Find incidents in SQLite."""
         query = """
             SELECT * FROM incidents
             WHERE status = ?
         """
-        params = [status]
+        params: List[Any] = [status]
 
         if service:
             query += " AND service = ?"

@@ -17,7 +17,7 @@ def scan_services() -> Dict[str, Any]:
     - launchd (macOS)
     - Docker containers
     """
-    services = {
+    services: Dict[str, List[Dict[str, Any]]] = {
         "systemd": [],
         "launchd": [],
         "docker": [],

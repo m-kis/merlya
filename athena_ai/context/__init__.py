@@ -2,18 +2,24 @@
 Context Module for Athena.
 
 Provides:
-- Host discovery and scanning
-- Infrastructure context management
+- Infrastructure context management (ContextManager)
+- Local machine scanning (LocalScanner) - comprehensive, with SQLite caching
+- Remote host scanning (OnDemandScanner) - async, parallel, with retry
 - Host registry with strict validation
 - Inventory source management
 - Interactive inventory setup wizard
-- Local machine scanning with intelligent caching
-- On-demand remote host scanning
 - Intelligent cache management
+
+Scanning Architecture:
+    /scan       → LocalScanner (12h TTL, SQLite)
+    /scan --full → LocalScanner + OnDemandScanner (async parallel SSH)
+
+Deprecated:
+    Discovery class is deprecated. Use LocalScanner and OnDemandScanner.
 """
 
 from .cache_manager import CacheConfig, CacheManager, get_cache_manager
-from .discovery import Discovery
+from .discovery import Discovery, parse_inventory  # Discovery is deprecated
 from .host_registry import (
     Host,
     HostRegistry,
@@ -31,20 +37,23 @@ from .inventory_setup import (
     get_inventory_wizard,
 )
 from .inventory_sources import DataAvailability, InventorySourceManager
-
-# New inventory system components
 from .local_scanner import LocalScanner, get_local_scanner
 from .manager import ContextManager, get_context_manager
 from .on_demand_scanner import OnDemandScanner, ScanConfig, ScanResult, get_on_demand_scanner
 from .smart_cache import SmartCache
 
 __all__ = [
-    # Discovery
-    "Discovery",
-    # Context Management
+    # Context Management (Primary API)
     "ContextManager",
     "get_context_manager",
-    # Host Registry (CRITICAL for security)
+    # Scanning (Primary API)
+    "LocalScanner",
+    "get_local_scanner",
+    "OnDemandScanner",
+    "ScanConfig",
+    "ScanResult",
+    "get_on_demand_scanner",
+    # Host Registry (Security-critical)
     "HostRegistry",
     "Host",
     "HostValidationResult",
@@ -63,14 +72,11 @@ __all__ = [
     "DataAvailability",
     # Cache
     "SmartCache",
-    # New inventory system
-    "LocalScanner",
-    "get_local_scanner",
-    "OnDemandScanner",
-    "ScanConfig",
-    "ScanResult",
-    "get_on_demand_scanner",
     "CacheManager",
     "CacheConfig",
     "get_cache_manager",
+    # Utilities
+    "parse_inventory",
+    # Deprecated (kept for backwards compatibility)
+    "Discovery",
 ]

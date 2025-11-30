@@ -288,7 +288,7 @@ class InventorySetupWizard:
     def create_default_config(self) -> InventoryConfig:
         """Create default configuration based on detected sources."""
         available = self.detect_available_sources()
-        sources = []
+        sources: List[InventorySourceConfig] = []
 
         for source in available:
             if source['detected']:
@@ -372,7 +372,7 @@ class InventorySetupWizard:
                 selected_indices = list(range(len(available)))
 
         # Build config
-        sources = []
+        sources: List[InventorySourceConfig] = []
         for i in selected_indices:
             if 0 <= i < len(available):
                 source = available[i]

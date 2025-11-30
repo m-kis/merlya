@@ -205,7 +205,7 @@ class CLIClient(BaseCIClient):
         Raises:
             ValueError: If validation fails
         """
-        validated = {}
+        validated: Dict[str, Any] = {}
 
         for key, value in params.items():
             if key == "run_id":

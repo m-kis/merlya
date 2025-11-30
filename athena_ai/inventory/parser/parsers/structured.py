@@ -131,18 +131,19 @@ def _parse_list_field(value: str) -> List[str]:
 
 def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
     """Parse CSV content."""
-    hosts = []
-    errors = []
+    hosts: List[ParsedHost] = []
+    errors: List[str] = []
 
     try:
         reader = csv.DictReader(io.StringIO(content))
-        fieldnames = [f.lower() for f in (reader.fieldnames or [])]
+        raw_fieldnames = reader.fieldnames or []
+        fieldnames = [f.lower() for f in raw_fieldnames]
 
         # Find the hostname field
-        hostname_field = None
+        hostname_field: Optional[str] = None
         for field in HOSTNAME_FIELDS:
             if field in fieldnames:
-                hostname_field = reader.fieldnames[fieldnames.index(field)]
+                hostname_field = raw_fieldnames[fieldnames.index(field)]
                 break
 
         if not hostname_field:
@@ -150,8 +151,8 @@ def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
             return hosts, errors
 
         # Find other fields
-        ip_field = _find_field(reader.fieldnames, IP_FIELDS)
-        env_field = _find_field(reader.fieldnames, ENV_FIELDS)
+        ip_field = _find_field(list(raw_fieldnames), IP_FIELDS)
+        env_field = _find_field(list(raw_fieldnames), ENV_FIELDS)
 
         for row in reader:
             hostname = row.get(hostname_field, "").strip()
@@ -193,8 +194,8 @@ def parse_csv(content: str) -> Tuple[List[ParsedHost], List[str]]:
 
 def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
     """Parse JSON content."""
-    hosts = []
-    errors = []
+    hosts: List[ParsedHost] = []
+    errors: List[str] = []
 
     try:
         data = json.loads(content)
@@ -272,8 +273,8 @@ def parse_json(content: str) -> Tuple[List[ParsedHost], List[str]]:
 
 def parse_yaml(content: str) -> Tuple[List[ParsedHost], List[str]]:
     """Parse YAML content."""
-    hosts = []
-    errors = []
+    hosts: List[ParsedHost] = []
+    errors: List[str] = []
 
     try:
         import yaml

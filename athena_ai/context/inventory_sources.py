@@ -48,7 +48,7 @@ class InventorySourceManager:
         if self._cache and not refresh:
             return self._cache
 
-        inventory = {}
+        inventory: Dict[str, str] = {}
 
         # Load from primary source (e.g., /etc/hosts via ContextManager)
         # This will be integrated with existing ContextManager

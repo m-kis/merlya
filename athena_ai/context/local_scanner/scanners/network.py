@@ -7,7 +7,7 @@ import platform
 import socket
 import subprocess
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from athena_ai.utils.logger import logger
 
@@ -82,10 +82,11 @@ def scan_network() -> Dict[str, Any]:
             hostname = "unknown"
             fqdn = "unknown"
 
-    info = {
+    interfaces: List[Dict[str, Any]] = []
+    info: Dict[str, Any] = {
         "hostname": hostname,
         "fqdn": fqdn,
-        "interfaces": [],
+        "interfaces": interfaces,
     }
 
     # Get all IP addresses (with timeout to prevent indefinite blocking)
@@ -112,21 +113,22 @@ def scan_network() -> Dict[str, Any]:
                 timeout=10,
             )
             if result.returncode == 0:
-                interfaces = json.loads(result.stdout)
-                for iface in interfaces:
-                    iface_info = {
+                iface_list = json.loads(result.stdout)
+                for iface in iface_list:
+                    iface_ips: List[Dict[str, Any]] = []
+                    iface_info: Dict[str, Any] = {
                         "name": iface.get("ifname"),
                         "state": iface.get("operstate"),
                         "mac": iface.get("address"),
-                        "ips": [],
+                        "ips": iface_ips,
                     }
                     for addr_info in iface.get("addr_info", []):
-                        iface_info["ips"].append({
+                        iface_ips.append({
                             "address": addr_info.get("local"),
                             "prefix": addr_info.get("prefixlen"),
                             "family": addr_info.get("family"),
                         })
-                    info["interfaces"].append(iface_info)
+                    interfaces.append(iface_info)
 
         elif platform.system() == "Darwin":
             result = subprocess.run(
@@ -137,12 +139,12 @@ def scan_network() -> Dict[str, Any]:
             )
             if result.returncode == 0:
                 # Simple parsing for macOS
-                current_iface = None
+                current_iface: Optional[Dict[str, Any]] = None
                 for line in result.stdout.splitlines():
                     if not line.startswith("\t") and ":" in line:
                         iface_name = line.split(":")[0]
                         current_iface = {"name": iface_name, "ips": []}
-                        info["interfaces"].append(current_iface)
+                        interfaces.append(current_iface)
                     elif current_iface and ("inet " in line or "inet6 " in line):
                         parts = line.split()
                         if len(parts) >= 2:
