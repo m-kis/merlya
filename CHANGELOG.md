@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graceful LLM fallback with interactive user prompts on parse failures
 - Pagination support for inventory queries (LIMIT/OFFSET)
 - Credential audit trail hooks (repository level)
+- Session credential TTL (15 minutes auto-expiration)
+- Plaintext credential detection with security warnings
+- Audit logging for secret variable access
 
 ### Fixed
 
@@ -31,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-memory only credential storage (never persisted)
 - Type separation for HOST, CONFIG, SECRET credentials
 - LLM leak prevention via resolve_secrets flag
+- Automatic credential expiration (CREDENTIAL_TTL = 900s)
+- Plaintext credential detection (7 patterns: password, api_key, token, etc.)
+- Secret access audit logs for compliance tracking
 
 ### Documentation
 
