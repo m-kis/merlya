@@ -89,16 +89,25 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 ### 4. Context Layer
 
 #### Context Manager (`athena_ai/context/manager.py`)
-- Infrastructure discovery
-- Smart caching (fingerprint-based)
-- Host registry
 
-#### Discovery (`athena_ai/context/discovery.py`)
-- SSH config parsing
-- /etc/hosts parsing
-- Remote host scanning
+- Orchestrates local and remote scanning
+- Smart caching (fingerprint-based for inventory)
+- JIT (Just-In-Time) host scanning
+
+#### Local Scanner (`athena_ai/context/local_scanner/`)
+
+- Comprehensive local machine scanning
+- 12h TTL with SQLite persistence
+- Scans: OS, network, services, processes, resources
+
+#### On-Demand Scanner (`athena_ai/context/on_demand_scanner/`)
+
+- JIT remote host scanning (single host at a time)
+- Async with retry and rate limiting
+- Cache per scan type (basic, system, services, full)
 
 #### Host Registry (`athena_ai/context/host_registry.py`)
+
 - Central host database
 - Fuzzy matching
 - Validation with suggestions
@@ -119,10 +128,21 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 - Connection pooling
 - Jump host support
 - Timeout handling
+- Visual spinner during connection
 
 #### Action Executor (`athena_ai/executors/action_executor.py`)
 - Unified execution interface
 - Local and remote commands
+- Batch execution with progress tracking (`execute_batch()`)
+
+### 7. UX Layer
+
+#### Display Manager (`athena_ai/utils/display.py`)
+
+- Centralized console output
+- Spinners for long operations
+- Progress bars for batch operations
+- Consistent Rich styling
 
 ## Data Flow
 
@@ -287,5 +307,33 @@ def my_custom_tool(
 - Force refresh available
 
 ### Streaming
+
 - LLM responses stream in real-time
 - Reduces perceived latency
+
+### Visual Feedback
+
+Operations longer than 1 second show visual indicators:
+
+| Operation | Indicator | Location |
+|-----------|-----------|----------|
+| LLM requests | Spinner "Thinking..." | `LLMRouter.generate()` |
+| SSH connections | Spinner "Connecting..." | `SSHManager.execute()` |
+| Host scan | Spinner "Scanning..." | `ContextManager.scan_host()` |
+| Batch execution | Progress bar | `ActionExecutor.execute_batch()` |
+
+```python
+from athena_ai.utils.display import get_display_manager
+
+display = get_display_manager()
+
+# Spinner for single operations
+with display.spinner("Processing..."):
+    # long operation
+
+# Progress bar for batch operations
+with display.progress_bar("Scanning") as progress:
+    task = progress.add_task("Hosts", total=10)
+    for host in hosts:
+        progress.advance(task)
+```

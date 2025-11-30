@@ -18,8 +18,8 @@ HELP_TOPICS = [
 # Quick reference for main help
 SLASH_COMMANDS = {
     # Context
-    '/scan': 'Scan infrastructure (--full for SSH)',
-    '/refresh': 'Force refresh context (--full for SSH)',
+    '/scan': 'Scan local or specific host [hostname]',
+    '/refresh': 'Force refresh context [hostname]',
     '/cache-stats': 'Show cache statistics',
     '/context': 'Show current context',
     '/ssh-info': 'Show SSH configuration',
@@ -317,19 +317,24 @@ Example: After adding filesystem server, say 'list files in /tmp'
 ## Context & Scanning
 
 **Commands:**
-- `/scan` - Quick scan (local only)
-- `/scan --full` - Full scan including SSH to remote hosts
-- `/refresh` - Force refresh local context
-- `/refresh --full` - Force refresh + SSH scan
+- `/scan` - Scan local machine only
+- `/scan <hostname>` - Scan specific remote host (JIT)
+- `/refresh` - Force refresh local context cache
+- `/refresh <hostname>` - Force refresh cache for specific host
 - `/cache-stats` - Show cache statistics
 - `/context` - Show current context summary
 - `/ssh-info` - Show SSH configuration and keys
 - `/permissions [host]` - Show/detect permission capabilities
 
+**Scanning Philosophy (JIT):**
+- Local machine: Comprehensive scan, cached for 12h in SQLite
+- Remote hosts: Scanned Just-In-Time when first connecting
+- No bulk scanning: Individual hosts scanned on demand
+
 **Smart Caching:**
 - Inventory (/etc/hosts): 1h TTL, auto-refresh on file change
-- Local info: 5 min TTL
-- Remote hosts: 30 min TTL
+- Local machine: 12h TTL (SQLite)
+- Remote hosts: 30 min TTL per host
 
 Use `/cache-stats` to see cache state.
 """
@@ -394,9 +399,10 @@ Example: `/feedback action P1 restart nginx on prod`
 - `check redis on @cache-prod-01`
 
 **Scanning & Context:**
-- `/scan --full` - Full infrastructure scan
+- `/scan` - Local machine scan
+- `/scan web-prod-01` - Scan specific host
 - `/cache-stats` - Check cache status
-- `/refresh --full` - Force refresh with SSH
+- `/refresh` - Refresh local context
 
 **Model Management:**
 - `/model list openrouter` - List models

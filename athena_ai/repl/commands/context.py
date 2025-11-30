@@ -24,6 +24,13 @@ class ContextCommandHandler:
             /scan           - Scan local machine only
             /scan <host>    - Scan a specific remote host
         """
+        # Handle deprecated --full flag
+        if '--full' in args:
+            print_warning("The --full flag is deprecated and ignored.")
+            console.print("[dim]  Use /scan <hostname> to scan specific hosts.[/dim]")
+            console.print("[dim]  Hosts are scanned automatically on first SSH connection (JIT).[/dim]")
+            args = [a for a in args if a != '--full']
+
         try:
             if args:
                 # Scan specific host
@@ -76,6 +83,12 @@ class ContextCommandHandler:
             /refresh           - Refresh local context cache
             /refresh <host>    - Refresh cache for a specific host
         """
+        # Handle deprecated --full flag
+        if '--full' in args:
+            print_warning("The --full flag is deprecated and ignored.")
+            console.print("[dim]  Use /refresh <hostname> to refresh specific hosts.[/dim]")
+            args = [a for a in args if a != '--full']
+
         try:
             if args:
                 # Refresh specific host

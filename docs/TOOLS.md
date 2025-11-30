@@ -88,19 +88,24 @@ List all known hosts from the infrastructure inventory.
 
 ### `scan_host(hostname)`
 
-Scan a host to gather detailed system information.
+Scan a host on-demand (JIT - Just In Time) to gather system information.
+
+This function is called automatically when connecting to a new host for the first time.
+Results are cached with a 30-minute TTL.
 
 **Parameters:**
+
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `hostname` | `str` | Yes | Host to scan |
 
-**Returns:** `str` - Detailed host information including:
-- OS version
-- Kernel version
-- CPU/Memory/Disk usage
-- Running services
-- Network interfaces
+**Returns:** `str` - Host information including:
+
+- IP address and reachability
+- OS version (if accessible via SSH)
+- Basic system info
+
+**Caching:** Results are cached per host. Use `/refresh <hostname>` to force rescan.
 
 ---
 
@@ -519,9 +524,78 @@ Generate Dockerfiles.
 
 ---
 
+## Batch Execution
+
+### `execute_batch(actions, stop_on_failure=False, show_progress=True)`
+
+Execute multiple actions with progress tracking.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `actions` | `List[Dict]` | Yes | List of action dictionaries |
+| `stop_on_failure` | `bool` | No | Stop on first failure (default: False) |
+| `show_progress` | `bool` | No | Show progress bar (default: True) |
+
+**Action Dictionary:**
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `target` | `str` | Yes | Hostname or 'local' |
+| `command` | `str` | Yes | Shell command |
+| `action_type` | `str` | No | Action type (default: 'shell') |
+| `confirm` | `bool` | No | Skip risk confirmation |
+| `timeout` | `int` | No | Timeout in seconds (default: 60) |
+
+**Returns:** `List[Dict]` - List of execution results
+
+**Example:**
+
+```python
+from athena_ai.executors.action_executor import ActionExecutor
+
+executor = ActionExecutor()
+results = executor.execute_batch([
+    {"target": "web-01", "command": "systemctl status nginx"},
+    {"target": "web-02", "command": "systemctl status nginx"},
+    {"target": "db-01", "command": "systemctl status postgresql"},
+], stop_on_failure=True)
+```
+
+---
+
 ## Context Utilities
 
-### `StatusManager`
+### `DisplayManager`
+
+Centralized display manager with spinners and progress bars.
+
+```python
+from athena_ai.utils.display import get_display_manager
+
+display = get_display_manager()
+
+# Spinner for long operations
+with display.spinner("Connecting to host..."):
+    # long operation
+    pass
+
+# Progress bar for batch operations
+with display.progress_bar("Processing") as progress:
+    task = progress.add_task("Items", total=10)
+    for i in range(10):
+        # do work
+        progress.advance(task)
+
+# Simple messages
+display.show_success("Operation completed")
+display.show_warning("Something might be wrong")
+display.show_error("Operation failed", details="Connection timeout")
+display.show_info("Processing started")
+```
+
+### `StatusManager` (Legacy)
 
 Manages the Rich spinner/status that can be paused during user input.
 

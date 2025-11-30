@@ -222,6 +222,7 @@ class LLMRouter:
 
     def _call_anthropic(self, prompt: str, system_prompt: str, model: str) -> str:
         """Call Anthropic API with configured model."""
+        assert self.anthropic_client is not None
         response = self.anthropic_client.messages.create(
             model=model,
             max_tokens=1024,
@@ -232,6 +233,7 @@ class LLMRouter:
 
     def _call_openai(self, prompt: str, system_prompt: str, model: str) -> str:
         """Call OpenAI API with configured model."""
+        assert self.openai_client is not None
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
         response = self.openai_client.chat.completions.create(
             model=model,
@@ -241,6 +243,7 @@ class LLMRouter:
 
     def _call_openrouter(self, prompt: str, system_prompt: str, model: str) -> str:
         """Call OpenRouter API with configured model."""
+        assert self.openrouter_client is not None
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
         response = self.openrouter_client.chat.completions.create(
             model=model,
@@ -250,6 +253,7 @@ class LLMRouter:
 
     def _call_ollama(self, prompt: str, system_prompt: str, model: str) -> str:
         """Call Ollama API with configured model via OpenAI-compatible client."""
+        assert self.ollama_openai_client is not None
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
         response = self.ollama_openai_client.chat.completions.create(
             model=model,
