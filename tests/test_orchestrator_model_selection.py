@@ -45,8 +45,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @patch('athena_ai.agents.base_orchestrator.StorageManager')
+    @patch('athena_ai.agents.base_orchestrator.LiteLLMRouter')
     def test_openrouter_uses_openrouter_model_not_ollama(
-        self, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_router, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """
         When using OpenRouter, should use OpenRouter model from config,
@@ -85,8 +86,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @patch('athena_ai.agents.base_orchestrator.StorageManager')
+    @patch('athena_ai.agents.base_orchestrator.LiteLLMRouter')
     def test_anthropic_uses_anthropic_model_not_ollama(
-        self, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_router, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using Anthropic, should use Anthropic model, not Ollama model."""
         import athena_ai.agents.orchestrator as orch_module
@@ -116,8 +118,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.autogen_tools')
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @patch('athena_ai.agents.base_orchestrator.StorageManager')
+    @patch('athena_ai.agents.base_orchestrator.LiteLLMRouter')
     def test_openai_uses_openai_model_not_ollama(
-        self, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_router, mock_storage, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using OpenAI, should use OpenAI model, not Ollama model."""
         import athena_ai.agents.orchestrator as orch_module
@@ -144,8 +147,9 @@ class TestOrchestratorModelSelection:
     @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
     @patch('athena_ai.llm.ollama_client.get_ollama_client')
     @patch('athena_ai.agents.base_orchestrator.StorageManager')
+    @patch('athena_ai.agents.base_orchestrator.LiteLLMRouter')
     def test_ollama_uses_ollama_model(
-        self, mock_storage, mock_ollama_client, mock_planner, mock_tools, mock_config_class, mock_model_config
+        self, mock_router, mock_storage, mock_ollama_client, mock_planner, mock_tools, mock_config_class, mock_model_config
     ):
         """When using Ollama (default provider), should use Ollama model."""
         import athena_ai.agents.orchestrator as orch_module
