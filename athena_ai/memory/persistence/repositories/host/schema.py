@@ -36,6 +36,16 @@ def init_host_tables(cursor: sqlite3.Cursor) -> None:
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_hosts_v2_source ON hosts_v2(source_id)
     """)
+    # Performance: Add indices for frequently searched fields
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_hosts_v2_groups ON hosts_v2(groups)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_hosts_v2_aliases ON hosts_v2(aliases)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_hosts_v2_status ON hosts_v2(status)
+    """)
 
     # Host versions table (versioning)
     cursor.execute("""
