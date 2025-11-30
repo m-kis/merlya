@@ -223,33 +223,41 @@ jobs:
 
           # Use variables with defaults
           CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
-          USERNAME="${SLACK_USERNAME:-BuildsBot}"
-          ICON_EMOJI="${SLACK_ICON_EMOJI:-:building_construction:}"
+          USERNAME="${SLACK_USERNAME:-Athena CI}"
+          ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
+
+          # Build compact status icons
+          get_icon() {
+            case "$1" in
+              success) echo "✓" ;;
+              failure) echo "✗" ;;
+              *) echo "○" ;;
+            esac
+          }
+
+          LINT_ICON=$(get_icon "${{ needs.lint.result }}")
+          TEST_ICON=$(get_icon "${{ needs.test.result }}")
+          TYPE_ICON=$(get_icon "${{ needs.typecheck.result }}")
+          SEC_ICON=$(get_icon "${{ needs.security.result }}")
+          BUILD_ICON=$(get_icon "${{ needs.build.result }}")
 
           # Determine overall status
           if [ "${{ needs.lint.result }}" == "success" ] && \
              [ "${{ needs.test.result }}" == "success" ] && \
-             [ "${{ needs.typecheck.result }}" == "success" ] && \
-             [ "${{ needs.async-test-validation.result }}" == "success" ] && \
              [ "${{ needs.security.result }}" == "success" ] && \
              [ "${{ needs.build.result }}" == "success" ]; then
-            STATUS="✅ SUCCESS"
+            STATUS_EMOJI="✅"
             COLOR="good"
           else
-            STATUS="❌ FAILED"
+            STATUS_EMOJI="❌"
             COLOR="danger"
           fi
 
-          # Build job details
-          JOBS_STATUS="*Jobs Status:*\n"
-          JOBS_STATUS+="• Lint: ${{ needs.lint.result }}\n"
-          JOBS_STATUS+="• Tests: ${{ needs.test.result }}\n"
-          JOBS_STATUS+="• Type Check: ${{ needs.typecheck.result }}\n"
-          JOBS_STATUS+="• Async Validation: ${{ needs.async-test-validation.result }}\n"
-          JOBS_STATUS+="• Security: ${{ needs.security.result }}\n"
-          JOBS_STATUS+="• Build: ${{ needs.build.result }}"
+          # Compact summary line
+          SUMMARY="${STATUS_EMOJI} *Athena CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          DETAILS="${LINT_ICON} lint ${TEST_ICON} test ${TYPE_ICON} types ${SEC_ICON} security ${BUILD_ICON} build"
 
-          # Send to Slack using secret webhook
+          # Send compact notification
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
             -d "{
@@ -258,34 +266,6 @@ jobs:
               \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
-                \"title\": \"CI/CD Pipeline - ${STATUS}\",
-                \"fields\": [
-                  {
-                    \"title\": \"Repository\",
-                    \"value\": \"${{ github.repository }}\",
-                    \"short\": true
-                  },
-                  {
-                    \"title\": \"Branch\",
-                    \"value\": \"${{ github.ref_name }}\",
-                    \"short\": true
-                  },
-                  {
-                    \"title\": \"Commit\",
-                    \"value\": \"<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.event.head_commit.message }}>\",
-                    \"short\": false
-                  },
-                  {
-                    \"title\": \"Author\",
-                    \"value\": \"${{ github.actor }}\",
-                    \"short\": true
-                  },
-                  {
-                    \"title\": \"Build\",
-                    \"value\": \"<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>\",
-                    \"short\": true
-                  }
-                ],
-                \"text\": \"${JOBS_STATUS}\"
+                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
               }]
             }"

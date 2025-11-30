@@ -229,39 +229,37 @@ jobs:
 
           # Use variables with defaults
           CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
-          USERNAME="${SLACK_USERNAME:-BuildsBot}"
-          ICON_EMOJI="${SLACK_ICON_EMOJI:-:building_construction:}"
+          USERNAME="${SLACK_USERNAME:-Athena CI}"
+          ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
+
+          # Count passed/failed
+          TOTAL=9
+          PASSED=0
+          [ "${{ needs.test-run-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-setup-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-status-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-version-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-model-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-cicd-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-inventory-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-context-command.result }}" == "success" ] && ((PASSED++))
+          [ "${{ needs.test-session-command.result }}" == "success" ] && ((PASSED++))
+          FAILED=$((TOTAL - PASSED))
 
           # Determine overall status
-          if [ "${{ needs.test-run-command.result }}" == "success" ] && \
-             [ "${{ needs.test-setup-command.result }}" == "success" ] && \
-             [ "${{ needs.test-status-command.result }}" == "success" ] && \
-             [ "${{ needs.test-version-command.result }}" == "success" ] && \
-             [ "${{ needs.test-model-command.result }}" == "success" ] && \
-             [ "${{ needs.test-cicd-command.result }}" == "success" ] && \
-             [ "${{ needs.test-inventory-command.result }}" == "success" ] && \
-             [ "${{ needs.test-context-command.result }}" == "success" ] && \
-             [ "${{ needs.test-session-command.result }}" == "success" ]; then
-            STATUS="✅ SUCCESS"
+          if [ "$FAILED" -eq 0 ]; then
+            STATUS_EMOJI="✅"
             COLOR="good"
           else
-            STATUS="❌ FAILED"
+            STATUS_EMOJI="❌"
             COLOR="danger"
           fi
 
-          # Build command test status
-          COMMANDS_STATUS="*Command Tests:*\n"
-          COMMANDS_STATUS+="• run: ${{ needs.test-run-command.result }}\n"
-          COMMANDS_STATUS+="• setup: ${{ needs.test-setup-command.result }}\n"
-          COMMANDS_STATUS+="• status: ${{ needs.test-status-command.result }}\n"
-          COMMANDS_STATUS+="• version: ${{ needs.test-version-command.result }}\n"
-          COMMANDS_STATUS+="• /model: ${{ needs.test-model-command.result }}\n"
-          COMMANDS_STATUS+="• /cicd: ${{ needs.test-cicd-command.result }}\n"
-          COMMANDS_STATUS+="• /inventory: ${{ needs.test-inventory-command.result }}\n"
-          COMMANDS_STATUS+="• /context: ${{ needs.test-context-command.result }}\n"
-          COMMANDS_STATUS+="• /session: ${{ needs.test-session-command.result }}"
+          # Compact summary
+          SUMMARY="${STATUS_EMOJI} *Athena Commands* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          DETAILS="${PASSED}/${TOTAL} commands passed"
 
-          # Send to Slack
+          # Send compact notification
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
             -d "{
@@ -270,29 +268,6 @@ jobs:
               \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
-                \"title\": \"Athena Command Tests - ${STATUS}\",
-                \"fields\": [
-                  {
-                    \"title\": \"Repository\",
-                    \"value\": \"${{ github.repository }}\",
-                    \"short\": true
-                  },
-                  {
-                    \"title\": \"Branch\",
-                    \"value\": \"${{ github.ref_name }}\",
-                    \"short\": true
-                  },
-                  {
-                    \"title\": \"Commit\",
-                    \"value\": \"<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.event.head_commit.message }}>\",
-                    \"short\": false
-                  },
-                  {
-                    \"title\": \"Build\",
-                    \"value\": \"<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>\",
-                    \"short\": true
-                  }
-                ],
-                \"text\": \"${COMMANDS_STATUS}\"
+                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
               }]
             }"
