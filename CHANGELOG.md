@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- FalkorDB readiness check now actually connects instead of only checking flag
+  - `get_falkordb_client()` was returning a client without calling `connect()`
+  - Added `auto_connect` parameter to `get_falkordb_client()` for lazy initialization
+  - Added `reset_falkordb_client()` helper for testing
 - SessionCommandHandler security and robustness improvements
   - Conversation ID validation to prevent path traversal attacks
   - Global exception handling in /conversations command

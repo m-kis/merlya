@@ -3,9 +3,12 @@ Tests for FalkorDB client functionality.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
-from athena_ai.knowledge.falkordb_client import get_falkordb_client
+from athena_ai.knowledge.falkordb_client import (
+    get_falkordb_client,
+    reset_falkordb_client,
+)
 from athena_ai.knowledge.graph.client import FalkorDBClient
 from athena_ai.knowledge.graph.config import FalkorDBConfig
 
@@ -409,11 +412,16 @@ class TestFalkorDBClientUtility(unittest.TestCase):
 class TestGetFalkorDBClient(unittest.TestCase):
     """Test get_falkordb_client factory."""
 
+    def setUp(self):
+        """Reset singleton before each test."""
+        reset_falkordb_client()
+
+    def tearDown(self):
+        """Reset singleton after each test."""
+        reset_falkordb_client()
+
     def test_singleton_instance(self):
         """Test factory returns singleton."""
-        import athena_ai.knowledge.falkordb_client as module
-        module._default_client = None
-
         client1 = get_falkordb_client()
         client2 = get_falkordb_client()
 
@@ -421,17 +429,83 @@ class TestGetFalkorDBClient(unittest.TestCase):
 
     def test_custom_config(self):
         """Test factory accepts custom config."""
-        import athena_ai.knowledge.falkordb_client as module
-        module._default_client = None
-
         config = FalkorDBConfig(host="custom-host", port=9999)
         client = get_falkordb_client(config)
 
         self.assertEqual(client.config.host, "custom-host")
         self.assertEqual(client.config.port, 9999)
 
-        # Reset singleton
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient.connect")
+    def test_auto_connect_true(self, mock_connect):
+        """Test auto_connect=True calls connect()."""
+        mock_connect.return_value = True
+
+        client = get_falkordb_client(auto_connect=True)
+
+        mock_connect.assert_called_once()
+
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient.connect")
+    def test_auto_connect_false(self, mock_connect):
+        """Test auto_connect=False does not call connect()."""
+        client = get_falkordb_client(auto_connect=False)
+
+        mock_connect.assert_not_called()
+
+    def test_auto_connect_skips_if_already_connected(self):
+        """Test auto_connect skips connect() if already connected."""
+        # First get without auto_connect
+        client = get_falkordb_client()
+        # Simulate already connected (both _connected and _db must be set)
+        client._connected = True
+        client._db = MagicMock()  # is_connected checks _db is not None
+
+        # Patch connect after setting up the client
+        with patch.object(client, 'connect') as mock_connect:
+            # Second call with auto_connect
+            client2 = get_falkordb_client(auto_connect=True)
+
+            # Should not call connect() since already connected
+            mock_connect.assert_not_called()
+            self.assertIs(client, client2)
+
+
+class TestResetFalkorDBClient(unittest.TestCase):
+    """Test reset_falkordb_client function."""
+
+    def test_reset_clears_singleton(self):
+        """Test reset clears the singleton instance."""
+        import athena_ai.knowledge.falkordb_client as module
+
+        # Create a client
+        client1 = get_falkordb_client()
+        self.assertIsNotNone(module._default_client)
+
+        # Reset
+        reset_falkordb_client()
+        self.assertIsNone(module._default_client)
+
+        # New client should be different
+        client2 = get_falkordb_client()
+        self.assertIsNot(client1, client2)
+
+    @patch("athena_ai.knowledge.graph.client.FalkorDBClient.disconnect")
+    def test_reset_calls_disconnect(self, mock_disconnect):
+        """Test reset calls disconnect on existing client."""
+        # Create a client
+        get_falkordb_client()
+
+        # Reset should call disconnect
+        reset_falkordb_client()
+
+        mock_disconnect.assert_called_once()
+
+    def test_reset_handles_no_client(self):
+        """Test reset handles case when no client exists."""
+        import athena_ai.knowledge.falkordb_client as module
         module._default_client = None
+
+        # Should not raise
+        reset_falkordb_client()
 
 
 if __name__ == "__main__":
