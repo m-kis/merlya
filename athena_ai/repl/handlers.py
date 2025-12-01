@@ -227,7 +227,7 @@ class CommandHandler:
         available = list(handlers.keys())
         # Add custom commands
         available.extend([f"/{name}" for name in self.repl.command_loader.list_commands()])
-        
+
         return self._suggest_command(cmd, available)
 
     def _suggest_command(self, cmd: str, available_commands: list):
@@ -237,11 +237,11 @@ class CommandHandler:
             suggestion = matches[0]
             print_warning(f"Unknown command: {cmd}")
             console.print(f"Did you mean [cyan]{suggestion}[/cyan]?")
-            
+
             # If suggestion is a known command, show its help
             # We can recursively call handle_command with the suggestion + "help" if appropriate
             # But simpler to just show help for the main command
-            
+
             # Map suggestion to handler help if possible
             # For now just showing the suggestion is a big improvement
             pass

@@ -106,7 +106,6 @@ def count_message_tokens(messages: list) -> int:
 
     for msg in messages:
         content = msg.get("content", "")
-        role = msg.get("role", "user")
 
         # Count content tokens
         total += count_tokens(content)

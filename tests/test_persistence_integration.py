@@ -8,7 +8,6 @@ Tests cover:
 - Token counting
 - Storage manager with retry mechanism
 """
-import json
 import os
 import tempfile
 import time
@@ -465,8 +464,6 @@ class TestConversationModels:
         conv = Conversation(id="test", title="Test")
         conv.add_message("user", "Hello")
         conv.add_message("assistant", "Hi there!")
-
-        original_count = conv.token_count
 
         # Manually corrupt the count
         conv.token_count = 0

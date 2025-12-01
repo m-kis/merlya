@@ -732,7 +732,7 @@ class SessionRepository:
             for action in data.get("actions", []):
                 # Try to find matching query_id
                 query_id = 0
-                for old_id, new_id in query_id_map.items():
+                for _old_id, new_id in query_id_map.items():
                     # Simple heuristic: match by timestamp proximity
                     if new_id:
                         query_id = new_id
