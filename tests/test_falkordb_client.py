@@ -3,7 +3,7 @@ Tests for FalkorDB client functionality.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from athena_ai.knowledge.falkordb_client import (
     get_falkordb_client,
@@ -440,14 +440,14 @@ class TestGetFalkorDBClient(unittest.TestCase):
         """Test auto_connect=True calls connect()."""
         mock_connect.return_value = True
 
-        client = get_falkordb_client(auto_connect=True)
+        _client = get_falkordb_client(auto_connect=True)
 
         mock_connect.assert_called_once()
 
     @patch("athena_ai.knowledge.graph.client.FalkorDBClient.connect")
     def test_auto_connect_false(self, mock_connect):
         """Test auto_connect=False does not call connect()."""
-        client = get_falkordb_client(auto_connect=False)
+        _client = get_falkordb_client(auto_connect=False)
 
         mock_connect.assert_not_called()
 
