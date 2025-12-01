@@ -3,7 +3,7 @@ Tests for AgentRegistry (OCP pattern).
 """
 import pytest
 
-from athena_ai.core.registry import AgentRegistry, get_registry
+from merlya.core.registry import AgentRegistry, get_registry
 
 
 class MockAgent:
@@ -72,7 +72,7 @@ class TestAgentRegistry:
 
     def test_get_unknown_agent_raises(self):
         """Should raise AgentError for unknown agent."""
-        from athena_ai.core.exceptions import AgentError
+        from merlya.core.exceptions import AgentError
 
         registry = AgentRegistry()
 

@@ -1,6 +1,6 @@
 # CI/CD Pipeline
 
-Documentation du pipeline CI/CD d'Athena.
+Documentation du pipeline CI/CD d'Merlya.
 
 ## Workflows GitHub Actions
 
@@ -59,10 +59,10 @@ git push --tags
 pip install ruff
 
 # Vérifier le code
-ruff check athena_ai/
+ruff check merlya/
 
 # Auto-fix les erreurs
-ruff check athena_ai/ --fix
+ruff check merlya/ --fix
 ```
 
 ### Tests
@@ -75,7 +75,7 @@ poetry install
 poetry run pytest tests/ -v --ignore=tests/test_*_manual.py
 
 # Avec coverage
-poetry run pytest tests/ -v --cov=athena_ai --cov-report=term
+poetry run pytest tests/ -v --cov=merlya --cov-report=term
 
 # Tests spécifiques
 poetry run pytest tests/test_basic.py -v
@@ -86,7 +86,7 @@ poetry run pytest -k "test_triage" -v
 
 ```bash
 pip install mypy types-paramiko types-PyYAML types-requests
-mypy athena_ai/ --ignore-missing-imports
+mypy merlya/ --ignore-missing-imports
 ```
 
 ## Structure des Tests
@@ -159,6 +159,6 @@ Configuration dans `pyproject.toml` :
 ## Badges
 
 ```markdown
-[![CI](https://github.com/m-kis/athena/actions/workflows/ci.yml/badge.svg)](https://github.com/m-kis/athena/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/m-kis/athena/branch/main/graph/badge.svg)](https://codecov.io/gh/m-kis/athena)
+[![CI](https://github.com/m-kis/merlya/actions/workflows/ci.yml/badge.svg)](https://github.com/m-kis/merlya/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/m-kis/merlya/branch/main/graph/badge.svg)](https://codecov.io/gh/m-kis/merlya)
 ```

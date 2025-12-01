@@ -4,14 +4,14 @@ Test script for Persistent Memory.
 import os
 import sys
 
-from athena_ai.memory.persistent_store import KnowledgeStore
+from merlya.memory.persistent_store import KnowledgeStore
 
 
 def test_persistence():
     print("🧪 Testing Persistent Memory...")
 
     # Use a temporary file for testing
-    test_path = "/tmp/athena_test_knowledge.json"
+    test_path = "/tmp/merlya_test_knowledge.json"
     if os.path.exists(test_path):
         os.remove(test_path)
 

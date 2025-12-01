@@ -1,8 +1,8 @@
-# Athena Architecture
+# Merlya Architecture
 
 ## Overview
 
-Athena is an AI-powered infrastructure orchestration CLI that uses natural language to manage servers, services, and infrastructure.
+Merlya is an AI-powered infrastructure orchestration CLI that uses natural language to manage servers, services, and infrastructure.
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -48,35 +48,35 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### 1. User Interface Layer
 
-#### REPL (`athena_ai/repl/`)
+#### REPL (`merlya/repl/`)
 
 - Interactive command-line interface
 - Conversation memory
 - Slash command handling
 - Rich terminal output
-- Command handlers: [commands/](athena_ai/repl/commands/)
+- Command handlers: [commands/](merlya/repl/commands/)
 
-#### CLI (`athena_ai/cli.py`)
+#### CLI (`merlya/cli.py`)
 
 - Click-based command structure
-- Single query mode (`athena ask "..."`)
+- Single query mode (`merlya ask "..."`)
 - Configuration commands
 
 ### 2. Orchestration Layer
 
-#### AutoGen Orchestrator (`athena_ai/agents/ag2_orchestrator.py`)
+#### AutoGen Orchestrator (`merlya/agents/ag2_orchestrator.py`)
 - Multi-agent coordination using AG2/AutoGen
 - Tool registration and execution
 - Streaming response handling
 
-#### Tools (`athena_ai/agents/autogen_tools.py`)
+#### Tools (`merlya/agents/autogen_tools.py`)
 - 20+ infrastructure tools
 - Host validation (anti-hallucination)
 - Hook system for extensibility
 
 ### 3. LLM Layer
 
-#### LLM Router (`athena_ai/llm/router.py`)
+#### LLM Router (`merlya/llm/router.py`)
 - Multi-provider support
 - Automatic fallback
 - Model configuration
@@ -91,25 +91,25 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### 4. Context Layer
 
-#### Context Manager (`athena_ai/context/manager.py`)
+#### Context Manager (`merlya/context/manager.py`)
 
 - Orchestrates local and remote scanning
 - Smart caching (fingerprint-based for inventory)
 - JIT (Just-In-Time) host scanning
 
-#### Local Scanner (`athena_ai/context/local_scanner/`)
+#### Local Scanner (`merlya/context/local_scanner/`)
 
 - Comprehensive local machine scanning
 - 12h TTL with SQLite persistence
 - Scans: OS, network, services, processes, resources
 
-#### On-Demand Scanner (`athena_ai/context/on_demand_scanner/`)
+#### On-Demand Scanner (`merlya/context/on_demand_scanner/`)
 
 - JIT remote host scanning (single host at a time)
 - Async with retry and rate limiting
 - Cache per scan type (basic, system, services, full)
 
-#### Host Registry (`athena_ai/context/host_registry.py`)
+#### Host Registry (`merlya/context/host_registry.py`)
 
 - Central host database
 - Fuzzy matching
@@ -117,23 +117,23 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### 5. Security Layer
 
-#### Risk Assessor (`athena_ai/security/risk_assessor.py`)
+#### Risk Assessor (`merlya/security/risk_assessor.py`)
 - Command risk classification
 - Confirmation requirements
 
-#### Permissions (`athena_ai/security/permissions.py`)
+#### Permissions (`merlya/security/permissions.py`)
 - Operation authorization
 - Audit trail
 
 ### 6. Execution Layer
 
-#### SSH Executor (`athena_ai/executors/ssh.py`)
+#### SSH Executor (`merlya/executors/ssh.py`)
 - Connection pooling
 - Jump host support
 - Timeout handling
 - Visual spinner during connection
 
-#### Action Executor (`athena_ai/executors/action_executor.py`)
+#### Action Executor (`merlya/executors/action_executor.py`)
 
 - Unified execution interface
 - Local and remote commands
@@ -141,19 +141,19 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### 7. CI/CD Integration Layer
 
-#### CI Manager (`athena_ai/ci/manager.py`)
+#### CI Manager (`merlya/ci/manager.py`)
 
 - Central CI/CD orchestration
 - Multi-platform support (GitHub Actions, GitLab CI)
 - Workflow triggering and monitoring
 
-#### CI Adapters (`athena_ai/ci/adapters/`)
+#### CI Adapters (`merlya/ci/adapters/`)
 
 - Platform-specific adapters (GitHub, GitLab)
 - Error classification and analysis
 - Learning from past failures
 
-#### CI Clients (`athena_ai/ci/clients/`)
+#### CI Clients (`merlya/ci/clients/`)
 
 - CLI-based execution (`gh`, `gitlab`)
 - API-based execution (REST clients)
@@ -161,7 +161,7 @@ Athena is an AI-powered infrastructure orchestration CLI that uses natural langu
 
 ### 8. Triage Layer
 
-#### Priority Classifier (`athena_ai/triage/`)
+#### Priority Classifier (`merlya/triage/`)
 
 - 3-tier classification: Smart (embeddings) → AI (LLM) → Signal (keywords)
 - Intent detection: QUERY, ACTION, ANALYSIS
@@ -177,7 +177,7 @@ See [TRIAGE.md](TRIAGE.md) for detailed documentation.
 
 ### 9. UX Layer
 
-#### Display Manager (`athena_ai/utils/display.py`)
+#### Display Manager (`merlya/utils/display.py`)
 
 - Centralized console output
 - Spinners for long operations
@@ -270,15 +270,15 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 OLLAMA_HOST=http://localhost:11434
 
-# Athena settings
-ATHENA_ENV=dev           # Environment
-ATHENA_DEBUG=1           # Debug mode
+# Merlya settings
+MERLYA_ENV=dev           # Environment
+MERLYA_DEBUG=1           # Debug mode
 ```
 
 ### File Structure
 
 ```text
-~/.athena/
+~/.merlya/
 ├── .env                 # Environment variables
 ├── config.yaml          # Configuration
 ├── inventory.yaml       # Custom inventory
@@ -286,14 +286,14 @@ ATHENA_DEBUG=1           # Debug mode
 ├── commands/            # Custom slash commands
 │   └── mycommand.md
 └── logs/
-    └── athena.log
+    └── merlya.log
 ```
 
 ## Extension Points
 
 ### Custom Slash Commands
 
-Create `~/.athena/commands/deploy.md`:
+Create `~/.merlya/commands/deploy.md`:
 
 ```markdown
 ---
@@ -310,7 +310,7 @@ Deploy {{$1}} to {{$2}} environment:
 
 ### Hooks
 
-Create `~/.athena/hooks.yaml`:
+Create `~/.merlya/hooks.yaml`:
 
 ```yaml
 hooks:
@@ -323,7 +323,7 @@ hooks:
 
 ### Custom Tools
 
-Register in `athena_ai/agents/autogen_tools.py`:
+Register in `merlya/agents/autogen_tools.py`:
 
 ```python
 def my_custom_tool(
@@ -363,7 +363,7 @@ Operations longer than 1 second show visual indicators:
 | Batch execution | Progress bar | `ActionExecutor.execute_batch()` |
 
 ```python
-from athena_ai.utils.display import get_display_manager
+from merlya.utils.display import get_display_manager
 
 display = get_display_manager()
 

@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock
 
-from athena_ai.knowledge.storage.models import AuditEntry, SessionRecord
-from athena_ai.knowledge.storage_manager import StorageManager
+from merlya.knowledge.storage.models import AuditEntry, SessionRecord
+from merlya.knowledge.storage_manager import StorageManager
 
 
 class TestAuditEntry(unittest.TestCase):

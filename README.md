@@ -1,4 +1,4 @@
-# Athena
+# Merlya
 
 **AI-powered infrastructure orchestration CLI** - A natural language interface for managing your infrastructure.
 
@@ -33,10 +33,10 @@ export OPENROUTER_API_KEY="sk-or-..."
 # or ANTHROPIC_API_KEY, OPENAI_API_KEY, OLLAMA_HOST
 
 # Launch interactive REPL (default)
-athena
+merlya
 
 # Or run a single query
-athena ask "list all mongo hosts"
+merlya ask "list all mongo hosts"
 ```
 
 ## Usage
@@ -44,9 +44,9 @@ athena ask "list all mongo hosts"
 ### Interactive Mode (REPL)
 
 ```bash
-$ athena
+$ merlya
 
-Athena REPL - Type /help for commands
+Merlya REPL - Type /help for commands
 
 > list mongo preprod IPs
 MongoDB Preprod hosts:
@@ -69,13 +69,13 @@ Scanning all hosts...
 
 ```bash
 # Simple query
-athena ask "what services are running on web-prod-1"
+merlya ask "what services are running on web-prod-1"
 
 # Dry-run (see plan without executing)
-athena ask "restart nginx on lb-prod-1" --dry-run
+merlya ask "restart nginx on lb-prod-1" --dry-run
 
 # Auto-confirm critical actions
-athena ask "restart mongodb" --confirm
+merlya ask "restart mongodb" --confirm
 ```
 
 ### Slash Commands
@@ -95,7 +95,7 @@ athena ask "restart mongodb" --confirm
 
 ### Custom Commands
 
-Create markdown files in `~/.athena/commands/` or `.athena/commands/`:
+Create markdown files in `~/.merlya/commands/` or `.merlya/commands/`:
 
 ```markdown
 ---
@@ -134,7 +134,7 @@ export OLLAMA_MODEL="llama3"
 
 ### SSH Configuration
 
-Athena uses your existing SSH setup:
+Merlya uses your existing SSH setup:
 
 ```ssh
 # ~/.ssh/config
@@ -149,11 +149,11 @@ Host *.prod
 
 ### Inventory Sources
 
-Athena discovers hosts from:
+Merlya discovers hosts from:
 - `/etc/hosts`
 - `~/.ssh/config`
 - SSH scanning
-- Custom inventory files (`~/.athena/inventory.yaml`)
+- Custom inventory files (`~/.merlya/inventory.yaml`)
 
 ## Architecture
 
@@ -201,7 +201,7 @@ All commands are validated against the host registry. Operations on unknown/hall
 
 ### Audit Trail
 
-All actions logged to `~/.athena/athena.log`
+All actions logged to `~/.merlya/merlya.log`
 
 ## Optional Features
 
@@ -214,13 +214,13 @@ pip install ".[knowledge]"
 # Start FalkorDB
 docker run -p 6379:6379 falkordb/falkordb
 
-# Enable in Athena
+# Enable in Merlya
 export FALKORDB_HOST="localhost"
 ```
 
 ### Hooks
 
-Create `~/.athena/hooks.yaml` to intercept tool executions:
+Create `~/.merlya/hooks.yaml` to intercept tool executions:
 
 ```yaml
 hooks:
@@ -228,7 +228,7 @@ hooks:
     - name: audit
       action: log
       config:
-        file: /var/log/athena-audit.log
+        file: /var/log/merlya-audit.log
 ```
 
 ## Development
@@ -241,9 +241,15 @@ poetry install
 pytest
 
 # Type checking
-mypy athena_ai
+mypy merlya
 ```
 
 ## License
 
-MIT - See [LICENSE](LICENSE)
+**MIT License with Commons Clause** - See [LICENSE](LICENSE)
+
+This software is free to use for personal, educational, and community purposes.
+
+**Commercial use, sale, for-profit redistribution, or integration into a paid product/service is strictly prohibited without written permission from the author, Cédric Merlin and M-KIS.**
+
+For commercial licensing inquiries, please contact the author.

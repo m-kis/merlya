@@ -1,10 +1,10 @@
 # Secure Credential Management
 
-Athena handles credentials securely with multiple flexible options for SSH keys, database passwords, and API tokens.
+Merlya handles credentials securely with multiple flexible options for SSH keys, database passwords, and API tokens.
 
 ## Variable Types
 
-Athena supports three types of variables:
+Merlya supports three types of variables:
 
 | Type | Persistence | Use Case |
 |------|-------------|----------|
@@ -46,7 +46,7 @@ Override the global key for specific hosts:
 
 ### Key Resolution Priority
 
-When connecting to a host, Athena resolves SSH keys in this order:
+When connecting to a host, Merlya resolves SSH keys in this order:
 
 1. **Host-specific key** from inventory metadata (`ssh_key_path`)
 2. **Global key** set via `/inventory ssh-key set`
@@ -70,7 +70,7 @@ SSH key passphrases are:
 
 ### Security Features
 
-- **Path validation**: Keys must be in `~/.ssh`, `/etc/ssh`, or `ATHENA_SSH_KEY_DIR`
+- **Path validation**: Keys must be in `~/.ssh`, `/etc/ssh`, or `MERLYA_SSH_KEY_DIR`
 - **Permission check**: Warns if key permissions are not 0600/0400
 - **Hostname validation**: RFC 1123 compliant hostnames and IP addresses
 - **Sanitized logging**: Full paths never appear in logs
@@ -100,12 +100,12 @@ Include credentials directly in your natural language query:
 
 ### Environment Variables
 
-For automation, set credentials before starting Athena:
+For automation, set credentials before starting Merlya:
 
 ```bash
 export MONGODB_USER="admin"
 export MONGODB_PASS="your_password"
-python -m athena_ai.cli repl
+python -m merlya.cli repl
 ```
 
 ### Interactive Prompts
@@ -166,8 +166,8 @@ SSH passphrases remain valid until REPL exit.
 
 ## Custom SSH Key Directory
 
-Set the `ATHENA_SSH_KEY_DIR` environment variable to allow SSH keys from additional directories:
+Set the `MERLYA_SSH_KEY_DIR` environment variable to allow SSH keys from additional directories:
 
 ```bash
-export ATHENA_SSH_KEY_DIR=/opt/custom/keys
+export MERLYA_SSH_KEY_DIR=/opt/custom/keys
 ```

@@ -9,7 +9,7 @@ class TestRiskAssessor:
 
     @pytest.fixture
     def assessor(self):
-        from athena_ai.security.risk_assessor import RiskAssessor
+        from merlya.security.risk_assessor import RiskAssessor
         return RiskAssessor()
 
     def test_low_risk_commands(self, assessor):
@@ -96,7 +96,7 @@ class TestRequiresConfirmation:
 
     @pytest.fixture
     def assessor(self):
-        from athena_ai.security.risk_assessor import RiskAssessor
+        from merlya.security.risk_assessor import RiskAssessor
         return RiskAssessor()
 
     def test_low_risk_no_confirmation(self, assessor):
@@ -117,7 +117,7 @@ class TestRiskLevels:
 
     def test_risk_levels_structure(self):
         """Should have correct risk levels structure."""
-        from athena_ai.security.risk_assessor import RiskAssessor
+        from merlya.security.risk_assessor import RiskAssessor
 
         assessor = RiskAssessor()
         assert "low" in assessor.RISK_LEVELS
@@ -126,7 +126,7 @@ class TestRiskLevels:
 
     def test_risk_levels_not_empty(self):
         """Each risk level should have patterns."""
-        from athena_ai.security.risk_assessor import RiskAssessor
+        from merlya.security.risk_assessor import RiskAssessor
 
         assessor = RiskAssessor()
         for level, patterns in assessor.RISK_LEVELS.items():

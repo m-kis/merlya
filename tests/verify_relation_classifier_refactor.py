@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 
 # Import the class to be refactored (will need to update import after refactor)
 try:
-    from athena_ai.inventory.relation_classifier import HostRelationClassifier
+    from merlya.inventory.relation_classifier import HostRelationClassifier
 except ImportError:
     # Fallback for after refactor if package structure changes
-    from athena_ai.inventory.relation_classifier.classifier import HostRelationClassifier
+    from merlya.inventory.relation_classifier.classifier import HostRelationClassifier
 
 class TestHostRelationClassifier(unittest.TestCase):
     def setUp(self):

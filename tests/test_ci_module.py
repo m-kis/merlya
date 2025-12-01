@@ -15,7 +15,7 @@ class TestCIErrorType:
 
     def test_error_types_exist(self):
         """Verify all expected error types exist."""
-        from athena_ai.ci.models import CIErrorType
+        from merlya.ci.models import CIErrorType
 
         expected = [
             "TEST_FAILURE",
@@ -43,7 +43,7 @@ class TestCIPlatformType:
 
     def test_platform_types_exist(self):
         """Verify all expected platform types exist."""
-        from athena_ai.ci.protocols import CIPlatformType
+        from merlya.ci.protocols import CIPlatformType
 
         expected = ["GITHUB", "GITLAB", "JENKINS", "CIRCLECI"]
 
@@ -56,7 +56,7 @@ class TestRunStatus:
 
     def test_status_from_github(self):
         """Test GitHub status parsing."""
-        from athena_ai.ci.protocols import RunStatus
+        from merlya.ci.protocols import RunStatus
 
         assert RunStatus.from_github("completed", "success") == RunStatus.SUCCESS
         assert RunStatus.from_github("completed", "failure") == RunStatus.FAILURE
@@ -65,7 +65,7 @@ class TestRunStatus:
 
     def test_status_from_gitlab(self):
         """Test GitLab status parsing."""
-        from athena_ai.ci.protocols import RunStatus
+        from merlya.ci.protocols import RunStatus
 
         assert RunStatus.from_gitlab("success") == RunStatus.SUCCESS
         assert RunStatus.from_gitlab("failed") == RunStatus.FAILURE
@@ -78,7 +78,7 @@ class TestCIConfig:
 
     def test_github_factory(self):
         """Test GitHub config factory method."""
-        from athena_ai.ci.config import CIConfig
+        from merlya.ci.config import CIConfig
 
         config = CIConfig.for_github(repo_owner="test", repo_name="repo")
 
@@ -90,7 +90,7 @@ class TestCIConfig:
 
     def test_gitlab_factory(self):
         """Test GitLab config factory method."""
-        from athena_ai.ci.config import CIConfig
+        from merlya.ci.config import CIConfig
 
         config = CIConfig.for_gitlab(project_path="group/project")
 
@@ -104,7 +104,7 @@ class TestCIPlatformRegistry:
 
     def test_singleton_pattern(self):
         """Test that registry is a singleton."""
-        from athena_ai.ci.registry import CIPlatformRegistry
+        from merlya.ci.registry import CIPlatformRegistry
 
         # Reset for clean test
         CIPlatformRegistry.reset_instance()
@@ -119,7 +119,7 @@ class TestCIPlatformRegistry:
 
     def test_register_and_get(self):
         """Test registering and retrieving platforms."""
-        from athena_ai.ci.registry import CIPlatformRegistry
+        from merlya.ci.registry import CIPlatformRegistry
 
         CIPlatformRegistry.reset_instance()
         registry = CIPlatformRegistry()
@@ -142,7 +142,7 @@ class TestCIPlatformRegistry:
 
     def test_decorator_registration(self):
         """Test decorator-based registration."""
-        from athena_ai.ci.registry import CIPlatformRegistry
+        from merlya.ci.registry import CIPlatformRegistry
 
         CIPlatformRegistry.reset_instance()
         registry = CIPlatformRegistry()
@@ -162,7 +162,7 @@ class TestCLIClient:
 
     def test_command_templates_exist(self):
         """Verify command templates are defined."""
-        from athena_ai.ci.clients.cli_client import CLIClient
+        from merlya.ci.clients.cli_client import CLIClient
 
         assert "github" in CLIClient.COMMAND_TEMPLATES
         assert "gitlab" in CLIClient.COMMAND_TEMPLATES
@@ -174,7 +174,7 @@ class TestCLIClient:
 
     def test_build_command(self):
         """Test command building."""
-        from athena_ai.ci.clients.cli_client import CLIClient
+        from merlya.ci.clients.cli_client import CLIClient
 
         client = CLIClient(platform="github", repo_slug="owner/repo")
 
@@ -189,7 +189,7 @@ class TestCLIClient:
     @patch("shutil.which")
     def test_is_available(self, mock_which):
         """Test availability check."""
-        from athena_ai.ci.clients.cli_client import CLIClient
+        from merlya.ci.clients.cli_client import CLIClient
 
         mock_which.return_value = "/usr/bin/gh"
         client = CLIClient(platform="github")
@@ -205,8 +205,8 @@ class TestCIErrorClassifier:
 
     def test_classify_fallback(self):
         """Test fallback classification without embeddings."""
-        from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
-        from athena_ai.ci.models import CIErrorType
+        from merlya.ci.analysis.error_classifier import CIErrorClassifier
+        from merlya.ci.models import CIErrorType
 
         classifier = CIErrorClassifier()
 
@@ -222,8 +222,8 @@ class TestCIErrorClassifier:
 
     def test_get_suggestions(self):
         """Test that suggestions are returned for each error type."""
-        from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
-        from athena_ai.ci.models import CIErrorType
+        from merlya.ci.analysis.error_classifier import CIErrorClassifier
+        from merlya.ci.models import CIErrorType
 
         classifier = CIErrorClassifier()
 
@@ -234,8 +234,8 @@ class TestCIErrorClassifier:
 
     def test_get_suggestions_context_aware(self):
         """Test that context-aware suggestions are generated from error_text."""
-        from athena_ai.ci.analysis.error_classifier import CIErrorClassifier
-        from athena_ai.ci.models import CIErrorType
+        from merlya.ci.analysis.error_classifier import CIErrorClassifier
+        from merlya.ci.models import CIErrorType
 
         classifier = CIErrorClassifier()
 
@@ -285,14 +285,14 @@ class TestCIPlatformManager:
 
     def test_config_patterns(self):
         """Verify config detection patterns are defined."""
-        from athena_ai.ci.manager import CIPlatformManager
+        from merlya.ci.manager import CIPlatformManager
 
         assert "github" in CIPlatformManager.CONFIG_PATTERNS
         assert "gitlab" in CIPlatformManager.CONFIG_PATTERNS
 
     def test_remote_patterns(self):
         """Verify git remote patterns are defined."""
-        from athena_ai.ci.manager import CIPlatformManager
+        from merlya.ci.manager import CIPlatformManager
 
         assert "github" in CIPlatformManager.REMOTE_PATTERNS
         assert "gitlab" in CIPlatformManager.REMOTE_PATTERNS
@@ -300,8 +300,8 @@ class TestCIPlatformManager:
     @patch("subprocess.run")
     def test_detect_from_git_remote(self, mock_run):
         """Test platform detection from git remote."""
-        from athena_ai.ci.manager import CIPlatformManager
-        from athena_ai.ci.protocols import CIPlatformType
+        from merlya.ci.manager import CIPlatformManager
+        from merlya.ci.protocols import CIPlatformType
 
         # Mock git remote
         mock_run.return_value = MagicMock(
@@ -322,8 +322,8 @@ class TestCILearningEngine:
 
     def test_extract_error_text(self):
         """Test error text extraction from logs."""
-        from athena_ai.ci.learning.engine import CILearningEngine
-        from athena_ai.ci.models import RunLogs
+        from merlya.ci.learning.engine import CILearningEngine
+        from merlya.ci.models import RunLogs
 
         engine = CILearningEngine()
 
@@ -342,8 +342,8 @@ class TestModels:
 
     def test_run_properties(self):
         """Test Run dataclass properties."""
-        from athena_ai.ci.models import Job, Run
-        from athena_ai.ci.protocols import RunStatus
+        from merlya.ci.models import Job, Run
+        from merlya.ci.protocols import RunStatus
 
         run = Run(
             id="123",
@@ -363,7 +363,7 @@ class TestModels:
 
     def test_failure_analysis_creation(self):
         """Test FailureAnalysis creation."""
-        from athena_ai.ci.models import CIErrorType, FailureAnalysis
+        from merlya.ci.models import CIErrorType, FailureAnalysis
 
         analysis = FailureAnalysis(
             run_id="123",
@@ -385,8 +385,8 @@ class TestGitHubCIAdapter:
 
     def test_adapter_initialization(self):
         """Test adapter can be initialized."""
-        from athena_ai.ci.adapters.github import GitHubCIAdapter
-        from athena_ai.ci.config import CIConfig
+        from merlya.ci.adapters.github import GitHubCIAdapter
+        from merlya.ci.config import CIConfig
 
         config = CIConfig.for_github()
         adapter = GitHubCIAdapter(config=config)
@@ -394,11 +394,11 @@ class TestGitHubCIAdapter:
         assert adapter.platform_type.value == "github"
         assert "cli" in adapter._clients
 
-    @patch("athena_ai.ci.clients.cli_client.CLIClient.is_available")
-    @patch("athena_ai.ci.clients.cli_client.CLIClient.execute")
+    @patch("merlya.ci.clients.cli_client.CLIClient.is_available")
+    @patch("merlya.ci.clients.cli_client.CLIClient.execute")
     def test_list_workflows(self, mock_execute, mock_available):
         """Test listing workflows."""
-        from athena_ai.ci.adapters.github import GitHubCIAdapter
+        from merlya.ci.adapters.github import GitHubCIAdapter
 
         mock_available.return_value = True
         mock_execute.return_value = {
@@ -420,7 +420,7 @@ class TestSecurityValidation:
 
     def test_validate_id_rejects_injection(self):
         """Test that validate_id rejects command injection attempts."""
-        from athena_ai.ci.clients.cli_client import validate_id
+        from merlya.ci.clients.cli_client import validate_id
 
         # Should reject shell metacharacters
         injection_attempts = [
@@ -441,7 +441,7 @@ class TestSecurityValidation:
 
     def test_validate_id_accepts_valid(self):
         """Test that validate_id accepts valid IDs."""
-        from athena_ai.ci.clients.cli_client import validate_id
+        from merlya.ci.clients.cli_client import validate_id
 
         valid_ids = [
             "12345",
@@ -457,7 +457,7 @@ class TestSecurityValidation:
 
     def test_validate_id_rejects_too_long(self):
         """Test that validate_id rejects overly long inputs."""
-        from athena_ai.ci.clients.cli_client import MAX_ID_LENGTH, validate_id
+        from merlya.ci.clients.cli_client import MAX_ID_LENGTH, validate_id
 
         long_id = "a" * (MAX_ID_LENGTH + 1)
         with pytest.raises(ValueError, match="too long"):
@@ -465,7 +465,7 @@ class TestSecurityValidation:
 
     def test_validate_ref_rejects_injection(self):
         """Test that validate_ref rejects command injection."""
-        from athena_ai.ci.clients.cli_client import validate_ref
+        from merlya.ci.clients.cli_client import validate_ref
 
         injection_attempts = [
             "main; rm -rf /",
@@ -479,7 +479,7 @@ class TestSecurityValidation:
 
     def test_validate_ref_accepts_valid(self):
         """Test that validate_ref accepts valid git refs."""
-        from athena_ai.ci.clients.cli_client import validate_ref
+        from merlya.ci.clients.cli_client import validate_ref
 
         valid_refs = [
             "main",
@@ -495,7 +495,7 @@ class TestSecurityValidation:
 
     def test_validate_repo_slug_rejects_injection(self):
         """Test that validate_repo_slug rejects invalid input."""
-        from athena_ai.ci.clients.cli_client import validate_repo_slug
+        from merlya.ci.clients.cli_client import validate_repo_slug
 
         invalid_slugs = [
             "owner/repo; whoami",
@@ -510,7 +510,7 @@ class TestSecurityValidation:
 
     def test_validate_repo_slug_accepts_valid(self):
         """Test that validate_repo_slug accepts valid slugs."""
-        from athena_ai.ci.clients.cli_client import validate_repo_slug
+        from merlya.ci.clients.cli_client import validate_repo_slug
 
         valid_slugs = [
             "owner/repo",
@@ -524,7 +524,7 @@ class TestSecurityValidation:
 
     def test_validate_limit_rejects_invalid(self):
         """Test that validate_limit rejects invalid values."""
-        from athena_ai.ci.clients.cli_client import validate_limit
+        from merlya.ci.clients.cli_client import validate_limit
 
         invalid_limits = [0, -1, 1001, "abc", None, [1, 2]]
 
@@ -534,7 +534,7 @@ class TestSecurityValidation:
 
     def test_validate_limit_accepts_valid(self):
         """Test that validate_limit accepts valid values."""
-        from athena_ai.ci.clients.cli_client import validate_limit
+        from merlya.ci.clients.cli_client import validate_limit
 
         assert validate_limit(1) == 1
         assert validate_limit(100) == 100
@@ -543,7 +543,7 @@ class TestSecurityValidation:
 
     def test_sensitive_data_redaction(self):
         """Test that sensitive data is properly redacted."""
-        from athena_ai.ci.clients.base import BaseCIClient
+        from merlya.ci.clients.base import BaseCIClient
 
         # Create a concrete implementation for testing
         class TestClient(BaseCIClient):
@@ -585,7 +585,7 @@ class TestSecurityValidation:
         """Test that CLIClient uses shell=False for subprocess."""
         from unittest.mock import MagicMock, patch
 
-        from athena_ai.ci.clients.cli_client import CLIClient
+        from merlya.ci.clients.cli_client import CLIClient
 
         client = CLIClient(platform="github", repo_slug="owner/repo")
 
@@ -613,9 +613,9 @@ class TestResourceLimits:
 
     def test_pending_incidents_limit(self):
         """Test that pending incidents are limited."""
-        from athena_ai.ci.learning.memory_router import CIMemoryRouter
-        from athena_ai.ci.models import CIErrorType, FailureAnalysis, Run
-        from athena_ai.ci.protocols import RunStatus
+        from merlya.ci.learning.memory_router import CIMemoryRouter
+        from merlya.ci.models import CIErrorType, FailureAnalysis, Run
+        from merlya.ci.protocols import RunStatus
 
         router = CIMemoryRouter(max_pending=5)
 
@@ -642,7 +642,7 @@ class TestResourceLimits:
         import threading
         import time
 
-        from athena_ai.ci.registry import CIPlatformRegistry
+        from merlya.ci.registry import CIPlatformRegistry
 
         CIPlatformRegistry.reset_instance()
         registry = CIPlatformRegistry()

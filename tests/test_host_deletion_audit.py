@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from athena_ai.memory.persistence.inventory_repository import InventoryRepository
+from merlya.memory.persistence.inventory_repository import InventoryRepository
 
 
 @pytest.fixture

@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for Athena tests.
+Pytest configuration and fixtures for Merlya tests.
 """
 import os
 from unittest.mock import MagicMock
@@ -39,7 +39,7 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture
 def mock_ssh_manager(mocker):
     """Mock SSH manager for unit tests."""
-    mock = mocker.patch("athena_ai.executors.ssh.SSHManager")
+    mock = mocker.patch("merlya.executors.ssh.SSHManager")
     mock.return_value.execute.return_value = (0, "success", "")
     return mock
 
@@ -82,17 +82,17 @@ def mock_console():
 
 
 @pytest.fixture
-def temp_athena_dir(tmp_path):
-    """Create temporary ~/.athena directory."""
-    athena_dir = tmp_path / ".athena"
-    athena_dir.mkdir()
-    return athena_dir
+def temp_merlya_dir(tmp_path):
+    """Create temporary ~/.merlya directory."""
+    merlya_dir = tmp_path / ".merlya"
+    merlya_dir.mkdir()
+    return merlya_dir
 
 
 @pytest.fixture
 def mock_tool_context(mock_console):
     """Provide a mock ToolContext."""
-    from athena_ai.tools.base import ToolContext
+    from merlya.tools.base import ToolContext
 
     return ToolContext(
         executor=MagicMock(),

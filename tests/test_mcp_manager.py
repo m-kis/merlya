@@ -12,7 +12,7 @@ class TestMCPManager:
     @pytest.fixture
     def temp_config_dir(self, tmp_path):
         """Create temporary config directory."""
-        config_dir = tmp_path / ".athena"
+        config_dir = tmp_path / ".merlya"
         config_dir.mkdir()
         return config_dir
 
@@ -20,7 +20,7 @@ class TestMCPManager:
     def manager(self, temp_config_dir, monkeypatch):
         """Create MCPManager with temporary config."""
         monkeypatch.setattr(Path, "home", lambda: temp_config_dir.parent)
-        from athena_ai.mcp.manager import MCPManager
+        from merlya.mcp.manager import MCPManager
         return MCPManager()
 
     def test_create_manager(self, manager):
@@ -127,10 +127,10 @@ class TestMCPReference:
     @pytest.fixture
     def manager(self, tmp_path, monkeypatch):
         """Create MCPManager with temporary config."""
-        config_dir = tmp_path / ".athena"
+        config_dir = tmp_path / ".merlya"
         config_dir.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        from athena_ai.mcp.manager import MCPManager
+        from merlya.mcp.manager import MCPManager
         return MCPManager()
 
     def test_parse_mcp_reference(self, manager):
@@ -168,10 +168,10 @@ class TestExampleConfigs:
     @pytest.fixture
     def manager(self, tmp_path, monkeypatch):
         """Create MCPManager with temporary config."""
-        config_dir = tmp_path / ".athena"
+        config_dir = tmp_path / ".merlya"
         config_dir.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        from athena_ai.mcp.manager import MCPManager
+        from merlya.mcp.manager import MCPManager
         return MCPManager()
 
     def test_get_example_configs(self, manager):
@@ -199,10 +199,10 @@ class TestPersistence:
 
     def test_configs_persisted(self, tmp_path, monkeypatch):
         """Should persist configs to disk."""
-        tmp_path / ".athena"
+        tmp_path / ".merlya"
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        from athena_ai.mcp.manager import MCPManager
+        from merlya.mcp.manager import MCPManager
 
         # Create and add server
         manager1 = MCPManager()
@@ -214,14 +214,14 @@ class TestPersistence:
 
     def test_load_corrupted_config(self, tmp_path, monkeypatch):
         """Should handle corrupted config file."""
-        config_dir = tmp_path / ".athena"
+        config_dir = tmp_path / ".merlya"
         config_dir.mkdir()
         config_file = config_dir / "mcp_servers.json"
         config_file.write_text("invalid json{{{")
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        from athena_ai.mcp.manager import MCPManager
+        from merlya.mcp.manager import MCPManager
 
         # Should not raise, should have empty servers
         manager = MCPManager()

@@ -8,7 +8,7 @@ import sys
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.inventory.parser import get_inventory_parser
+from merlya.inventory.parser import get_inventory_parser
 
 
 def verify_parser():

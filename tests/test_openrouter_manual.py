@@ -1,6 +1,6 @@
 import os
 
-from athena_ai.llm.router import LLMRouter
+from merlya.llm.router import LLMRouter
 
 
 def test_openrouter_init():

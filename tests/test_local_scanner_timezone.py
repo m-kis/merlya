@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from athena_ai.context.local_scanner.scanner import LocalScanner
+from merlya.context.local_scanner.scanner import LocalScanner
 
 
 class TestLocalScannerTimezoneHandling:
@@ -54,7 +54,7 @@ class TestLocalScannerTimezoneHandling:
 
         # With 12h TTL, cache should be expired (24h > 12h)
         with patch.object(scanner, "scan_all") as mock_scan:
-            from athena_ai.context.local_scanner.models import LocalContext
+            from merlya.context.local_scanner.models import LocalContext
             mock_scan.return_value = LocalContext()
             scanner.get_or_scan(ttl_hours=12)
             # scan_all SHOULD be called since cache is expired
@@ -80,7 +80,7 @@ class TestLocalScannerTimezoneHandling:
         scanner = LocalScanner(mock_repo)
 
         # Mock get_local_timezone to return EST
-        with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+        with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
             mock_tz.return_value = est_tz
 
             with patch.object(scanner, "scan_all") as mock_scan:
@@ -114,7 +114,7 @@ class TestLocalScannerTimezoneHandling:
 
         scanner = LocalScanner(mock_repo)
 
-        with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+        with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
             mock_tz.return_value = est_tz
             with patch.object(scanner, "scan_all") as mock_scan:
                 mock_scan.return_value = MagicMock(to_dict=lambda: {})
@@ -133,10 +133,10 @@ class TestLocalScannerTimezoneHandling:
 
         scanner2 = LocalScanner(mock_repo2)
 
-        with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+        with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
             mock_tz.return_value = timezone.utc  # Wrong: treating as UTC
             with patch.object(scanner2, "scan_all") as mock_scan:
-                from athena_ai.context.local_scanner.models import LocalContext
+                from merlya.context.local_scanner.models import LocalContext
                 mock_scan.return_value = LocalContext()
                 scanner2.get_or_scan(ttl_hours=12)
                 # With UTC assumption, age appears ~15h, so cache is expired
@@ -159,14 +159,14 @@ class TestLocalScannerTimezoneHandling:
         # Capture logs by enabling loguru sink to stderr
         from io import StringIO
 
-        from athena_ai.utils.logger import logger
+        from merlya.utils.logger import logger
 
         # Use a custom sink to capture log output
         log_output = StringIO()
         handler_id = logger.add(log_output, level="DEBUG", format="{message}")
 
         try:
-            with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+            with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
                 mock_tz.return_value = timezone.utc
                 with patch.object(scanner, "scan_all") as mock_scan:
                     mock_scan.return_value = MagicMock(to_dict=lambda: {})
@@ -205,7 +205,7 @@ class TestLocalScannerTimezoneHandling:
 
             scanner = LocalScanner(mock_repo)
 
-            with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+            with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
                 mock_tz.return_value = tz
                 with patch.object(scanner, "scan_all") as mock_scan:
                     mock_scan.return_value = MagicMock(to_dict=lambda: {})
@@ -233,7 +233,7 @@ class TestLocalScannerTimezoneHandling:
         scanner = LocalScanner(mock_repo)
 
         # With correct JST interpretation, should be ~2h old
-        with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+        with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
             mock_tz.return_value = jst_tz
             with patch.object(scanner, "scan_all") as mock_scan:
                 mock_scan.return_value = MagicMock(to_dict=lambda: {})
@@ -251,7 +251,7 @@ class TestLocalScannerTimezoneHandling:
 
         scanner2 = LocalScanner(mock_repo2)
 
-        with patch("athena_ai.context.local_scanner.scanner.get_local_timezone") as mock_tz:
+        with patch("merlya.context.local_scanner.scanner.get_local_timezone") as mock_tz:
             mock_tz.return_value = timezone.utc  # Wrong timezone
             with patch.object(scanner2, "scan_all") as mock_scan:
                 mock_scan.return_value = MagicMock(to_dict=lambda: {})
@@ -268,9 +268,9 @@ class TestGetLocalTimezoneFunction:
     def test_returns_utc_by_default_when_local_unavailable(self):
         """Test fallback to UTC when local timezone can't be determined."""
 
-        from athena_ai.utils.config import get_local_timezone
+        from merlya.utils.config import get_local_timezone
 
-        with patch("athena_ai.utils.config.ConfigManager") as mock_config_cls:
+        with patch("merlya.utils.config.ConfigManager") as mock_config_cls:
             mock_config = MagicMock()
             mock_config.get.return_value = "local"
             mock_config_cls.return_value = mock_config
@@ -290,9 +290,9 @@ class TestGetLocalTimezoneFunction:
 
     def test_returns_configured_timezone(self):
         """Test that configured IANA timezone is returned."""
-        from athena_ai.utils.config import get_local_timezone
+        from merlya.utils.config import get_local_timezone
 
-        with patch("athena_ai.utils.config.ConfigManager") as mock_config_cls:
+        with patch("merlya.utils.config.ConfigManager") as mock_config_cls:
             mock_config = MagicMock()
             mock_config.get.return_value = "America/New_York"
             mock_config_cls.return_value = mock_config
@@ -302,9 +302,9 @@ class TestGetLocalTimezoneFunction:
 
     def test_invalid_timezone_falls_back_to_utc(self):
         """Test that invalid timezone name falls back to UTC."""
-        from athena_ai.utils.config import get_local_timezone
+        from merlya.utils.config import get_local_timezone
 
-        with patch("athena_ai.utils.config.ConfigManager") as mock_config_cls:
+        with patch("merlya.utils.config.ConfigManager") as mock_config_cls:
             mock_config = MagicMock()
             mock_config.get.return_value = "Invalid/Timezone"
             mock_config_cls.return_value = mock_config
@@ -319,7 +319,7 @@ class TestConfigManagerTimezone:
 
     def test_local_timezone_property_default(self):
         """Test that local_timezone property returns default value."""
-        from athena_ai.utils.config import DEFAULT_LOCAL_TIMEZONE, ConfigManager
+        from merlya.utils.config import DEFAULT_LOCAL_TIMEZONE, ConfigManager
 
         with patch.object(ConfigManager, "_load_config", return_value={}):
             config = ConfigManager()
@@ -327,7 +327,7 @@ class TestConfigManagerTimezone:
 
     def test_local_timezone_setter_valid(self):
         """Test setting a valid IANA timezone."""
-        from athena_ai.utils.config import ConfigManager
+        from merlya.utils.config import ConfigManager
 
         with patch.object(ConfigManager, "_load_config", return_value={}):
             with patch.object(ConfigManager, "_save_config"):
@@ -337,7 +337,7 @@ class TestConfigManagerTimezone:
 
     def test_local_timezone_setter_local(self):
         """Test setting 'local' timezone."""
-        from athena_ai.utils.config import ConfigManager
+        from merlya.utils.config import ConfigManager
 
         with patch.object(ConfigManager, "_load_config", return_value={}):
             with patch.object(ConfigManager, "_save_config"):
@@ -347,7 +347,7 @@ class TestConfigManagerTimezone:
 
     def test_local_timezone_setter_invalid(self):
         """Test that invalid timezone raises ValueError."""
-        from athena_ai.utils.config import ConfigManager
+        from merlya.utils.config import ConfigManager
 
         with patch.object(ConfigManager, "_load_config", return_value={}):
             config = ConfigManager()

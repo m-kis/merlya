@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from athena_ai.security.credentials import CredentialManager, VariableType
-from athena_ai.security.ssh_credentials import (
+from merlya.security.credentials import CredentialManager, VariableType
+from merlya.security.ssh_credentials import (
     sanitize_path_for_log,
     validate_hostname,
     validate_ssh_key_path,
@@ -111,7 +111,7 @@ class TestKeyNeedsPassphrase:
         """Test: Unencrypted key should not need passphrase."""
         # Mock the path validation to allow temp files for testing
         with patch(
-            'athena_ai.security.ssh_credentials.validate_ssh_key_path',
+            'merlya.security.ssh_credentials.validate_ssh_key_path',
             return_value=(True, mock_ssh_key, None)
         ):
             # Also need to patch paramiko to avoid actual key loading
@@ -122,7 +122,7 @@ class TestKeyNeedsPassphrase:
         """Test: Encrypted key should need passphrase."""
         # Mock path validation to allow temp files, then check content-based detection
         with patch(
-            'athena_ai.security.ssh_credentials.validate_ssh_key_path',
+            'merlya.security.ssh_credentials.validate_ssh_key_path',
             return_value=(True, mock_encrypted_ssh_key, None)
         ):
             # Mock paramiko ImportError to force content-based detection
@@ -130,7 +130,7 @@ class TestKeyNeedsPassphrase:
                 # Re-import to use fallback
                 import importlib
 
-                import athena_ai.security.ssh_credentials as ssh_creds
+                import merlya.security.ssh_credentials as ssh_creds
                 importlib.reload(ssh_creds)
 
                 # Read file content check
@@ -159,7 +159,7 @@ class TestGlobalKeyManagement:
 
         # Mock path validation to allow the temp file
         with patch(
-            'athena_ai.security.ssh_credentials.validate_ssh_key_path',
+            'merlya.security.ssh_credentials.validate_ssh_key_path',
             return_value=(True, mock_ssh_key, None)
         ):
             default_key = credential_manager.get_default_key()
@@ -226,12 +226,12 @@ class TestResolveSSHForHost:
 
         # Mock path validation to allow temp file
         with patch(
-            'athena_ai.security.ssh_credentials.validate_ssh_key_path',
+            'merlya.security.ssh_credentials.validate_ssh_key_path',
             return_value=(True, mock_ssh_key, None)
         ):
             # Mock inventory to return no host-specific key
             with patch(
-                'athena_ai.memory.persistence.inventory_repository.get_inventory_repository'
+                'merlya.memory.persistence.inventory_repository.get_inventory_repository'
             ) as mock_repo:
                 mock_repo.return_value.get_host_by_name.return_value = None
 
@@ -255,12 +255,12 @@ class TestResolveSSHForHost:
             return (True, path, None)
 
         with patch(
-            'athena_ai.security.ssh_credentials.validate_ssh_key_path',
+            'merlya.security.ssh_credentials.validate_ssh_key_path',
             side_effect=mock_validate
         ):
             # Mock inventory to return host with specific key
             with patch(
-                'athena_ai.memory.persistence.inventory_repository.get_inventory_repository'
+                'merlya.memory.persistence.inventory_repository.get_inventory_repository'
             ) as mock_repo:
                 mock_repo.return_value.get_host_by_name.return_value = {
                     "hostname": "web-prod-01",
@@ -281,7 +281,7 @@ class TestResolveSSHForHost:
         """Test: Returns None when no key is found."""
         # Mock inventory to return nothing
         with patch(
-            'athena_ai.memory.persistence.inventory_repository.get_inventory_repository'
+            'merlya.memory.persistence.inventory_repository.get_inventory_repository'
         ) as mock_repo:
             mock_repo.return_value.get_host_by_name.return_value = None
 
@@ -363,11 +363,11 @@ class TestSSHKeyIntegration:
 
         # 3. Mock path validation and resolve for any host
         with patch(
-            'athena_ai.security.ssh_credentials.validate_ssh_key_path',
+            'merlya.security.ssh_credentials.validate_ssh_key_path',
             return_value=(True, mock_encrypted_ssh_key, None)
         ):
             with patch(
-                'athena_ai.memory.persistence.inventory_repository.get_inventory_repository'
+                'merlya.memory.persistence.inventory_repository.get_inventory_repository'
             ) as mock_repo:
                 mock_repo.return_value.get_host_by_name.return_value = None
 

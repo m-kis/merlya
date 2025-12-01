@@ -6,7 +6,7 @@ import pytest
 # Skip module if boto3 not installed
 pytest.importorskip("boto3", reason="boto3 not installed")
 
-from athena_ai.agents.cloud import CloudAgent
+from merlya.agents.cloud import CloudAgent
 
 
 class TestCloudAgent(unittest.TestCase):

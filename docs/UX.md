@@ -1,10 +1,10 @@
-# Athena UX - Visual Feedback System
+# Merlya UX - Visual Feedback System
 
 This document describes the visual feedback system that provides real-time status updates during long-running operations.
 
 ## Overview
 
-Athena provides visual feedback for operations that take more than 1 second, ensuring the user always knows what's happening. This includes:
+Merlya provides visual feedback for operations that take more than 1 second, ensuring the user always knows what's happening. This includes:
 
 - **Spinners** for single operations (LLM calls, SSH connections)
 - **Progress bars** for batch operations (multi-host scans, batch execution)
@@ -16,7 +16,7 @@ The `DisplayManager` is the central component for all visual feedback. It's a si
 ### Basic Usage
 
 ```python
-from athena_ai.utils.display import get_display_manager
+from merlya.utils.display import get_display_manager
 
 display = get_display_manager()
 ```
@@ -85,7 +85,7 @@ The `LLMRouter.generate()` method shows a spinner during API calls:
 - `show_spinner: bool = True` - Set to `False` to disable
 
 ```python
-from athena_ai.llm.router import LLMRouter
+from merlya.llm.router import LLMRouter
 
 router = LLMRouter()
 
@@ -109,7 +109,7 @@ The `SSHManager.execute()` method shows a spinner during connection:
 - `show_spinner: bool = True` - Set to `False` to disable
 
 ```python
-from athena_ai.executors.ssh import SSHManager
+from merlya.executors.ssh import SSHManager
 
 ssh = SSHManager()
 
@@ -133,7 +133,7 @@ The `ContextManager._scan_remote_hosts()` method shows a progress bar for multi-
 The `ActionExecutor.execute_batch()` method shows a progress bar for batch execution:
 
 ```python
-from athena_ai.executors.action_executor import ActionExecutor
+from merlya.executors.action_executor import ActionExecutor
 
 executor = ActionExecutor()
 
@@ -166,7 +166,7 @@ When a spinner is already active, nested spinners will print their message as a 
 For quick access, use the module-level convenience functions:
 
 ```python
-from athena_ai.utils.display import spinner, progress_bar
+from merlya.utils.display import spinner, progress_bar
 
 # Spinner
 with spinner("Processing..."):
@@ -199,7 +199,7 @@ The DisplayManager uses a custom Rich theme:
 For testing, reset the singleton to get a fresh instance:
 
 ```python
-from athena_ai.utils.display import reset_display_manager
+from merlya.utils.display import reset_display_manager
 
 def test_display():
     reset_display_manager()

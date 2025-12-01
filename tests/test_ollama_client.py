@@ -5,7 +5,7 @@ Tests for Ollama client functionality.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from athena_ai.llm.ollama_client import OllamaClient, OllamaModel, get_ollama_client
+from merlya.llm.ollama_client import OllamaClient, OllamaModel, get_ollama_client
 
 
 class TestOllamaClient(unittest.TestCase):
@@ -25,7 +25,7 @@ class TestOllamaClient(unittest.TestCase):
         client = OllamaClient(base_url="http://custom:8080")
         self.assertEqual(client.base_url, "http://custom:8080")
 
-    @patch("athena_ai.llm.ollama_client.requests.get")
+    @patch("merlya.llm.ollama_client.requests.get")
     def test_is_available_success(self, mock_get):
         """Test is_available returns True when server responds."""
         mock_response = MagicMock()
@@ -35,7 +35,7 @@ class TestOllamaClient(unittest.TestCase):
         result = self.client.is_available()
         self.assertTrue(result)
 
-    @patch("athena_ai.llm.ollama_client.requests.get")
+    @patch("merlya.llm.ollama_client.requests.get")
     def test_is_available_failure(self, mock_get):
         """Test is_available returns False when server unavailable."""
         import requests
@@ -44,7 +44,7 @@ class TestOllamaClient(unittest.TestCase):
         result = self.client.is_available()
         self.assertFalse(result)
 
-    @patch("athena_ai.llm.ollama_client.requests.get")
+    @patch("merlya.llm.ollama_client.requests.get")
     def test_list_models_success(self, mock_get):
         """Test list_models returns models from API."""
         mock_response = MagicMock()
@@ -63,7 +63,7 @@ class TestOllamaClient(unittest.TestCase):
         self.assertEqual(len(models), 1)
         self.assertEqual(models[0].name, "llama3:8b")
 
-    @patch("athena_ai.llm.ollama_client.requests.get")
+    @patch("merlya.llm.ollama_client.requests.get")
     def test_list_models_caching(self, mock_get):
         """Test list_models caches results."""
         mock_response = MagicMock()
@@ -94,7 +94,7 @@ class TestOllamaClient(unittest.TestCase):
         names = self.client.get_model_names()
         self.assertEqual(names, ["model1", "model2"])
 
-    @patch("athena_ai.llm.ollama_client.requests.get")
+    @patch("merlya.llm.ollama_client.requests.get")
     def test_get_status_offline(self, mock_get):
         """Test get_status when offline."""
         import requests
@@ -105,7 +105,7 @@ class TestOllamaClient(unittest.TestCase):
         self.assertFalse(status["available"])
         self.assertEqual(status["models"], [])
 
-    @patch("athena_ai.llm.ollama_client.requests.get")
+    @patch("merlya.llm.ollama_client.requests.get")
     def test_get_status_online(self, mock_get):
         """Test get_status when online."""
         mock_response = MagicMock()
@@ -177,7 +177,7 @@ class TestGetOllamaClient(unittest.TestCase):
     def test_singleton_instance(self):
         """Test factory returns singleton."""
         # Reset singleton for test
-        import athena_ai.llm.ollama_client as module
+        import merlya.llm.ollama_client as module
         module._ollama_client = None
 
         client1 = get_ollama_client()
@@ -188,7 +188,7 @@ class TestGetOllamaClient(unittest.TestCase):
     @patch.dict("os.environ", {"OLLAMA_HOST": "http://custom:9999"})
     def test_env_override(self):
         """Test OLLAMA_HOST environment variable."""
-        import athena_ai.llm.ollama_client as module
+        import merlya.llm.ollama_client as module
         module._ollama_client = None
 
         client = get_ollama_client()

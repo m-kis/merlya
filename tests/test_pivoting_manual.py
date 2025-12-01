@@ -4,16 +4,16 @@ Test script for Smart SSH Pivoting.
 import os
 from unittest.mock import MagicMock, patch
 
-from athena_ai.executors.connectivity import ConnectivityPlanner
-from athena_ai.executors.ssh import SSHManager
-from athena_ai.memory.persistent_store import KnowledgeStore
+from merlya.executors.connectivity import ConnectivityPlanner
+from merlya.executors.ssh import SSHManager
+from merlya.memory.persistent_store import KnowledgeStore
 
 
 def test_pivoting():
     print("🧪 Testing Smart SSH Pivoting...")
 
     # Use a temporary file for testing
-    test_path = "/tmp/athena_test_pivoting.json"
+    test_path = "/tmp/merlya_test_pivoting.json"
     if os.path.exists(test_path):
         os.remove(test_path)
 
@@ -45,7 +45,7 @@ def test_pivoting():
     # 3. Test SSH Manager Integration (Mocked)
     print("3. Testing SSH Manager Integration...")
 
-    with patch('athena_ai.executors.ssh.paramiko.SSHClient') as MockClient:
+    with patch('merlya.executors.ssh.paramiko.SSHClient') as MockClient:
         ssh_manager = SSHManager(use_connection_pool=False)
         ssh_manager.connectivity = planner # Inject our test planner
 

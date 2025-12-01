@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from athena_ai.memory.conversation_manager.models import Conversation, Message
-from athena_ai.memory.conversation_manager.storage import EXPORT_VERSION, SQLiteStore
-from athena_ai.memory.persistence.session_repository import SessionRepository
-from athena_ai.utils.tokenizer import (
+from merlya.memory.conversation_manager.models import Conversation, Message
+from merlya.memory.conversation_manager.storage import EXPORT_VERSION, SQLiteStore
+from merlya.memory.persistence.session_repository import SessionRepository
+from merlya.utils.tokenizer import (
     count_tokens,
     get_token_info,
     is_tiktoken_available,
@@ -482,7 +482,7 @@ class TestStorageManagerRetry:
 
     def test_retry_config_exponential_delay(self):
         """Test exponential backoff calculation."""
-        from athena_ai.knowledge.storage_manager import RetryConfig
+        from merlya.knowledge.storage_manager import RetryConfig
 
         config = RetryConfig(
             max_retries=3,
@@ -499,7 +499,7 @@ class TestStorageManagerRetry:
 
     def test_storage_manager_creation(self, temp_db):
         """Test StorageManager creation."""
-        from athena_ai.knowledge.storage_manager import StorageManager
+        from merlya.knowledge.storage_manager import StorageManager
 
         manager = StorageManager(
             sqlite_path=temp_db,
@@ -511,7 +511,7 @@ class TestStorageManagerRetry:
 
     def test_storage_manager_sync_status(self, temp_db):
         """Test sync status reporting."""
-        from athena_ai.knowledge.storage_manager import StorageManager
+        from merlya.knowledge.storage_manager import StorageManager
 
         manager = StorageManager(
             sqlite_path=temp_db,

@@ -1,5 +1,5 @@
 """
-Manual test script for Athena improvements.
+Manual test script for Merlya improvements.
 Verifies SkillStore and new Autogen tools.
 """
 import os
@@ -9,13 +9,13 @@ from unittest.mock import MagicMock
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.agents import autogen_tools
-from athena_ai.memory.skill_store import SkillStore
+from merlya.agents import autogen_tools
+from merlya.memory.skill_store import SkillStore
 
 
 def test_skill_store():
     print("\n--- Testing SkillStore ---")
-    store = SkillStore(storage_path="/tmp/athena_test_skills.json")
+    store = SkillStore(storage_path="/tmp/merlya_test_skills.json")
 
     # Clear previous test data
     store.skills = []
@@ -47,7 +47,7 @@ def test_tools():
     mock_executor.execute.return_value = {'success': True, 'stdout': 'file1.txt\nfile2.txt', 'stderr': ''}
 
     mock_context = MagicMock()
-    mock_context.skill_store = SkillStore(storage_path="/tmp/athena_test_skills.json")
+    mock_context.skill_store = SkillStore(storage_path="/tmp/merlya_test_skills.json")
 
     # Initialize tools with mocks
     autogen_tools.initialize_autogen_tools(

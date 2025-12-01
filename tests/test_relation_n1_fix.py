@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
-from athena_ai.memory.persistence.repositories import HostData
+from merlya.memory.persistence.inventory_repository import get_inventory_repository
+from merlya.memory.persistence.repositories import HostData
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def test_db():
         db_path = f.name
 
     # Reset singleton to use test DB
-    from athena_ai.memory.persistence.inventory_repository import InventoryRepository
+    from merlya.memory.persistence.inventory_repository import InventoryRepository
     InventoryRepository.reset_instance()
 
     repo = get_inventory_repository(db_path)

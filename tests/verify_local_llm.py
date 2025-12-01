@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.agents.ag2_orchestrator import Ag2Orchestrator
+from merlya.agents.ag2_orchestrator import Ag2Orchestrator
 
 
 def test_local_llm():

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from athena_ai.repl.commands.model import ModelCommandHandler
+from merlya.repl.commands.model import ModelCommandHandler
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def model_handler(mock_repl):
 class TestOllamaModelSetup:
     """Tests for Ollama model setup and auto-download."""
 
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_server_unavailable(
         self, mock_get_client, model_handler
     ):
@@ -45,7 +45,7 @@ class TestOllamaModelSetup:
         assert result is False
         mock_client.is_available.assert_called_once()
 
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_model_already_exists(
         self, mock_get_client, model_handler
     ):
@@ -63,7 +63,7 @@ class TestOllamaModelSetup:
         mock_client.pull_model.assert_not_called()
 
     @patch('builtins.input')
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_user_declines_download(
         self, mock_get_client, mock_input, model_handler
     ):
@@ -80,7 +80,7 @@ class TestOllamaModelSetup:
         mock_client.pull_model.assert_not_called()
 
     @patch('builtins.input')
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_download_success(
         self, mock_get_client, mock_input, model_handler
     ):
@@ -98,7 +98,7 @@ class TestOllamaModelSetup:
         mock_client.pull_model.assert_called_once_with("llama3")
 
     @patch('builtins.input')
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_download_failure(
         self, mock_get_client, mock_input, model_handler
     ):
@@ -116,7 +116,7 @@ class TestOllamaModelSetup:
         mock_client.pull_model.assert_called_once_with("llama3")
 
     @patch('builtins.input')
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_eoferror(
         self, mock_get_client, mock_input, model_handler
     ):
@@ -133,7 +133,7 @@ class TestOllamaModelSetup:
         mock_client.pull_model.assert_not_called()
 
     @patch('builtins.input')
-    @patch('athena_ai.llm.ollama_client.get_ollama_client')
+    @patch('merlya.llm.ollama_client.get_ollama_client')
     def test_handle_ollama_model_setup_user_interrupt(
         self, mock_get_client, mock_input, model_handler
     ):

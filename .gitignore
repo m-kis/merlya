@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.gitignore
 .Python
 build/
 develop-eggs/
@@ -62,8 +63,8 @@ htmlcov/
 *.db
 *.sqlite3
 
-# Athena local data (optional - user may want to commit)
+# Merlya local data (optional - user may want to commit)
 # Uncomment if you don't want these in the repo:
-# athena_data/
-# ~/.athena/
-Athena/
+# merlya_data/
+# ~/.merlya/
+Merlya/

@@ -5,8 +5,8 @@ Tests cluster detection, replica patterns, and group-based relations.
 """
 import pytest
 
-from athena_ai.inventory.relation_classifier.heuristics import RelationHeuristics
-from athena_ai.inventory.relation_classifier.models import RelationSuggestion
+from merlya.inventory.relation_classifier.heuristics import RelationHeuristics
+from merlya.inventory.relation_classifier.models import RelationSuggestion
 
 
 class TestClusterDetection:

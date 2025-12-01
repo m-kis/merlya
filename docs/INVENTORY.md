@@ -1,6 +1,6 @@
 # Inventory System
 
-Athena's inventory system manages your infrastructure hosts with support for multiple sources, relationships, and SSH key configuration.
+Merlya's inventory system manages your infrastructure hosts with support for multiple sources, relationships, and SSH key configuration.
 
 ## Overview
 
@@ -195,11 +195,11 @@ When you use `@hostname`:
 
 ## SSH Key Configuration
 
-Athena provides flexible SSH key management with global defaults and per-host overrides.
+Merlya provides flexible SSH key management with global defaults and per-host overrides.
 
 ### Key Resolution Priority
 
-When connecting to a host, Athena resolves SSH keys in this order:
+When connecting to a host, Merlya resolves SSH keys in this order:
 
 1. **Host-specific key** from inventory metadata
 2. **Global key** set via `/inventory ssh-key set`
@@ -251,7 +251,7 @@ Naming convention for passphrase secrets:
 
 ### Security Features
 
-- **Path validation**: Keys must be in `~/.ssh`, `/etc/ssh`, or `ATHENA_SSH_KEY_DIR`
+- **Path validation**: Keys must be in `~/.ssh`, `/etc/ssh`, or `MERLYA_SSH_KEY_DIR`
 - **Permission check**: Warns if key permissions are not 0600/0400
 - **Hostname validation**: RFC 1123 compliant hostnames and IPs
 - **Sanitized logging**: Full paths never appear in debug logs
@@ -296,7 +296,7 @@ Enter numbers to accept (e.g., '1,2'), 'all', or 'none':
 
 ### Database Location
 
-`~/.athena/storage.db`
+`~/.merlya/storage.db`
 
 ### Host Schema
 
@@ -370,7 +370,7 @@ Inventory Statistics
 ### Python API
 
 ```python
-from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
+from merlya.memory.persistence.inventory_repository import get_inventory_repository
 
 repo = get_inventory_repository()
 

@@ -1,6 +1,6 @@
 # Variables System
 
-Athena provides a powerful variable system for managing host aliases, configuration values, and secrets.
+Merlya provides a powerful variable system for managing host aliases, configuration values, and secrets.
 
 ## Overview
 
@@ -112,7 +112,7 @@ When resolving `@variable`:
 | `config` | SQLite database | Yes |
 | `secret` | Memory only | No (cleared on exit) |
 
-**Location:** `~/.athena/storage.db`
+**Location:** `~/.merlya/storage.db`
 
 ---
 
@@ -184,7 +184,7 @@ check health of @staging-api
 
 ### Multi-Layer Protection
 
-Athena implements **LLM isolation** to protect secrets:
+Merlya implements **LLM isolation** to protect secrets:
 
 1. **Secrets never written to disk** - Only stored in memory
 2. **Secrets masked in output** - Displayed as `********`
@@ -224,7 +224,7 @@ Athena implements **LLM isolation** to protect secrets:
 ### Python API
 
 ```python
-from athena_ai.security.credentials import CredentialManager, VariableType
+from merlya.security.credentials import CredentialManager, VariableType
 
 # Create manager
 manager = CredentialManager()

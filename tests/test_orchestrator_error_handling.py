@@ -24,11 +24,11 @@ class TestOrchestratorErrorHandling:
 
     @patch.dict(os.environ, {
         "OPENROUTER_API_KEY": "test-key",
-        "ATHENA_PROVIDER": "openrouter"
+        "MERLYA_PROVIDER": "openrouter"
     }, clear=True)
-    @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.autogen_tools')
-    @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('merlya.agents.orchestrator.ModelConfig')
+    @patch('merlya.agents.orchestrator.autogen_tools')
+    @patch('merlya.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_function_calling_not_supported_error(
         self, mock_planner_class, mock_tools, mock_config_class, mock_model_config
@@ -39,7 +39,7 @@ class TestOrchestratorErrorHandling:
         mock_config_class.return_value = mock_model_config
 
         # Create a mock orchestrator with the real _handle_execution_error method
-        from athena_ai.agents.orchestrator import Orchestrator
+        from merlya.agents.orchestrator import Orchestrator
         orchestrator = MagicMock(spec=Orchestrator)
 
         # Bind the real _handle_execution_error and _build_function_calling_error_message methods
@@ -67,11 +67,11 @@ class TestOrchestratorErrorHandling:
 
     @patch.dict(os.environ, {
         "OPENROUTER_API_KEY": "test-key",
-        "ATHENA_PROVIDER": "openrouter"
+        "MERLYA_PROVIDER": "openrouter"
     }, clear=True)
-    @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.autogen_tools')
-    @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('merlya.agents.orchestrator.ModelConfig')
+    @patch('merlya.agents.orchestrator.autogen_tools')
+    @patch('merlya.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_openrouter_error_suggests_compatible_models(
         self, mock_planner_class, mock_tools, mock_config_class, mock_model_config
@@ -82,7 +82,7 @@ class TestOrchestratorErrorHandling:
         mock_config_class.return_value = mock_model_config
 
         # Create a mock orchestrator with the real error handling methods
-        from athena_ai.agents.orchestrator import Orchestrator
+        from merlya.agents.orchestrator import Orchestrator
         orchestrator = MagicMock(spec=Orchestrator)
         orchestrator._handle_execution_error = Orchestrator._handle_execution_error.__get__(orchestrator)
         orchestrator._build_function_calling_error_message = Orchestrator._build_function_calling_error_message.__get__(orchestrator)
@@ -104,11 +104,11 @@ class TestOrchestratorErrorHandling:
 
     @patch.dict(os.environ, {
         "OPENROUTER_API_KEY": "test-key",
-        "ATHENA_PROVIDER": "ollama"
+        "MERLYA_PROVIDER": "ollama"
     }, clear=True)
-    @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.autogen_tools')
-    @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('merlya.agents.orchestrator.ModelConfig')
+    @patch('merlya.agents.orchestrator.autogen_tools')
+    @patch('merlya.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_ollama_error_suggests_cloud_fallback(
         self, mock_planner_class, mock_tools, mock_config_class
@@ -123,7 +123,7 @@ class TestOrchestratorErrorHandling:
         mock_config_class.return_value = ollama_config
 
         # Create a mock orchestrator with the real error handling methods
-        from athena_ai.agents.orchestrator import Orchestrator
+        from merlya.agents.orchestrator import Orchestrator
         orchestrator = MagicMock(spec=Orchestrator)
         orchestrator._handle_execution_error = Orchestrator._handle_execution_error.__get__(orchestrator)
         orchestrator._build_function_calling_error_message = Orchestrator._build_function_calling_error_message.__get__(orchestrator)
@@ -144,11 +144,11 @@ class TestOrchestratorErrorHandling:
 
     @patch.dict(os.environ, {
         "OPENROUTER_API_KEY": "test-key",
-        "ATHENA_PROVIDER": "openrouter"
+        "MERLYA_PROVIDER": "openrouter"
     }, clear=True)
-    @patch('athena_ai.agents.orchestrator.ModelConfig')
-    @patch('athena_ai.agents.orchestrator.autogen_tools')
-    @patch('athena_ai.agents.orchestrator.ExecutionPlanner')
+    @patch('merlya.agents.orchestrator.ModelConfig')
+    @patch('merlya.agents.orchestrator.autogen_tools')
+    @patch('merlya.agents.orchestrator.ExecutionPlanner')
     @pytest.mark.asyncio
     async def test_generic_error_still_shown(
         self, mock_planner_class, mock_tools, mock_config_class, mock_model_config
@@ -159,7 +159,7 @@ class TestOrchestratorErrorHandling:
         mock_config_class.return_value = mock_model_config
 
         # Create a mock orchestrator with the real error handling methods
-        from athena_ai.agents.orchestrator import Orchestrator
+        from merlya.agents.orchestrator import Orchestrator
         orchestrator = MagicMock(spec=Orchestrator)
         orchestrator._handle_execution_error = Orchestrator._handle_execution_error.__get__(orchestrator)
         orchestrator._build_function_calling_error_message = Orchestrator._build_function_calling_error_message.__get__(orchestrator)

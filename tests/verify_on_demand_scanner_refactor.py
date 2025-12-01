@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.context.on_demand_scanner.scanner import OnDemandScanner
+from merlya.context.on_demand_scanner.scanner import OnDemandScanner
 
 
 def create_connectivity_checker(reachable: bool = True):
@@ -64,10 +64,10 @@ async def verify_scanner():
     mock_creds_instance = MagicMock()
     mock_creds_class.return_value = mock_creds_instance
 
-    with patch('athena_ai.context.on_demand_scanner.scanner.socket', mock_socket), \
+    with patch('merlya.context.on_demand_scanner.scanner.socket', mock_socket), \
          patch.dict('sys.modules', {
              'paramiko': mock_paramiko,
-             'athena_ai.security.credentials': mock_creds_module
+             'merlya.security.credentials': mock_creds_module
          }):
 
         # Create scanner with injected connectivity checker (always returns True)

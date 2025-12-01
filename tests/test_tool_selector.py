@@ -5,14 +5,14 @@ Tests AI-powered and heuristic tool selection.
 """
 import pytest
 
-from athena_ai.domains.tools.selector import (
+from merlya.domains.tools.selector import (
     ToolAction,
     ToolRecommendation,
     ToolSelector,
     get_tool_selector,
     reset_tool_selector,
 )
-from athena_ai.triage import ErrorType
+from merlya.triage import ErrorType
 
 
 @pytest.fixture(autouse=True)

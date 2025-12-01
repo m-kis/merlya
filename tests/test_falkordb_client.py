@@ -5,12 +5,12 @@ Tests for FalkorDB client functionality.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from athena_ai.knowledge.falkordb_client import (
+from merlya.knowledge.falkordb_client import (
     get_falkordb_client,
     reset_falkordb_client,
 )
-from athena_ai.knowledge.graph.client import FalkorDBClient
-from athena_ai.knowledge.graph.config import FalkorDBConfig
+from merlya.knowledge.graph.client import FalkorDBClient
+from merlya.knowledge.graph.config import FalkorDBConfig
 
 
 class TestFalkorDBConfig(unittest.TestCase):
@@ -64,10 +64,10 @@ class TestFalkorDBClient(unittest.TestCase):
         """Test is_connected returns False when not connected."""
         self.assertFalse(self.client.is_connected)
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_connect_success(self, mock_is_running):
         """Test successful connection when FalkorDB is available."""
-        import athena_ai.knowledge.graph.client as module
+        import merlya.knowledge.graph.client as module
 
         mock_is_running.return_value = True
         mock_db = MagicMock()
@@ -95,7 +95,7 @@ class TestFalkorDBClient(unittest.TestCase):
             elif hasattr(module, 'FalkorDB'):
                 delattr(module, 'FalkorDB')
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_connect_falkordb_not_running_no_auto_start(self, mock_is_running):
         """Test connection fails when FalkorDB not running and auto-start disabled."""
         mock_is_running.return_value = False
@@ -105,10 +105,10 @@ class TestFalkorDBClient(unittest.TestCase):
         self.assertFalse(result)
         self.assertFalse(self.client.is_connected)
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_connect_failure_exception(self, mock_is_running):
         """Test connection handles exceptions."""
-        import athena_ai.knowledge.graph.client as module
+        import merlya.knowledge.graph.client as module
 
         mock_is_running.return_value = True
 
@@ -198,7 +198,7 @@ class TestFalkorDBClientCRUD(unittest.TestCase):
         self.client._graph = MagicMock()
         self.client._connected = True
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient._is_falkordb_running")
     def test_query_not_connected(self, mock_is_running):
         """Test query raises error when not connected."""
         mock_is_running.return_value = False
@@ -435,7 +435,7 @@ class TestGetFalkorDBClient(unittest.TestCase):
         self.assertEqual(client.config.host, "custom-host")
         self.assertEqual(client.config.port, 9999)
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient.connect")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient.connect")
     def test_auto_connect_true(self, mock_connect):
         """Test auto_connect=True calls connect()."""
         mock_connect.return_value = True
@@ -444,7 +444,7 @@ class TestGetFalkorDBClient(unittest.TestCase):
 
         mock_connect.assert_called_once()
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient.connect")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient.connect")
     def test_auto_connect_false(self, mock_connect):
         """Test auto_connect=False does not call connect()."""
         _client = get_falkordb_client(auto_connect=False)
@@ -474,7 +474,7 @@ class TestResetFalkorDBClient(unittest.TestCase):
 
     def test_reset_clears_singleton(self):
         """Test reset clears the singleton instance."""
-        import athena_ai.knowledge.falkordb_client as module
+        import merlya.knowledge.falkordb_client as module
 
         # Create a client
         client1 = get_falkordb_client()
@@ -488,7 +488,7 @@ class TestResetFalkorDBClient(unittest.TestCase):
         client2 = get_falkordb_client()
         self.assertIsNot(client1, client2)
 
-    @patch("athena_ai.knowledge.graph.client.FalkorDBClient.disconnect")
+    @patch("merlya.knowledge.graph.client.FalkorDBClient.disconnect")
     def test_reset_calls_disconnect(self, mock_disconnect):
         """Test reset calls disconnect on existing client."""
         # Create a client
@@ -501,7 +501,7 @@ class TestResetFalkorDBClient(unittest.TestCase):
 
     def test_reset_handles_no_client(self):
         """Test reset handles case when no client exists."""
-        import athena_ai.knowledge.falkordb_client as module
+        import merlya.knowledge.falkordb_client as module
         module._default_client = None
 
         # Should not raise

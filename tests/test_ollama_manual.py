@@ -1,11 +1,11 @@
 import os
 
-from athena_ai.llm.router import LLMRouter
+from merlya.llm.router import LLMRouter
 
 
 def test_ollama_init():
     # Mock env vars
-    os.environ["ATHENA_PROVIDER"] = "ollama"
+    os.environ["MERLYA_PROVIDER"] = "ollama"
     os.environ["OLLAMA_MODEL"] = "llama3"
     # Clear other keys to ensure precedence or isolation
     if "OPENROUTER_API_KEY" in os.environ:

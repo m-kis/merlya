@@ -9,12 +9,12 @@ class TestIntentDetection:
 
     @pytest.fixture
     def detector(self):
-        from athena_ai.triage.signals import SignalDetector
+        from merlya.triage.signals import SignalDetector
         return SignalDetector()
 
     def test_detect_query_intent_english(self, detector):
         """Should detect QUERY intent from English queries."""
-        from athena_ai.triage import Intent
+        from merlya.triage import Intent
 
         intent, confidence, signals = detector.detect_intent("what is the disk usage?")
         assert intent == Intent.QUERY
@@ -22,28 +22,28 @@ class TestIntentDetection:
 
     def test_detect_query_intent_french(self, detector):
         """Should detect QUERY intent from French queries."""
-        from athena_ai.triage import Intent
+        from merlya.triage import Intent
 
         intent, confidence, signals = detector.detect_intent("quels sont les serveurs disponibles?")
         assert intent == Intent.QUERY
 
     def test_detect_action_intent(self, detector):
         """Should detect ACTION intent."""
-        from athena_ai.triage import Intent
+        from merlya.triage import Intent
 
         intent, confidence, signals = detector.detect_intent("restart nginx on web-01")
         assert intent == Intent.ACTION
 
     def test_detect_analysis_intent(self, detector):
         """Should detect ANALYSIS intent."""
-        from athena_ai.triage import Intent
+        from merlya.triage import Intent
 
         intent, confidence, signals = detector.detect_intent("why is mongodb slow?")
         assert intent == Intent.ANALYSIS
 
     def test_question_mark_boosts_query(self, detector):
         """Question mark should boost QUERY intent."""
-        from athena_ai.triage import Intent
+        from merlya.triage import Intent
 
         intent, _, signals = detector.detect_intent("what is the disk space?")
         assert intent == Intent.QUERY
@@ -52,7 +52,7 @@ class TestIntentDetection:
 
     def test_default_to_action(self, detector):
         """Should default to ACTION for ambiguous queries."""
-        from athena_ai.triage import Intent
+        from merlya.triage import Intent
 
         intent, confidence, _ = detector.detect_intent("hello")
         assert intent == Intent.ACTION
@@ -64,12 +64,12 @@ class TestPriorityDetection:
 
     @pytest.fixture
     def detector(self):
-        from athena_ai.triage.signals import SignalDetector
+        from merlya.triage.signals import SignalDetector
         return SignalDetector()
 
     def test_detect_p0_production_down(self, detector):
         """Should detect P0 for production down."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         priority, signals, confidence = detector.detect_keywords("production is down!")
         assert priority == Priority.P0
@@ -77,35 +77,35 @@ class TestPriorityDetection:
 
     def test_detect_p0_data_loss(self, detector):
         """Should detect P0 for data loss."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         priority, signals, _ = detector.detect_keywords("database crash, data loss detected")
         assert priority == Priority.P0
 
     def test_detect_p0_security_breach(self, detector):
         """Should detect P0 for security breach."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         priority, _, _ = detector.detect_keywords("we've been hacked, ransomware detected")
         assert priority == Priority.P0
 
     def test_detect_p1_degraded(self, detector):
         """Should detect P1 for service degradation."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         priority, _, _ = detector.detect_keywords("service is degraded, high latency")
         assert priority == Priority.P1
 
     def test_detect_p1_vulnerability(self, detector):
         """Should detect P1 for vulnerability."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         priority, _, _ = detector.detect_keywords("CVE-2024-1234 vulnerability found")
         assert priority == Priority.P1
 
     def test_detect_p2_performance(self, detector):
         """Should detect P2 for performance issues."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         # Use P2 keywords without P1 keywords like "slow"
         priority, _, _ = detector.detect_keywords("need to optimize performance and throughput")
@@ -113,7 +113,7 @@ class TestPriorityDetection:
 
     def test_detect_p3_default(self, detector):
         """Should default to P3 for normal queries."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         priority, signals, _ = detector.detect_keywords("check disk space on web-01")
         assert priority == Priority.P3
@@ -125,12 +125,12 @@ class TestEnvironmentDetection:
 
     @pytest.fixture
     def detector(self):
-        from athena_ai.triage.signals import SignalDetector
+        from merlya.triage.signals import SignalDetector
         return SignalDetector()
 
     def test_detect_prod_environment(self, detector):
         """Should detect production environment."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         env, multiplier, min_priority = detector.detect_environment("prod-web-01 is slow")
         assert env == "prod"
@@ -161,7 +161,7 @@ class TestImpactDetection:
 
     @pytest.fixture
     def detector(self):
-        from athena_ai.triage.signals import SignalDetector
+        from merlya.triage.signals import SignalDetector
         return SignalDetector()
 
     def test_detect_all_users_impact(self, detector):
@@ -196,7 +196,7 @@ class TestHostServiceDetection:
 
     @pytest.fixture
     def detector(self):
-        from athena_ai.triage.signals import SignalDetector
+        from merlya.triage.signals import SignalDetector
         return SignalDetector()
 
     def test_detect_service_nginx(self, detector):
@@ -241,7 +241,7 @@ class TestFullDetection:
 
     @pytest.fixture
     def detector(self):
-        from athena_ai.triage.signals import SignalDetector
+        from merlya.triage.signals import SignalDetector
         return SignalDetector()
 
     def test_detect_all_returns_dict(self, detector):
@@ -257,7 +257,7 @@ class TestFullDetection:
 
     def test_detect_all_production_emergency(self, detector):
         """Should detect production emergency correctly."""
-        from athena_ai.triage import Priority
+        from merlya.triage import Priority
 
         result = detector.detect_all("production is down, all users affected")
 

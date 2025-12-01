@@ -6,7 +6,7 @@ Tests priority classification, signal detection, and behavior profiles.
 
 import pytest
 
-from athena_ai.triage import (
+from merlya.triage import (
     BEHAVIOR_PROFILES,
     BehaviorProfile,
     Intent,
@@ -21,7 +21,7 @@ from athena_ai.triage import (
     get_smart_classifier,
     reset_smart_classifier,
 )
-from athena_ai.triage.signals import SignalDetector
+from merlya.triage.signals import SignalDetector
 
 
 class TestPriority:
@@ -662,7 +662,7 @@ class TestErrorAnalyzer:
     """Tests for ErrorAnalyzer semantic error classification."""
 
     def setup_method(self):
-        from athena_ai.triage import ErrorType, get_error_analyzer
+        from merlya.triage import ErrorType, get_error_analyzer
         self.analyzer = get_error_analyzer(force_new=True)
         self.ErrorType = ErrorType
 

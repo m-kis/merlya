@@ -33,13 +33,13 @@ class TestLLMParserTimeout:
     def enable_llm_fallback(self, monkeypatch):
         """Enable LLM fallback for tests."""
         # Patch the imported constants directly since they're imported at module level
-        from athena_ai.inventory.parser.parsers.llm import engine
+        from merlya.inventory.parser.parsers.llm import engine
         monkeypatch.setattr(engine, "ENABLE_LLM_FALLBACK", True)
         monkeypatch.setattr(engine, "LLM_COMPLIANCE_ACKNOWLEDGED", True)
 
     def test_timeout_triggers_on_slow_llm(self, slow_llm_router):
         """Test that timeout is triggered when LLM takes too long."""
-        from athena_ai.inventory.parser.parsers.llm import parse_with_llm
+        from merlya.inventory.parser.parsers.llm import parse_with_llm
 
         hosts, errors, warnings = parse_with_llm(
             content="test content",
@@ -55,12 +55,12 @@ class TestLLMParserTimeout:
         """Test that timeout=0 disables the timeout mechanism.
 
         Note: This behavior differs from environment variable parsing where
-        ATHENA_LLM_TIMEOUT=0 falls back to DEFAULT_LLM_TIMEOUT. The distinction
+        MERLYA_LLM_TIMEOUT=0 falls back to DEFAULT_LLM_TIMEOUT. The distinction
         is intentional:
         - Env var: Users shouldn't accidentally disable timeout via config
         - Function param: Advanced programmatic use can explicitly disable
         """
-        from athena_ai.inventory.parser.parsers.llm import parse_with_llm
+        from merlya.inventory.parser.parsers.llm import parse_with_llm
 
         hosts, errors, warnings = parse_with_llm(
             content="test content",
@@ -75,7 +75,7 @@ class TestLLMParserTimeout:
 
     def test_successful_call_within_timeout(self, mock_llm_router):
         """Test that successful LLM call within timeout returns results."""
-        from athena_ai.inventory.parser.parsers.llm import parse_with_llm
+        from merlya.inventory.parser.parsers.llm import parse_with_llm
 
         hosts, errors, warnings = parse_with_llm(
             content="test content",
@@ -90,7 +90,7 @@ class TestLLMParserTimeout:
 
     def test_default_timeout_from_env(self, mock_llm_router, monkeypatch):
         """Test that timeout constant can be configured (simulates env var behavior)."""
-        from athena_ai.inventory.parser.parsers.llm import config
+        from merlya.inventory.parser.parsers.llm import config
 
         # Patch the timeout constant directly (avoids module reloading issues)
         monkeypatch.setattr(config, "LLM_TIMEOUT", 120)
@@ -100,7 +100,7 @@ class TestLLMParserTimeout:
 
     def test_timeout_error_message_is_helpful(self, slow_llm_router):
         """Test that timeout error message provides actionable guidance."""
-        from athena_ai.inventory.parser.parsers.llm import parse_with_llm
+        from merlya.inventory.parser.parsers.llm import parse_with_llm
 
         hosts, errors, warnings = parse_with_llm(
             content="test content",
@@ -111,12 +111,12 @@ class TestLLMParserTimeout:
         assert len(errors) > 0
         timeout_error = next((err for err in errors if "LLM_TIMEOUT" in err), None)
         assert timeout_error is not None
-        assert "ATHENA_LLM_TIMEOUT" in timeout_error  # Mentions the env var
+        assert "MERLYA_LLM_TIMEOUT" in timeout_error  # Mentions the env var
         assert "faster model" in timeout_error  # Suggests alternative
 
     def test_timeout_returns_empty_hosts_not_partial(self, slow_llm_router):
         """Test that timeout returns empty hosts list, not partial results."""
-        from athena_ai.inventory.parser.parsers.llm import parse_with_llm
+        from merlya.inventory.parser.parsers.llm import parse_with_llm
 
         hosts, errors, warnings = parse_with_llm(
             content="test content",
@@ -131,7 +131,7 @@ class TestLLMParserTimeout:
 
     def test_none_timeout_uses_default(self, mock_llm_router, monkeypatch):
         """Test that timeout=None uses the module-level default."""
-        from athena_ai.inventory.parser.parsers.llm import config, parse_with_llm
+        from merlya.inventory.parser.parsers.llm import config, parse_with_llm
 
         # Patch the module constant directly instead of reloading
         monkeypatch.setattr(config, "LLM_TIMEOUT", 60)
@@ -153,13 +153,13 @@ class TestLLMTimeoutConfiguration:
 
     def test_default_timeout_value(self):
         """Test that DEFAULT_LLM_TIMEOUT is set to a reasonable value."""
-        from athena_ai.inventory.parser.parsers.llm.config import DEFAULT_LLM_TIMEOUT
+        from merlya.inventory.parser.parsers.llm.config import DEFAULT_LLM_TIMEOUT
 
         assert DEFAULT_LLM_TIMEOUT == 60  # 60 seconds is reasonable default
 
     def test_timeout_constant_can_be_configured(self, monkeypatch):
         """Test that LLM_TIMEOUT constant can be set to a custom value."""
-        from athena_ai.inventory.parser.parsers.llm import config
+        from merlya.inventory.parser.parsers.llm import config
 
         # Patch the timeout constant directly (avoids module reloading issues)
         monkeypatch.setattr(config, "LLM_TIMEOUT", 90)
@@ -175,27 +175,27 @@ class TestLLMTimeoutConfiguration:
         critical safety behavior (rejecting invalid/zero values) that affects
         module initialization.
 
-        Design note: ATHENA_LLM_TIMEOUT=0 intentionally falls back to default
+        Design note: MERLYA_LLM_TIMEOUT=0 intentionally falls back to default
         to prevent accidental timeout disabling via configuration. To disable
         timeout programmatically, pass timeout=0 to parse_with_llm() directly.
         """
-        from athena_ai.inventory.parser.parsers.llm.config import (
+        from merlya.inventory.parser.parsers.llm.config import (
             DEFAULT_LLM_TIMEOUT,
             _parse_llm_timeout,
         )
 
         # Test invalid string value falls back to default
-        monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "invalid")
+        monkeypatch.setenv("MERLYA_LLM_TIMEOUT", "invalid")
         assert _parse_llm_timeout() == DEFAULT_LLM_TIMEOUT
 
         # Test negative value falls back to default
-        monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "-10")
+        monkeypatch.setenv("MERLYA_LLM_TIMEOUT", "-10")
         assert _parse_llm_timeout() == DEFAULT_LLM_TIMEOUT
 
         # Test zero value falls back to default (intentional - see docstring)
-        monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "0")
+        monkeypatch.setenv("MERLYA_LLM_TIMEOUT", "0")
         assert _parse_llm_timeout() == DEFAULT_LLM_TIMEOUT
 
         # Test valid value works
-        monkeypatch.setenv("ATHENA_LLM_TIMEOUT", "90")
+        monkeypatch.setenv("MERLYA_LLM_TIMEOUT", "90")
         assert _parse_llm_timeout() == 90

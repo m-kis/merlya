@@ -1,4 +1,4 @@
-name: Athena Command Tests
+name: Merlya Command Tests
 
 on:
   push:
@@ -11,7 +11,7 @@ env:
 
 jobs:
   test-run-command:
-    name: Test 'athena run' command
+    name: Test 'merlya run' command
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,10 +29,10 @@ jobs:
 
       - name: Test run command
         run: |
-          poetry run python -m athena_ai.cli run "echo test" || echo "Run command test completed"
+          poetry run python -m merlya.cli run "echo test" || echo "Run command test completed"
 
   test-setup-command:
-    name: Test 'athena setup' command
+    name: Test 'merlya setup' command
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,10 +50,10 @@ jobs:
 
       - name: Test setup command (non-interactive check)
         run: |
-          poetry run python -m athena_ai.cli setup --help || echo "Setup command exists"
+          poetry run python -m merlya.cli setup --help || echo "Setup command exists"
 
   test-status-command:
-    name: Test 'athena status' command
+    name: Test 'merlya status' command
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,10 +71,10 @@ jobs:
 
       - name: Test status command
         run: |
-          poetry run python -m athena_ai.cli status
+          poetry run python -m merlya.cli status
 
   test-version-command:
-    name: Test 'athena version' command
+    name: Test 'merlya version' command
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
 
       - name: Test version command
         run: |
-          poetry run python -m athena_ai.cli version
+          poetry run python -m merlya.cli version
 
   test-model-command:
     name: Test '/model' REPL command
@@ -229,7 +229,7 @@ jobs:
 
           # Use variables with defaults
           CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
-          USERNAME="${SLACK_USERNAME:-Athena CI}"
+          USERNAME="${SLACK_USERNAME:-Merlya CI}"
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
           # Count passed/failed (use || true to avoid exit code 1 when PASSED is 0)
@@ -256,7 +256,7 @@ jobs:
           fi
 
           # Compact summary
-          SUMMARY="${STATUS_EMOJI} *Athena Commands* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          SUMMARY="${STATUS_EMOJI} *Merlya Commands* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
           DETAILS="${PASSED}/${TOTAL} commands passed"
 
           # Send compact notification

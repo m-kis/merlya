@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Now we can import
-from athena_ai.repl.commands.session import SessionCommandHandler
+from merlya.repl.commands.session import SessionCommandHandler
 
 
 class TestConversationsCommand(unittest.TestCase):
@@ -29,7 +29,7 @@ class TestConversationsCommand(unittest.TestCase):
         self.handler = SessionCommandHandler(self.mock_repl)
 
         # Mock console to prevent actual output
-        self.console_patcher = patch('athena_ai.repl.commands.session.console')
+        self.console_patcher = patch('merlya.repl.commands.session.console')
         self.mock_console = self.console_patcher.start()
 
     def tearDown(self):
@@ -124,8 +124,8 @@ class TestConversationIdValidation(unittest.TestCase):
         self.handler = SessionCommandHandler(self.mock_repl)
 
         # Mock console and print functions
-        self.console_patcher = patch('athena_ai.repl.commands.session.console')
-        self.error_patcher = patch('athena_ai.repl.commands.session.print_error')
+        self.console_patcher = patch('merlya.repl.commands.session.console')
+        self.error_patcher = patch('merlya.repl.commands.session.print_error')
         self.mock_console = self.console_patcher.start()
         self.mock_print_error = self.error_patcher.start()
 
@@ -220,9 +220,9 @@ class TestEdgeCases(unittest.TestCase):
         self.mock_manager.current_conversation = None
         self.handler = SessionCommandHandler(self.mock_repl)
 
-        self.console_patcher = patch('athena_ai.repl.commands.session.console')
-        self.error_patcher = patch('athena_ai.repl.commands.session.print_error')
-        self.warning_patcher = patch('athena_ai.repl.commands.session.print_warning')
+        self.console_patcher = patch('merlya.repl.commands.session.console')
+        self.error_patcher = patch('merlya.repl.commands.session.print_error')
+        self.warning_patcher = patch('merlya.repl.commands.session.print_warning')
         self.mock_console = self.console_patcher.start()
         self.mock_print_error = self.error_patcher.start()
         self.mock_print_warning = self.warning_patcher.start()

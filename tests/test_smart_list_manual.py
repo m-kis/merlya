@@ -12,9 +12,9 @@ pytestmark = pytest.mark.manual
 def test_list_filtering():
     """Test smart list filtering (manual test)."""
     # Import here to avoid import errors at collection time
-    from athena_ai.agents.smart_orchestrator import SmartOrchestrator
+    from merlya.agents.smart_orchestrator import SmartOrchestrator
 
-    from athena_ai.agents.request_classifier import ClassificationResult, ExecutionStrategy, RequestComplexity
+    from merlya.agents.request_classifier import ClassificationResult, ExecutionStrategy, RequestComplexity
 
     print("🧪 Testing Smart List Filtering...")
 

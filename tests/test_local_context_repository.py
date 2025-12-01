@@ -14,7 +14,7 @@ from datetime import datetime
 
 import pytest
 
-from athena_ai.memory.persistence.inventory_repository import (
+from merlya.memory.persistence.inventory_repository import (
     InventoryRepository,
     get_inventory_repository,
 )
@@ -270,7 +270,7 @@ class TestLocalContextModelIntegration:
 
     def test_local_context_model_roundtrip(self, repo):
         """Test LocalContext model save/load roundtrip."""
-        from athena_ai.context.local_scanner.models import LocalContext
+        from merlya.context.local_scanner.models import LocalContext
 
         original = LocalContext(
             os_info={"platform": "darwin"},
@@ -301,7 +301,7 @@ class TestLocalContextModelIntegration:
 
     def test_from_dict_handles_metadata_structure(self, repo):
         """Test that LocalContext.from_dict handles _metadata structure."""
-        from athena_ai.context.local_scanner.models import LocalContext
+        from merlya.context.local_scanner.models import LocalContext
 
         # Simulate data from repository with _metadata
         data_with_metadata = {
@@ -321,7 +321,7 @@ class TestLocalContextModelIntegration:
 
     def test_from_dict_handles_legacy_structure(self, repo):
         """Test that LocalContext.from_dict handles legacy scanned_at at root."""
-        from athena_ai.context.local_scanner.models import LocalContext
+        from merlya.context.local_scanner.models import LocalContext
 
         # Legacy structure without _metadata
         legacy_data = {

@@ -3,7 +3,7 @@ import shutil
 import unittest
 from pathlib import Path
 
-from athena_ai.remediation.rollback import RollbackManager
+from merlya.remediation.rollback import RollbackManager
 
 
 class TestRollbackManager(unittest.TestCase):

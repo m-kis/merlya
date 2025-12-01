@@ -1,4 +1,4 @@
-# Athena Triage System
+# Merlya Triage System
 
 The triage system classifies user requests by **intent** and **priority** to optimize response behavior.
 
@@ -132,7 +132,7 @@ Uses sentence-transformers for semantic similarity matching.
 
 **Requirements:**
 ```bash
-pip install athena-ai-ops[smart-triage]
+pip install merlya[smart-triage]
 # or
 pip install sentence-transformers falkordb
 ```
@@ -145,7 +145,7 @@ pip install sentence-transformers falkordb
 
 **Usage:**
 ```python
-from athena_ai.triage import get_smart_classifier
+from merlya.triage import get_smart_classifier
 
 classifier = get_smart_classifier(
     db_client=falkordb_client,
@@ -172,7 +172,7 @@ Uses a fast LLM for intelligent classification.
 
 **Usage:**
 ```python
-from athena_ai.triage import get_ai_classifier
+from merlya.triage import get_ai_classifier
 
 classifier = get_ai_classifier(llm_router=router)
 result = await classifier.classify("check disk space on web-01")
@@ -199,7 +199,7 @@ Deterministic keyword-based classification. Always available.
 
 **Usage:**
 ```python
-from athena_ai.triage import SignalDetector
+from merlya.triage import SignalDetector
 
 detector = SignalDetector()
 
@@ -231,7 +231,7 @@ result = detector.detect_all("production database is slow")
 
 ## Behavior Profiles
 
-Based on intent, Athena adapts its behavior:
+Based on intent, Merlya adapts its behavior:
 
 ### QUERY Mode
 ```
@@ -306,7 +306,7 @@ Priority also affects model selection for optimal cost/performance:
 | **P2** | `synthesis` | Sonnet (balanced) |
 | **P3** | `planning` | Opus (most capable) |
 
-Configure task models in `~/.athena/config.json`:
+Configure task models in `~/.merlya/config.json`:
 
 ```json
 {
@@ -338,7 +338,7 @@ Based on priority and intent, tool access may be restricted:
 The triage system also includes error classification:
 
 ```python
-from athena_ai.triage import get_error_analyzer
+from merlya.triage import get_error_analyzer
 
 analyzer = get_error_analyzer()
 result = analyzer.analyze("Permission denied: /etc/nginx/nginx.conf")
@@ -369,7 +369,7 @@ result = analyzer.analyze("Permission denied: /etc/nginx/nginx.conf")
 
 ```python
 # Priority and Intent enums
-from athena_ai.triage import Priority, Intent
+from merlya.triage import Priority, Intent
 
 Priority.P0  # Critical
 Priority.P1  # High
@@ -384,7 +384,7 @@ Intent.ANALYSIS  # Investigation request
 ### Factory Functions
 
 ```python
-from athena_ai.triage import (
+from merlya.triage import (
     # Classifiers
     get_smart_classifier,    # Semantic (requires extras)
     get_ai_classifier,       # LLM-based
@@ -431,7 +431,7 @@ TriageResult(
 The AI classifier uses the user's configured LLM router:
 
 ```python
-from athena_ai.llm import LLMRouter
+from merlya.llm import LLMRouter
 
 router = LLMRouter(
     model="haiku",  # Use fast model for triage
@@ -445,11 +445,11 @@ classifier = get_ai_classifier(llm_router=router)
 
 ```python
 from falkordb import FalkorDB
-from athena_ai.triage import get_smart_classifier
+from merlya.triage import get_smart_classifier
 
 # Connect to FalkorDB
 db = FalkorDB(host="localhost", port=6379)
-client = db.select_graph("athena_triage")
+client = db.select_graph("merlya_triage")
 
 # Create classifier
 classifier = get_smart_classifier(
@@ -492,7 +492,7 @@ The Smart Classifier and Tool Selector use sentence-transformers for semantic si
 **Via Environment Variable (persistent):**
 
 ```bash
-export ATHENA_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
+export MERLYA_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
 ```
 
 **Via Command (runtime):**
@@ -506,7 +506,7 @@ export ATHENA_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
 **Via Code:**
 
 ```python
-from athena_ai.triage import get_embedding_config, EmbeddingConfig
+from merlya.triage import get_embedding_config, EmbeddingConfig
 
 # Get current model
 config = get_embedding_config()
@@ -535,7 +535,7 @@ models = EmbeddingConfig.list_models()
 
 ### Tool Selector Requirements
 
-The Tool Selector shares the same embedding configuration as the Smart Classifier. Both components use the model set via `ATHENA_EMBEDDING_MODEL` or the `/model embedding` command. For Tool Selector workloads that require fast response times (e.g., interactive CLI), prefer smaller models like `all-MiniLM-L6-v2` or `paraphrase-MiniLM-L3-v2`.
+The Tool Selector shares the same embedding configuration as the Smart Classifier. Both components use the model set via `MERLYA_EMBEDDING_MODEL` or the `/model embedding` command. For Tool Selector workloads that require fast response times (e.g., interactive CLI), prefer smaller models like `all-MiniLM-L6-v2` or `paraphrase-MiniLM-L3-v2`.
 
 ---
 

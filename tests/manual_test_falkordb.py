@@ -1,5 +1,5 @@
 """
-Manual test script for Athena FalkorDB integration.
+Manual test script for Merlya FalkorDB integration.
 Verifies knowledge tools and graph connection.
 """
 import os
@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.agents import knowledge_tools
-from athena_ai.knowledge.ops_knowledge_manager import get_knowledge_manager
+from merlya.agents import knowledge_tools
+from merlya.knowledge.ops_knowledge_manager import get_knowledge_manager
 
 
 def test_knowledge_tools():
@@ -66,7 +66,7 @@ def test_knowledge_tools():
 
     # Test Route Sync (Unified Routing)
     print("\n--- Testing Unified Routing Sync ---")
-    from athena_ai.memory.persistent_store import KnowledgeStore
+    from merlya.memory.persistent_store import KnowledgeStore
     ks = KnowledgeStore()
     # Mock the knowledge manager inside the store
     ks._knowledge_manager = km
@@ -95,7 +95,7 @@ def test_knowledge_tools():
     km.log_action = MagicMock()
 
     # We need to mock executor for execute_command to work
-    from athena_ai.agents import autogen_tools
+    from merlya.agents import autogen_tools
     mock_executor = MagicMock()
     mock_executor.execute.return_value = {"success": True, "stdout": "ok", "stderr": ""}
 

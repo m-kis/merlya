@@ -24,7 +24,7 @@ jobs:
         run: pip install ruff
 
       - name: Lint
-        run: ruff check athena_ai/ tests/ --output-format=github
+        run: ruff check merlya/ tests/ --output-format=github
 
   test:
     runs-on: ubuntu-latest
@@ -64,7 +64,7 @@ jobs:
             --ignore=tests/test_persistence_manual.py \
             --ignore=tests/manual_test_falkordb.py \
             --ignore=tests/manual_test_improvements.py \
-            --cov=athena_ai --cov-report=xml --cov-report=term \
+            --cov=merlya --cov-report=xml --cov-report=term \
             --asyncio-mode=auto \
             --timeout=300 \
             -m "not manual" \
@@ -119,7 +119,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     # TODO: Remove continue-on-error once all mypy errors are fixed
-    # Track progress: https://github.com/m-kis/athena/issues (mypy cleanup issue)
+    # Track progress: https://github.com/m-kis/merlya/issues (mypy cleanup issue)
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -144,9 +144,9 @@ jobs:
       - name: Type check
         run: |
           echo "::warning::Typecheck is currently non-blocking. See GitHub issues for cleanup progress."
-          mypy athena_ai/ --ignore-missing-imports --no-error-summary || true
+          mypy merlya/ --ignore-missing-imports --no-error-summary || true
           # Count errors for tracking
-          ERRORS=$(mypy athena_ai/ --ignore-missing-imports 2>&1 | grep -c "error:" || echo "0")
+          ERRORS=$(mypy merlya/ --ignore-missing-imports 2>&1 | grep -c "error:" || echo "0")
           echo "Total mypy errors: $ERRORS"
 
   security:
@@ -174,7 +174,7 @@ jobs:
       - name: Check for shell=True usage (security audit)
         run: |
           # Fail if shell=True is found in CI module (except comments)
-          if grep -rn "shell=True" athena_ai/ci/ --include="*.py" | grep -v "^.*#.*shell=True"; then
+          if grep -rn "shell=True" merlya/ci/ --include="*.py" | grep -v "^.*#.*shell=True"; then
             echo "ERROR: shell=True found in CI module - security vulnerability!"
             exit 1
           fi
@@ -223,7 +223,7 @@ jobs:
 
           # Use variables with defaults
           CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
-          USERNAME="${SLACK_USERNAME:-Athena CI}"
+          USERNAME="${SLACK_USERNAME:-Merlya CI}"
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
           # Build compact status icons
@@ -254,7 +254,7 @@ jobs:
           fi
 
           # Compact summary line
-          SUMMARY="${STATUS_EMOJI} *Athena CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          SUMMARY="${STATUS_EMOJI} *Merlya CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
           DETAILS="${LINT_ICON} lint ${TEST_ICON} test ${TYPE_ICON} types ${SEC_ICON} security ${BUILD_ICON} build"
 
           # Send compact notification

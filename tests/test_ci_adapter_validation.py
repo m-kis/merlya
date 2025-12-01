@@ -4,16 +4,16 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from athena_ai.ci.adapters.base import BaseCIAdapter
-from athena_ai.ci.config import CIConfig
-from athena_ai.ci.models import (
+from merlya.ci.adapters.base import BaseCIAdapter
+from merlya.ci.config import CIConfig
+from merlya.ci.models import (
     FailureAnalysis,
     PermissionReport,
     Run,
     RunLogs,
     Workflow,
 )
-from athena_ai.ci.protocols import CIPlatformType
+from merlya.ci.protocols import CIPlatformType
 
 
 class ValidAdapter(BaseCIAdapter):
@@ -131,7 +131,7 @@ def test_missing_platform_type_raises_typeerror():
     error_msg = str(exc_info.value)
     assert "MissingPlatformTypeAdapter" in error_msg
     assert "must define 'platform_type' class attribute" in error_msg
-    assert "athena_ai/ci/adapters/base.py" in error_msg
+    assert "merlya/ci/adapters/base.py" in error_msg
 
 
 def test_invalid_type_platform_type_raises_typeerror():
@@ -146,12 +146,12 @@ def test_invalid_type_platform_type_raises_typeerror():
     assert "must be an instance of CIPlatformType" in error_msg
     assert "got str" in error_msg
     assert "'github'" in error_msg
-    assert "athena_ai/ci/adapters/base.py" in error_msg
+    assert "merlya/ci/adapters/base.py" in error_msg
 
 
 def test_github_adapter_still_works():
     """Test that existing GitHubCIAdapter still works with validation."""
-    from athena_ai.ci.adapters.github import GitHubCIAdapter
+    from merlya.ci.adapters.github import GitHubCIAdapter
 
     config = CIConfig(platform="github")
     adapter = GitHubCIAdapter(config)

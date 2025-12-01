@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from athena_ai.memory.persistence.inventory_repository import InventoryRepository
+from merlya.memory.persistence.inventory_repository import InventoryRepository
 
 
 def verify_inventory_repository():
@@ -97,7 +97,7 @@ def verify_bulk_add_hosts():
     """Test bulk host import with successful import."""
     print("\n🧪 Verifying bulk_add_hosts...")
 
-    from athena_ai.memory.persistence.repositories import HostData
+    from merlya.memory.persistence.repositories import HostData
 
     # Use a cross-platform temporary DB with guaranteed cleanup
     tmp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -145,8 +145,8 @@ def verify_bulk_add_hosts_rollback():
     import sqlite3
     from unittest.mock import patch
 
-    from athena_ai.core.exceptions import PersistenceError
-    from athena_ai.memory.persistence.repositories import HostData
+    from merlya.core.exceptions import PersistenceError
+    from merlya.memory.persistence.repositories import HostData
 
     # Use a cross-platform temporary DB with guaranteed cleanup
     tmp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -217,8 +217,8 @@ def verify_local_context():
     """Test LocalContext.from_dict edge cases."""
     print("\n🧪 Verifying LocalContext.from_dict...")
 
-    from athena_ai.context.local_scanner import LocalContext
-    from athena_ai.context.local_scanner.models import UNKNOWN_SCAN_TIME
+    from merlya.context.local_scanner import LocalContext
+    from merlya.context.local_scanner.models import UNKNOWN_SCAN_TIME
 
     # Test with valid ISO timestamp
     print("1. Testing valid timestamp...")

@@ -1,5 +1,5 @@
 """
-Verify REPL refactoring by initializing AthenaREPL.
+Verify REPL refactoring by initializing MerlyaREPL.
 """
 import os
 import sys
@@ -8,13 +8,13 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
-    from athena_ai.repl import AthenaREPL
-    print("✅ Successfully imported AthenaREPL from package")
+    from merlya.repl import MerlyaREPL
+    print("✅ Successfully imported MerlyaREPL from package")
 
     # Try to initialize (mocking env to avoid full startup cost/side effects if possible,
     # but here we just want to see if classes load and link)
-    repl = AthenaREPL(env="test")
-    print("✅ Successfully initialized AthenaREPL")
+    repl = MerlyaREPL(env="test")
+    print("✅ Successfully initialized MerlyaREPL")
 
     # Check if components are linked
     if repl.command_handler:

@@ -9,18 +9,18 @@ import tempfile
 
 import pytest
 
-from athena_ai.knowledge import (
+from merlya.knowledge import (
     CVEMonitor,
     OpsKnowledgeManager,
     WebSearchEngine,
 )
-from athena_ai.security import (
+from merlya.security import (
     AuditEventType,
     AuditLogger,
     CheckResult,
     PreflightChecker,
 )
-from athena_ai.triage import (
+from merlya.triage import (
     Priority,
     classify_priority,
     get_behavior,

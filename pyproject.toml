@@ -1,13 +1,13 @@
 [tool.poetry]
-name = "athena-ai-ops"
+name = "merlya"
 version = "0.2.0"
 description = "AI-powered infrastructure orchestration CLI - Vibe Infra for DevOps"
-authors = ["Athena Contributors"]
+authors = ["Merlya Contributors"]
 license = "MIT-Commons-Clause"
 readme = "README.md"
-homepage = "https://github.com/m-kis/athena"
-repository = "https://github.com/m-kis/athena"
-documentation = "https://github.com/m-kis/athena#readme"
+homepage = "https://github.com/m-kis/merlya"
+repository = "https://github.com/m-kis/merlya"
+documentation = "https://github.com/m-kis/merlya#readme"
 keywords = ["cli", "infrastructure", "devops", "ai", "automation", "ssh", "autogen", "llm", "ops"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: System :: Systems Administration",
     "Topic :: System :: Monitoring",
 ]
-packages = [{include = "athena_ai"}]
+packages = [{include = "merlya"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -82,7 +82,7 @@ pytest-mock = "^3.12"
 pytest-timeout = "^2.3"
 
 [tool.poetry.scripts]
-athena = "athena_ai.cli:main"
+merlya = "merlya.cli:main"
 
 [build-system]
 requires = ["poetry-core"]
@@ -112,8 +112,8 @@ asyncio_mode = "auto"
 # COVERAGE CONFIGURATION
 # ============================================================================
 [tool.coverage.run]
-source = ["athena_ai"]
-omit = ["athena_ai/__pycache__/*", "tests/*"]
+source = ["merlya"]
+omit = ["merlya/__pycache__/*", "tests/*"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -148,4 +148,4 @@ ignore-variadic-names = true
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B", "C4"]
-"athena_ai/utils/config_validator.py" = ["F401"]  # import checks in try/except
+"merlya/utils/config_validator.py" = ["F401"]  # import checks in try/except

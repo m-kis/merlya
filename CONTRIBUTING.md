@@ -1,4 +1,4 @@
-# Contributing to Athena
+# Contributing to Merlya
 
 This document outlines the development principles, architectural patterns, and workflow that all contributors must follow.
 
@@ -24,7 +24,7 @@ Open for extension, closed for modification. Use the Registry pattern.
 
 ```python
 # Good: Register new agents without modifying existing code
-from athena_ai.core.registry import get_registry
+from merlya.core.registry import get_registry
 
 registry = get_registry()
 registry.register("MyNewAgent", MyNewAgent)
@@ -95,7 +95,7 @@ agent = registry.get("DiagnosticAgent", context_manager=ctx)
 
 ```python
 # Always validate hosts
-from athena_ai.tools.base import validate_host
+from merlya.tools.base import validate_host
 
 is_valid, message = validate_host(hostname)
 if not is_valid:
@@ -105,7 +105,7 @@ if not is_valid:
 **Always audit security-relevant operations.**
 
 ```python
-from athena_ai.security.audit_logger import get_audit_logger
+from merlya.security.audit_logger import get_audit_logger
 
 audit = get_audit_logger()
 audit.log_command(command, target, result="success", risk_level="moderate")
@@ -113,10 +113,10 @@ audit.log_command(command, target, result="success", risk_level="moderate")
 
 ### 4. Error Handling
 
-Use the unified exception hierarchy from `athena_ai.core.exceptions`:
+Use the unified exception hierarchy from `merlya.core.exceptions`:
 
 ```python
-from athena_ai.core.exceptions import (
+from merlya.core.exceptions import (
     ValidationError,
     ExecutionError,
     SecurityError,
@@ -138,7 +138,7 @@ if not host_valid:
 ```python
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    from athena_ai.core.registry import AgentRegistry
+    from merlya.core.registry import AgentRegistry
     AgentRegistry.reset_instance()
     yield
     AgentRegistry.reset_instance()
@@ -253,7 +253,7 @@ import click
 from rich.console import Console
 
 # Local
-from athena_ai.utils.logger import logger
+from merlya.utils.logger import logger
 ```
 
 ### Logging & Visual Output
@@ -283,7 +283,7 @@ from athena_ai.utils.logger import logger
 Use `DisplayManager` for all user-facing output:
 
 ```python
-from athena_ai.utils.display import get_display_manager
+from merlya.utils.display import get_display_manager
 
 display = get_display_manager()
 
@@ -311,7 +311,7 @@ display.console.print("🚨 [bold red]P0 ALERT:[/bold red] Production database u
 Use `logger` for internal logs with emojis for consistency:
 
 ```python
-from athena_ai.utils.logger import logger
+from merlya.utils.logger import logger
 
 # Always use emojis in logs for quick visual parsing
 logger.debug("🔍 Detailed info for debugging")
@@ -371,8 +371,8 @@ def show_priority_alert(priority: str, message: str):
 ## Project Structure
 
 ```
-athena/
-├── athena_ai/
+merlya/
+├── merlya/
 │   ├── __init__.py          # Package version
 │   ├── cli.py               # CLI entry point
 │   ├── repl.py              # Interactive REPL
@@ -404,7 +404,7 @@ athena/
 pytest
 
 # With coverage
-pytest --cov=athena_ai
+pytest --cov=merlya
 
 # Specific test
 pytest tests/test_ssh.py -v
@@ -440,7 +440,7 @@ def test_ssh_execute_timeout():
 
 ## Release Process
 
-1. Update version in `athena_ai/__init__.py`
+1. Update version in `merlya/__init__.py`
 2. Update CHANGELOG.md
 3. Create PR to main
 4. After merge, create GitHub release
@@ -448,5 +448,5 @@ def test_ssh_execute_timeout():
 
 ## Getting Help
 
-- Issues: https://github.com/m-kis/athena/issues
-- Discussions: https://github.com/m-kis/athena/discussions
+- Issues: https://github.com/m-kis/merlya/issues
+- Discussions: https://github.com/m-kis/merlya/discussions

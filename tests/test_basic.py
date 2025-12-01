@@ -1,6 +1,6 @@
 import unittest
 
-from athena_ai.security.risk_assessor import RiskAssessor
+from merlya.security.risk_assessor import RiskAssessor
 
 
 class TestRiskAssessor(unittest.TestCase):

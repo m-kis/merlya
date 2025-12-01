@@ -9,7 +9,7 @@ class TestStatusManager:
 
     def test_create_status_manager(self):
         """Should create StatusManager instance."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         assert manager._console is None
@@ -18,7 +18,7 @@ class TestStatusManager:
 
     def test_set_console(self):
         """Should set console."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         mock_console = MagicMock()
@@ -27,7 +27,7 @@ class TestStatusManager:
 
     def test_start_without_console(self):
         """Should not start without console."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         manager.start()
@@ -35,7 +35,7 @@ class TestStatusManager:
 
     def test_start_with_console(self):
         """Should start spinner with console."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         mock_console = MagicMock()
@@ -51,7 +51,7 @@ class TestStatusManager:
 
     def test_stop_spinner(self):
         """Should stop spinner and cleanup."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         mock_console = MagicMock()
@@ -68,7 +68,7 @@ class TestStatusManager:
 
     def test_pause_for_input_context_manager(self):
         """Should pause and resume spinner during input."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         mock_console = MagicMock()
@@ -87,7 +87,7 @@ class TestStatusManager:
 
     def test_pause_for_input_when_not_active(self):
         """Should handle pause when spinner not active."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
 
@@ -99,7 +99,7 @@ class TestStatusManager:
 
     def test_start_handles_exception(self):
         """Should handle exception during start."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         mock_console = MagicMock()
@@ -114,7 +114,7 @@ class TestStatusManager:
 
     def test_is_active_property(self):
         """Should expose is_active property."""
-        from athena_ai.tools.base import StatusManager
+        from merlya.tools.base import StatusManager
 
         manager = StatusManager()
         assert manager.is_active is False
@@ -125,7 +125,7 @@ class TestGetStatusManager:
 
     def test_get_status_manager_singleton(self):
         """Should return same instance."""
-        from athena_ai.tools.base import get_status_manager
+        from merlya.tools.base import get_status_manager
 
         manager1 = get_status_manager()
         manager2 = get_status_manager()
@@ -133,7 +133,7 @@ class TestGetStatusManager:
 
     def test_get_status_manager_type(self):
         """Should return StatusManager instance."""
-        from athena_ai.tools.base import StatusManager, get_status_manager
+        from merlya.tools.base import StatusManager, get_status_manager
 
         manager = get_status_manager()
         assert isinstance(manager, StatusManager)
@@ -144,7 +144,7 @@ class TestToolContext:
 
     def test_get_user_input_pauses_spinner(self):
         """Should pause spinner during user input."""
-        from athena_ai.tools.base import ToolContext, get_status_manager
+        from merlya.tools.base import ToolContext, get_status_manager
 
         mock_console = MagicMock()
         mock_status = MagicMock()
@@ -165,7 +165,7 @@ class TestToolContext:
 
     def test_get_user_input_with_callback(self):
         """Should use callback if provided."""
-        from athena_ai.tools.base import ToolContext
+        from merlya.tools.base import ToolContext
 
         mock_callback = MagicMock(return_value="callback response")
         ctx = ToolContext(input_callback=mock_callback)

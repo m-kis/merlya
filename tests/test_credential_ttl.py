@@ -5,7 +5,7 @@ Quick validation that session credentials expire after TTL.
 """
 import time
 
-from athena_ai.security.credentials import CredentialManager
+from merlya.security.credentials import CredentialManager
 
 
 def test_credential_ttl_expiration():

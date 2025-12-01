@@ -2,7 +2,7 @@
 
 ## Overview
 
-Athena now provides **interactive model configuration** on first launch, allowing you to:
+Merlya now provides **interactive model configuration** on first launch, allowing you to:
 - Choose your preferred LLM provider (OpenRouter, Anthropic, OpenAI, Ollama)
 - Configure task-specific models for cost optimization
 - Set up mixed configurations (e.g., Ollama for corrections, OpenRouter for planning)
@@ -10,11 +10,11 @@ Athena now provides **interactive model configuration** on first launch, allowin
 
 ## First Launch Experience
 
-When you run Athena for the first time (or if `~/.athena/config.json` doesn't exist), you'll see:
+When you run Merlya for the first time (or if `~/.merlya/config.json` doesn't exist), you'll see:
 
 ```
 ============================================================
-🤖 Welcome to Athena AI - Model Configuration
+🤖 Welcome to Merlya AI - Model Configuration
 ============================================================
 
 Let's configure your LLM providers and models.
@@ -128,7 +128,7 @@ Select model or press Enter for llama3:
 
 ```
 ============================================================
-✓ Configuration saved to: /Users/username/.athena/config.json
+✓ Configuration saved to: /Users/username/.merlya/config.json
 ============================================================
 
 You can change these settings anytime with /model commands
@@ -221,7 +221,7 @@ You can modify your configuration at any time using `/model` commands:
 
 ## Configuration File Format
 
-The configuration is stored in `~/.athena/config.json`:
+The configuration is stored in `~/.merlya/config.json`:
 
 ```json
 {
@@ -338,7 +338,7 @@ LiteLLMRouter.__init__(auto_configure=True)
   ↓
 ModelConfig.__init__(auto_configure=True)
   ↓
-Check if ~/.athena/config.json exists
+Check if ~/.merlya/config.json exists
   ↓ (No)
 Run _interactive_setup()
   ↓
@@ -389,7 +389,7 @@ Task-specific routing can reduce costs by 80-90% while maintaining quality.
 Users can route sensitive tasks to local Ollama models while using cloud for complex planning.
 
 ### 4. **Flexibility**
-Runtime configuration changes without restarting Athena.
+Runtime configuration changes without restarting Merlya.
 
 ### 5. **Transparency**
 Clear visibility into which model is used for which task.
@@ -398,7 +398,7 @@ Clear visibility into which model is used for which task.
 
 ### Secret Resolution During Command Execution
 
-**User Question:** *"concernant le pass, du coup si c'est invisible à tous comment athena va l'utiliser pour acceder aux ressource distante par exemple ?"*
+**User Question:** *"concernant le pass, du coup si c'est invisible à tous comment merlya va l'utiliser pour acceder aux ressource distante par exemple ?"*
 
 **Answer:** Secrets are **invisible to LLMs** but **visible to execution tools**.
 
@@ -426,7 +426,7 @@ Step 4: Result returned to LLM
 
 #### Code Reference
 
-In [`athena_ai/tools/commands.py:69`](athena_ai/tools/commands.py#L69):
+In [`merlya/tools/commands.py:69`](merlya/tools/commands.py#L69):
 
 ```python
 # Resolve @variable references
@@ -440,7 +440,7 @@ if ctx.credentials and '@' in command:
 result = ctx.executor.execute(target, command, confirm=True)
 ```
 
-In [`athena_ai/repl/core.py:174`](athena_ai/repl/core.py#L174) (LLM context):
+In [`merlya/repl/core.py:174`](merlya/repl/core.py#L174) (LLM context):
 
 ```python
 # When sending to LLM, keep variable names
@@ -475,7 +475,7 @@ resolved_query = self.credentials.resolve_variables(user_input, resolve_secrets=
 ```
 
 This ensures:
-- ✅ Athena can use secrets for remote access
+- ✅ Merlya can use secrets for remote access
 - ✅ LLMs never see actual secret values
 - ✅ Secrets remain protected in logs and context
 - ✅ Users maintain full control over credential usage
@@ -488,10 +488,10 @@ If interactive setup doesn't run:
 
 ```bash
 # Remove existing config
-rm ~/.athena/config.json
+rm ~/.merlya/config.json
 
-# Run Athena again
-athena
+# Run Merlya again
+merlya
 ```
 
 ### Ollama Not Detected

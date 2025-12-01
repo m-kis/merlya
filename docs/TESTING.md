@@ -84,7 +84,7 @@ poetry run pytest -m smoke -v
 poetry run pytest tests/ -v --ignore=tests/test_*_manual.py
 
 # Avec coverage
-poetry run pytest tests/ -v --cov=athena_ai --cov-report=html
+poetry run pytest tests/ -v --cov=merlya --cov-report=html
 
 # Tests par marker
 poetry run pytest -m "not manual" -v
@@ -111,7 +111,7 @@ poetry run pytest --lf -v
 ```python
 # tests/test_example.py
 import pytest
-from athena_ai.module import function_to_test
+from merlya.module import function_to_test
 
 
 def test_basic_functionality():
@@ -131,7 +131,7 @@ def test_edge_case():
 ```python
 def test_with_context(mock_context):
     """Test using mock context fixture."""
-    from athena_ai.context.manager import ContextManager
+    from merlya.context.manager import ContextManager
 
     # mock_context is provided by conftest.py
     assert "web-prod-1" in mock_context["inventory"]
@@ -171,13 +171,13 @@ def test_component_integration(mock_ssh_manager):
 
 ```bash
 # Générer rapport HTML
-poetry run pytest tests/ --cov=athena_ai --cov-report=html
+poetry run pytest tests/ --cov=merlya --cov-report=html
 
 # Ouvrir le rapport
 open htmlcov/index.html
 
 # Coverage minimum requis
-poetry run pytest tests/ --cov=athena_ai --cov-fail-under=50
+poetry run pytest tests/ --cov=merlya --cov-fail-under=50
 ```
 
 ## CI Integration

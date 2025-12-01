@@ -1,13 +1,13 @@
-# Athena Tools Reference
+# Merlya Tools Reference
 
-This document describes all built-in tools available in Athena for infrastructure management.
+This document describes all built-in tools available in Merlya for infrastructure management.
 
 ## Overview
 
 Tools are modular functions that execute specific infrastructure operations. They follow the Single Responsibility Principle (SRP) and are organized by domain.
 
 ```
-athena_ai/tools/
+merlya/tools/
 ├── base.py          # Core utilities, context injection
 ├── commands.py      # Command execution
 ├── hosts.py         # Host discovery and scanning
@@ -466,7 +466,7 @@ Request privilege escalation after a permission error.
 
 ### `remember_skill(trigger, solution, context="")`
 
-Teach Athena a new skill.
+Teach Merlya a new skill.
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -553,7 +553,7 @@ Execute multiple actions with progress tracking.
 **Example:**
 
 ```python
-from athena_ai.executors.action_executor import ActionExecutor
+from merlya.executors.action_executor import ActionExecutor
 
 executor = ActionExecutor()
 results = executor.execute_batch([
@@ -572,7 +572,7 @@ results = executor.execute_batch([
 Centralized display manager with spinners and progress bars.
 
 ```python
-from athena_ai.utils.display import get_display_manager
+from merlya.utils.display import get_display_manager
 
 display = get_display_manager()
 
@@ -600,7 +600,7 @@ display.show_info("Processing started")
 Manages the Rich spinner/status that can be paused during user input.
 
 ```python
-from athena_ai.tools import get_status_manager
+from merlya.tools import get_status_manager
 
 status = get_status_manager()
 status.set_console(console)
@@ -620,7 +620,7 @@ with status.pause_for_input():
 Dependency injection container for tools.
 
 ```python
-from athena_ai.tools import get_tool_context
+from merlya.tools import get_tool_context
 
 ctx = get_tool_context()
 ctx.executor        # Command executor

@@ -1,10 +1,10 @@
 # MCP (Model Context Protocol)
 
-Athena supports MCP servers to extend its capabilities with external tools and data sources.
+Merlya supports MCP servers to extend its capabilities with external tools and data sources.
 
 ## Overview
 
-MCP (Model Context Protocol) is an open standard that allows AI assistants to connect with external tools, data sources, and services. Athena can use MCP servers to:
+MCP (Model Context Protocol) is an open standard that allows AI assistants to connect with external tools, data sources, and services. Merlya can use MCP servers to:
 
 - Access filesystem operations
 - Query databases
@@ -13,11 +13,11 @@ MCP (Model Context Protocol) is an open standard that allows AI assistants to co
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                     Athena                          │
+│                     Merlya                          │
 │                       ↓                             │
 │    ┌─────────────────────────────────────┐         │
 │    │         MCP Manager                  │         │
-│    │  ~/.athena/mcp_servers.json          │         │
+│    │  ~/.merlya/mcp_servers.json          │         │
 │    └──────────────┬──────────────────────┘         │
 │                   ↓                                 │
 │    ┌─────────┬─────────┬─────────┬─────────┐       │
@@ -100,7 +100,7 @@ Example MCP Servers:
 
 ## Configuration
 
-MCP servers are stored in `~/.athena/mcp_servers.json`:
+MCP servers are stored in `~/.merlya/mcp_servers.json`:
 
 ```json
 {
@@ -226,7 +226,7 @@ MCP servers are stored in `~/.athena/mcp_servers.json`:
 
 ## Using MCP Servers
 
-Once configured, MCP servers make their tools available to Athena agents.
+Once configured, MCP servers make their tools available to Merlya agents.
 
 ### @mcp Reference (Planned)
 
@@ -331,7 +331,7 @@ which npx
 npx -y @modelcontextprotocol/server-filesystem /tmp
 
 # Check logs
-tail -f ~/.athena/athena.log | grep -i mcp
+tail -f ~/.merlya/merlya.log | grep -i mcp
 ```
 
 ### Server Not Available
@@ -353,7 +353,7 @@ tail -f ~/.athena/athena.log | grep -i mcp
 ### MCPManager
 
 ```python
-from athena_ai.mcp.manager import MCPManager
+from merlya.mcp.manager import MCPManager
 
 manager = MCPManager()
 
@@ -421,5 +421,5 @@ def parse_mcp_reference(reference: str) -> tuple[str, str]:
 ## See Also
 
 - [Model Context Protocol](https://modelcontextprotocol.io/) - Official MCP documentation
-- [TOOLS.md](TOOLS.md) - Athena's built-in tools
+- [TOOLS.md](TOOLS.md) - Merlya's built-in tools
 - [VARIABLES.md](VARIABLES.md) - Secrets and credentials management

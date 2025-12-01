@@ -6,7 +6,7 @@ import pytest
 # Skip module if ansible_runner not installed
 pytest.importorskip("ansible_runner", reason="ansible_runner not installed")
 
-from athena_ai.agents.provisioning import ProvisioningAgent
+from merlya.agents.provisioning import ProvisioningAgent
 
 
 class TestProvisioningAgent(unittest.TestCase):

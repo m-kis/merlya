@@ -6,9 +6,9 @@ This demonstrates how the CoT system would handle:
 """
 from typing import Any, Dict
 
-from athena_ai.agents.chain_of_thought import ChainOfThought, Step
-from athena_ai.agents.planner import PlannerAgent
-from athena_ai.utils.logger import logger
+from merlya.agents.chain_of_thought import ChainOfThought, Step
+from merlya.agents.planner import PlannerAgent
+from merlya.utils.logger import logger
 
 
 class CoTOrchestrator:
@@ -395,8 +395,8 @@ if __name__ == "__main__":
     print("\n" + "=" * 80 + "\n")
 
     # Simulate
-    from athena_ai.context.manager import ContextManager
-    from athena_ai.executors.action_executor import ActionExecutor
+    from merlya.context.manager import ContextManager
+    from merlya.executors.action_executor import ActionExecutor
 
     context_mgr = ContextManager(env="dev")
     executor = ActionExecutor()

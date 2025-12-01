@@ -1,6 +1,6 @@
-# Athena Agents
+# Merlya Agents
 
-Athena uses a multi-agent architecture for intelligent infrastructure management.
+Merlya uses a multi-agent architecture for intelligent infrastructure management.
 
 ## Overview
 
@@ -34,7 +34,7 @@ The unified orchestrator manages request processing with two modes.
 Uses a single DevSecOps Engineer agent for straightforward requests.
 
 ```python
-from athena_ai.agents import Orchestrator, OrchestratorMode
+from merlya.agents import Orchestrator, OrchestratorMode
 
 orchestrator = Orchestrator(
     env="prod",
@@ -160,7 +160,7 @@ Self-healing agent for automatic issue resolution.
 ### Usage
 
 ```python
-from athena_ai.agents import get_remediation_agent, RemediationMode
+from merlya.agents import get_remediation_agent, RemediationMode
 
 agent = get_remediation_agent(
     mode=RemediationMode.CONFIRM,
@@ -205,7 +205,7 @@ Monitoring agent for health checks and alerts.
 ### Usage
 
 ```python
-from athena_ai.agents import get_sentinel_agent, AlertSeverity
+from merlya.agents import get_sentinel_agent, AlertSeverity
 
 sentinel = get_sentinel_agent(
     check_interval=60,  # seconds
@@ -258,7 +258,7 @@ Creates execution plans for complex requests.
 ### Usage
 
 ```python
-from athena_ai.agents import Planner
+from merlya.agents import Planner
 
 planner = Planner(model_client=client)
 
@@ -284,7 +284,7 @@ plan = await planner.create_plan(
 Agents can be registered and retrieved dynamically.
 
 ```python
-from athena_ai.core import get_registry, register_agent
+from merlya.core import get_registry, register_agent
 
 # Register custom agent
 @register_agent("my_agent")
@@ -403,7 +403,7 @@ orchestrator = Orchestrator(language="en")
 Agents emit events via the hook system:
 
 ```python
-from athena_ai.core import get_hook_manager, HookEvent
+from merlya.core import get_hook_manager, HookEvent
 
 hooks = get_hook_manager()
 

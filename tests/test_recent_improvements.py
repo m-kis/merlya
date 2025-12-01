@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from athena_ai.llm.model_config import ModelConfig
-from athena_ai.security.credentials import CredentialManager, VariableType
+from merlya.llm.model_config import ModelConfig
+from merlya.security.credentials import CredentialManager, VariableType
 
 
 class TestSessionLogging:
@@ -126,7 +126,7 @@ class TestModelConfiguration:
     @pytest.fixture
     def model_config(self, temp_config_dir, monkeypatch):
         """Create ModelConfig with temporary directory."""
-        monkeypatch.setattr("athena_ai.llm.model_config.Path.home", lambda: temp_config_dir)
+        monkeypatch.setattr("merlya.llm.model_config.Path.home", lambda: temp_config_dir)
         config = ModelConfig(auto_configure=False)
         yield config
 
@@ -202,7 +202,7 @@ class TestModelConfiguration:
         model_config.set_task_model("correction", "haiku")
 
         # Create new ModelConfig instance (should load from file)
-        with patch("athena_ai.llm.model_config.Path.home", return_value=temp_config_dir):
+        with patch("merlya.llm.model_config.Path.home", return_value=temp_config_dir):
             new_config = ModelConfig(auto_configure=False)
 
             assert new_config.get_provider() == "ollama"
@@ -235,7 +235,7 @@ class TestTaskSpecificRouting:
     @pytest.fixture
     def model_config(self, temp_config_dir, monkeypatch):
         """Create ModelConfig with temporary directory."""
-        monkeypatch.setattr("athena_ai.llm.model_config.Path.home", lambda: temp_config_dir)
+        monkeypatch.setattr("merlya.llm.model_config.Path.home", lambda: temp_config_dir)
         config = ModelConfig(auto_configure=False)
         # Configure task-specific models
         config.set_task_model("correction", "haiku")
@@ -339,10 +339,10 @@ class TestInteractiveSetup:
 
     def test_interactive_setup_not_triggered_when_config_exists(self, temp_config_dir, monkeypatch):
         """Test interactive setup is not triggered when config exists."""
-        monkeypatch.setattr("athena_ai.llm.model_config.Path.home", lambda: temp_config_dir)
+        monkeypatch.setattr("merlya.llm.model_config.Path.home", lambda: temp_config_dir)
 
         # Create config file
-        config_dir = temp_config_dir / ".athena"
+        config_dir = temp_config_dir / ".merlya"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({
@@ -359,7 +359,7 @@ class TestInteractiveSetup:
     @patch('builtins.print')
     def test_interactive_setup_triggered_when_config_missing(self, mock_print, mock_input, temp_config_dir, monkeypatch):
         """Test interactive setup is triggered when config doesn't exist."""
-        monkeypatch.setattr("athena_ai.llm.model_config.Path.home", lambda: temp_config_dir)
+        monkeypatch.setattr("merlya.llm.model_config.Path.home", lambda: temp_config_dir)
 
         # Mock user inputs
         mock_input.side_effect = [
@@ -373,7 +373,7 @@ class TestInteractiveSetup:
         config = ModelConfig(auto_configure=True)
 
         # Verify config was created
-        config_file = temp_config_dir / ".athena" / "config.json"
+        config_file = temp_config_dir / ".merlya" / "config.json"
         assert config_file.exists()
 
         # Verify provider was set
@@ -385,7 +385,7 @@ class TestEnvironmentVariableClearing:
 
     def test_set_model_clears_env_var(self, monkeypatch, tmp_path):
         """Test that set_model clears corresponding environment variable."""
-        monkeypatch.setattr("athena_ai.llm.model_config.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("merlya.llm.model_config.Path.home", lambda: tmp_path)
 
         # Set environment variable
         os.environ["OPENROUTER_MODEL"] = "old-model"

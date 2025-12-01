@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from athena_ai.llm.model_config import ModelConfig
+from merlya.llm.model_config import ModelConfig
 
 
 @pytest.fixture
 def temp_config_dir(monkeypatch):
     """Create temporary config directory for tests."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        config_dir = Path(tmpdir) / ".athena"
+        config_dir = Path(tmpdir) / ".merlya"
         config_dir.mkdir(parents=True, exist_ok=True)
         # Mock home directory to use temp dir
         monkeypatch.setattr(Path, "home", lambda: Path(tmpdir))

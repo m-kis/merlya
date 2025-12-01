@@ -5,11 +5,11 @@ Tests for SentinelAgent proactive monitoring system.
 import unittest
 from unittest.mock import MagicMock
 
-from athena_ai.agents.sentinel import (
+from merlya.agents.sentinel import (
     SentinelAgent,
     get_sentinel_agent,
 )
-from athena_ai.agents.sentinel_service.models import (
+from merlya.agents.sentinel_service.models import (
     Alert,
     AlertSeverity,
     HealthCheck,
@@ -55,7 +55,7 @@ class TestSentinelAgent(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Reset singleton for each test
-        import athena_ai.agents.sentinel as module
+        import merlya.agents.sentinel as module
         module._sentinel_instance = None
 
     def test_init_default(self):
@@ -240,7 +240,7 @@ class TestGetSentinelAgent(unittest.TestCase):
 
     def setUp(self):
         """Reset singleton for each test."""
-        import athena_ai.agents.sentinel as module
+        import merlya.agents.sentinel as module
         module._sentinel_instance = None
 
     def test_singleton(self):

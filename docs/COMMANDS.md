@@ -1,6 +1,6 @@
-# Athena REPL Commands
+# Merlya REPL Commands
 
-Complete reference for all slash commands available in the Athena interactive REPL.
+Complete reference for all slash commands available in the Merlya interactive REPL.
 
 ## Quick Reference
 
@@ -30,7 +30,7 @@ Complete reference for all slash commands available in the Athena interactive RE
 | `/reset` | Reset agents memory |
 | `/language` | Change language |
 | `/reload-commands` | Reload custom commands |
-| `/exit`, `/quit` | Exit Athena |
+| `/exit`, `/quit` | Exit Merlya |
 
 ---
 
@@ -770,7 +770,7 @@ Change response language.
 
 ### `/reload-commands`
 
-Reload custom slash commands from `~/.athena/commands/`.
+Reload custom slash commands from `~/.merlya/commands/`.
 
 ```bash
 /reload-commands
@@ -790,7 +790,7 @@ Reset agent memory (clear conversation context from agents).
 
 ### `/exit` or `/quit`
 
-Exit the Athena REPL.
+Exit the Merlya REPL.
 
 ```bash
 /exit
@@ -800,12 +800,12 @@ Exit the Athena REPL.
 
 ## Custom Commands
 
-Athena supports custom slash commands defined in markdown files.
+Merlya supports custom slash commands defined in markdown files.
 
 ### Location
 
 ```text
-~/.athena/commands/
+~/.merlya/commands/
 ├── deploy.md
 ├── healthcheck.md
 └── backup.md
@@ -840,13 +840,13 @@ Check the current version, pull latest changes, and restart services.
 
 | Variable | Description |
 |----------|-------------|
-| `ATHENA_ENV` | Default environment (dev/staging/prod) |
-| `ATHENA_LANGUAGE` | Default language (en/fr) |
-| `ATHENA_MODEL` | Default LLM model |
-| `ATHENA_PROVIDER` | Default LLM provider |
-| `ATHENA_EMBEDDING_MODEL` | Local embedding model |
-| `ATHENA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing (default: false) |
-| `ATHENA_LLM_COMPLIANCE_ACKNOWLEDGED` | Confirm LLM data handling compliance |
+| `MERLYA_ENV` | Default environment (dev/staging/prod) |
+| `MERLYA_LANGUAGE` | Default language (en/fr) |
+| `MERLYA_MODEL` | Default LLM model |
+| `MERLYA_PROVIDER` | Default LLM provider |
+| `MERLYA_EMBEDDING_MODEL` | Local embedding model |
+| `MERLYA_ENABLE_LLM_FALLBACK` | Enable LLM-based inventory parsing (default: false) |
+| `MERLYA_LLM_COMPLIANCE_ACKNOWLEDGED` | Confirm LLM data handling compliance |
 
 ---
 

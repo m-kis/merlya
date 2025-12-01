@@ -3,7 +3,7 @@ Test script for DevSecOps Tools.
 """
 from unittest.mock import MagicMock
 
-from athena_ai.agents import autogen_tools
+from merlya.agents import autogen_tools
 
 
 def test_security_tools():

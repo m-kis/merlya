@@ -8,7 +8,7 @@ import os
 
 import pytest
 
-from athena_ai.triage.embedding_config import (
+from merlya.triage.embedding_config import (
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
     ENV_VAR_MODEL,

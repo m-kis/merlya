@@ -1,4 +1,4 @@
-# Athena Roadmap
+# Merlya Roadmap
 
 ## Current Version: 0.1.0
 
@@ -36,7 +36,7 @@
 | Spinners for long operations | :construction: | 0.2.0 |
 | Progress bars (multi-host scan) | :hourglass: | 0.2.0 |
 | Clean debug output (verbosity levels) | :hourglass: | 0.2.0 |
-| `athena --version` | :white_check_mark: | 0.1.1 |
+| `merlya --version` | :white_check_mark: | 0.1.1 |
 | PyPI publication | :hourglass: | 0.2.0 |
 | Docker image | :hourglass: | 0.2.0 |
 
@@ -107,4 +107,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ### Feature Requests
 
 Open an issue with the `enhancement` label:
-https://github.com/m-kis/athena/issues/new
+https://github.com/m-kis/merlya/issues/new

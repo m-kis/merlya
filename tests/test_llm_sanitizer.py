@@ -6,7 +6,7 @@ Tests based on OWASP LLM Top 10 attack patterns.
 
 import pytest
 
-from athena_ai.inventory.parser.parsers.llm.sanitizer import (
+from merlya.inventory.parser.parsers.llm.sanitizer import (
     sanitize_inventory_content,
     sanitize_prompt_injection,
 )
