@@ -27,12 +27,12 @@ import os
 import re
 import stat
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from athena_ai.utils.logger import logger
 
 if TYPE_CHECKING:
-    pass  # For future type hints if needed
+    pass
 
 # Allowed directories for SSH keys (resolved to absolute paths)
 _ALLOWED_SSH_KEY_DIRS: Optional[List[Path]] = None
@@ -197,9 +197,9 @@ class SSHCredentialMixin:
     # These attributes must be provided by the class using this mixin
     ssh_dir: Path
     ssh_config: Dict[str, Dict[str, str]]
-    _variables: Dict
-    get_variable: callable
-    set_variable: callable
+    _variables: Dict[str, Any]
+    get_variable: Callable[[str], Optional[str]]
+    set_variable: Callable[..., None]
 
     def _parse_ssh_config(self) -> Dict[str, Dict[str, str]]:
         """Parse ~/.ssh/config for host-specific settings."""

@@ -93,14 +93,18 @@ Athena's inventory system manages your infrastructure hosts with support for mul
 ### SSH Key Management
 
 ```bash
-# Show SSH config for a host
-/inventory ssh-key <hostname>
+# Show usage and current config
+/inventory ssh-key
 
-# Set SSH key for a host
-/inventory ssh-key <hostname> set
+# Global SSH key (used for all hosts without specific config)
+/inventory ssh-key set <path>       # Set global default key
+/inventory ssh-key show             # Show global config
+/inventory ssh-key clear            # Clear global key
 
-# Clear SSH configuration
-/inventory ssh-key <hostname> clear
+# Per-host SSH key (overrides global)
+/inventory ssh-key <hostname> set   # Set key for specific host
+/inventory ssh-key <hostname> show  # Show host SSH config
+/inventory ssh-key <hostname> clear # Clear host SSH config
 ```
 
 ### Relations
@@ -191,47 +195,66 @@ When you use `@hostname`:
 
 ## SSH Key Configuration
 
-Associate SSH keys with hosts for secure access.
+Athena provides flexible SSH key management with global defaults and per-host overrides.
 
-### Adding a Host with SSH Key
+### Key Resolution Priority
+
+When connecting to a host, Athena resolves SSH keys in this order:
+
+1. **Host-specific key** from inventory metadata
+2. **Global key** set via `/inventory ssh-key set`
+3. **~/.ssh/config** `IdentityFile` for the host
+4. **Default keys** (id_ed25519, id_ecdsa, id_rsa)
+
+### Setting a Global SSH Key
 
 ```bash
-/inventory add-host web-prod-01
+# Set global default key (used for all hosts without specific config)
+/inventory ssh-key set ~/.ssh/id_ed25519
 
-> Hostname: web-prod-01
-> IP address (optional): 10.0.1.1
-> Environment: production
-> Groups: web, frontend
-> SSH key path: ~/.ssh/id_web_prod
-> Does this key have a passphrase? (y/N): y
+# If key is encrypted, you'll be prompted for passphrase
+> This key appears to be encrypted.
+> Set passphrase now? (Y/n): y
 > SSH key passphrase (hidden): ********
-✓ Passphrase stored as secret: @ssh-passphrase-web-prod-01
-✓ Added host 'web-prod-01' (ID: 42)
+✓ Passphrase cached (session only, not persisted)
 ```
 
-### Managing SSH Keys for Existing Hosts
+### Per-Host SSH Key
 
 ```bash
-# View current config
-/inventory ssh-key web-prod-01
-
-# Set/update SSH key
+# Set key for a specific host
 /inventory ssh-key web-prod-01 set
 > SSH key path [~/.ssh/id_rsa]: ~/.ssh/id_web_prod
 > Set/update passphrase? (y/N): y
 > SSH key passphrase (hidden): ********
-✓ Passphrase stored as secret: @ssh-passphrase-web-prod-01
+✓ Passphrase stored as secret
 
-# Clear SSH config
+# View host SSH config
+/inventory ssh-key web-prod-01 show
+
+# Clear host-specific config (will fall back to global)
 /inventory ssh-key web-prod-01 clear
 ```
 
-### Passphrase Storage
+### Passphrase Handling
 
-- Passphrases stored as **secrets** (memory only, never persisted)
-- Named `ssh-passphrase-<hostname>`
-- Accessible via `@ssh-passphrase-<hostname>` if needed
-- Cleared on REPL exit
+- **Prompted on first use** (secure input with hidden characters)
+- **Cached for session duration** as SECRET type variables
+- **Never persisted** to disk
+- **Cleared automatically** on REPL exit
+
+Naming convention for passphrase secrets:
+
+- Global: `ssh-passphrase-global`
+- Per-host: `ssh-passphrase-<hostname>`
+- Per-key: `ssh-passphrase-<key_filename>`
+
+### Security Features
+
+- **Path validation**: Keys must be in `~/.ssh`, `/etc/ssh`, or `ATHENA_SSH_KEY_DIR`
+- **Permission check**: Warns if key permissions are not 0600/0400
+- **Hostname validation**: RFC 1123 compliant hostnames and IPs
+- **Sanitized logging**: Full paths never appear in debug logs
 
 ---
 

@@ -54,8 +54,10 @@ class SSHManager:
 
         # 2. Create Channel
         transport = jump_client.get_transport()
+        if transport is None:
+            raise paramiko.SSHException("Failed to get transport from jump host")
         dest_addr = (target_host, 22)
-        local_addr = ('127.0.0.1', 0) # Source doesn't matter much
+        local_addr = ('127.0.0.1', 0)  # Source doesn't matter much
         channel = transport.open_channel("direct-tcpip", dest_addr, local_addr)
 
         # 3. Connect to Target through Channel
@@ -113,7 +115,7 @@ class SSHManager:
         display = get_display_manager()
 
         # Prepare connection kwargs
-        connect_kwargs = {
+        connect_kwargs: dict = {
             "timeout": 5,  # Reduced timeout for faster failure on 2FA prompts
             "auth_timeout": 5,  # Auth-specific timeout
             "banner_timeout": 5,  # Banner read timeout
