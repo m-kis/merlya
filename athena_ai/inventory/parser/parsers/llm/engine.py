@@ -239,7 +239,7 @@ OUTPUT (JSON array only):"""
 
     # Determine effective timeout: use provided value, or fall back to global config
     # timeout=0 explicitly disables timeout; timeout=None uses the default
-    effective_timeout = timeout if timeout is not None else LLM_TIMEOUT
+    effective_timeout: Optional[int] = timeout if timeout is not None else LLM_TIMEOUT
     if effective_timeout is not None and effective_timeout <= 0:
         effective_timeout = None  # Disable timeout
 

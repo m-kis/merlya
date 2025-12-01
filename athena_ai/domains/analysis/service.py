@@ -7,7 +7,7 @@ Orchestrates system analysis by:
 - Executing diagnostic commands
 - Collecting and formatting results
 """
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from athena_ai.utils.logger import logger
 
@@ -93,7 +93,7 @@ class AnalysisService:
                 "message": "Analysis execution failed"
             }
 
-    def _validate_inputs(self, target_host: str) -> Dict[str, Any]:
+    def _validate_inputs(self, target_host: str) -> Optional[Dict[str, Any]]:
         """
         Validate analysis inputs.
 

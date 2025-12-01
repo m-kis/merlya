@@ -96,7 +96,7 @@ class ExecutionCoordinator:
         """
         logger.info(f"Executing plan: {plan.request_id}")
 
-        step_results = []
+        step_results: List[StepResult] = []
         start_time = asyncio.get_event_loop().time()
 
         # Execute steps in dependency order
@@ -204,6 +204,9 @@ class ExecutionCoordinator:
                         status=StepStatus.FAILED,
                         error=str(e)
                     )
+
+        # Unreachable but satisfies mypy - loop always returns
+        return StepResult(step_id=step.id, status=StepStatus.FAILED, error="Unexpected loop exit")
 
     async def _perform_rollback(self, step_results: List[StepResult]):
         """

@@ -202,17 +202,29 @@ class PlanExecutor:
                 ]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                for step, result in zip(parallel_steps, results, strict=False):
-                    if isinstance(result, Exception):
-                        result = StepResult(
+                for step, res in zip(parallel_steps, results, strict=False):
+                    step_result: StepResult
+                    if isinstance(res, Exception):
+                        # Handle exceptions from asyncio.gather (excludes KeyboardInterrupt, SystemExit)
+                        step_result = StepResult(
                             step_id=step["id"],
                             status=StepStatus.FAILED,
-                            error=str(result)
+                            error=str(res)
+                        )
+                    elif isinstance(res, StepResult):
+                        step_result = res
+                    else:
+                        # Unexpected return type - should not happen
+                        logger.error(f"Unexpected result type from step {step['id']}: {type(res)}")
+                        step_result = StepResult(
+                            step_id=step["id"],
+                            status=StepStatus.FAILED,
+                            error=f"Unexpected result type: {type(res)}"
                         )
 
-                    context.results[step["id"]] = result
+                    context.results[step["id"]] = step_result
 
-                    if result.status == StepStatus.COMPLETED:
+                    if step_result.status == StepStatus.COMPLETED:
                         completed.add(step["id"])
 
                     remaining.pop(step["id"])
@@ -292,6 +304,9 @@ class PlanExecutor:
                 # Exponential backoff
                 await asyncio.sleep(self.retry_delay * (2 ** (attempt - 1)))
 
+        # Unreachable but satisfies mypy - loop always returns
+        return StepResult(step_id=step_id, status=StepStatus.FAILED, error="Unexpected loop exit")
+
     async def _call_tool_executor(
         self,
         step: Dict[str, Any],
@@ -362,6 +377,10 @@ class PlanExecutor:
             context: Execution context with snapshots
         """
         logger.info("Rolling back plan execution")
+
+        if not self.rollback_manager:
+            logger.warning("No rollback manager available - skipping rollback")
+            return
 
         for snapshot_id in reversed(context.snapshots):
             try:

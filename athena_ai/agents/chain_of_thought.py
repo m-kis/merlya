@@ -84,7 +84,7 @@ class Plan:
 
             # Check if all dependencies are completed
             deps_met = all(
-                self.get_step(dep_id).status == StepStatus.COMPLETED
+                (dep := self.get_step(dep_id)) is not None and dep.status == StepStatus.COMPLETED
                 for dep_id in step.dependencies
             )
 
@@ -183,8 +183,8 @@ class ChainOfThought:
         Returns:
             List of groups (each group is a list of step IDs)
         """
-        groups = []
-        current_group = []
+        groups: List[List[int]] = []
+        current_group: List[int] = []
 
         for step in steps:
             if step.parallelizable and not step.dependencies:

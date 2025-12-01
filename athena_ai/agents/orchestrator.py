@@ -250,7 +250,7 @@ class Orchestrator(BaseOrchestrator):
 
     def _collect_tools(self) -> List[Callable[..., Any]]:
         """Collect all tools as callable functions."""
-        tools = [
+        tools: List[Callable[..., Any]] = [
             # Core tools
             autogen_tools.scan_host,
             autogen_tools.execute_command,

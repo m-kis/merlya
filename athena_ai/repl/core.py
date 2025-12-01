@@ -75,7 +75,7 @@ class AthenaREPL:
             credentials_manager=self.credentials
         )
 
-        self.session = PromptSession(
+        self.session: PromptSession[str] = PromptSession(
             history=FileHistory(str(history_file)),
             auto_suggest=AutoSuggestFromHistory(),
             completer=self.completer

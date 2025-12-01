@@ -4,7 +4,7 @@ Info Request Service - DDD Domain Service.
 Responsible for executing INFO_REQUEST workflows.
 """
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 
@@ -92,7 +92,7 @@ class InfoRequestService:
         Returns:
             List of detected service names
         """
-        services = []
+        services: List[str] = []
         if not scan_result:
             return services
 
@@ -112,7 +112,7 @@ class InfoRequestService:
 
         return services
 
-    def _extract_uptime(self, scan_result: str) -> int:
+    def _extract_uptime(self, scan_result: str) -> Optional[int]:
         """
         Extract uptime in days from scan result.
 

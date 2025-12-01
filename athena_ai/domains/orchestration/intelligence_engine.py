@@ -366,7 +366,7 @@ class IntelligenceEngine:
         avg_duration = sum(ex['duration_ms'] for ex in self.execution_history) / total_executions
 
         # Request type distribution
-        request_types = defaultdict(int)
+        request_types: defaultdict[str, int] = defaultdict(int)
         for ex in self.execution_history:
             request_types[ex['request_type']] += 1
 

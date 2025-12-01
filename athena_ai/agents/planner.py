@@ -415,7 +415,9 @@ class PlannerAgent(Planner):
             llm_router=llm_client,
         )
 
-    def create_plan(self, request: str, context_summary: str = "") -> list[dict[str, Any]]:
+    def create_plan(  # type: ignore[override]
+        self, request: str, context_summary: str = ""
+    ) -> list[dict[str, Any]]:
         """Create plan (returns list of dicts for compatibility)."""
         plan = super().create_plan(request, {"summary": context_summary})
         return [step.to_dict() for step in plan.steps]

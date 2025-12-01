@@ -365,8 +365,8 @@ class PlanManager:
             rec_stack.remove(node)
             return False
 
-        visited = set()
-        rec_stack = set()
+        visited: set[str] = set()
+        rec_stack: set[str] = set()
 
         for step in steps:
             if step.id not in visited:

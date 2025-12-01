@@ -1,5 +1,5 @@
 import asyncio
-from typing import List
+from typing import List, Union
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -17,10 +17,10 @@ class CommandExecutor:
         self.repl = repl
         self.registry = registry
 
-    def execute(self, command: str) -> bool:
+    def execute(self, command: str) -> Union[bool, str]:
         """
         Execute a slash command.
-        Returns True if command was handled, False otherwise.
+        Returns True if command was handled, False otherwise, or 'exit' for exit commands.
         """
         parts = command.split()
         cmd = parts[0].lower()

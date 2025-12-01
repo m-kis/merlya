@@ -27,7 +27,7 @@ class MySQLConnector(BaseConnector):
     def test_connection(self) -> bool:
         """Test MySQL connection."""
         try:
-            import pymysql
+            import pymysql  # type: ignore[import-untyped]
 
             if not self.username or not self.password:
                 from athena_ai.security.credentials import CredentialManager

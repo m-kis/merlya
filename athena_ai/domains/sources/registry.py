@@ -31,9 +31,10 @@ class SourceRegistry:
     - Get connector instances by source name
     """
 
-    _instance = None
+    _instance: Optional["SourceRegistry"] = None
+    _initialized: bool = False
 
-    def __new__(cls, env: str = "dev"):
+    def __new__(cls, env: str = "dev") -> "SourceRegistry":
         """Singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)

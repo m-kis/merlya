@@ -118,7 +118,7 @@ class MongoDBConnector(BaseConnector):
                     cursor = collection.find(query_doc)
                     results = list(cursor)
                 elif operation == 'aggregate':
-                    pipeline = params or []
+                    pipeline: list[dict] = params if isinstance(params, list) else []
                     cursor = collection.aggregate(pipeline)
                     results = list(cursor)
                 else:

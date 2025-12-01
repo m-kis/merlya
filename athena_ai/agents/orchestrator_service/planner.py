@@ -55,10 +55,10 @@ class ExecutionPlanner:
             )
 
         # Engineer (main agent with tools)
-        self.engineer = AssistantAgent(
+        self.engineer = AssistantAgent(  # type: ignore[assignment]
             name="DevSecOps_Engineer",
             model_client=self.model_client,
-            tools=self.tools,
+            tools=self.tools,  # type: ignore[arg-type]
             system_message=self._get_engineer_prompt(),
             description="Expert DevSecOps engineer who executes infrastructure tasks using tools.",
         )

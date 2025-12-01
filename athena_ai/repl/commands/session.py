@@ -347,6 +347,9 @@ class SessionCommandHandler:
         if loaded:
             try:
                 conv = self.repl.conversation_manager.current_conversation
+                if conv is None:
+                    print_error("Conversation loaded but not accessible")
+                    return True
                 logger.info("✅ Loaded conversation: %s", conv_id)
                 print_success(f"Loaded conversation: {conv_id}")
                 console.print(f"  Messages: {len(conv.messages)}")
