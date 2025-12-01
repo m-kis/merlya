@@ -216,10 +216,11 @@ class InventoryCommandHandler:
         2. Configuring SSH key
         3. Testing connection
         """
+        import getpass
+        from pathlib import Path
+
         from merlya.repl.ui import print_success, print_warning
         from merlya.security.ssh_credentials import check_key_needs_passphrase
-        from pathlib import Path
-        import getpass
 
         console.print("\n[bold cyan]🧙 Inventory Setup Wizard[/bold cyan]\n")
         console.print("Let's get you started with Merlya!\n")
