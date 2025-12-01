@@ -14,23 +14,24 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # Now we can import
 from athena_ai.repl.commands.session import SessionCommandHandler
 
+
 class TestConversationsCommand(unittest.TestCase):
     def setUp(self):
         self.mock_repl = MagicMock()
         self.mock_manager = MagicMock()
         self.mock_repl.conversation_manager = self.mock_manager
-        
+
         # Mock current conversation
         self.mock_current_conv = MagicMock()
         self.mock_current_conv.id = "conv_current"
         self.mock_manager.current_conversation = self.mock_current_conv
-        
+
         self.handler = SessionCommandHandler(self.mock_repl)
-        
+
         # Mock console to prevent actual output
         self.console_patcher = patch('athena_ai.repl.commands.session.console')
         self.mock_console = self.console_patcher.start()
-        
+
     def tearDown(self):
         self.console_patcher.stop()
 
@@ -40,9 +41,9 @@ class TestConversationsCommand(unittest.TestCase):
             {'id': 'conv_1', 'title': 'Test 1', 'message_count': 5, 'token_count': 100, 'updated_at': '2023-01-01'},
             {'id': 'conv_current', 'title': 'Current', 'message_count': 10, 'token_count': 200, 'updated_at': '2023-01-02'}
         ]
-        
+
         self.handler.handle_conversations([])
-        
+
         self.mock_manager.list_conversations.assert_called_with(limit=20)
         self.mock_console.print.assert_called()
 
@@ -86,18 +87,18 @@ class TestConversationsCommand(unittest.TestCase):
         """Test /conversations check <id> loading from store."""
         target_id = 'conv_old'
         self.mock_manager.list_conversations.return_value = []
-        
+
         mock_conv = MagicMock()
         mock_conv.id = target_id
         mock_conv.title = "Old Conv"
         mock_conv.message_count = 10
         mock_conv.token_count = 500
         mock_conv.messages = []
-        
+
         self.mock_manager.history.store.load_conversation.return_value = mock_conv
-        
+
         self.handler.handle_conversations(['check', target_id])
-        
+
         self.mock_console.print.assert_called()
 
     def test_set(self):
