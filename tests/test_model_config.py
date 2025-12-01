@@ -205,14 +205,14 @@ class TestModelConfigPriorityMapping:
 
     def test_p0_uses_fast_model(self, temp_config_dir):
         """P0 should use fast model (correction task)."""
-        config = ModelConfig()
         # P0 maps to correction task which uses haiku
+        # temp_config_dir fixture ensures clean config state
         assert ModelConfig.PRIORITY_TASK_MAP["P0"] == "correction"
 
     def test_p3_uses_thorough_model(self, temp_config_dir):
         """P3 should use thorough model (planning task)."""
-        config = ModelConfig()
         # P3 maps to planning task which uses opus
+        # temp_config_dir fixture ensures clean config state
         assert ModelConfig.PRIORITY_TASK_MAP["P3"] == "planning"
 
     def test_get_model_for_priority_p0(self, temp_config_dir):
