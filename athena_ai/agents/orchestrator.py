@@ -514,6 +514,7 @@ class Orchestrator(BaseOrchestrator):
                     conversation_history,
                     allowed_tools=allowed_tools,
                     intent=intent_value,  # Pass intent for behavior adaptation
+                    priority=priority_name,  # Pass priority for behavior adaptation
                 )
 
             # Step 5: Implicit positive feedback - classification was used successfully

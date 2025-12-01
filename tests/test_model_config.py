@@ -192,5 +192,53 @@ class TestModelConfigTaskModels:
         assert isinstance(task_models, dict)
 
 
+class TestModelConfigPriorityMapping:
+    """Tests for priority-based model selection."""
+
+    def test_priority_task_map_exists(self):
+        """PRIORITY_TASK_MAP should exist and cover all priorities."""
+        assert hasattr(ModelConfig, "PRIORITY_TASK_MAP")
+        assert "P0" in ModelConfig.PRIORITY_TASK_MAP
+        assert "P1" in ModelConfig.PRIORITY_TASK_MAP
+        assert "P2" in ModelConfig.PRIORITY_TASK_MAP
+        assert "P3" in ModelConfig.PRIORITY_TASK_MAP
+
+    def test_p0_uses_fast_model(self, temp_config_dir):
+        """P0 should use fast model (correction task)."""
+        config = ModelConfig()
+        # P0 maps to correction task which uses haiku
+        assert ModelConfig.PRIORITY_TASK_MAP["P0"] == "correction"
+
+    def test_p3_uses_thorough_model(self, temp_config_dir):
+        """P3 should use thorough model (planning task)."""
+        config = ModelConfig()
+        # P3 maps to planning task which uses opus
+        assert ModelConfig.PRIORITY_TASK_MAP["P3"] == "planning"
+
+    def test_get_model_for_priority_p0(self, temp_config_dir):
+        """get_model_for_priority(P0) should return fast model."""
+        config = ModelConfig()
+        model = config.get_model_for_priority("P0")
+
+        # Should be a haiku model (fast)
+        assert "haiku" in model.lower() or model == config.get_model(task="correction")
+
+    def test_get_model_for_priority_p3(self, temp_config_dir):
+        """get_model_for_priority(P3) should return thorough model."""
+        config = ModelConfig()
+        model = config.get_model_for_priority("P3")
+
+        # Should be an opus model (thorough)
+        assert "opus" in model.lower() or model == config.get_model(task="planning")
+
+    def test_get_model_for_priority_unknown_defaults_to_synthesis(self, temp_config_dir):
+        """Unknown priority should default to synthesis task."""
+        config = ModelConfig()
+        model = config.get_model_for_priority("UNKNOWN")
+
+        # Should fall back to synthesis model (balanced)
+        assert model == config.get_model(task="synthesis")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

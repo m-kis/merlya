@@ -261,6 +261,65 @@ Based on intent, Athena adapts its behavior:
 
 ---
 
+## Priority-Based Behavior Profiles
+
+Each priority level has a `BehaviorProfile` that adapts agent behavior:
+
+| Priority | Response Format | Max Commands | Confirmation Mode | Chain of Thought |
+|----------|-----------------|--------------|-------------------|------------------|
+| **P0** | `terse` | 10 | `critical_only` | ❌ Disabled |
+| **P1** | `summary` | 10 | `writes_only` | ❌ Disabled |
+| **P2** | `normal` | 5 | `writes_only` | ✅ Enabled |
+| **P3** | `detailed` | 3 | `all` | ✅ Enabled |
+
+### Behavior Details
+
+**P0/P1 - Fast Response Mode:**
+
+- Act quickly, gather essential info
+- Auto-confirm read operations
+- Focus on immediate resolution
+- Fewer message iterations (15 max)
+
+**P2 - Thorough Mode:**
+
+- Take time to analyze thoroughly
+- Show reasoning
+- Confirm write operations
+- Standard iterations (25 max)
+
+**P3 - Careful Mode:**
+
+- Full analysis with chain-of-thought
+- Confirm all operations
+- Detailed responses with explanations
+- Let user decide next steps
+
+### Model Selection by Priority
+
+Priority also affects model selection for optimal cost/performance:
+
+| Priority | Task Type | Model Tier |
+|----------|-----------|------------|
+| **P0** | `correction` | Haiku (fastest) |
+| **P1** | `correction` | Haiku (fastest) |
+| **P2** | `synthesis` | Sonnet (balanced) |
+| **P3** | `planning` | Opus (most capable) |
+
+Configure task models in `~/.athena/config.json`:
+
+```json
+{
+  "task_models": {
+    "correction": "haiku",
+    "synthesis": "sonnet",
+    "planning": "opus"
+  }
+}
+```
+
+---
+
 ## Tool Restrictions
 
 Based on priority and intent, tool access may be restricted:

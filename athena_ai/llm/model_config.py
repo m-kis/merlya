@@ -91,6 +91,17 @@ class ModelConfig:
         "correction": "haiku",  # Fast corrections (haiku = fastest)
         "planning": "opus",     # Complex planning (opus = most capable)
         "synthesis": "sonnet",  # Balanced synthesis (sonnet = balanced)
+        "triage": "haiku",      # Fast triage classification
+    }
+
+    # Priority-to-task mapping: determines which model tier to use
+    # P0/P1 = critical = fast model for quick response
+    # P2/P3 = normal = balanced or best model for thorough analysis
+    PRIORITY_TASK_MAP = {
+        "P0": "correction",  # Fast response for critical incidents
+        "P1": "correction",  # Fast response for urgent issues
+        "P2": "synthesis",   # Balanced for important tasks
+        "P3": "planning",    # Thorough for normal tasks
     }
 
     def __init__(self, auto_configure: bool = False):
@@ -447,6 +458,34 @@ class ModelConfig:
     def get_task_models(self) -> Dict[str, str]:
         """Get all task model configurations."""
         return self.config.get("task_models", {})
+
+    def get_model_for_priority(self, priority: str, provider: Optional[str] = None) -> str:
+        """
+        Get the appropriate model for a given priority level.
+
+        Uses PRIORITY_TASK_MAP to determine which task type to use,
+        then resolves the model for that task.
+
+        Args:
+            priority: Priority level (P0, P1, P2, P3)
+            provider: Optional provider override
+
+        Returns:
+            Model identifier appropriate for the priority level
+
+        Example:
+            >>> config.get_model_for_priority("P0")  # Returns fast model (haiku)
+            >>> config.get_model_for_priority("P3")  # Returns thorough model (opus)
+        """
+        # Warn if unknown priority
+        if priority not in self.PRIORITY_TASK_MAP:
+            logger.warning(f"⚠️ Unknown priority '{priority}', defaulting to synthesis model")
+
+        # Map priority to task type
+        task = self.PRIORITY_TASK_MAP.get(priority, "synthesis")
+
+        # Get model for that task
+        return self.get_model(provider=provider, task=task)
 
     def get_current_config(self) -> Dict:
         """Get current configuration for display."""

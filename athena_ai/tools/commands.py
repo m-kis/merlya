@@ -48,7 +48,20 @@ def execute_command(
     # Just-in-time scanning
     if target not in ["local", "localhost"]:
         try:
-            ctx.context_manager.scan_host(target)
+            # Handle async context manager call
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                if loop.is_running():
+                    from concurrent.futures import ThreadPoolExecutor
+                    with ThreadPoolExecutor() as pool:
+                        pool.submit(asyncio.run, ctx.context_manager.scan_host(target)).result()
+                else:
+                    asyncio.run(ctx.context_manager.scan_host(target))
+            except RuntimeError:
+                asyncio.run(ctx.context_manager.scan_host(target))
+            except Exception:
+                asyncio.run(ctx.context_manager.scan_host(target))
         except Exception as e:
             logger.warning(f"⚠️ Could not scan {target}: {e}")
 
@@ -167,6 +180,14 @@ def execute_command(
             params_str = ", ".join(f"{k}={v!r}" for k, v in recommendation.tool_params.items() if v)
             tool_hint += f"\n   Parameters: {params_str}"
         tool_hint += f"\n   Reason: {recommendation.reason}"
+
+        # For permission errors, add explicit instruction for the agent
+        if recommendation.action == ToolAction.REQUEST_ELEVATION:
+            tool_hint += (
+                "\n\n🔐 **IMPORTANT**: This is a permission error. "
+                "Call `request_elevation()` to ask the user for elevated privileges."
+            )
+
         base_response += tool_hint
 
     return base_response

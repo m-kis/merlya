@@ -1,8 +1,10 @@
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Optional
 
 from rich.console import Console
 
 from athena_ai.agents import autogen_tools, knowledge_tools
+from athena_ai.triage.behavior import BehaviorProfile, get_behavior
+from athena_ai.triage.priority import Priority
 from athena_ai.utils.logger import logger
 
 # Optional imports
@@ -220,6 +222,44 @@ Environment: {self.env}"""
 
         return "\n".join(context_parts)
 
+    def _get_behavior_for_priority(self, priority_name: str) -> BehaviorProfile:
+        """Get BehaviorProfile for a priority level."""
+        try:
+            priority = Priority[priority_name]
+            return get_behavior(priority)
+        except (KeyError, ValueError):
+            # Default to P3 behavior (most careful)
+            return get_behavior(Priority.P3)
+
+    def _get_priority_guidance(self, priority_name: str) -> str:
+        """Get priority-specific execution guidance."""
+        behavior = self._get_behavior_for_priority(priority_name)
+
+        if priority_name in ("P0", "P1"):
+            return f"""
+🚨 **PRIORITY: {priority_name} - FAST RESPONSE MODE**
+- Act quickly: gather essential info and respond
+- Auto-confirm read operations
+- Maximum {behavior.max_commands_before_pause} commands before pause
+- Use {behavior.response_format} responses
+- Focus on immediate resolution"""
+        elif priority_name == "P2":
+            return f"""
+⚠️ **PRIORITY: {priority_name} - THOROUGH MODE**
+- Take time to analyze thoroughly
+- Show your reasoning
+- Confirm write operations
+- Maximum {behavior.max_commands_before_pause} commands before pause
+- Provide detailed explanations"""
+        else:  # P3
+            return f"""
+📋 **PRIORITY: {priority_name} - CAREFUL MODE**
+- Full analysis with chain-of-thought
+- Confirm all operations
+- Maximum {behavior.max_commands_before_pause} commands before pause
+- Detailed responses with explanations
+- Let user decide next steps"""
+
     def _get_intent_guidance(self, intent: str) -> str:
         """Get intent-specific guidance to inject into the task."""
         if intent == "analysis":
@@ -251,8 +291,18 @@ Environment: {self.env}"""
         conversation_history: List[dict] = None,
         allowed_tools: List[str] = None,
         intent: str = "action",
+        priority: Optional[str] = None,
     ) -> str:
-        """Process with single engineer agent."""
+        """
+        Process with single engineer agent.
+
+        Args:
+            user_query: User's request
+            conversation_history: Recent conversation context
+            allowed_tools: List of allowed tool names (None = all)
+            intent: Intent type (query, action, analysis)
+            priority: Priority level (P0, P1, P2, P3) - affects behavior profile
+        """
         if not HAS_AUTOGEN:
             raise ImportError(
                 "autogen-agentchat is required for execute_basic(). "
@@ -261,21 +311,39 @@ Environment: {self.env}"""
         if self.engineer is None:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 
+        # Get behavior profile based on priority
+        priority_name = priority or "P3"
+        behavior = self._get_behavior_for_priority(priority_name)
+
         # Build task with conversation context
         task = self._build_task_with_context(user_query, conversation_history)
 
+        # Add priority-specific guidance (adapts agent behavior)
+        priority_guidance = self._get_priority_guidance(priority_name)
+
         # Add intent-specific guidance
         intent_guidance = self._get_intent_guidance(intent)
-        task = f"{intent_guidance}\n\n{task}"
+        task = f"{priority_guidance}\n{intent_guidance}\n\n{task}"
 
         # Add tool restrictions if specified
         if allowed_tools:
             task += f"\n\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
 
+        # Log effective configuration
+        logger.info(
+            f"⚙️ Executing with priority={priority_name}, intent={intent}, "
+            f"max_commands={behavior.max_commands_before_pause}, "
+            f"response_format={behavior.response_format}"
+        )
+
         # Create a simple team with just the engineer
-        # Higher limit to give agent room for multi-step tasks (healthcheck, diagnosis, etc.)
-        # Each tool call = 2 messages (request + result), so 25 allows ~10 tool calls + synthesis
-        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(25)
+        # Adjust message limit based on priority (P0/P1 = faster, fewer iterations)
+        if priority_name in ("P0", "P1"):
+            max_messages = 15  # Faster response
+        else:
+            max_messages = 25  # More thorough
+
+        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(max_messages)
 
         team = RoundRobinGroupChat(
             participants=[self.engineer],
@@ -305,8 +373,14 @@ Environment: {self.env}"""
             )
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
 
+        # Get behavior profile based on priority
+        behavior = self._get_behavior_for_priority(priority_name)
+
         # Build base task with context
         base_task = self._build_task_with_context(user_query, conversation_history)
+
+        # Add priority-specific guidance (adapts agent behavior)
+        priority_guidance = self._get_priority_guidance(priority_name)
 
         # Add intent-specific guidance
         intent_guidance = self._get_intent_guidance(intent)
@@ -316,11 +390,18 @@ Environment: {self.env}"""
         if allowed_tools:
             tool_restriction = f"\n\n⚠️ TOOL RESTRICTION: You may ONLY use these tools: {', '.join(allowed_tools)}. Do NOT use any other tools."
 
-        task = f"""{intent_guidance}
+        # Log effective configuration
+        logger.info(
+            f"⚙️ Executing ENHANCED with priority={priority_name}, intent={intent}, "
+            f"max_commands={behavior.max_commands_before_pause}, "
+            f"response_format={behavior.response_format}"
+        )
+
+        task = f"""{priority_guidance}
+{intent_guidance}
 
 {base_task}
 
-Priority: {priority_name}
 Environment: {self.env}
 {tool_restriction}
 
