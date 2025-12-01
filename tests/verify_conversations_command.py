@@ -112,5 +112,188 @@ class TestConversationsCommand(unittest.TestCase):
         self.handler.handle_conversations(['help'])
         self.mock_console.print.assert_called()
 
+
+class TestConversationIdValidation(unittest.TestCase):
+    """Test conversation ID validation for security."""
+
+    def setUp(self):
+        self.mock_repl = MagicMock()
+        self.mock_manager = MagicMock()
+        self.mock_repl.conversation_manager = self.mock_manager
+        self.mock_manager.current_conversation = None
+        self.handler = SessionCommandHandler(self.mock_repl)
+
+        # Mock console and print functions
+        self.console_patcher = patch('athena_ai.repl.commands.session.console')
+        self.error_patcher = patch('athena_ai.repl.commands.session.print_error')
+        self.mock_console = self.console_patcher.start()
+        self.mock_print_error = self.error_patcher.start()
+
+    def tearDown(self):
+        self.console_patcher.stop()
+        self.error_patcher.stop()
+
+    def test_valid_conversation_id(self):
+        """Test that valid conversation IDs pass validation."""
+        valid_ids = [
+            'conv_123',
+            'my-conversation',
+            'abc123',
+            'UPPERCASE_ID',
+            'mixed-Case_123',
+        ]
+        for conv_id in valid_ids:
+            is_valid, error = self.handler._validate_conversation_id(conv_id)
+            self.assertTrue(is_valid, f"Expected {conv_id} to be valid")
+            self.assertIsNone(error)
+
+    def test_path_traversal_rejected(self):
+        """Test that path traversal attempts are rejected."""
+        malicious_ids = [
+            '../../../etc/passwd',
+            '..\\..\\windows\\system32',
+            'conv/../secret',
+            'normal/path',
+            'back\\slash',
+        ]
+        for conv_id in malicious_ids:
+            is_valid, error = self.handler._validate_conversation_id(conv_id)
+            self.assertFalse(is_valid, f"Expected {conv_id} to be rejected")
+            self.assertIsNotNone(error)
+
+    def test_empty_id_rejected(self):
+        """Test that empty IDs are rejected."""
+        is_valid, error = self.handler._validate_conversation_id('')
+        self.assertFalse(is_valid)
+        self.assertIn('empty', error.lower())
+
+    def test_too_long_id_rejected(self):
+        """Test that excessively long IDs are rejected."""
+        long_id = 'a' * 300
+        is_valid, error = self.handler._validate_conversation_id(long_id)
+        self.assertFalse(is_valid)
+        self.assertIn('too long', error.lower())
+
+    def test_special_chars_rejected(self):
+        """Test that special characters are rejected."""
+        invalid_ids = [
+            'conv@123',
+            'my!conversation',
+            'space here',
+            'tab\there',
+            'newline\nhere',
+        ]
+        for conv_id in invalid_ids:
+            is_valid, error = self.handler._validate_conversation_id(conv_id)
+            self.assertFalse(is_valid, f"Expected {conv_id!r} to be rejected")
+
+    def test_check_with_invalid_id(self):
+        """Test /conversations check rejects invalid IDs."""
+        result = self.handler.handle_conversations(['check', '../../../etc/passwd'])
+        self.assertTrue(result)  # Command handled
+        self.mock_print_error.assert_called()
+        # Verify load_conversation was NOT called
+        self.mock_manager.history.store.load_conversation.assert_not_called()
+
+    def test_load_with_invalid_id(self):
+        """Test /load rejects invalid IDs."""
+        result = self.handler.handle_load(['conv@invalid'])
+        self.assertTrue(result)
+        self.mock_print_error.assert_called()
+        self.mock_manager.load_conversation.assert_not_called()
+
+    def test_delete_with_invalid_id(self):
+        """Test /delete rejects invalid IDs."""
+        result = self.handler.handle_delete(['../../secret'])
+        self.assertTrue(result)
+        self.mock_print_error.assert_called()
+        self.mock_manager.delete_conversation.assert_not_called()
+
+
+class TestEdgeCases(unittest.TestCase):
+    """Test edge cases and error handling."""
+
+    def setUp(self):
+        self.mock_repl = MagicMock()
+        self.mock_manager = MagicMock()
+        self.mock_repl.conversation_manager = self.mock_manager
+        self.mock_manager.current_conversation = None
+        self.handler = SessionCommandHandler(self.mock_repl)
+
+        self.console_patcher = patch('athena_ai.repl.commands.session.console')
+        self.error_patcher = patch('athena_ai.repl.commands.session.print_error')
+        self.warning_patcher = patch('athena_ai.repl.commands.session.print_warning')
+        self.mock_console = self.console_patcher.start()
+        self.mock_print_error = self.error_patcher.start()
+        self.mock_print_warning = self.warning_patcher.start()
+
+    def tearDown(self):
+        self.console_patcher.stop()
+        self.error_patcher.stop()
+        self.warning_patcher.stop()
+
+    def test_list_empty_conversations(self):
+        """Test /conversations list when no conversations exist."""
+        self.mock_manager.list_conversations.return_value = []
+        result = self.handler.handle_conversations(['list'])
+        self.assertTrue(result)
+        self.mock_print_warning.assert_called()
+
+    def test_list_exception_handling(self):
+        """Test /conversations list handles exceptions gracefully."""
+        self.mock_manager.list_conversations.side_effect = Exception("DB error")
+        result = self.handler.handle_conversations(['list'])
+        self.assertTrue(result)
+        self.mock_print_error.assert_called()
+
+    def test_check_nonexistent_id(self):
+        """Test /conversations check with ID that doesn't exist."""
+        self.mock_manager.list_conversations.return_value = []
+        self.mock_manager.history.store.load_conversation.return_value = None
+
+        result = self.handler.handle_conversations(['check', 'nonexistent'])
+        self.assertTrue(result)
+        self.mock_print_warning.assert_called()
+
+    def test_load_exception_handling(self):
+        """Test /load handles exceptions gracefully."""
+        self.mock_manager.load_conversation.side_effect = Exception("DB error")
+        result = self.handler.handle_load(['valid_id'])
+        self.assertTrue(result)
+        self.mock_print_error.assert_called()
+
+    def test_delete_keyboard_interrupt(self):
+        """Test /delete handles Ctrl+C during confirmation."""
+        with patch('builtins.input', side_effect=KeyboardInterrupt):
+            result = self.handler.handle_delete(['conv_123'])
+        self.assertTrue(result)
+        self.mock_manager.delete_conversation.assert_not_called()
+        self.mock_print_warning.assert_called()
+
+    def test_delete_user_cancels(self):
+        """Test /delete when user types 'n'."""
+        with patch('builtins.input', return_value='n'):
+            result = self.handler.handle_delete(['conv_123'])
+        self.assertTrue(result)
+        self.mock_manager.delete_conversation.assert_not_called()
+
+    def test_unknown_subcommand(self):
+        """Test unknown subcommand shows help."""
+        result = self.handler.handle_conversations(['invalid_subcommand'])
+        self.assertTrue(result)
+        self.mock_print_error.assert_called()
+        self.mock_console.print.assert_called()  # Help table printed
+
+    def test_unexpected_exception_in_conversations(self):
+        """Test unexpected exception is caught and logged."""
+        # Force an exception in subcommand routing
+        with patch.object(
+            self.handler, '_handle_conversations_list', side_effect=RuntimeError("Boom")
+        ):
+            result = self.handler.handle_conversations([])
+        self.assertTrue(result)
+        self.mock_print_error.assert_called()
+
+
 if __name__ == '__main__':
     unittest.main()
