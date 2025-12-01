@@ -2,7 +2,9 @@
 Core REPL logic for Merlya.
 """
 import asyncio
+import contextlib
 import os
+import sys
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
@@ -23,6 +25,72 @@ from merlya.repl.ui import console, print_error, print_markdown, print_success, 
 from merlya.tools.base import get_status_manager
 from merlya.utils.config import ConfigManager
 from merlya.utils.logger import logger
+
+
+@contextlib.contextmanager
+def suppress_asyncio_errors():
+    """
+    Context manager to suppress noisy asyncio/AutoGen errors during interrupts.
+
+    When user presses Ctrl+C during an async operation, AutoGen can print
+    verbose error messages like "Error processing publish message" and
+    "task_done() called too many times". This filters them out for a cleaner UX.
+    """
+    old_stderr = sys.stderr
+
+    # Create a filter that suppresses known noisy patterns
+    class FilteredStderr:
+        """Stderr wrapper that filters out known noisy error patterns."""
+
+        # Patterns to suppress (common AutoGen/asyncio shutdown noise)
+        NOISE_PATTERNS = [
+            "Error processing publish message",
+            "task_done() called too many times",
+            "unhandled exception during asyncio.run() shutdown",
+            "CancelledError",
+            "Task was destroyed but it is pending",
+            "exception=CancelledError",
+            "asyncio.exceptions.CancelledError",
+            "Traceback (most recent call last):",  # Only suppress if followed by known patterns
+            "_GatheringFuture",
+            "AgentInstantiationContext",
+            "during handling of the above exception",
+            "Event loop is closed",  # httpx client cleanup during reload
+            "RuntimeError: Event loop is closed",
+        ]
+
+        def __init__(self, original):
+            self._original = original
+            self._buffer = ""
+
+        def write(self, text):
+            # Buffer text to handle multi-line patterns
+            self._buffer += text
+
+            # Check if we should suppress this output
+            if any(pattern in self._buffer for pattern in self.NOISE_PATTERNS):
+                # Clear buffer but don't output
+                if "\n" in text:
+                    self._buffer = ""
+                return
+
+            # If buffer doesn't contain noise, output it
+            self._original.write(text)
+            if "\n" in text:
+                self._buffer = ""
+
+        def flush(self):
+            self._original.flush()
+
+        # Forward other attributes to original stderr
+        def __getattr__(self, name):
+            return getattr(self._original, name)
+
+    sys.stderr = FilteredStderr(old_stderr)
+    try:
+        yield
+    finally:
+        sys.stderr = old_stderr
 
 
 class MerlyaREPL:
@@ -80,6 +148,9 @@ class MerlyaREPL:
             auto_suggest=AutoSuggestFromHistory(),
             completer=self.completer
         )
+
+        # Setup SSH credentials (passphrase) on first run if needed
+        self._setup_ssh_credentials()
 
         # Start session
         self.session_manager.start_session(metadata={"env": env, "mode": "repl"})
@@ -149,6 +220,66 @@ class MerlyaREPL:
                 console.print("\n[yellow]⚠️ Defaulting to English[/yellow]\n")
                 break
 
+    def _setup_ssh_credentials(self):
+        """
+        Setup SSH credentials on startup.
+
+        Checks if the default SSH key requires a passphrase and prompts user
+        to enter it once for the session. This avoids repeated prompts during scans.
+        """
+        import getpass
+
+        from merlya.security.credentials import VariableType
+
+        try:
+            # Check if passphrase is already set for this session
+            if self.credentials.get_variable("ssh-passphrase-global"):
+                logger.debug("SSH passphrase already configured for session")
+                return
+
+            # Get default SSH key
+            default_key = self.credentials.get_default_key()
+            if not default_key:
+                logger.debug("No default SSH key found")
+                return
+
+            # Check if key needs passphrase
+            if not self.credentials._key_needs_passphrase(default_key):
+                logger.debug("Default SSH key does not require passphrase")
+                return
+
+            # Key needs passphrase - prompt user
+            key_name = Path(default_key).name
+            console.print("\n[bold cyan]🔐 SSH Key Setup[/bold cyan]")
+            console.print(f"Default SSH key [yellow]{key_name}[/yellow] requires a passphrase.")
+            console.print("[dim]Setting it now will enable remote host scanning without repeated prompts.[/dim]\n")
+
+            try:
+                setup_now = input("Configure passphrase for this session? (Y/n): ").strip().lower()
+                if setup_now == "n":
+                    console.print("[dim]Skipped. Use /inventory ssh-key set to configure later.[/dim]\n")
+                    return
+
+                passphrase = getpass.getpass("Enter passphrase: ")
+                if passphrase:
+                    # Store as session secret
+                    self.credentials.set_variable(
+                        "ssh-passphrase-global",
+                        passphrase,
+                        VariableType.SECRET
+                    )
+                    console.print("[green]✅ SSH passphrase configured for this session[/green]\n")
+                    logger.info("SSH passphrase configured during startup")
+                else:
+                    console.print("[yellow]⚠️ Empty passphrase, skipping[/yellow]\n")
+
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[dim]Skipped SSH setup[/dim]\n")
+
+        except Exception as e:
+            # Don't fail startup if SSH setup fails
+            logger.debug(f"SSH credential setup skipped: {e}")
+
     def start(self):
         """Start the REPL loop."""
         # Show welcome message
@@ -176,14 +307,26 @@ class MerlyaREPL:
 
                 # Handle slash commands
                 if user_input.startswith('/'):
-                    result = asyncio.run(self.command_handler.handle_command(user_input))
+                    # Check if there's additional text after the command (multi-line input)
+                    # Split on newlines and process command first
+                    lines = user_input.split('\n')
+                    command_line = lines[0].strip()
+                    remaining_text = '\n'.join(lines[1:]).strip() if len(lines) > 1 else ''
+
+                    result = asyncio.run(self.command_handler.handle_command(command_line))
                     if result == CommandResult.EXIT:
                         break
                     if result in (CommandResult.HANDLED, CommandResult.FAILED):
+                        # If there's remaining text, process it as a new query
+                        if remaining_text:
+                            user_input = remaining_text
+                            # Fall through to natural language processing
+                        else:
+                            continue
+                    else:
+                        # Unexpected result - slash commands should not fall through to LLM
+                        logger.warning(f"Unexpected command result: {result} for input: {user_input[:50]}")
                         continue
-                    # Unexpected result - slash commands should not fall through to LLM
-                    logger.warning(f"Unexpected command result: {result} for input: {user_input[:50]}")
-                    continue
 
                 # Process natural language query
                 self.conversation_manager.add_user_message(user_input)
@@ -210,14 +353,17 @@ class MerlyaREPL:
                 try:
                     status_manager.set_console(console)
                     status_manager.start("[cyan]🧠 Processing...[/cyan]")
-                    response = asyncio.run(
-                        self.orchestrator.process_request(
-                            user_query=resolved_query,
-                            conversation_history=conversation_history,
-                            # Pass original query for triage (without resolved credentials)
-                            original_query=user_input if resolved_query != user_input else None,
+                    # Wrap asyncio.run with error suppression to hide noisy AutoGen
+                    # shutdown messages when user presses Ctrl+C
+                    with suppress_asyncio_errors():
+                        response = asyncio.run(
+                            self.orchestrator.process_request(
+                                user_query=resolved_query,
+                                conversation_history=conversation_history,
+                                # Pass original query for triage (without resolved credentials)
+                                original_query=user_input if resolved_query != user_input else None,
+                            )
                         )
-                    )
                 finally:
                     status_manager.stop()
 
@@ -228,12 +374,30 @@ class MerlyaREPL:
                     print_markdown(response)
 
             except KeyboardInterrupt:
+                # Clean interrupt - just print a newline and continue
+                console.print("\n[yellow]⏹ Interrupted[/yellow]")
                 continue
             except EOFError:
                 break
+            except asyncio.CancelledError:
+                # Async operation was cancelled (e.g., by Ctrl+C during LLM call)
+                console.print("\n[yellow]⏹ Cancelled[/yellow]")
+                continue
             except Exception as e:
+                # Filter out noisy AutoGen shutdown errors
+                error_str = str(e)
+                if "task_done() called too many times" in error_str:
+                    console.print("\n[yellow]⏹ Interrupted[/yellow]")
+                    continue
+                if "CancelledError" in error_str or "cancelled" in error_str.lower():
+                    console.print("\n[yellow]⏹ Cancelled[/yellow]")
+                    continue
                 logger.error(f"REPL Error: {e}")
                 print_error(f"{e}")
+
+        # Clean shutdown of orchestrator to prevent httpx "Event loop is closed" errors
+        if hasattr(self, 'orchestrator') and self.orchestrator is not None:
+            self.orchestrator.shutdown_sync()
 
         print_success("Goodbye!")
         self.session_manager.end_session()

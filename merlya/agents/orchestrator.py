@@ -233,7 +233,27 @@ class Orchestrator(BaseOrchestrator):
 
     def reload_agents(self) -> None:
         """Reload agents with current configuration."""
+        import asyncio
+
         logger.info("Reloading agents...")
+
+        # Close old model client to prevent "Event loop is closed" errors
+        # The client uses httpx internally which has async connections
+        old_client = self.model_client
+        if old_client is not None:
+            try:
+                # Try to get the current event loop, or create a new one
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in an async context, schedule the close
+                    loop.create_task(old_client.close())
+                except RuntimeError:
+                    # No running loop - create a new one just for cleanup
+                    asyncio.run(old_client.close())
+            except Exception as e:
+                # Log but don't fail - the old client may already be closed
+                logger.debug(f"Could not close old model client: {e}")
+
         self.model_client = self._create_model_client()
         self.planner = ExecutionPlanner(
             model_client=self.model_client,
@@ -333,6 +353,32 @@ class Orchestrator(BaseOrchestrator):
         # New API doesn't have agent.reset(), just reinitialize
         self.planner.init_agents(self.mode.value, self.knowledge_db)
         self.console.print("[dim]🔄 Session reset[/dim]")
+
+    async def shutdown(self) -> None:
+        """Clean shutdown of orchestrator resources.
+
+        Closes the model client to prevent 'Event loop is closed' errors
+        from httpx connections during garbage collection.
+        """
+        if self.model_client is not None:
+            try:
+                await self.model_client.close()
+                logger.debug("Model client closed successfully")
+            except Exception as e:
+                logger.debug(f"Error closing model client: {e}")
+
+    def shutdown_sync(self) -> None:
+        """Synchronous wrapper for shutdown.
+
+        Use this when not in an async context (e.g., REPL exit).
+        """
+        import asyncio
+
+        try:
+            asyncio.run(self.shutdown())
+        except RuntimeError as e:
+            # Event loop may already be closed
+            logger.debug(f"Sync shutdown skipped: {e}")
 
     # =========================================================================
     # Error Handling
