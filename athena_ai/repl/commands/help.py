@@ -28,7 +28,6 @@ SLASH_COMMANDS = {
     '/model': 'Model management (show, list, set, provider, local, task, embedding)',
     # Variables
     '/variables': 'Manage variables (set, set-host, set-secret, list, delete, clear)',
-    '/credentials': 'Alias for /variables',
     # Inventory
     '/inventory': 'Manage hosts (add, list, show, search, remove, export, relations)',
     # CI/CD
@@ -219,8 +218,6 @@ Models: 17-420MB, runs locally. Env var: `ATHENA_EMBEDDING_MODEL`
 | host | @proddb → db-prod-001 | Yes |
 | config | @region → eu-west-1 | Yes |
 | secret | @dbpass → ******** | No |
-
-Note: `/credentials` is an alias for `/variables`
 """
         console.print(Markdown(help_text))
 

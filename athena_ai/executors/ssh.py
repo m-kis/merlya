@@ -24,7 +24,9 @@ class SSHManager:
         self.pool = get_connection_pool() if use_connection_pool else None
         self.connectivity = ConnectivityPlanner()
 
-    def _connect_via_jump_host(self, target_host: str, jump_host: str, user: str, connect_kwargs: dict) -> paramiko.SSHClient:
+    def _connect_via_jump_host(
+        self, target_host: str, jump_host: str, user: str, connect_kwargs: dict
+    ) -> paramiko.SSHClient:
         """
         Establish a connection to target_host via jump_host.
         """
@@ -36,13 +38,17 @@ class SSHManager:
         jump_client = paramiko.SSHClient()
         jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-        # Get jump host credentials
+        # Get jump host credentials using resolve_ssh_for_host
         jump_user = self.credentials.get_user_for_host(jump_host) or user
-        jump_key = self.credentials.get_key_for_host(jump_host) or self.credentials.get_default_key()
+        jump_key, jump_passphrase, _ = self.credentials.resolve_ssh_for_host(
+            jump_host, prompt_passphrase=True
+        )
 
         jump_kwargs = connect_kwargs.copy()
         if jump_key:
             jump_kwargs["key_filename"] = jump_key
+        if jump_passphrase:
+            jump_kwargs["passphrase"] = jump_passphrase
 
         jump_client.connect(jump_host, username=jump_user, **jump_kwargs)
 
@@ -66,6 +72,7 @@ class SSHManager:
         command: str,
         user: Optional[str] = None,
         key_path: Optional[str] = None,
+        passphrase: Optional[str] = None,
         timeout: int = 60,
         show_spinner: bool = True
     ) -> Tuple[int, str, str]:
@@ -77,6 +84,7 @@ class SSHManager:
             command: Shell command to execute
             user: SSH user (auto-detected from config if not provided)
             key_path: SSH key path (auto-detected if not provided)
+            passphrase: SSH key passphrase (auto-resolved if not provided)
             timeout: Command timeout in seconds (default: 60)
             show_spinner: Show spinner during SSH operations (default: True)
 
@@ -86,11 +94,17 @@ class SSHManager:
         if not user:
             user = self.credentials.get_user_for_host(host)
 
-        # Auto-detect key from SSH config if not provided
+        # Resolve SSH key and passphrase using priority system
+        # Priority: explicit args > host metadata > global > ssh_config > default
         if not key_path:
-            key_path = self.credentials.get_key_for_host(host)
-            if not key_path:
-                key_path = self.credentials.get_default_key()
+            resolved_key, resolved_passphrase, source = self.credentials.resolve_ssh_for_host(
+                host, prompt_passphrase=True
+            )
+            key_path = resolved_key
+            if passphrase is None:
+                passphrase = resolved_passphrase
+            if source:
+                logger.debug(f"🔑 SSH key resolved from: {source}")
 
         logger.debug(f"🔍 Connecting to {host} as {user}")
         if key_path:
@@ -110,6 +124,10 @@ class SSHManager:
         # Add specific key if provided
         if key_path:
             connect_kwargs["key_filename"] = key_path
+
+        # Add passphrase if provided
+        if passphrase:
+            connect_kwargs["passphrase"] = passphrase
 
         # Determine connection strategy
         # Try to resolve IP for routing check

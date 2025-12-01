@@ -12,8 +12,9 @@ import re
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
+from athena_ai.security.ssh_credentials import SSHCredentialMixin
 from athena_ai.utils.logger import logger
 
 
@@ -24,7 +25,7 @@ class VariableType(Enum):
     SECRET = "secret"  # Passwords, tokens, API keys - NEVER persisted
 
 
-class CredentialManager:
+class CredentialManager(SSHCredentialMixin):
     """
     Manages credentials and user variables securely.
 
@@ -162,105 +163,6 @@ class CredentialManager:
     def _cache_credential(self, cache_key: str, username: str, password: str):
         """Cache credential with current timestamp."""
         self.session_credentials[cache_key] = (username, password, time.time())
-
-    # =========================================================================
-    # SSH Configuration
-    # =========================================================================
-
-    def _parse_ssh_config(self) -> dict:
-        """Parse ~/.ssh/config for host-specific settings."""
-        config_file = self.ssh_dir / "config"
-        config: dict[str, dict[str, str]] = {}
-
-        if not config_file.exists():
-            return config
-
-        try:
-            current_host = None
-            with open(config_file, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-
-                    if line.lower().startswith('host '):
-                        current_host = line.split(maxsplit=1)[1]
-                        config[current_host] = {}
-                    elif current_host and ' ' in line:
-                        key, value = line.split(maxsplit=1)
-                        config[current_host][key.lower()] = value
-
-        except Exception:
-            pass
-
-        return config
-
-    def get_user_for_host(self, host: str) -> str:
-        """Get the SSH user for a host from config, or default to current user."""
-        if host in self.ssh_config and 'user' in self.ssh_config[host]:
-            return self.ssh_config[host]['user']
-        return os.getenv('USER', 'root')
-
-    def get_key_for_host(self, host: str) -> Optional[str]:
-        """Get the SSH key for a specific host from config."""
-        if host in self.ssh_config and 'identityfile' in self.ssh_config[host]:
-            key_path = self.ssh_config[host]['identityfile']
-            key_path = os.path.expanduser(key_path)
-            if os.path.exists(key_path):
-                return key_path
-        return None
-
-    def get_ssh_keys(self) -> List[str]:
-        """Retrieve available SSH private keys from ~/.ssh."""
-        keys = []
-        if self.ssh_dir.exists():
-            for file in self.ssh_dir.iterdir():
-                if file.is_file() and not file.name.endswith(".pub") and "known_hosts" not in file.name and "config" not in file.name:
-                    if (self.ssh_dir / (file.name + ".pub")).exists() or "id_" in file.name:
-                        keys.append(str(file))
-        return keys
-
-    def get_default_key(self) -> Optional[str]:
-        """Return the default SSH key (id_ed25519, id_rsa, etc.)."""
-        defaults = ["id_ed25519", "id_ecdsa", "id_rsa", "id_dsa"]
-        for name in defaults:
-            key_path = self.ssh_dir / name
-            if key_path.exists():
-                return str(key_path)
-
-        keys = self.get_ssh_keys()
-        if keys:
-            return keys[0]
-        return None
-
-    def supports_agent(self) -> bool:
-        """Check if ssh-agent is available."""
-        return 'SSH_AUTH_SOCK' in os.environ
-
-    def get_agent_keys(self) -> List[str]:
-        """Get list of keys loaded in ssh-agent."""
-        if not self.supports_agent():
-            return []
-
-        try:
-            import paramiko
-            agent = paramiko.Agent()
-            keys = agent.get_keys()
-            return [f"ssh-agent key {i+1}" for i in range(len(keys))]
-        except Exception:
-            return []
-
-    def is_agent_available(self) -> bool:
-        """Check if ssh-agent is running and has keys loaded."""
-        if not self.supports_agent():
-            return False
-
-        try:
-            import paramiko
-            agent = paramiko.Agent()
-            return len(agent.get_keys()) > 0
-        except Exception:
-            return False
 
     # =========================================================================
     # Database Credentials

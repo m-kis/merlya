@@ -4,13 +4,14 @@ Slash command handlers for Athena REPL.
 This module provides the main CommandHandler class that routes
 commands to specialized handler modules.
 """
+import difflib
 import logging
 import shlex
 from enum import Enum, auto
 
 from rich.markdown import Markdown
 
-from athena_ai.repl.ui import console, print_error, print_message
+from athena_ai.repl.ui import console, print_error, print_message, print_warning
 from athena_ai.tools.base import get_status_manager
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ class CommandHandler:
         # Special handling for /variables set commands to preserve raw values
         # This allows setting variables with any content: JSON, hashes, special chars, etc.
         # Example: /variables set CONFIG {"env":"prod","region":"eu-west-1"}
-        if command.startswith(('/variables set ', '/credentials set ', '/variables set-host ')):
+        if command.startswith(('/variables set ', '/variables set-host ')):
             # Split: ['/variables', 'set', 'KEY VALUE_WITH_ANYTHING']
             parts = command.split(maxsplit=2)
             if len(parts) >= 3:
@@ -185,7 +186,6 @@ class CommandHandler:
 
             # Variables commands
             '/variables': lambda: self.variables_handler.handle(args),
-            '/credentials': lambda: self.variables_handler.handle(args),
 
             # Session/conversation commands
             '/session': lambda: self.session_handler.handle_session(args),
@@ -222,6 +222,34 @@ class CommandHandler:
             if isinstance(result, CommandResult):
                 return result
             return CommandResult.HANDLED
+
+        # Collect available commands for suggestion
+        available = list(handlers.keys())
+        # Add custom commands
+        available.extend([f"/{name}" for name in self.repl.command_loader.list_commands()])
+        
+        return self._suggest_command(cmd, available)
+
+    def _suggest_command(self, cmd: str, available_commands: list):
+        """Suggest closest matching command."""
+        matches = difflib.get_close_matches(cmd, available_commands, n=1, cutoff=0.6)
+        if matches:
+            suggestion = matches[0]
+            print_warning(f"Unknown command: {cmd}")
+            console.print(f"Did you mean [cyan]{suggestion}[/cyan]?")
+            
+            # If suggestion is a known command, show its help
+            # We can recursively call handle_command with the suggestion + "help" if appropriate
+            # But simpler to just show help for the main command
+            
+            # Map suggestion to handler help if possible
+            # For now just showing the suggestion is a big improvement
+            pass
+        else:
+            # Check if it looks like a subcommand typo e.g. /model show list -> /model show
+            # This is hard without knowing all subcommands.
+            # But we can check if the first part matches a known command
+            pass
 
         return CommandResult.NOT_HANDLED
 

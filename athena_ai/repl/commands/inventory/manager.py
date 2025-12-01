@@ -212,19 +212,85 @@ class InventoryManager:
         Handle /inventory ssh-key - Manage SSH keys for hosts.
 
         Usage:
-            /inventory ssh-key <hostname>           - Show SSH config for host
-            /inventory ssh-key <hostname> set       - Set SSH key interactively
+            /inventory ssh-key                      - Show usage and global config
+            /inventory ssh-key set <path>           - Set global default SSH key
+            /inventory ssh-key show                 - Show global SSH config
+            /inventory ssh-key clear                - Clear global SSH key
+            /inventory ssh-key <hostname> set       - Set SSH key for specific host
+            /inventory ssh-key <hostname> show      - Show SSH config for host
             /inventory ssh-key <hostname> clear     - Remove SSH key config
         """
         if not args:
-            console.print("[yellow]Usage:[/yellow]")
-            console.print("  /inventory ssh-key <hostname>         Show SSH config")
-            console.print("  /inventory ssh-key <hostname> set     Set SSH key")
-            console.print("  /inventory ssh-key <hostname> clear   Clear SSH config")
+            self._show_ssh_key_help(repl)
             return True
+
+        # Handle implicit global context (e.g. "set <path>" -> "global set <path>")
+        if args[0].lower() in ["set", "clear", "show"] and args[0].lower() != "global":
+            args.insert(0, "global")
 
         hostname = args[0]
         subcmd = args[1].lower() if len(args) > 1 else "show"
+
+        # Handle global SSH key
+        if hostname.lower() == "global":
+            if subcmd == "set":
+                if len(args) < 3:
+                    print_error("Usage: /inventory ssh-key set <path>")
+                    return True
+                key_path = args[2]
+                expanded_path = Path(key_path).expanduser()
+
+                # Validate key file
+                if not expanded_path.exists():
+                    print_warning(f"Key file not found: {expanded_path}")
+                    try:
+                        confirm = input("Continue anyway? (y/N): ").strip().lower()
+                        if confirm != "y":
+                            return True
+                    except (KeyboardInterrupt, EOFError):
+                        print_warning("\nCancelled")
+                        return True
+
+                # Store in special variable
+                if repl:
+                    from athena_ai.security.credentials import VariableType
+                    repl.credential_manager.set_variable(
+                        "ssh_key_global", str(expanded_path), VariableType.CONFIG
+                    )
+                    print_success(f"Global SSH key set to: {expanded_path}")
+
+                    # Check if key needs passphrase and offer to set it
+                    if repl.credential_manager._key_needs_passphrase(str(expanded_path)):
+                        console.print("[dim]This key appears to be encrypted.[/dim]")
+                        try:
+                            set_now = input("Set passphrase now? (Y/n): ").strip().lower()
+                            if set_now != "n":
+                                secret_key = "ssh-passphrase-global"
+                                passphrase = getpass.getpass("SSH key passphrase (hidden): ")
+
+                                if passphrase:
+                                    repl.credential_manager.set_variable(
+                                        secret_key, passphrase, VariableType.SECRET
+                                    )
+                                    print_success("Passphrase cached (session only, not persisted)")
+                        except (KeyboardInterrupt, EOFError):
+                            print_warning("\nPassphrase setup skipped")
+                            console.print("[dim]Passphrase will be prompted on first SSH connection.[/dim]")
+
+                    console.print("[dim]This key will be used for hosts without specific config.[/dim]")
+
+            elif subcmd == "show":
+                self._show_global_ssh_config(repl)
+
+            elif subcmd == "clear":
+                if repl:
+                    repl.credential_manager.delete_variable("ssh_key_global")
+                    repl.credential_manager.delete_variable("ssh-passphrase-global")
+                    print_success("Global SSH key cleared")
+            else:
+                print_error(f"Unknown subcommand: {subcmd}")
+                console.print("[dim]Use: set <path>, show, or clear[/dim]")
+            return True
 
         # Get host
         host = self.repo.get_host_by_name(hostname)
@@ -329,6 +395,63 @@ class InventoryManager:
             console.print("[dim]Use: show, set, or clear[/dim]")
 
         return True
+
+    def _show_ssh_key_help(self, repl: Optional["AthenaREPL"] = None) -> None:
+        """Show SSH key command help and current global config."""
+        console.print("\n[bold cyan]SSH Key Management[/bold cyan]\n")
+        console.print("[bold]Global Key (used for all hosts without specific config):[/bold]")
+        console.print("  /inventory ssh-key set <path>      Set global default SSH key")
+        console.print("  /inventory ssh-key show            Show global SSH key config")
+        console.print("  /inventory ssh-key clear           Clear global SSH key")
+        console.print()
+        console.print("[bold]Host-specific Key:[/bold]")
+        console.print("  /inventory ssh-key <host> set      Set SSH key for specific host")
+        console.print("  /inventory ssh-key <host> show     Show SSH key config for host")
+        console.print("  /inventory ssh-key <host> clear    Clear SSH key config for host")
+        console.print()
+        console.print("[bold]Key Resolution Priority:[/bold]")
+        console.print("  1. Host-specific key (from inventory metadata)")
+        console.print("  2. Global key (/inventory ssh-key set)")
+        console.print("  3. ~/.ssh/config IdentityFile")
+        console.print("  4. Default keys (id_ed25519, id_rsa, etc.)")
+        console.print()
+        console.print("[dim]Passphrase: prompted on first use, cached for session (not persisted)[/dim]")
+
+        # Show current global config
+        if repl:
+            console.print()
+            self._show_global_ssh_config(repl)
+
+    def _show_global_ssh_config(self, repl: Optional["AthenaREPL"] = None) -> None:
+        """Show current global SSH key configuration."""
+        console.print("[bold]🔑 Global SSH Key Configuration[/bold]")
+
+        if not repl:
+            console.print("  [dim]Not available (no REPL context)[/dim]")
+            return
+
+        global_key = repl.credential_manager.get_variable("ssh_key_global")
+        if global_key:
+            console.print(f"  Key path: [cyan]{global_key}[/cyan]")
+            if Path(global_key).exists():
+                console.print("  Status: [green]Key file exists[/green]")
+                # Check if encrypted
+                if repl.credential_manager._key_needs_passphrase(global_key):
+                    has_passphrase = repl.credential_manager.get_variable("ssh-passphrase-global")
+                    if has_passphrase:
+                        console.print("  Passphrase: [green]Cached for session[/green]")
+                    else:
+                        console.print("  Passphrase: [yellow]Required (will prompt on use)[/yellow]")
+                else:
+                    console.print("  Passphrase: [dim]Not required[/dim]")
+            else:
+                console.print("  Status: [red]Key file not found[/red]")
+        else:
+            console.print("  [dim]Not configured[/dim]")
+            # Show what default key would be used
+            default_key = repl.credential_manager.get_default_key()
+            if default_key:
+                console.print(f"  [dim]Default key: {default_key}[/dim]")
 
     def handle_snapshot(self, args: List[str]) -> bool:
         """Handle /inventory snapshot [name]."""
