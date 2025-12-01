@@ -183,6 +183,79 @@ def sanitize_path_for_log(path: str) -> str:
         return "<path>"
 
 
+def check_key_needs_passphrase(key_path: str, skip_validation: bool = False) -> bool:
+    """
+    Check if an SSH key requires a passphrase.
+
+    This is the canonical function for passphrase detection.
+    Use this instead of duplicating the logic elsewhere.
+
+    Args:
+        key_path: Path to the SSH key file
+        skip_validation: If True, skip path security validation (use for already-validated paths)
+
+    Returns:
+        True if key is encrypted and needs passphrase, False otherwise
+
+    Example:
+        # With validation (default - recommended for untrusted input)
+        needs_pass = check_key_needs_passphrase("~/.ssh/id_ed25519")
+
+        # Without validation (for paths already validated or from trusted sources)
+        needs_pass = check_key_needs_passphrase("/path/to/key", skip_validation=True)
+    """
+    # Validate path first unless skipped
+    if not skip_validation:
+        is_valid, resolved_path, error = validate_ssh_key_path(key_path)
+        if not is_valid or not resolved_path:
+            logger.debug(f"Key path validation failed: {error or 'unknown'}")
+            return False
+        key_path = resolved_path
+
+    # Use paramiko directly to check encryption status
+    try:
+        import paramiko
+
+        key_classes = [
+            paramiko.Ed25519Key,
+            paramiko.ECDSAKey,
+            paramiko.RSAKey,
+        ]
+
+        for key_class in key_classes:
+            try:
+                key_class.from_private_key_file(key_path, password=None)
+                return False  # Loaded without passphrase
+            except paramiko.ssh_exception.PasswordRequiredException:
+                return True  # Needs passphrase
+            except paramiko.ssh_exception.SSHException:
+                # Wrong key type, try next
+                continue
+            except FileNotFoundError:
+                logger.debug("Key file not found during passphrase check")
+                return False
+            except PermissionError:
+                logger.debug("Permission denied reading key file")
+                return False
+
+        # If no key class worked, assume no passphrase needed
+        return False
+
+    except ImportError:
+        # Paramiko not available, fall back to file content check
+        try:
+            with open(key_path, 'r') as f:
+                content = f.read(4096)  # Only read first 4KB for header
+                if "ENCRYPTED" in content:
+                    return True
+                if "Proc-Type: 4,ENCRYPTED" in content:
+                    return True
+            return False
+        except (OSError, IOError) as e:
+            logger.debug(f"Could not read key file: {type(e).__name__}")
+            return False
+
+
 class SSHCredentialMixin:
     """
     Mixin providing SSH credential management functionality.
@@ -504,51 +577,5 @@ class SSHCredentialMixin:
         Returns:
             True if key is encrypted and needs passphrase
         """
-        # Validate path first
-        is_valid, resolved_path, error = validate_ssh_key_path(key_path)
-        if not is_valid or not resolved_path:
-            logger.debug(f"Key path validation failed: {error or 'unknown'}")
-            return False
-
-        # Use paramiko directly to avoid TOCTOU - it handles file access atomically
-        try:
-            import paramiko
-
-            key_classes = [
-                paramiko.Ed25519Key,
-                paramiko.ECDSAKey,
-                paramiko.RSAKey,
-            ]
-
-            for key_class in key_classes:
-                try:
-                    key_class.from_private_key_file(resolved_path, password=None)  # type: ignore[attr-defined]
-                    return False  # Loaded without passphrase
-                except paramiko.ssh_exception.PasswordRequiredException:
-                    return True  # Needs passphrase
-                except paramiko.ssh_exception.SSHException:
-                    # Wrong key type, try next
-                    continue
-                except FileNotFoundError:
-                    logger.debug("Key file not found during passphrase check")
-                    return False
-                except PermissionError:
-                    logger.debug("Permission denied reading key file")
-                    return False
-
-            # If no key class worked, assume no passphrase needed
-            return False
-
-        except ImportError:
-            # Paramiko not available, fall back to file content check
-            try:
-                with open(resolved_path, 'r') as f:
-                    content = f.read(4096)  # Only read first 4KB for header
-                    if "ENCRYPTED" in content:
-                        return True
-                    if "Proc-Type: 4,ENCRYPTED" in content:
-                        return True
-                return False
-            except (OSError, IOError) as e:
-                logger.debug(f"Could not read key file: {type(e).__name__}")
-                return False
+        # Delegate to canonical function with validation enabled
+        return check_key_needs_passphrase(key_path, skip_validation=False)

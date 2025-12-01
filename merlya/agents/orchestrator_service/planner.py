@@ -181,14 +181,19 @@ command here
 ## Next Steps
 [What the user should do next]
 
-IMPORTANT RULES:
+CRITICAL RULES:
 - Use list_hosts() FIRST to verify hosts exist
 - ALWAYS scan a host before acting on it
 - EXPLAIN your reasoning, don't just execute blindly
 - For complex issues, ASK if the user wants you to execute fixes
 - When using ask_user() to get information, CONTINUE the task after receiving the response - do NOT terminate until the full task is complete
 - When a command fails with "Permission denied", use request_elevation() to ask user for privilege escalation
-- Say "TERMINATE" ONLY at the END of your FINAL summary, after completing ALL requested actions
+
+TERMINATION RULES:
+- NEVER say just "TERMINATE" without content - you MUST provide a summary first
+- ALWAYS end with a clear summary of what was done and what the results are
+- Format: Write your complete response, then on a NEW LINE write "TERMINATE"
+- If you have nothing to report, explain why (e.g., "No hosts configured" or "Could not connect")
 
 Environment: {self.env}"""
 
@@ -434,18 +439,73 @@ Work together:
         # First, try to find an existing synthesis
         synthesis = self._extract_response(result)
 
-        # If we got a real synthesis (not just task completed), return it
-        if synthesis and synthesis != "✅ Task completed.":
+        # If we got a real synthesis (not empty or just task completed), return it
+        if synthesis and synthesis not in ("", "✅ Task completed."):
             return synthesis
 
         # No synthesis found - collect tool outputs and generate one
         tool_outputs = self._collect_tool_outputs(result)
 
         if not tool_outputs:
-            return "✅ Task completed - no data collected."
+            # No tool outputs either - provide helpful message based on context
+            logger.warning("⚠️ No synthesis and no tool outputs found in response")
+            return self._get_fallback_response(user_query)
 
         # Ask LLM to synthesize the outputs
         return await self._generate_synthesis(user_query, tool_outputs)
+
+    def _get_fallback_response(self, user_query: str) -> str:
+        """Generate a helpful fallback response when agent produced no output."""
+        query_lower = user_query.lower()
+
+        # Check for common query types and provide helpful guidance
+        if any(word in query_lower for word in ['list', 'show', 'display']):
+            if 'host' in query_lower or 'server' in query_lower:
+                return """## ℹ️ No Hosts Found
+
+No hosts are configured in your inventory yet.
+
+### Quick Setup:
+1. **Add a host manually:**
+   ```
+   /inventory add-host myserver
+   ```
+
+2. **Import from Ansible inventory:**
+   ```
+   /inventory import ansible /path/to/inventory
+   ```
+
+3. **Configure SSH key (optional):**
+   ```
+   /inventory ssh-key set ~/.ssh/id_ed25519
+   ```
+
+Use `/inventory help` for more options."""
+
+        if 'scan' in query_lower or 'check' in query_lower:
+            return """## ℹ️ Unable to Scan
+
+Could not complete the scan. Possible reasons:
+- No hosts configured (use `/inventory add-host`)
+- SSH key not configured (use `/inventory ssh-key set`)
+- Host unreachable (check network/firewall)
+
+Use `list hosts` to see available hosts."""
+
+        # Generic fallback
+        return """## ℹ️ Task Completed
+
+The task was processed but no specific results were returned.
+
+This can happen when:
+- No hosts are configured yet
+- The requested resource doesn't exist
+- A connection issue occurred
+
+Try:
+- `/inventory` to check your hosts
+- `/help` for available commands"""
 
     def _collect_tool_outputs(self, result: "TaskResult") -> List[str]:
         """Collect all tool execution outputs from the conversation."""
@@ -548,7 +608,11 @@ Provide your synthesis now:"""
         return str(content)
 
     def _extract_response(self, result: "TaskResult") -> str:
-        """Extract response from TaskResult."""
+        """Extract response from TaskResult.
+
+        Handles multiple message types and ensures we never return empty responses.
+        If no clear synthesis is found, returns None to trigger synthesis generation.
+        """
         if not result.messages:
             return "✅ Task completed."
 
@@ -559,6 +623,9 @@ Provide your synthesis now:"""
             raw_content = getattr(msg, 'content', None)
             content_type = type(raw_content).__name__ if raw_content else 'None'
             logger.debug(f"  [{i}] {msg_type}: content_type={content_type}")
+
+        # Collect all potential response content (not just last message)
+        candidate_responses = []
 
         # Get last message from the assistant (not tool results)
         for msg in reversed(result.messages):
@@ -582,12 +649,32 @@ Provide your synthesis now:"""
             if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
                 continue
 
-            # Clean up TERMINATE only from the end of the response
+            # Clean up TERMINATE from response
             content = content.strip()
-            if content.endswith("TERMINATE"):
-                content = content[:-9].strip()  # Remove "TERMINATE" from end
 
+            # Remove TERMINATE from end (with possible trailing whitespace/newlines)
+            if content.endswith("TERMINATE"):
+                content = content[:-9].rstrip()
+
+            # Also handle case where TERMINATE is on its own line at the end
+            lines = content.split('\n')
+            while lines and lines[-1].strip() == "TERMINATE":
+                lines.pop()
+            content = '\n'.join(lines).strip()
+
+            # Skip if content is ONLY "TERMINATE" or empty after cleaning
+            if not content or content == "TERMINATE":
+                continue
+
+            # We found a valid response
             if content:
+                candidate_responses.append(content)
+                # Return first valid response (most recent)
                 return content
+
+        # If we found no valid response content, signal for synthesis
+        # Return None instead of generic message so caller can generate synthesis
+        if not candidate_responses:
+            return ""  # Empty signals need for synthesis
 
         return "✅ Task completed."

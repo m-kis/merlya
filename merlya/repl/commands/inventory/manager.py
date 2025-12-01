@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from merlya.repl.ui import console, print_error, print_success, print_warning
+from merlya.security.ssh_credentials import check_key_needs_passphrase
 
 if TYPE_CHECKING:
     from merlya.memory.persistence.inventory_repository import InventoryRepository
@@ -238,18 +239,16 @@ class InventoryManager:
                     print_error("Usage: /inventory ssh-key set <path>")
                     return True
                 key_path = args[2]
-                expanded_path = Path(key_path).expanduser()
+                expanded_path = Path(key_path).expanduser().resolve()
 
-                # Validate key file
+                # Validate key file exists
                 if not expanded_path.exists():
-                    print_warning(f"Key file not found: {expanded_path}")
-                    try:
-                        confirm = input("Continue anyway? (y/N): ").strip().lower()
-                        if confirm != "y":
-                            return True
-                    except (KeyboardInterrupt, EOFError):
-                        print_warning("\nCancelled")
-                        return True
+                    print_error(f"Key file not found: {expanded_path}")
+                    return True
+
+                if not expanded_path.is_file():
+                    print_error(f"Not a file: {expanded_path}")
+                    return True
 
                 # Store in special variable
                 if repl:
@@ -259,9 +258,11 @@ class InventoryManager:
                     )
                     print_success(f"Global SSH key set to: {expanded_path}")
 
-                    # Check if key needs passphrase and offer to set it
-                    if repl.credential_manager._key_needs_passphrase(str(expanded_path)):
-                        console.print("[dim]This key appears to be encrypted.[/dim]")
+                    # Check if key needs passphrase (skip validation since we just validated the path)
+                    key_needs_passphrase = check_key_needs_passphrase(str(expanded_path), skip_validation=True)
+
+                    if key_needs_passphrase:
+                        console.print("[yellow]This key requires a passphrase.[/yellow]")
                         try:
                             set_now = input("Set passphrase now? (Y/n): ").strip().lower()
                             if set_now != "n":
@@ -272,10 +273,14 @@ class InventoryManager:
                                     repl.credential_manager.set_variable(
                                         secret_key, passphrase, VariableType.SECRET
                                     )
-                                    print_success("Passphrase cached (session only, not persisted)")
+                                    print_success("Passphrase cached (session only)")
+                                else:
+                                    print_warning("Empty passphrase, skipping")
                         except (KeyboardInterrupt, EOFError):
                             print_warning("\nPassphrase setup skipped")
-                            console.print("[dim]Passphrase will be prompted on first SSH connection.[/dim]")
+                            console.print("[dim]Use /inventory ssh-key set to add it later.[/dim]")
+                    else:
+                        console.print("[dim]Key does not require a passphrase.[/dim]")
 
                     console.print("[dim]This key will be used for hosts without specific config.[/dim]")
 
@@ -435,8 +440,8 @@ class InventoryManager:
             console.print(f"  Key path: [cyan]{global_key}[/cyan]")
             if Path(global_key).exists():
                 console.print("  Status: [green]Key file exists[/green]")
-                # Check if encrypted
-                if repl.credential_manager._key_needs_passphrase(global_key):
+                # Check if encrypted (skip validation since path was already validated when set)
+                if check_key_needs_passphrase(global_key, skip_validation=True):
                     has_passphrase = repl.credential_manager.get_variable("ssh-passphrase-global")
                     if has_passphrase:
                         console.print("  Passphrase: [green]Cached for session[/green]")
@@ -468,3 +473,4 @@ class InventoryManager:
             print_error(f"Failed to create snapshot: {e}")
 
         return True
+

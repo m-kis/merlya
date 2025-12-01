@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Interactive inventory setup wizard (`/inventory setup`)
+  - Guides first-time users through host and SSH key configuration
+  - Auto-detects existing SSH keys and prompts for passphrase
+- Quick-add command for hosts (`/inventory quick-add`)
+  - Minimal prompts for fast host addition
+  - Supports comma-separated batch additions
+- Fallback responses for empty agent outputs
+  - Provides actionable guidance when no hosts configured
+  - Context-aware messages based on query type
+
+### Fixed
+
+- **CRITICAL**: Agent TERMINATE without response issue
+  - Agents now provide meaningful summaries before terminating
+  - Improved response extraction handles edge cases
+  - Empty responses trigger helpful fallback messages
+- SSH passphrase detection code duplication
+  - Consolidated `_key_needs_passphrase()` into canonical `check_key_needs_passphrase()`
+  - Removed duplicate implementation from inventory manager
+  - Added `skip_validation` parameter for pre-validated paths
+- SSH scanner credential resolution
+  - Uses unified `resolve_ssh_for_host()` for consistent behavior
+  - Better error messages for passphrase requirements
+  - Checks passphrase availability before connection attempt
+
+### Improved
+
+- SSH scanner error messages with actionable guidance
+- Inventory command help restructured for better UX
+- Engineer prompt with clearer termination rules
+
 - Optional services status display at CLI startup
   - Shows availability of FalkorDB, Web Search (DDGS), Smart Triage (Embeddings)
   - Provides installation hints for missing optional dependencies

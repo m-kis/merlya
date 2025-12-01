@@ -1,13 +1,44 @@
 """
 SSH-based scanning logic.
+
+Provides async SSH scanning with:
+- Intelligent credential resolution (host-specific > global > default)
+- Comprehensive error handling with actionable messages
+- Multiple fallback methods for port detection
 """
 import asyncio
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
+from merlya.security.ssh_credentials import check_key_needs_passphrase
 from merlya.utils.logger import logger
 
 from .config import ScanConfig
+
+
+def _get_ssh_credentials(hostname: str) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
+    """
+    Get SSH credentials for a hostname.
+
+    Resolution priority:
+    1. Host-specific key from inventory metadata
+    2. Global key (ssh_key_global variable)
+    3. SSH config IdentityFile
+    4. Default keys (id_ed25519, id_rsa, etc.)
+
+    Args:
+        hostname: Target hostname
+
+    Returns:
+        Tuple of (username, key_path, passphrase, source_description)
+    """
+    from merlya.security.credentials import CredentialManager
+    creds = CredentialManager()
+
+    user = creds.get_user_for_host(hostname)
+    key_path, passphrase, source = creds.resolve_ssh_for_host(hostname, prompt_passphrase=False)
+
+    return user, key_path, passphrase, source
 
 
 async def ssh_scan(
@@ -20,11 +51,15 @@ async def ssh_scan(
 
     Args:
         hostname: Hostname to scan
-        scan_type: Type of scan
+        scan_type: Type of scan (system, services, full)
         config: Scan configuration
 
     Returns:
-        Scan data from SSH
+        Scan data from SSH, including:
+        - ssh_connected: bool
+        - ssh_user: str (if connected)
+        - error: str (if failed, with actionable message)
+        - Various system info depending on scan_type
     """
     data: Dict[str, Any] = {}
     client = None
@@ -32,25 +67,26 @@ async def ssh_scan(
     try:
         import paramiko
 
-        # Get SSH credentials from context
-        from merlya.security.credentials import CredentialManager
-        creds = CredentialManager()
-        user = creds.get_user_for_host(hostname)
-        key_path = creds.get_key_for_host(hostname) or creds.get_default_key()
+        # Get SSH credentials using unified resolution
+        user, key_path, passphrase, source = _get_ssh_credentials(hostname)
 
-        # Get passphrase if needed
-        # Priority: Host specific secret > Global secret > None (will fail if needed)
-        passphrase = None
+        # Log credential resolution (sanitized)
         if key_path:
-            # Try host specific secret first
-            host_secret = f"ssh-passphrase-{hostname}"
-            passphrase = creds.get_variable(host_secret)
+            key_name = os.path.basename(key_path)
+            logger.debug(f"🔑 SSH credentials for {hostname}: user={user}, key={key_name}, source={source}")
+        else:
+            logger.debug(f"🔑 SSH credentials for {hostname}: user={user}, no key configured")
 
-            # If not found, and using global key, try global secret
-            if not passphrase:
-                global_key = creds.get_variable("ssh_key_global")
-                if global_key and os.path.expanduser(global_key) == os.path.expanduser(key_path):
-                    passphrase = creds.get_variable("ssh-passphrase-global")
+        # Check if key needs passphrase but we don't have one
+        if key_path and not passphrase:
+            if check_key_needs_passphrase(key_path, skip_validation=True):
+                data["ssh_connected"] = False
+                data["error"] = (
+                    f"SSH key requires passphrase. Configure it with:\n"
+                    f"  /inventory ssh-key set {key_path}\n"
+                    f"Or set a global passphrase at startup."
+                )
+                return data
 
         # Connect
         client = paramiko.SSHClient()
@@ -110,6 +146,11 @@ async def ssh_scan(
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
             logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
 
+        # Check if ssh-agent is available
+        from merlya.security.credentials import CredentialManager
+        creds = CredentialManager()
+        agent_available = creds.is_agent_available()
+
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
@@ -119,7 +160,7 @@ async def ssh_scan(
                 key_filename=key_path,
                 passphrase=passphrase,
                 timeout=config.connect_timeout,
-                allow_agent=creds.is_agent_available(),
+                allow_agent=agent_available,
             )
         )
 
@@ -145,10 +186,28 @@ async def ssh_scan(
         data["error"] = "SSH key is encrypted. Please set passphrase: /inventory ssh-key <host> set"
     except Exception as e:
         data["ssh_connected"] = False
+        error_str = str(e)
+        error_type = type(e).__name__
+
         # Log full error internally but expose only safe info to prevent leaking
         # sensitive paths, hostnames, or authentication details
         logger.debug(f"SSH scan failed for {hostname}: {e}")
-        data["error"] = f"SSH connection failed: {type(e).__name__}"
+
+        # Provide more helpful error messages for common issues
+        if "Incorrect padding" in error_str:
+            data["error"] = "SSH key encoding error (check key format or passphrase)"
+        elif "Broken pipe" in error_str:
+            data["error"] = "SSH connection closed by server (check firewall/network)"
+        elif "Authentication failed" in error_str or "AuthenticationException" in error_type:
+            data["error"] = "SSH authentication failed (check credentials)"
+        elif "No route to host" in error_str or "Network is unreachable" in error_str:
+            data["error"] = "Host unreachable (check network connectivity)"
+        elif "Connection refused" in error_str:
+            data["error"] = "SSH connection refused (check if SSH is running)"
+        elif "timed out" in error_str.lower():
+            data["error"] = "SSH connection timed out"
+        else:
+            data["error"] = f"SSH connection failed: {error_type}"
     finally:
         if client is not None:
             try:
