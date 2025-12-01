@@ -1,7 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from autogen_agentchat.base import TaskResult
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from rich.console import Console
 
@@ -9,6 +6,9 @@ from athena_ai.agents import autogen_tools, knowledge_tools
 from athena_ai.triage.behavior import BehaviorProfile, get_behavior
 from athena_ai.triage.priority import Priority
 from athena_ai.utils.logger import logger
+
+if TYPE_CHECKING:
+    from autogen_agentchat.base import TaskResult
 
 # Optional imports
 try:

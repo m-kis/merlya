@@ -6,7 +6,7 @@ Follows Dependency Inversion Principle (DIP):
 - Allows for testing with mocks
 - Enables different implementations per context
 """
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from athena_ai.context.manager import ContextManager
 from athena_ai.executors.action_executor import ActionExecutor

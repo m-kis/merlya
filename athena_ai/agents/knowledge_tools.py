@@ -2,7 +2,6 @@
 AutoGen tools for interacting with the Knowledge Graph (FalkorDB).
 Wraps OpsKnowledgeManager functionality.
 """
-import json
 from typing import Annotated
 
 from athena_ai.knowledge.ops_knowledge_manager import get_knowledge_manager
