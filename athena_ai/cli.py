@@ -168,6 +168,22 @@ def _launch_repl(env: str):
     if not validate_and_fix_config():
         sys.exit(1)
 
+    # Readiness Check: FalkorDB
+    try:
+        from athena_ai.knowledge.falkordb_client import get_falkordb_client
+        kg = get_falkordb_client()
+        if not kg.is_connected:
+            console.print("[yellow]⚠️  Warning: FalkorDB is not reachable.[/yellow]")
+            console.print("[dim]   Knowledge graph features will be disabled.[/dim]")
+            console.print("[dim]   Ensure FalkorDB is running: docker run -p 6379:6379 -it --rm falkordb/falkordb[/dim]\n")
+            # We don't exit, just warn, as Athena can run without it (graceful degradation)
+            # But user asked for "readiness check", implying it should be checked.
+            # If it's critical, we should maybe ask to continue.
+            # For now, a warning is appropriate as per "autonomy" goal (don't block if not strictly necessary).
+    except Exception:
+        # Don't crash if import fails or something else goes wrong
+        pass
+
     # Launch REPL
     try:
         from athena_ai.repl import start_repl

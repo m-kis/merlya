@@ -64,7 +64,7 @@ class FalkorDBStore:
                 LIMIT $limit
             """, {"limit": limit})
 
-            return [r.get("i") for r in results if r and r.get("i")]
+            return [r["i"] for r in results if r and r.get("i") is not None]
 
         except Exception as e:
             logger.debug(f"FalkorDB query failed: {e}")

@@ -522,7 +522,7 @@ class SSHCredentialMixin:
 
             for key_class in key_classes:
                 try:
-                    key_class.from_private_key_file(resolved_path, password=None)
+                    key_class.from_private_key_file(resolved_path, password=None)  # type: ignore[attr-defined]
                     return False  # Loaded without passphrase
                 except paramiko.ssh_exception.PasswordRequiredException:
                     return True  # Needs passphrase

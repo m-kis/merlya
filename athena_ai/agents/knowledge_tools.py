@@ -94,7 +94,7 @@ def search_knowledge(
     if patterns:
         output.append("🧠 **Matching Patterns:**")
         for p in patterns:
-            output.append(f"- **{p.pattern.name}** ({int(p.confidence * 100)}% confidence)")
+            output.append(f"- **{p.pattern.name}** ({int(p.score * 100)}% confidence)")
             output.append(f"  Solution: {p.pattern.suggested_solution}")
             if p.pattern.suggested_commands:
                 output.append(f"  Commands: `{' && '.join(p.pattern.suggested_commands)}`")
@@ -104,16 +104,11 @@ def search_knowledge(
         output.append("📜 **Similar Past Incidents:**")
         for match in incidents:
             inc = match.incident
-            output.append(f"- **{inc['title']}** ({inc['id']})")
-            if inc.get('solution'):
-                output.append(f"  Solution: {inc['solution']}")
-            if inc.get('commands'):
-                cmds = inc['commands']
-                if isinstance(cmds, str):
-                    try:
-                        cmds = json.loads(cmds)
-                    except (json.JSONDecodeError, ValueError, TypeError):
-                        pass
+            output.append(f"- **{inc.title}** ({inc.id})")
+            if inc.solution:
+                output.append(f"  Solution: {inc.solution}")
+            if inc.commands_executed:
+                cmds = inc.commands_executed
                 if isinstance(cmds, list):
                     output.append(f"  Commands: `{' && '.join(cmds)}`")
         output.append("")

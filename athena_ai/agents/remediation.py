@@ -122,7 +122,7 @@ class RemediationAgent(BaseAgent):
         self.mode = mode
         logger.info(f"RemediationAgent mode changed: {old_mode.value} -> {mode.value}")
 
-    def run(
+    def run(  # type: ignore[override]
         self,
         task: str,
         target: str = "local",

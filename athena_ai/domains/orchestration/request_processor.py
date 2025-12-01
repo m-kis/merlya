@@ -221,7 +221,7 @@ class RequestProcessor:
         """
         import re
 
-        entities = {}
+        entities: Dict[str, Any] = {}
 
         # Extract environment
         env_patterns = {
@@ -246,9 +246,12 @@ class RequestProcessor:
             'docker': r'\bdocker\b'
         }
 
+        services: List[str] = []
         for service, pattern in service_patterns.items():
             if re.search(pattern, query_lower):
-                entities.setdefault('services', []).append(service)
+                services.append(service)
+        if services:
+            entities['services'] = services
 
         # Extract roles
         role_patterns = {
@@ -269,7 +272,7 @@ class RequestProcessor:
         """Extract parameters (numbers, flags, etc.)."""
         import re
 
-        params = {}
+        params: Dict[str, Any] = {}
 
         # Extract numbers
         numbers = re.findall(r'\b\d+\b', query_lower)

@@ -91,7 +91,8 @@ class IntelligentRouter:
         if not source:
             # No suitable source found, fallback to SSH scanning
             logger.warning("No suitable data source found, falling back to SSH scan")
-            return self._build_fallback_plan(user_query, intent)
+            fallback_plan = self._build_fallback_plan(user_query, intent)
+            return "ssh_fallback", fallback_plan
 
         # Step 3: Translate query to source's language
         query_plan = self._translate_query(user_query, source, intent)
@@ -220,7 +221,7 @@ class IntelligentRouter:
 
             # Check registry for inventory sources
             sources = self.registry.list_sources()
-            inventory_sources = [s for s in sources if "inventory" in s.capabilities]
+            inventory_sources = [s for s in sources if s.capabilities and "inventory" in s.capabilities]
 
             if inventory_sources:
                 # Prioritize databases over APIs
@@ -360,7 +361,7 @@ class IntelligentRouter:
     def _build_mongodb_query(self, filters: Dict[str, str], intent: QueryIntent) -> Dict[str, Any]:
         """Build MongoDB query from filters."""
         # Build query document
-        query_doc = {}
+        query_doc: Dict[str, Any] = {}
 
         if "environment" in filters:
             query_doc["$or"] = [
@@ -391,6 +392,7 @@ class IntelligentRouter:
         # Collection names to try
         collection = "hosts"  # Default
 
+        params: Any
         if intent == QueryIntent.INVENTORY_COUNT:
             query = f"{collection}.aggregate"
             params = [{"$match": query_doc}, {"$count": "count"}]

@@ -9,7 +9,7 @@ This classifier decides:
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from athena_ai.core import RequestComplexity
 from athena_ai.utils.logger import logger
@@ -34,7 +34,7 @@ class ClassificationResult:
     estimated_steps: int
     estimated_duration: int  # seconds
     reasoning: str  # Why this classification
-    suggested_prompt: str = None  # Reformulated prompt if needed
+    suggested_prompt: Optional[str] = None  # Reformulated prompt if needed
 
 
 class RequestClassifier:
@@ -75,7 +75,7 @@ class RequestClassifier:
             "make", "do", "perform", "execute", "run"  # Vague verbs
         ]
 
-    def classify(self, request: str, context: Dict[str, Any] = None) -> ClassificationResult:
+    def classify(self, request: str, context: Optional[Dict[str, Any]] = None) -> ClassificationResult:
         """
         Classify a request and determine execution strategy.
 
@@ -385,7 +385,7 @@ class RequestClassifier:
                 if after:
                     return after[0].strip(",.;:")
 
-        return None
+        return ""
 
     def _extract_action(self, text: str) -> str:
         """Extract action from text."""
@@ -412,10 +412,10 @@ class ClassifierCache:
     """
 
     def __init__(self, max_size: int = 100):
-        self.cache = {}
+        self.cache: Dict[str, ClassificationResult] = {}
         self.max_size = max_size
 
-    def get(self, request: str) -> ClassificationResult:
+    def get(self, request: str) -> Optional[ClassificationResult]:
         """Get cached classification."""
         key = self._normalize_key(request)
         return self.cache.get(key)

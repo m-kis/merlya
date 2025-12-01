@@ -10,7 +10,7 @@ class MonitoringAgent(BaseAgent):
         super().__init__(context_manager)
         self.name = "MonitoringAgent"
 
-    def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
+    def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:  # type: ignore[override]
         logger.info(f"MonitoringAgent starting task: {task} on {target}")
 
         # 1. Plan Monitoring

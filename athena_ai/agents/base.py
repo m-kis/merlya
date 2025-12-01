@@ -41,7 +41,7 @@ class BaseAgent:
         self.executor = executor if executor is not None else ActionExecutor()
         self.name = "BaseAgent"
 
-    def run(self, task: str) -> Dict[str, Any]:
+    def run(self, task: str, **kwargs: Any) -> Any:
         """Execute the agent's main logic."""
         raise NotImplementedError("Agents must implement run()")
 

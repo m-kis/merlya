@@ -14,7 +14,7 @@ class ProvisioningAgent(BaseAgent):
         self.ansible = AnsibleExecutor()
         self.terraform = TerraformExecutor()
 
-    def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
+    def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:  # type: ignore[override]
         logger.info(f"ProvisioningAgent starting task: {task}")
 
         # 1. Plan Provisioning

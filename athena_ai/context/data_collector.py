@@ -243,7 +243,7 @@ echo "=== LOAD ===" && uptime
 
         if data_type == 'metrics':
             # Parse metrics output
-            metrics = {}
+            metrics: Dict[str, Any] = {}
 
             # Extract CPU
             if 'Cpu(s):' in output:

@@ -196,7 +196,7 @@ class ActionExecutor:
         Returns:
             List of execution results
         """
-        results = []
+        results: List[Dict[str, Any]] = []
         total = len(actions)
 
         if not actions:

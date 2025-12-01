@@ -1,4 +1,7 @@
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autogen_agentchat.base import TaskResult
 
 from rich.console import Console
 
@@ -22,7 +25,7 @@ except ImportError:
 class ExecutionPlanner:
     """Handles agent team creation and execution planning."""
 
-    def __init__(self, model_client, tools: List[Callable], env: str = "dev", console: Console = None):
+    def __init__(self, model_client: Any, tools: List[Callable[..., Any]], env: str = "dev", console: Optional[Console] = None):
         self.model_client = model_client
         self.tools = tools
         self.env = env
@@ -34,7 +37,7 @@ class ExecutionPlanner:
         self.knowledge_manager = None
         self.team = None
 
-    def init_agents(self, mode: str, knowledge_db=None):
+    def init_agents(self, mode: str, knowledge_db: Any = None) -> None:
         """Initialize agents based on mode."""
         if not HAS_AUTOGEN:
             raise ImportError(
@@ -189,7 +192,7 @@ IMPORTANT RULES:
 
 Environment: {self.env}"""
 
-    def _build_task_with_context(self, user_query: str, conversation_history: List[dict] = None) -> str:
+    def _build_task_with_context(self, user_query: str, conversation_history: Optional[List[Dict[str, Any]]] = None) -> str:
         """
         Build task string with conversation context.
 
@@ -288,8 +291,8 @@ Environment: {self.env}"""
     async def execute_basic(
         self,
         user_query: str,
-        conversation_history: List[dict] = None,
-        allowed_tools: List[str] = None,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        allowed_tools: Optional[List[str]] = None,
         intent: str = "action",
         priority: Optional[str] = None,
     ) -> str:
@@ -360,10 +363,10 @@ Environment: {self.env}"""
         self,
         user_query: str,
         priority_name: str,
-        conversation_history: List[dict] = None,
-        allowed_tools: List[str] = None,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        allowed_tools: Optional[List[str]] = None,
         intent: str = "action",
-        knowledge_context: str = None,
+        knowledge_context: Optional[str] = None,
     ) -> str:
         """Process with multi-agent team."""
         if not HAS_AUTOGEN:
@@ -415,6 +418,8 @@ Work together:
 """
 
         # Run the team
+        if self.team is None:
+            raise RuntimeError("Team not initialized. Call init_agents() with mode='enhanced' first.")
         result = await self.team.run(task=task)
 
         return await self._extract_or_synthesize(result, user_query)
@@ -516,14 +521,14 @@ Provide your synthesis now:"""
             return ""
 
         # Handle FunctionExecutionResult (autogen 0.7+ tool results)
-        if FunctionExecutionResult and isinstance(content, FunctionExecutionResult):
+        if FunctionExecutionResult is not None and isinstance(content, FunctionExecutionResult):
             return str(content.content) if content.content else ""
 
         # Handle list of content items
         if isinstance(content, list):
             parts = []
             for item in content:
-                if FunctionExecutionResult and isinstance(item, FunctionExecutionResult):
+                if FunctionExecutionResult is not None and isinstance(item, FunctionExecutionResult):
                     parts.append(str(item.content) if item.content else "")
                 elif isinstance(item, dict):
                     parts.append(str(item.get('text', item)))

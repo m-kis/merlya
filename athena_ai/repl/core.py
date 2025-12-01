@@ -53,6 +53,8 @@ class AthenaREPL:
         self.session_manager = SessionManager(env=env)
         # IMPORTANT: Use the orchestrator's credential manager so variables are shared
         self.credentials = self.orchestrator.credentials
+        # Alias for backward compatibility (used by inventory/manager.py)
+        self.credential_manager = self.credentials
         # MCP server manager
         self.mcp_manager = MCPManager()
         # Conversation manager for context management

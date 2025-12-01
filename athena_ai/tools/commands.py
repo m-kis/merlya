@@ -1,7 +1,7 @@
 """
 Command execution tools.
 """
-from typing import Annotated
+from typing import Annotated, Any, Dict
 
 from athena_ai.core.hooks import HookEvent
 from athena_ai.domains.tools.selector import ToolAction, get_tool_selector
@@ -86,13 +86,14 @@ def execute_command(
     # Execute with retry
     max_retries = 2
     attempt = 0
-    result = None
+    # Initialize with failure state - will be overwritten by executor
+    result: Dict[str, Any] = {'success': False, 'error': 'Not executed', 'exit_code': -1}
     corrected_command = None
 
     while attempt <= max_retries:
         result = ctx.executor.execute(target, command, confirm=True)
 
-        if result['success']:
+        if result.get('success'):
             output = result['stdout'] or "(no output)"
             retry_note = f" (succeeded after {attempt} retries)" if attempt > 0 else ""
 

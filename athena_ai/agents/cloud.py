@@ -14,7 +14,7 @@ class CloudAgent(BaseAgent):
         self.aws = AWSExecutor()
         self.k8s = K8sExecutor()
 
-    def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
+    def run(self, task: str, target: str = "local", confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:  # type: ignore[override]
         logger.info(f"CloudAgent starting task: {task}")
 
         # 1. Plan Cloud Action

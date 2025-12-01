@@ -138,9 +138,8 @@ class RelationsHandler:
                 return True
 
             indices = [int(t) - 1 for t in tokens]
-            # Remove duplicates while preserving order
-            seen = set()
-            indices = [i for i in indices if not (i in seen or seen.add(i))]
+            # Remove duplicates while preserving order (Python 3.7+ dict preserves insertion order)
+            indices = list(dict.fromkeys(indices))
 
             # Validate indices against displayed_count (not total_count)
             invalid_indices = [i + 1 for i in indices if not (0 <= i < displayed_count)]

@@ -552,7 +552,7 @@ class SessionRepository:
         cursor = conn.cursor()
 
         # Get ancestors (parent chain)
-        ancestors = []
+        ancestors: list[str] = []
         current_id = session_id
         while True:
             cursor.execute("""

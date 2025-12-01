@@ -71,7 +71,7 @@ class AutoCorrector:
             (result, retry_info) tuple
         """
         current_cmd = command
-        corrections = []
+        corrections: list[Dict[str, Any]] = []
 
         for attempt in range(1, max_retries + 2):  # +1 for initial attempt
             result = self.executor.execute(target, current_cmd, confirm=True)
@@ -108,8 +108,8 @@ class AutoCorrector:
             })
 
             # Redact sensitive info before logging
-            from athena_ai.executors.action_executor import ActionExecutor
-            redacted_cmd = ActionExecutor.redact_sensitive_info(corrected_cmd)
+            from athena_ai.utils.security import redact_sensitive_info
+            redacted_cmd = redact_sensitive_info(corrected_cmd) or corrected_cmd
             logger.info(f"Retrying with: {redacted_cmd}")
             current_cmd = corrected_cmd
 

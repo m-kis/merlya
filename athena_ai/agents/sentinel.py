@@ -98,7 +98,7 @@ class SentinelAgent:
         self._lock = threading.Lock()
 
         # Stats
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             "checks_run": 0,
             "checks_passed": 0,
             "checks_failed": 0,

@@ -12,7 +12,7 @@ Modes:
 """
 import os
 from enum import Enum
-from typing import Callable
+from typing import Any, Callable, List, Optional
 
 from rich.console import Console
 
@@ -79,7 +79,7 @@ class Orchestrator(BaseOrchestrator):
         mode: OrchestratorMode = OrchestratorMode.BASIC,
         env: str = "dev",
         language: str = "en",
-        console: Console = None,
+        console: Optional[Console] = None,
     ):
         super().__init__(env=env, language=language)
 
@@ -102,7 +102,7 @@ class Orchestrator(BaseOrchestrator):
             self.verbosity,
             llm_router=self.llm_router
         )
-        self.current_priority = None
+        self.current_priority: Any = None
 
         # Knowledge graph (ENHANCED mode only)
         self.knowledge_db: FalkorDBClient | None = None
@@ -248,7 +248,7 @@ class Orchestrator(BaseOrchestrator):
     # Tool Collection (new API - tools as callables)
     # =========================================================================
 
-    def _collect_tools(self) -> list[Callable]:
+    def _collect_tools(self) -> List[Callable[..., Any]]:
         """Collect all tools as callable functions."""
         tools = [
             # Core tools
@@ -539,7 +539,7 @@ def create_orchestrator(
     mode: str = "basic",
     env: str = "dev",
     language: str = "en",
-    console: Console = None,
+    console: Optional[Console] = None,
 ) -> Orchestrator:
     """
     Factory function to create orchestrator.

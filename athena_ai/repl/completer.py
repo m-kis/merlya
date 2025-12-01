@@ -220,7 +220,7 @@ class AthenaCompleter(Completer):
         try:
             from athena_ai.memory.persistence.inventory_repository import get_inventory_repository
             repo = get_inventory_repository()
-            hosts = repo.list_hosts()
+            hosts = repo.get_all_hosts()
             result = []
             for h in hosts:
                 hostname = h.get("hostname") if isinstance(h, dict) else None

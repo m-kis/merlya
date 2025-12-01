@@ -156,15 +156,15 @@ class ConfigValidator:
         """Check for core dependencies (autogen)."""
         # Check for new autogen-agentchat API (0.7+)
         try:
-            from autogen_agentchat.agents import AssistantAgent
+            from autogen_agentchat.agents import AssistantAgent as _  # noqa: F401
             return True
         except ImportError:
             pass
 
         # Fallback: check for old pyautogen API (0.2.x)
         try:
-            import autogen
-            from autogen import AssistantAgent
+            import autogen  # noqa: F401
+            from autogen import AssistantAgent as _Agent  # noqa: F401
             return True
         except ImportError:
             pass
@@ -200,8 +200,8 @@ class ConfigValidator:
             return False
 
         try:
-            from athena_ai.memory import get_memory_client
-            client = get_memory_client()
+            from athena_ai.knowledge.falkordb_client import get_falkordb_client
+            client = get_falkordb_client()
             return client.is_connected if client else False
         except Exception:
             console.print("[dim]ℹ️ Database not available (knowledge persistence disabled)[/dim]")
