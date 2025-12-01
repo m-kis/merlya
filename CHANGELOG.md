@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Comprehensive test suite for SessionCommandHandler (22 tests)
+  - Conversation ID validation tests (path traversal, special chars, length)
+  - Edge case tests (empty list, exceptions, cancellation handling)
+  - Security tests for /check, /load, /delete commands
 - Comprehensive test suite for inventory system (82 tests)
   - LLM sanitizer tests: prompt injection protection, PII redaction
   - Relation heuristics tests: cluster, replica, group, service detection
@@ -25,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SessionCommandHandler security and robustness improvements
+  - Conversation ID validation to prevent path traversal attacks
+  - Global exception handling in /conversations command
+  - Safe string conversion for timestamp fields
+  - Improved error recovery in /compact command
 - Thread safety race condition in InventoryParser singleton
 - LLM parser blocking on failure (now offers fallback options)
 - Memory exhaustion on large inventories (added pagination)
