@@ -3,7 +3,7 @@ name = "athena-ai-ops"
 version = "0.2.0"
 description = "AI-powered infrastructure orchestration CLI - Vibe Infra for DevOps"
 authors = ["Athena Contributors"]
-license = "MIT"
+license = "MIT-Commons-Clause"
 readme = "README.md"
 homepage = "https://github.com/m-kis/athena"
 repository = "https://github.com/m-kis/athena"
@@ -14,7 +14,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: System Administrators",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
@@ -61,6 +61,8 @@ psycopg2-binary = "^2.9"
 pymysql = "^1.1"
 pymongo = "^4.10"
 requests = "^2.32"
+# Web content parsing
+beautifulsoup4 = "^4.12"
 # Knowledge system (optional)
 falkordb = {version = "^1.2", optional = true}
 duckduckgo-search = {version = "^8.0", optional = true}

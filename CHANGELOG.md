@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional services status display at CLI startup
+  - Shows availability of FalkorDB, Web Search (DDGS), Smart Triage (Embeddings)
+  - Provides installation hints for missing optional dependencies
+- Added `beautifulsoup4` as explicit dependency for web content parsing
 - Comprehensive test suite for SessionCommandHandler (22 tests)
   - Conversation ID validation tests (path traversal, special chars, length)
   - Edge case tests (empty list, exceptions, cancellation handling)

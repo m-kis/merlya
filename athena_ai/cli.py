@@ -159,6 +159,68 @@ def cli(ctx, env, verbose, debug):
         _launch_repl(ctx.obj['env'])
 
 
+def _check_optional_services():
+    """Check optional services and display their status."""
+    services_status = []
+
+    # FalkorDB (Knowledge Graph)
+    try:
+        from athena_ai.knowledge.falkordb_client import get_falkordb_client
+        kg = get_falkordb_client()
+        if kg.connect():
+            services_status.append(("FalkorDB", True, None))
+        else:
+            services_status.append((
+                "FalkorDB", False,
+                "docker run -p 6379:6379 -it --rm falkordb/falkordb"
+            ))
+    except ImportError:
+        services_status.append((
+            "FalkorDB", False,
+            "pip install 'athena-ai-ops[knowledge]'"
+        ))
+    except Exception:
+        services_status.append((
+            "FalkorDB", False,
+            "docker run -p 6379:6379 -it --rm falkordb/falkordb"
+        ))
+
+    # DuckDuckGo Search (Web Search)
+    try:
+        from duckduckgo_search import DDGS  # noqa: F401
+        services_status.append(("Web Search (DDGS)", True, None))
+    except ImportError:
+        try:
+            from ddgs import DDGS  # noqa: F401
+            services_status.append(("Web Search (DDGS)", True, None))
+        except ImportError:
+            services_status.append((
+                "Web Search (DDGS)", False,
+                "pip install 'athena-ai-ops[knowledge]'"
+            ))
+
+    # Sentence Transformers (Smart Triage)
+    try:
+        from sentence_transformers import SentenceTransformer  # noqa: F401
+        services_status.append(("Smart Triage (Embeddings)", True, None))
+    except ImportError:
+        services_status.append((
+            "Smart Triage (Embeddings)", False,
+            "pip install 'athena-ai-ops[smart-triage]'"
+        ))
+
+    # Display status
+    console.print("[bold]📦 Optional Services:[/bold]")
+    for name, available, install_hint in services_status:
+        if available:
+            console.print(f"  [green]✅ {name}[/green]")
+        else:
+            console.print(f"  [yellow]⚠️  {name} (disabled)[/yellow]")
+            if install_hint:
+                console.print(f"     [dim]Install: {install_hint}[/dim]")
+    console.print()
+
+
 def _launch_repl(env: str):
     """Launch the interactive REPL."""
     console.print(f"\n[bold cyan]Athena[/bold cyan] [dim]v{__version__}[/dim]")
@@ -168,23 +230,8 @@ def _launch_repl(env: str):
     if not validate_and_fix_config():
         sys.exit(1)
 
-    # Readiness Check: FalkorDB
-    try:
-        from athena_ai.knowledge.falkordb_client import get_falkordb_client
-        kg = get_falkordb_client()
-        # Attempt to connect - the client doesn't auto-connect on creation
-        if not kg.connect():
-            console.print("[yellow]⚠️  Warning: FalkorDB is not reachable.[/yellow]")
-            console.print("[dim]   Knowledge graph features will be disabled.[/dim]")
-            console.print("[dim]   Ensure FalkorDB is running: docker run -p 6379:6379 -it --rm falkordb/falkordb[/dim]\n")
-        else:
-            console.print("[green]✅ FalkorDB connected[/green]")
-    except ImportError:
-        # falkordb package not installed - skip silently
-        pass
-    except Exception as e:
-        # Log the error but don't crash
-        console.print(f"[yellow]⚠️  Warning: FalkorDB check failed: {e}[/yellow]")
+    # Readiness Check: Optional services
+    _check_optional_services()
 
     # Launch REPL
     try:

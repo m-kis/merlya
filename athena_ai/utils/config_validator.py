@@ -50,6 +50,7 @@ class ConfigValidator:
         # Optional checks (warn but don't fail)
         optional_checks = [
             ("Embeddings (AI features)", self.check_embeddings),
+            ("Web Search (DuckDuckGo)", self.check_web_search),
             ("Database", self.check_database),
         ]
 
@@ -180,12 +181,35 @@ class ConfigValidator:
         This is optional - the system falls back to heuristics if unavailable.
         """
         try:
-            from sentence_transformers import SentenceTransformer
-            # Don't load the model here, just check import
+            from sentence_transformers import SentenceTransformer  # noqa: F401
             return True
         except ImportError:
-            console.print("[dim]ℹ️ sentence-transformers not installed (AI features will use heuristic fallback)[/dim]")
+            console.print("[dim]ℹ️  sentence-transformers not installed (AI features will use heuristic fallback)[/dim]")
+            console.print("[dim]   Install with: pip install 'athena-ai-ops[smart-triage]'[/dim]")
             return False
+
+    def check_web_search(self) -> bool:
+        """
+        Check if DuckDuckGo Search is available for web search features.
+
+        This is optional - web search tools will be disabled if unavailable.
+        """
+        try:
+            from duckduckgo_search import DDGS  # noqa: F401
+            return True
+        except ImportError:
+            pass
+
+        # Fallback: check for ddgs alias
+        try:
+            from ddgs import DDGS  # noqa: F401
+            return True
+        except ImportError:
+            pass
+
+        console.print("[dim]ℹ️  duckduckgo-search not installed (web search disabled)[/dim]")
+        console.print("[dim]   Install with: pip install 'athena-ai-ops[knowledge]'[/dim]")
+        return False
 
     def check_database(self) -> bool:
         """
