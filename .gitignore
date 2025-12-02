@@ -67,3 +67,4 @@ htmlcov/
 # Uncomment if you don't want these in the repo:
 # merlya_data/
 # ~/.merlya/
+./merlya/merlya.log
