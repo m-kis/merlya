@@ -53,6 +53,11 @@ class KeyringSecretStore:
     - Uses OS-native encryption
     - Requires user authentication to access
     - Secrets are isolated per user account
+
+    Fallback behavior:
+    - When keyring is unavailable, fails silently to avoid log spam
+    - Warning logged only once at startup
+    - Operations return graceful failures (False for store/delete, None for retrieve)
     """
 
     SERVICE_NAME = "merlya"
@@ -65,16 +70,39 @@ class KeyringSecretStore:
         """Initialize the keyring store."""
         self._available = HAS_KEYRING
         self._backend_name: Optional[str] = None
+        self._unavailable_warned = False  # Track if we've already warned
 
         if self._available:
             try:
                 # Test keyring availability
                 backend = keyring.get_keyring()
                 self._backend_name = backend.__class__.__name__
-                logger.debug(f"🔐 Keyring backend: {self._backend_name}")
+
+                # Check if it's a "null" backend that won't actually store anything
+                # Common fallback backends that don't persist secrets
+                null_backends = [
+                    "fail.Keyring",
+                    "NullKeyring",
+                    "ChainerBackend",  # Only if all chained backends fail
+                ]
+                if any(nb in self._backend_name for nb in null_backends):
+                    logger.warning(
+                        f"⚠️ Keyring backend '{self._backend_name}' does not persist secrets. "
+                        "Secrets will only be stored in session memory."
+                    )
+                    self._available = False
+                    self._unavailable_warned = True
+                else:
+                    logger.debug(f"🔐 Keyring backend: {self._backend_name}")
             except Exception as e:
-                logger.warning(f"⚠️ Keyring not available: {e}")
+                error_name = type(e).__name__
+                logger.warning(
+                    f"⚠️ Keyring not available ({error_name}). "
+                    "Secrets will only be stored in session memory. "
+                    "To enable persistent secret storage, install and configure a keyring backend."
+                )
                 self._available = False
+                self._unavailable_warned = True
 
     @property
     def is_available(self) -> bool:
@@ -127,7 +155,10 @@ class KeyringSecretStore:
             ValueError: If the key is invalid
         """
         if not self._available:
-            logger.warning("⚠️ Keyring not available, secret not persisted")
+            # Only warn once to avoid log spam
+            if not self._unavailable_warned:
+                logger.warning("⚠️ Keyring not available, secrets will not be persisted")
+                self._unavailable_warned = True
             return False
 
         # Validate key before storing
@@ -163,6 +194,7 @@ class KeyringSecretStore:
             ValueError: If the key is invalid
         """
         if not self._available:
+            # Silently return None when keyring unavailable - no log spam
             return None
 
         # Validate key before retrieving
@@ -176,10 +208,11 @@ class KeyringSecretStore:
             return value
         except KeyringError as e:
             # Sanitize error - don't log exception message
-            logger.warning(f"⚠️ Failed to retrieve secret '{key}': {type(e).__name__}")
+            # Only log debug level to avoid spam
+            logger.debug(f"🔐 Keyring retrieve failed for '{key}': {type(e).__name__}")
             return None
         except Exception as e:
-            logger.warning(f"⚠️ Unexpected error retrieving secret '{key}': {type(e).__name__}")
+            logger.debug(f"🔐 Keyring retrieve error for '{key}': {type(e).__name__}")
             return None
 
     def delete(self, key: str) -> bool:

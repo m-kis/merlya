@@ -20,6 +20,36 @@ class InventoryManager:
     def __init__(self, repo: "InventoryRepository"):
         self.repo = repo
 
+    def _sync_host_registry(
+        self,
+        hostname: str,
+        ip_address: Optional[str] = None,
+        environment: Optional[str] = None,
+    ) -> None:
+        """
+        Sync a newly added host with the HostRegistry.
+
+        This ensures that hosts added via /inventory add are immediately
+        available for validation without waiting for cache expiration.
+
+        Args:
+            hostname: Hostname to register
+            ip_address: Optional IP address
+            environment: Optional environment
+        """
+        try:
+            from merlya.context.host_registry import get_host_registry
+            registry = get_host_registry()
+            registry.register_manual_host(
+                hostname=hostname,
+                ip_address=ip_address,
+                environment=environment,
+            )
+        except Exception as e:
+            # Don't fail the add operation if sync fails
+            from merlya.utils.logger import logger
+            logger.debug(f"⚠️ Failed to sync host registry: {e}")
+
     def handle_remove(self, args: List[str]) -> bool:
         """Handle /inventory remove <source>."""
         if not args:
@@ -201,6 +231,9 @@ class InventoryManager:
                 console.print(f"  [dim]SSH key: {ssh_key_path}[/dim]")
             if ssh_key_passphrase_secret:
                 console.print(f"  [dim]Passphrase secret: @{ssh_key_passphrase_secret}[/dim]")
+
+            # Sync with HostRegistry to ensure validation works immediately
+            self._sync_host_registry(hostname, ip_address, environment)
 
         except (KeyboardInterrupt, EOFError):
             print_warning("\nCancelled")

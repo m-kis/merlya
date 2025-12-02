@@ -18,6 +18,7 @@ from merlya.context.sources.ansible import AnsibleSource
 from merlya.context.sources.base import Host, HostValidationResult, InventorySource
 from merlya.context.sources.cloud import AWSSource, GCPSource
 from merlya.context.sources.local import EtcHostsSource, SSHConfigSource
+from merlya.context.sources.sqlite import SQLiteSource
 from merlya.utils.logger import logger
 
 
@@ -74,7 +75,9 @@ class HostRegistry:
                 return len(self._hosts)
 
         # Initialize sources
+        # SQLite source first - contains manually added hosts via /inventory add
         sources = [
+            SQLiteSource(self.config),
             EtcHostsSource(self.config),
             SSHConfigSource(self.config),
             AnsibleSource(self.config),

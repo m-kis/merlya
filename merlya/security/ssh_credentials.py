@@ -256,6 +256,75 @@ def check_key_needs_passphrase(key_path: str, skip_validation: bool = False) -> 
             return False
 
 
+def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate that a passphrase correctly unlocks an SSH private key.
+
+    This function attempts to load the key with the provided passphrase
+    to verify it's correct before storing it.
+
+    Args:
+        key_path: Path to the SSH key file (should already be validated)
+        passphrase: Passphrase to test
+
+    Returns:
+        Tuple of (is_valid, error_message)
+        - (True, None) if passphrase is correct
+        - (False, error_message) if passphrase is wrong or other error
+
+    Example:
+        is_valid, error = validate_passphrase_for_key("~/.ssh/id_ed25519", "mypass")
+        if is_valid:
+            print("Passphrase correct!")
+        else:
+            print(f"Invalid: {error}")
+    """
+    try:
+        import paramiko
+
+        key_classes = [
+            paramiko.Ed25519Key,
+            paramiko.ECDSAKey,
+            paramiko.RSAKey,
+        ]
+
+        # Expand and resolve path
+        resolved_path = str(Path(key_path).expanduser().resolve())
+
+        for key_class in key_classes:
+            try:
+                # Try to load key with passphrase
+                key_class.from_private_key_file(resolved_path, password=passphrase)
+                logger.debug(f"✅ Passphrase validated for key: {Path(key_path).name}")
+                return True, None
+            except paramiko.ssh_exception.PasswordRequiredException:
+                # Key is encrypted but passphrase not provided or empty
+                return False, "Key requires a passphrase but none was provided"
+            except paramiko.ssh_exception.SSHException as e:
+                error_str = str(e).lower()
+                # Check for wrong passphrase indicators
+                if "incorrect" in error_str or "decrypt" in error_str or "bad" in error_str:
+                    return False, "Incorrect passphrase"
+                if "not a valid" in error_str:
+                    # Wrong key type, try next class
+                    continue
+                # Other SSH error
+                return False, f"SSH error: {e}"
+            except FileNotFoundError:
+                return False, "Key file not found"
+            except PermissionError:
+                return False, "Permission denied reading key file"
+
+        # If we tried all key classes without success
+        return False, "Unrecognized key format"
+
+    except ImportError:
+        return False, "paramiko not installed - cannot validate passphrase"
+    except Exception as e:
+        logger.debug(f"Passphrase validation error: {type(e).__name__}")
+        return False, f"Validation error: {type(e).__name__}"
+
+
 class SSHCredentialMixin:
     """
     Mixin providing SSH credential management functionality.

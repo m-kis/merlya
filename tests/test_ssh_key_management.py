@@ -439,3 +439,69 @@ class TestSSHKeyIntegration:
             _ = credential_manager._key_needs_passphrase(mock_ssh_key)
             # The canonical function should be called
             mock_check.assert_called_once_with(mock_ssh_key, skip_validation=False)
+
+
+class TestValidatePassphraseForKey:
+    """Tests for the validate_passphrase_for_key function."""
+
+    def test_correct_passphrase_returns_true(self, tmp_path):
+        """Test: Correct passphrase returns (True, None)."""
+        from merlya.security.ssh_credentials import validate_passphrase_for_key
+
+        # Create a real unencrypted key for testing
+        key_path = tmp_path / "test_key"
+        key_path.write_text("""-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+-----END OPENSSH PRIVATE KEY-----
+""")
+
+        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+            # Simulate successful load
+            mock_load.return_value = object()
+
+            is_valid, error = validate_passphrase_for_key(str(key_path), "anypass")
+            assert is_valid is True
+            assert error is None
+
+    def test_incorrect_passphrase_returns_false(self, tmp_path):
+        """Test: Incorrect passphrase returns (False, error_message)."""
+        import paramiko
+        from merlya.security.ssh_credentials import validate_passphrase_for_key
+
+        key_path = tmp_path / "encrypted_key"
+        key_path.write_text("dummy encrypted key content")
+
+        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+            # Simulate wrong passphrase
+            mock_load.side_effect = paramiko.ssh_exception.SSHException("Incorrect padding")
+
+            is_valid, error = validate_passphrase_for_key(str(key_path), "wrongpass")
+            assert is_valid is False
+            assert error is not None
+            assert "Incorrect passphrase" in error
+
+    def test_key_not_found_returns_false(self):
+        """Test: Non-existent key returns (False, error)."""
+        from merlya.security.ssh_credentials import validate_passphrase_for_key
+
+        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+            mock_load.side_effect = FileNotFoundError()
+
+            is_valid, error = validate_passphrase_for_key("/nonexistent/key", "pass")
+            assert is_valid is False
+            assert "not found" in error.lower()
+
+    def test_password_required_returns_false(self, tmp_path):
+        """Test: Key requires passphrase but none provided."""
+        import paramiko
+        from merlya.security.ssh_credentials import validate_passphrase_for_key
+
+        key_path = tmp_path / "needs_pass"
+        key_path.write_text("encrypted key")
+
+        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+            mock_load.side_effect = paramiko.ssh_exception.PasswordRequiredException()
+
+            is_valid, error = validate_passphrase_for_key(str(key_path), "")
+            assert is_valid is False
+            assert "passphrase" in error.lower()

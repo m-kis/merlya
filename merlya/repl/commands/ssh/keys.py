@@ -9,7 +9,11 @@ from rich.table import Table
 
 from merlya.repl.ui import console, print_error, print_success, print_warning
 from merlya.security.credentials import VariableType
-from merlya.security.ssh_credentials import check_key_needs_passphrase, validate_ssh_key_path
+from merlya.security.ssh_credentials import (
+    check_key_needs_passphrase,
+    validate_passphrase_for_key,
+    validate_ssh_key_path,
+)
 
 # Constants for secret key naming
 SSH_KEY_GLOBAL = "ssh_key_global"
@@ -239,16 +243,32 @@ def set_global_key(handler, args: List[str]) -> bool:
             if len(response) > 10:
                 print_warning("Invalid input, skipping")
             elif response != "n":
-                passphrase = getpass.getpass("SSH key passphrase (hidden): ")
-                if passphrase and len(passphrase) <= MAX_PASSPHRASE_LENGTH:
-                    handler.repl.credential_manager.set_variable(
-                        SSH_PASSPHRASE_GLOBAL, passphrase, VariableType.SECRET
-                    )
-                    print_success("✅ Passphrase cached for this session")
-                elif passphrase:
-                    print_warning("Passphrase too long, skipping")
-                else:
-                    print_warning("Empty passphrase, skipping")
+                # Allow up to 3 attempts to enter correct passphrase
+                max_attempts = 3
+                for attempt in range(max_attempts):
+                    passphrase = getpass.getpass("SSH key passphrase (hidden): ")
+                    if not passphrase:
+                        print_warning("Empty passphrase, skipping")
+                        break
+                    if len(passphrase) > MAX_PASSPHRASE_LENGTH:
+                        print_warning("Passphrase too long, try again")
+                        continue
+
+                    # Validate passphrase before storing
+                    is_valid, error = validate_passphrase_for_key(resolved_path, passphrase)
+                    if is_valid:
+                        handler.repl.credential_manager.set_variable(
+                            SSH_PASSPHRASE_GLOBAL, passphrase, VariableType.SECRET
+                        )
+                        print_success("✅ Passphrase verified and cached for this session")
+                        break
+                    else:
+                        remaining = max_attempts - attempt - 1
+                        if remaining > 0:
+                            print_error(f"❌ {error}. {remaining} attempt(s) remaining.")
+                        else:
+                            print_error(f"❌ {error}. No attempts remaining.")
+                            print_warning("Key configured without passphrase - will prompt on use")
         except (KeyboardInterrupt, EOFError):
             print_warning("\nPassphrase setup skipped")
     else:
