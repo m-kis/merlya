@@ -197,6 +197,14 @@ def execute_command(
                 "Call `request_elevation()` to ask the user for elevated privileges."
             )
 
+        # For credential errors, add explicit instruction for the agent
+        if recommendation.action == ToolAction.REQUEST_CREDENTIALS:
+            tool_hint += (
+                "\n\n🔐 **IMPORTANT**: This is an authentication error. "
+                "Call `request_credentials()` to ask the user for credentials. "
+                "Parameters: target, service (mongodb/mysql/postgresql/ssh), error_message, reason."
+            )
+
         base_response += tool_hint
 
     return base_response

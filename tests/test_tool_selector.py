@@ -87,8 +87,8 @@ class TestHeuristicSelection:
             error_message="Authentication failed: invalid password",
             context={"target": "dbhost"},
         )
-        assert rec.action == ToolAction.PROVIDE_CREDENTIALS
-        assert rec.tool_name == "ask_user"
+        assert rec.action == ToolAction.REQUEST_CREDENTIALS
+        assert rec.tool_name == "request_credentials"
 
     def test_not_found_recommends_alternate_path(self):
         """File not found should recommend alternate path."""
@@ -171,7 +171,7 @@ class TestIntegrationWithTriage:
         # Test with each error type
         error_type_expectations = {
             ErrorType.PERMISSION: ToolAction.REQUEST_ELEVATION,
-            ErrorType.CREDENTIAL: ToolAction.PROVIDE_CREDENTIALS,
+            ErrorType.CREDENTIAL: ToolAction.REQUEST_CREDENTIALS,
         }
 
         for error_type, expected_action in error_type_expectations.items():

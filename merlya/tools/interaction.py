@@ -1,6 +1,7 @@
 """
 User interaction and learning tools.
 """
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,13 @@ from typing import Annotated, Optional
 
 from merlya.tools.base import get_tool_context, validate_host
 from merlya.utils.logger import logger
+
+# Valid service types for credential requests
+VALID_CREDENTIAL_SERVICES = {'mongodb', 'mysql', 'postgresql', 'redis', 'ssh', 'database'}
+
+# Maximum lengths for security
+MAX_USERNAME_LENGTH = 256
+MAX_PASSWORD_LENGTH = 1024
 
 
 def get_user_variables(
@@ -239,6 +247,146 @@ def recall_skill(
         return f"❌ No skills found for '{query}'"
 
     return "❌ Memory system not available"
+
+
+def request_credentials(
+    target: Annotated[str, "Target host or service requiring credentials"],
+    service: Annotated[str, "Service type: 'mongodb', 'mysql', 'postgresql', 'ssh', etc."],
+    error_message: Annotated[str, "The authentication error message"],
+    reason: Annotated[Optional[str], "Why credentials are needed"] = None
+) -> str:
+    """
+    Request credentials from the user after an authentication error.
+
+    Use this tool when a command fails with authentication errors like
+    "Access denied", "Authentication failed", "Invalid password", etc.
+
+    The credentials are stored in the session and can be used for subsequent
+    commands. Session credentials expire after 15 minutes.
+
+    Security Notes:
+    - Credentials are stored in-memory only with 15-minute TTL
+    - Password input uses getpass for secure terminal handling
+    - Credentials are never logged or persisted to disk
+    - Username is validated to prevent injection attacks
+
+    Args:
+        target: Target host or service (e.g., "db-prod-01", "mongodb://localhost")
+        service: Service type for which credentials are needed
+        error_message: The error message received
+        reason: Optional explanation for the user
+
+    Returns:
+        Result with credentials stored, or denial message
+    """
+    ctx = get_tool_context()
+    logger.info(f"🔐 Tool: request_credentials for {service} on {target}")
+
+    # Check if we have required dependencies
+    if not ctx.credentials:
+        return "❌ Credential manager not available"
+
+    # Validate service type
+    service_lower = service.lower()
+    if service_lower not in VALID_CREDENTIAL_SERVICES:
+        logger.warning(f"⚠️ Unknown service type '{service}', defaulting to 'database'")
+        service_lower = "database"
+
+    # Format the question for the user
+    service_desc = {
+        'mongodb': 'MongoDB',
+        'mysql': 'MySQL',
+        'postgresql': 'PostgreSQL',
+        'redis': 'Redis',
+        'ssh': 'SSH',
+        'database': 'Database',
+    }.get(service_lower, service_lower.capitalize())
+
+    reason_text = f"\nReason: {reason}" if reason else ""
+    question = (
+        f"🔐 Authentication required for:\n"
+        f"   Service: {service_desc}\n"
+        f"   Target: {target}\n"
+        f"   Error: {error_message[:200]}{reason_text}\n\n"
+        f"Would you like to provide credentials? (yes/no)"
+    )
+
+    # Print question with Rich formatting
+    ctx.console.print(f"\n❓ [bold cyan]Merlya asks:[/bold cyan] {question}")
+
+    try:
+        response = ctx.get_user_input("   > ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return "❌ Credential request cancelled by user."
+
+    # Check response
+    if response not in ('yes', 'y', 'oui', 'o', 'да', '1'):
+        return f"❌ Credential request declined by user (response: '{response}')"
+
+    # Prompt for username and password
+    try:
+        ctx.console.print(f"\n[bold cyan]Enter credentials for {service_desc}:[/bold cyan]")
+        username = ctx.get_user_input("   Username: ").strip()
+
+        # Validate username
+        if not username:
+            return "❌ Username cannot be empty"
+        if len(username) > MAX_USERNAME_LENGTH:
+            return f"❌ Username too long (max {MAX_USERNAME_LENGTH} characters)"
+        # Validate username format (alphanumeric, underscore, hyphen, dot, @)
+        if not re.match(r'^[\w.\-@]+$', username):
+            return "❌ Username contains invalid characters (use only letters, numbers, ., -, _, @)"
+
+        # Use secure input for password (getpass-style)
+        import getpass
+        try:
+            password = getpass.getpass("   Password: ")
+        except (KeyboardInterrupt, EOFError):
+            return "❌ Password input cancelled"
+
+        # Validate password
+        if not password or not password.strip():
+            return "❌ Password cannot be empty"
+        if len(password) > MAX_PASSWORD_LENGTH:
+            return f"❌ Password too long (max {MAX_PASSWORD_LENGTH} characters)"
+
+        # Store credentials in session using tuple key to prevent collision
+        # Using (service, target) tuple instead of string to avoid collision attacks
+        cache_key = (service_lower, target)
+        ctx.credentials._cache_credential_tuple(cache_key, username, password)
+
+        # Also store as user variables for @variable resolution
+        ctx.credentials.set_secret(f"{service_lower}-user", username)
+        ctx.credentials.set_secret(f"{service_lower}-pass", password)
+
+        # Audit log (without exposing credentials)
+        logger.info(f"🔐 AUDIT: Credentials STORED for {service_lower}@{target} (expires in 15min)")
+
+        # Mask username for display (show first 2 and last 2 chars if long enough)
+        if len(username) > 6:
+            masked_user = f"{username[:2]}{'*' * (len(username) - 4)}{username[-2:]}"
+        else:
+            masked_user = username[:1] + "*" * (len(username) - 1)
+
+        return (
+            f"✅ Credentials stored successfully!\n\n"
+            f"- Service: {service_desc}\n"
+            f"- Target: {target}\n"
+            f"- Username: {masked_user}\n"
+            f"- TTL: 15 minutes\n\n"
+            f"You can now retry the command. The credentials will be used automatically.\n"
+            f"Credentials are also available as @{service_lower}-user and @{service_lower}-pass variables."
+        )
+
+    except KeyboardInterrupt:
+        logger.warning(f"🔐 AUDIT: Credential request INTERRUPTED for {service_lower}@{target}")
+        return "❌ Credential input cancelled"
+    except EOFError:
+        logger.warning(f"🔐 AUDIT: Credential request EOF for {service_lower}@{target}")
+        return "❌ Credential input interrupted"
+    except Exception as e:
+        logger.error(f"Failed to get credentials: {e}", exc_info=True)
+        return "❌ Failed to get credentials due to an internal error"
 
 
 def request_elevation(

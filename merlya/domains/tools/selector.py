@@ -28,11 +28,12 @@ if HAS_EMBEDDINGS:
 class ToolAction(Enum):
     """Actions that can be recommended by the selector."""
     REQUEST_ELEVATION = "request_elevation"
+    REQUEST_CREDENTIALS = "request_credentials"
     ASK_USER = "ask_user"
     RETRY_WITH_SUDO = "retry_with_sudo"
     RETRY_ALTERNATE_PATH = "retry_alternate_path"
     RETRY_ALTERNATE_COMMAND = "retry_alternate_command"
-    PROVIDE_CREDENTIALS = "provide_credentials"
+    PROVIDE_CREDENTIALS = "provide_credentials"  # Deprecated, use REQUEST_CREDENTIALS
     NO_ACTION = "no_action"
 
 
@@ -191,6 +192,50 @@ class ToolSelector:
             logger.warning(f"⚠️ Semantic scoring failed: {e}")
             return {}
 
+    def _detect_service_from_context(
+        self, context: Dict[str, Any], error_lower: str
+    ) -> str:
+        """
+        Detect service type from context and error message.
+
+        Returns service name like 'mongodb', 'mysql', 'postgresql', 'ssh', etc.
+        """
+        command = context.get("command", "").lower()
+
+        # Check command patterns
+        if "mongo" in command or "mongosh" in command or "mongod" in command:
+            return "mongodb"
+        if "mysql" in command:
+            return "mysql"
+        if "psql" in command or "postgres" in command:
+            return "postgresql"
+        if "redis" in command or "redis-cli" in command:
+            return "redis"
+        if "ssh" in command:
+            return "ssh"
+
+        # Check error message patterns
+        if "mongo" in error_lower:
+            return "mongodb"
+        if "mysql" in error_lower or "mariadb" in error_lower:
+            return "mysql"
+        if "postgres" in error_lower or "psql" in error_lower:
+            return "postgresql"
+        if "redis" in error_lower:
+            return "redis"
+        if "ssh" in error_lower or "publickey" in error_lower:
+            return "ssh"
+
+        # Check context for service hint
+        if context.get("service"):
+            return context["service"]
+
+        # Default to generic "database" or "ssh"
+        if any(kw in error_lower for kw in ["database", "db", "connection refused"]):
+            return "database"
+
+        return "ssh"  # Default fallback
+
     def _heuristic_select(
         self,
         error_type: Optional[ErrorType],
@@ -229,14 +274,21 @@ class ToolSelector:
                 reason="Permission denied - no interactive elevation available",
             )
 
-        # Credential errors → provide_credentials
+        # Credential errors → request_credentials
         if error_type == ErrorType.CREDENTIAL:
+            # Detect service type from context or error message
+            service = self._detect_service_from_context(context, error_lower)
             return ToolRecommendation(
-                action=ToolAction.PROVIDE_CREDENTIALS,
+                action=ToolAction.REQUEST_CREDENTIALS,
                 confidence=0.85,
-                tool_name="ask_user",
-                tool_params={"question": "Please provide credentials for authentication"},
-                reason="Credential error detected",
+                tool_name="request_credentials",
+                tool_params={
+                    "target": context.get("target", ""),
+                    "service": service,
+                    "error_message": error_message[:200],
+                    "reason": "Authentication failed - credentials required",
+                },
+                reason="Credential error detected - use request_credentials tool",
             )
 
         # File not found → try alternate paths
@@ -477,9 +529,26 @@ class ToolSelector:
             tool_name = "ask_user"
             params = {"question": context.get("question", "Please provide more information")}
 
+        elif action == ToolAction.REQUEST_CREDENTIALS:
+            tool_name = "request_credentials"
+            service = self._detect_service_from_context(context, error_message.lower() if error_message else "")
+            params = {
+                "target": context.get("target", ""),
+                "service": service,
+                "error_message": error_message[:200] if error_message else "",
+                "reason": "Credentials required based on error analysis",
+            }
+
         elif action == ToolAction.PROVIDE_CREDENTIALS:
-            tool_name = "ask_user"
-            params = {"question": "Please provide credentials for authentication"}
+            # Deprecated - redirect to REQUEST_CREDENTIALS
+            tool_name = "request_credentials"
+            service = self._detect_service_from_context(context, error_message.lower() if error_message else "")
+            params = {
+                "target": context.get("target", ""),
+                "service": service,
+                "error_message": error_message[:200] if error_message else "",
+                "reason": "Credentials required",
+            }
 
         elif action == ToolAction.RETRY_WITH_SUDO:
             params = {"prefix": "sudo"}

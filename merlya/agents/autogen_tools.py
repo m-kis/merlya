@@ -14,7 +14,7 @@ All tool implementations have been moved to separate modules following SRP:
 - tools/system.py: disk, memory, network, processes, services
 - tools/containers.py: docker_exec, kubectl_exec
 - tools/web.py: web_search, web_fetch
-- tools/interaction.py: ask_user, remember_skill, recall_skill, request_elevation
+- tools/interaction.py: ask_user, remember_skill, recall_skill, request_credentials, request_elevation
 
 For new code, import directly from merlya.tools:
     from merlya.tools import execute_command, list_hosts
@@ -47,6 +47,7 @@ from merlya.tools import (
     read_remote_file,
     recall_skill,
     remember_skill,
+    request_credentials,
     request_elevation,
     save_report,
     scan_host,
@@ -110,6 +111,7 @@ __all__ = [
     "get_variable_value",
     "remember_skill",
     "recall_skill",
+    "request_credentials",
     "request_elevation",
     "save_report",
 ]

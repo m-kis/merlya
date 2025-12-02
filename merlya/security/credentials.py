@@ -161,7 +161,16 @@ class CredentialManager(SSHCredentialMixin):
         return (username, password)
 
     def _cache_credential(self, cache_key: str, username: str, password: str):
-        """Cache credential with current timestamp."""
+        """Cache credential with current timestamp (string key)."""
+        self.session_credentials[cache_key] = (username, password, time.time())
+
+    def _cache_credential_tuple(self, cache_key: tuple, username: str, password: str):
+        """
+        Cache credential with tuple key for collision-safe storage.
+
+        Using tuple keys like (service, target) prevents cache key collision attacks
+        where "service@evil" + "target" would collide with "service" + "evil@target".
+        """
         self.session_credentials[cache_key] = (username, password, time.time())
 
     # =========================================================================

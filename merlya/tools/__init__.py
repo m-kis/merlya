@@ -58,6 +58,7 @@ from .interaction import (
     get_variable_value,
     recall_skill,
     remember_skill,
+    request_credentials,
     request_elevation,
     save_report,
 )
@@ -122,6 +123,7 @@ __all__ = [
     "get_variable_value",
     "remember_skill",
     "recall_skill",
+    "request_credentials",
     "request_elevation",
     "save_report",
     # CI/CD

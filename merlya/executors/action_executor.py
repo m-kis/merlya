@@ -13,11 +13,25 @@ from merlya.utils.stats_manager import get_stats_manager
 
 
 class ActionExecutor:
-    def __init__(self, credential_manager: Optional[CredentialManager] = None):
+    def __init__(
+        self,
+        credential_manager: Optional[CredentialManager] = None,
+        interactive: bool = False
+    ):
+        """
+        Initialize ActionExecutor.
+
+        Args:
+            credential_manager: Optional credential manager for authentication
+            interactive: If True, prompts user for credentials on auth errors.
+                        If False (default), returns error with needs_credentials flag
+                        for the calling agent to handle via request_credentials tool.
+        """
         self.ssh_manager = SSHManager()
         self.risk_assessor = RiskAssessor()
         self.credentials = credential_manager or CredentialManager()
         self._error_analyzer = None  # Lazy init to avoid loading model at startup
+        self._interactive = interactive
 
     @property
     def error_analyzer(self):
@@ -79,10 +93,11 @@ class ActionExecutor:
         action_type: str = "shell",
         confirm: bool = False,
         timeout: int = 60,
-        show_spinner: bool = True
+        show_spinner: bool = True,
+        max_retries: int = 3
     ) -> Dict[str, Any]:
         """
-        Execute an action on a target.
+        Execute an action on a target with automatic credential handling.
         Target can be 'local', 'localhost', a hostname, or an IP.
 
         Args:
@@ -92,6 +107,7 @@ class ActionExecutor:
             confirm: Skip risk confirmation if True
             timeout: Command timeout in seconds (default: 60)
             show_spinner: Show spinner during remote execution (default: True)
+            max_retries: Maximum number of retries for credential errors (default: 3)
 
         Returns:
             Dict with success, exit_code, stdout, stderr
@@ -108,10 +124,83 @@ class ActionExecutor:
                 "risk": risk
             }
 
+        # Execute command
         if target in ["local", "localhost"]:
-            return self._execute_local(command, timeout=timeout)
+            result = self._execute_local(command, timeout=timeout)
         else:
-            return self._execute_remote(target, command, timeout=timeout, show_spinner=show_spinner)
+            result = self._execute_remote(target, command, timeout=timeout, show_spinner=show_spinner)
+
+        # Check if success
+        if result.get("success"):
+            return result
+
+        # Check if we need credentials
+        if self.needs_credentials(result):
+            # In non-interactive mode (agent context), don't block on input
+            # Return the error with needs_credentials flag for agent to handle
+            if not self._interactive:
+                logger.info(
+                    "🔐 Credentials needed - returning error for agent to handle "
+                    "via request_credentials tool"
+                )
+                return result
+
+            # Interactive mode: retry with credential prompts
+            for attempt in range(max_retries):
+                logger.warning(f"🔐 Credentials needed (Attempt {attempt + 1}/{max_retries})")
+
+                # Try to resolve credentials
+                if self._handle_credential_request(target, command, result):
+                    logger.info("🔄 Retrying with new credentials...")
+
+                    # Re-execute
+                    if target in ["local", "localhost"]:
+                        result = self._execute_local(command, timeout=timeout)
+                    else:
+                        result = self._execute_remote(
+                            target, command, timeout=timeout, show_spinner=show_spinner
+                        )
+
+                    if result.get("success"):
+                        return result
+
+                    # If still failing with credentials, check if it's still a credential issue
+                    if not self.needs_credentials(result):
+                        break  # Different error now, stop retrying
+                else:
+                    logger.warning("⚠️ Could not resolve credentials, stopping retries.")
+                    break
+
+        return result
+
+    def _handle_credential_request(self, target: str, command: str, result: Dict[str, Any]) -> bool:
+        """
+        Handle a request for credentials by prompting the user.
+
+        Args:
+            target: The target host
+            command: The command that failed
+            result: The failure result
+
+        Returns:
+            True if credentials were provided/updated, False otherwise
+        """
+        # Infer service from command or error
+        service = "ssh"  # Default
+        cmd_lower = command.lower()
+
+        if "mongo" in cmd_lower:
+            service = "mongodb"
+        elif "mysql" in cmd_lower:
+            service = "mysql"
+        elif "postgres" in cmd_lower or "psql" in cmd_lower:
+            service = "postgresql"
+
+        # Prompt for credentials
+        # This will update the CredentialManager's cache/env vars which are used by subsequent calls
+        creds = self.prompt_credentials(service, target)
+
+        return creds is not None
 
     def _execute_local(self, command: str, timeout: int = 60) -> Dict[str, Any]:
         stats = get_stats_manager()
