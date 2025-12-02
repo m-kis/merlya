@@ -4766,15 +4766,15 @@ jeepney = ">=0.6"
 
 [[package]]
 name = "sentence-transformers"
-version = "3.4.1"
-description = "State-of-the-Art Text Embeddings"
+version = "5.1.2"
+description = "Embeddings, Retrieval, and Reranking"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"smart-triage\""
 files = [
-    {file = "sentence_transformers-3.4.1-py3-none-any.whl", hash = "sha256:e026dc6d56801fd83f74ad29a30263f401b4b522165c19386d8bc10dcca805da"},
-    {file = "sentence_transformers-3.4.1.tar.gz", hash = "sha256:68daa57504ff548340e54ff117bd86c1d2f784b21e0fb2689cf3272b8937b24b"},
+    {file = "sentence_transformers-5.1.2-py3-none-any.whl", hash = "sha256:724ce0ea62200f413f1a5059712aff66495bc4e815a1493f7f9bca242414c333"},
+    {file = "sentence_transformers-5.1.2.tar.gz", hash = "sha256:0f6c8bd916a78dc65b366feb8d22fd885efdb37432e7630020d113233af2b856"},
 ]
 
 [package.dependencies]
@@ -4785,6 +4785,7 @@ scipy = "*"
 torch = ">=1.11.0"
 tqdm = "*"
 transformers = ">=4.41.0,<5.0.0"
+typing_extensions = ">=4.5.0"
 
 [package.extras]
 dev = ["accelerate (>=0.20.3)", "datasets", "peft", "pre-commit", "pytest", "pytest-cov"]
@@ -5742,4 +5743,4 @@ smart-triage = ["falkordb", "sentence-transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "f78a313b7b7e8d886d066dc5d4a55441d9e2cc3273faf6dcc6ccea4fb94a1300"
+content-hash = "4991deee3431f9eab713fbca179996cf6141b7a823da8fc063808c2cbca5c09f"
