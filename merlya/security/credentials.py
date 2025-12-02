@@ -4,7 +4,13 @@ Credential and Variable Manager for Merlya.
 Manages:
 - SSH credentials (ssh-agent, ~/.ssh/config, key files)
 - Database credentials (interactive prompts with getpass)
-- User variables with persistence (@host, @config) and secrets (@secret - never persisted)
+- User variables with persistence (@host, @config)
+- Secrets with storage hierarchy (session -> keyring -> env)
+
+Storage hierarchy for secrets (resolution order):
+1. Session cache (in-memory, 15min TTL) - fastest
+2. System keyring (persistent, encrypted) - secure
+3. Environment variables (MERLYA_<KEY>) - fallback
 """
 import getpass
 import os
@@ -33,15 +39,22 @@ class CredentialManager(SSHCredentialMixin):
     - SSH: ssh-agent, ~/.ssh/config, key files
     - DB: Interactive prompts with getpass (never stored in plaintext)
     - Variables: Typed variables with SQLite persistence (except secrets)
+    - Secrets: Storage hierarchy (session -> keyring -> env)
 
     Variable Types:
-    - HOST: Alias for hostnames (persisted)
-    - CONFIG: General configuration values (persisted)
-    - SECRET: Passwords, tokens (in-memory only, never persisted)
+    - HOST: Alias for hostnames (persisted in SQLite)
+    - CONFIG: General configuration values (persisted in SQLite)
+    - SECRET: Passwords, tokens (session or keyring)
+
+    Secret Resolution Order:
+    1. Session cache (in-memory, fastest)
+    2. System keyring (persistent, encrypted)
+    3. Environment variables (MERLYA_<KEY>)
 
     Security:
     - Session credentials TTL: 15 minutes
     - Automatic expiration cleanup on access
+    - Keyring uses OS-native encryption
     """
 
     # Storage key for variables in SQLite
@@ -68,6 +81,9 @@ class CredentialManager(SSHCredentialMixin):
 
         # Storage manager for persistence
         self._storage = storage_manager
+
+        # Keyring store (lazy-loaded)
+        self._keyring_store = None
 
         # Load persisted variables
         self._load_variables()
@@ -122,6 +138,14 @@ class CredentialManager(SSHCredentialMixin):
         """
         self._storage = storage_manager
         self._load_variables()
+
+    @property
+    def keyring_store(self):
+        """Lazy-load keyring store."""
+        if self._keyring_store is None:
+            from merlya.security.keyring_store import get_keyring_store
+            self._keyring_store = get_keyring_store()
+        return self._keyring_store
 
     # =========================================================================
     # Session Credential Management
@@ -300,18 +324,40 @@ class CredentialManager(SSHCredentialMixin):
 
     def get_variable(self, key: str) -> Optional[str]:
         """
-        Get a variable value.
+        Get a variable value with storage hierarchy for secrets.
+
+        Resolution order for secrets:
+        1. Session cache (in-memory)
+        2. System keyring (persistent)
+        3. Environment variable (MERLYA_<KEY>)
 
         Note: Access to SECRET type variables is audit logged for security tracking.
         """
+        # Check session variables first
         if key in self._variables:
             value, var_type = self._variables[key]
 
             # Audit log secret access (security requirement)
             if var_type == VariableType.SECRET:
-                logger.info(f"🔐 Secret accessed: {key} (type=SECRET)")
+                logger.info(f"🔐 Secret accessed: {key} (type=SECRET, source=session)")
 
             return value
+
+        # For unknown keys, check keyring (might be a persisted secret)
+        keyring_value = self.keyring_store.retrieve(key)
+        if keyring_value:
+            logger.info(f"🔐 Secret accessed: {key} (source=keyring)")
+            # Cache in session for faster access
+            self._variables[key] = (keyring_value, VariableType.SECRET)
+            return keyring_value
+
+        # Check environment variable as fallback
+        env_key = f"MERLYA_{key.upper().replace('-', '_')}"
+        env_value = os.environ.get(env_key)
+        if env_value:
+            logger.debug(f"🔐 Variable loaded from env: {env_key}")
+            return env_value
+
         return None
 
     def get_variable_type(self, key: str) -> Optional[VariableType]:

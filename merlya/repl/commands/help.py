@@ -12,7 +12,7 @@ from merlya.repl.ui import console
 
 # Available help topics
 HELP_TOPICS = [
-    'model', 'variables', 'inventory', 'ssh', 'cicd', 'mcp', 'context', 'session', 'stats'
+    'model', 'variables', 'secret', 'inventory', 'ssh', 'cicd', 'mcp', 'context', 'session', 'stats'
 ]
 
 # Quick reference for main help
@@ -28,7 +28,9 @@ SLASH_COMMANDS = {
     # Model
     '/model': 'Model management (show, list, set, provider, local, task, embedding)',
     # Variables
-    '/variables': 'Manage variables (set, set-host, set-secret, list, delete, clear)',
+    '/variables': 'Manage variables (set, set-host, list, delete, clear)',
+    # Secrets
+    '/secret': 'Manage secrets (set, list, persist, delete, clear, info)',
     # Inventory
     '/inventory': 'Manage hosts (add, list, show, search, remove, export, relations)',
     # CI/CD
@@ -82,8 +84,10 @@ class HelpCommandHandler:
             self._show_topics()
         elif topic == 'model':
             self._show_model_help()
-        elif topic in ('variables', 'vars', 'credentials'):
+        elif topic in ('variables', 'vars'):
             self._show_variables_help()
+        elif topic in ('secret', 'secrets', 'credentials'):
+            self._show_secret_help()
         elif topic == 'inventory':
             self._show_inventory_help()
         elif topic == 'ssh':
@@ -128,7 +132,8 @@ class HelpCommandHandler:
         console.print("\n[bold]Available Help Topics[/bold]\n")
         topics_info = {
             'model': 'LLM providers, local models, task routing, embeddings',
-            'variables': 'Host aliases, config variables, secrets',
+            'variables': 'Host aliases, config variables',
+            'secret': 'Secure secret storage with keyring integration',
             'inventory': 'Host management, import/export, relations',
             'ssh': 'SSH keys, agent, passphrases, connection testing',
             'cicd': 'CI/CD pipelines, workflows, debugging',
@@ -208,22 +213,71 @@ Models: 17-420MB, runs locally. Env var: `MERLYA_EMBEDDING_MODEL`
 - `/variables set CONFIG {"env":"prod"}`
 - Supports JSON, hashes, special characters
 
-**Secrets (memory-only, NOT persisted):**
-- `/variables set-secret dbpass` - Secure input (hidden)
-- `/variables secret token` - Alias
-
 **Management:**
-- `/variables list` - Show all (secrets masked)
+- `/variables list` - Show all host and config variables
 - `/variables delete <key>` - Delete (aliases: del, remove)
-- `/variables clear` - Clear all
-- `/variables clear-secrets` - Clear secrets only
+- `/variables clear` - Clear all variables
 
 **Variable Types:**
 | Type | Example | Persisted |
 |------|---------|-----------|
-| host | @proddb → db-prod-001 | Yes |
-| config | @region → eu-west-1 | Yes |
-| secret | @dbpass → ******** | No |
+| host | @proddb → db-prod-001 | Yes (SQLite) |
+| config | @region → eu-west-1 | Yes (SQLite) |
+
+**For secrets, use `/secret` command (see `/help secret`).**
+"""
+        console.print(Markdown(help_text))
+
+    def _show_secret_help(self) -> None:
+        """Show detailed secret help."""
+        help_text = """
+## Secret Management
+
+Secure storage for passwords, tokens, and API keys with optional system keyring persistence.
+
+**Storage Types:**
+| Storage | Description | Persistent |
+|---------|-------------|------------|
+| session | In-memory, expires on exit | No |
+| keyring | OS-encrypted (Keychain/Vault) | Yes |
+| env | MERLYA_<KEY> environment vars | Yes |
+
+**Resolution Order:**
+When retrieving a secret, Merlya checks in order:
+1. Session cache (in-memory)
+2. System keyring
+3. Environment variables
+
+**Commands:**
+```
+/secret set <key>              # Set session secret
+/secret set <key> --persist    # Store in keyring
+/secret list                   # List all secrets
+/secret list --persistent      # Keyring secrets only
+/secret list --session         # Session secrets only
+/secret delete <key>           # Delete from session
+/secret delete <key> --all     # Delete from both
+/secret clear --session        # Clear session secrets
+/secret clear --keyring        # Clear keyring (confirmation)
+/secret persist <key>          # Move to keyring
+/secret persist --all          # Move all to keyring
+/secret info                   # Show storage info
+/secret export <file>          # Export keys (not values)
+/secret import <file>          # Import and prompt values
+```
+
+**Keyring Backends:**
+- macOS: Keychain (requires Touch ID/password)
+- Windows: Credential Vault
+- Linux: Secret Service (GNOME Keyring, KWallet)
+
+**Examples:**
+```
+/secret set db-password --persist
+/secret set api-key
+/secret persist api-key
+check mongodb on @db-prod using @db-password
+```
 """
         console.print(Markdown(help_text))
 

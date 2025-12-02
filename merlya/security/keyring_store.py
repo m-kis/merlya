@@ -1,0 +1,362 @@
+"""
+Keyring-based secure secret storage for Merlya.
+
+Provides persistent, encrypted storage for secrets using the OS keyring:
+- macOS: Keychain
+- Windows: Credential Vault
+- Linux: Secret Service (GNOME Keyring, KWallet)
+
+Storage hierarchy (resolution order):
+1. Session cache (in-memory, 15min TTL) - fastest
+2. System keyring (persistent, encrypted) - secure
+3. Environment variables - fallback
+"""
+from typing import Dict, List, Optional
+
+from merlya.utils.logger import logger
+
+# Import keyring with fallback
+try:
+    import keyring
+    from keyring.errors import KeyringError, PasswordDeleteError
+
+    HAS_KEYRING = True
+except ImportError:
+    HAS_KEYRING = False
+    KeyringError = Exception
+    PasswordDeleteError = Exception
+
+
+class KeyringSecretStore:
+    """
+    Secure secret storage using system keyring.
+
+    Key naming conventions:
+    - merlya/<secret-name>           : User secrets
+    - merlya/cred/<service>/<host>   : Auto-stored credentials
+    - merlya/provider/<name>         : Cloud provider API keys
+
+    Security:
+    - Uses OS-native encryption
+    - Requires user authentication to access
+    - Secrets are isolated per user account
+    """
+
+    SERVICE_NAME = "merlya"
+    # Separator for composite keys
+    KEY_SEPARATOR = "/"
+    # Metadata key to track stored secret names
+    METADATA_KEY = "__merlya_secret_keys__"
+
+    def __init__(self):
+        """Initialize the keyring store."""
+        self._available = HAS_KEYRING
+        self._backend_name: Optional[str] = None
+
+        if self._available:
+            try:
+                # Test keyring availability
+                backend = keyring.get_keyring()
+                self._backend_name = backend.__class__.__name__
+                logger.debug(f"🔐 Keyring backend: {self._backend_name}")
+            except Exception as e:
+                logger.warning(f"⚠️ Keyring not available: {e}")
+                self._available = False
+
+    @property
+    def is_available(self) -> bool:
+        """Check if keyring is available."""
+        return self._available
+
+    @property
+    def backend_name(self) -> Optional[str]:
+        """Get the keyring backend name."""
+        return self._backend_name
+
+    def _full_key(self, key: str) -> str:
+        """Build full key with service prefix."""
+        return f"{self.SERVICE_NAME}{self.KEY_SEPARATOR}{key}"
+
+    def store(self, key: str, value: str) -> bool:
+        """
+        Store a secret in the system keyring.
+
+        Args:
+            key: Secret name (e.g., "db-password", "cred/mongodb/db-prod-01")
+            value: Secret value
+
+        Returns:
+            True if stored successfully, False otherwise
+        """
+        if not self._available:
+            logger.warning("⚠️ Keyring not available, secret not persisted")
+            return False
+
+        try:
+            full_key = self._full_key(key)
+            keyring.set_password(self.SERVICE_NAME, full_key, value)
+            # Track the key in metadata
+            self._add_key_to_metadata(key)
+            logger.info(f"✅ Secret stored in keyring: {key}")
+            return True
+        except KeyringError as e:
+            logger.error(f"❌ Failed to store secret in keyring: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Unexpected error storing secret: {e}")
+            return False
+
+    def retrieve(self, key: str) -> Optional[str]:
+        """
+        Retrieve a secret from the keyring.
+
+        Args:
+            key: Secret name
+
+        Returns:
+            Secret value if found, None otherwise
+        """
+        if not self._available:
+            return None
+
+        try:
+            full_key = self._full_key(key)
+            value = keyring.get_password(self.SERVICE_NAME, full_key)
+            if value:
+                logger.debug(f"🔐 Secret retrieved from keyring: {key}")
+            return value
+        except KeyringError as e:
+            logger.warning(f"⚠️ Failed to retrieve secret from keyring: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"⚠️ Unexpected error retrieving secret: {e}")
+            return None
+
+    def delete(self, key: str) -> bool:
+        """
+        Delete a secret from the keyring.
+
+        Args:
+            key: Secret name
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        if not self._available:
+            return False
+
+        try:
+            full_key = self._full_key(key)
+            keyring.delete_password(self.SERVICE_NAME, full_key)
+            # Remove from metadata
+            self._remove_key_from_metadata(key)
+            logger.info(f"✅ Secret deleted from keyring: {key}")
+            return True
+        except PasswordDeleteError:
+            logger.debug(f"🔍 Secret not found in keyring: {key}")
+            return False
+        except KeyringError as e:
+            logger.error(f"❌ Failed to delete secret from keyring: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Unexpected error deleting secret: {e}")
+            return False
+
+    def list_keys(self) -> List[str]:
+        """
+        List all stored secret keys (not values).
+
+        Returns:
+            List of secret key names
+        """
+        if not self._available:
+            return []
+
+        try:
+            # Retrieve metadata containing key list
+            metadata = keyring.get_password(self.SERVICE_NAME, self.METADATA_KEY)
+            if metadata:
+                return metadata.split("\n")
+            return []
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to list keyring keys: {e}")
+            return []
+
+    def _add_key_to_metadata(self, key: str) -> None:
+        """Add a key to the metadata tracking list."""
+        try:
+            keys = self.list_keys()
+            if key not in keys:
+                keys.append(key)
+                keyring.set_password(
+                    self.SERVICE_NAME, self.METADATA_KEY, "\n".join(keys)
+                )
+        except Exception as e:
+            logger.debug(f"⚠️ Failed to update metadata: {e}")
+
+    def _remove_key_from_metadata(self, key: str) -> None:
+        """Remove a key from the metadata tracking list."""
+        try:
+            keys = self.list_keys()
+            if key in keys:
+                keys.remove(key)
+                if keys:
+                    keyring.set_password(
+                        self.SERVICE_NAME, self.METADATA_KEY, "\n".join(keys)
+                    )
+                else:
+                    # Clean up metadata if empty
+                    try:
+                        keyring.delete_password(self.SERVICE_NAME, self.METADATA_KEY)
+                    except PasswordDeleteError:
+                        pass
+        except Exception as e:
+            logger.debug(f"⚠️ Failed to update metadata: {e}")
+
+    def clear_all(self) -> int:
+        """
+        Clear all secrets from the keyring.
+
+        Returns:
+            Number of secrets deleted
+        """
+        if not self._available:
+            return 0
+
+        keys = self.list_keys()
+        deleted = 0
+        for key in keys:
+            if self.delete(key):
+                deleted += 1
+
+        # Clean up metadata
+        try:
+            keyring.delete_password(self.SERVICE_NAME, self.METADATA_KEY)
+        except (PasswordDeleteError, KeyringError):
+            pass
+
+        logger.info(f"✅ Cleared {deleted} secrets from keyring")
+        return deleted
+
+    def has_secret(self, key: str) -> bool:
+        """
+        Check if a secret exists in the keyring (without retrieving value).
+
+        Args:
+            key: Secret name
+
+        Returns:
+            True if secret exists
+        """
+        return key in self.list_keys()
+
+    # =========================================================================
+    # Credential helpers (for auto-stored credentials)
+    # =========================================================================
+
+    def store_credential(
+        self, service: str, host: str, username: str, password: str
+    ) -> bool:
+        """
+        Store service credentials for a host.
+
+        Args:
+            service: Service name (e.g., "mongodb", "mysql")
+            host: Hostname
+            username: Username
+            password: Password
+
+        Returns:
+            True if stored successfully
+        """
+        user_key = f"cred/{service}/{host}/user"
+        pass_key = f"cred/{service}/{host}/pass"
+
+        user_ok = self.store(user_key, username)
+        pass_ok = self.store(pass_key, password)
+
+        return user_ok and pass_ok
+
+    def retrieve_credential(
+        self, service: str, host: str
+    ) -> Optional[Dict[str, str]]:
+        """
+        Retrieve service credentials for a host.
+
+        Args:
+            service: Service name
+            host: Hostname
+
+        Returns:
+            Dict with 'username' and 'password' if found, None otherwise
+        """
+        user_key = f"cred/{service}/{host}/user"
+        pass_key = f"cred/{service}/{host}/pass"
+
+        username = self.retrieve(user_key)
+        password = self.retrieve(pass_key)
+
+        if username and password:
+            return {"username": username, "password": password}
+        return None
+
+    def delete_credential(self, service: str, host: str) -> bool:
+        """
+        Delete service credentials for a host.
+
+        Args:
+            service: Service name
+            host: Hostname
+
+        Returns:
+            True if deleted successfully
+        """
+        user_key = f"cred/{service}/{host}/user"
+        pass_key = f"cred/{service}/{host}/pass"
+
+        user_ok = self.delete(user_key)
+        pass_ok = self.delete(pass_key)
+
+        return user_ok or pass_ok
+
+    def list_credentials(self) -> List[Dict[str, str]]:
+        """
+        List all stored credentials (service/host pairs only, not values).
+
+        Returns:
+            List of dicts with 'service' and 'host' keys
+        """
+        keys = self.list_keys()
+        credentials = []
+        seen = set()
+
+        for key in keys:
+            if key.startswith("cred/"):
+                parts = key.split("/")
+                if len(parts) >= 3:
+                    service = parts[1]
+                    host = parts[2]
+                    pair = (service, host)
+                    if pair not in seen:
+                        seen.add(pair)
+                        credentials.append({"service": service, "host": host})
+
+        return credentials
+
+
+# Singleton instance
+_keyring_store: Optional[KeyringSecretStore] = None
+
+
+def get_keyring_store() -> KeyringSecretStore:
+    """Get or create the singleton keyring store instance."""
+    global _keyring_store
+    if _keyring_store is None:
+        _keyring_store = KeyringSecretStore()
+    return _keyring_store
+
+
+def reset_keyring_store() -> None:
+    """Reset the singleton instance (for testing)."""
+    global _keyring_store
+    _keyring_store = None

@@ -8,6 +8,7 @@ from merlya.repl.commands.context import ContextCommandHandler
 from merlya.repl.commands.help import SLASH_COMMANDS, HelpCommandHandler
 from merlya.repl.commands.inventory import InventoryCommandHandler
 from merlya.repl.commands.model import ModelCommandHandler
+from merlya.repl.commands.secret import SecretCommandHandler
 from merlya.repl.commands.session import SessionCommandHandler
 from merlya.repl.commands.stats import StatsCommandHandler
 from merlya.repl.commands.variables import VariablesCommandHandler
@@ -23,6 +24,7 @@ __all__ = [
     "ContextCommandHandler",
     "ModelCommandHandler",
     "VariablesCommandHandler",
+    "SecretCommandHandler",
     "SessionCommandHandler",
     "InventoryCommandHandler",
     "StatsCommandHandler",

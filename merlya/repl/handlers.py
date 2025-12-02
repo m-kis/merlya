@@ -48,6 +48,7 @@ class CommandHandler:
         self._cicd_handler = None
         self._stats_handler = None
         self._ssh_handler = None
+        self._secret_handler = None
 
     @property
     def context_handler(self):
@@ -112,6 +113,14 @@ class CommandHandler:
             from merlya.repl.commands.ssh import SSHCommandHandler
             self._ssh_handler = SSHCommandHandler(self.repl)
         return self._ssh_handler
+
+    @property
+    def secret_handler(self):
+        """Lazy load secret handler."""
+        if self._secret_handler is None:
+            from merlya.repl.commands.secret import SecretCommandHandler
+            self._secret_handler = SecretCommandHandler(self.repl)
+        return self._secret_handler
 
     async def handle_command(self, command: str) -> CommandResult:
         """
@@ -206,6 +215,9 @@ class CommandHandler:
 
             # Variables commands
             '/variables': lambda: self.variables_handler.handle(args),
+
+            # Secret commands
+            '/secret': lambda: self.secret_handler.handle(args),
 
             # Session/conversation commands
             '/session': lambda: self.session_handler.handle_session(args),
