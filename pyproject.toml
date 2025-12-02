@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "merlya"
-version = "0.3.5"
+version = "0.3.6"
 description = "AI-powered infrastructure orchestration CLI - Vibe Infra for DevOps"
 authors = ["Merlya Contributors"]
 license = "MIT-Commons-Clause"
