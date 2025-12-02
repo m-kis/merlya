@@ -242,16 +242,24 @@ class FalkorDBClient:
         if "created_at" not in properties:
             properties["created_at"] = datetime.now().isoformat()
 
+        # Serialize list values to comma-separated strings (FalkorDB doesn't support list params)
+        serialized_props = {}
+        for k, v in properties.items():
+            if isinstance(v, list):
+                serialized_props[k] = ",".join(str(item) for item in v)
+            else:
+                serialized_props[k] = v
+
         # Build property string
         props_str = ", ".join(
-            f"{k}: ${k}" for k in properties.keys()
+            f"{k}: ${k}" for k in serialized_props.keys()
         )
 
         cypher = f"CREATE (n:{label} {{{props_str}}})"
         if return_node:
             cypher += " RETURN n"
 
-        result = self.query(cypher, properties)
+        result = self.query(cypher, serialized_props)
 
         if return_node and result:
             return result[0].get("n")

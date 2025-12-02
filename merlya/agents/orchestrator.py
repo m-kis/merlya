@@ -377,11 +377,32 @@ class Orchestrator(BaseOrchestrator):
         """
         import asyncio
 
+        if self.model_client is None:
+            return
+
         try:
-            asyncio.run(self.shutdown())
-        except RuntimeError as e:
-            # Event loop may already be closed
-            logger.debug(f"Sync shutdown skipped: {e}")
+            # Try to get the current event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is running, schedule the shutdown
+                loop.create_task(self.shutdown())
+            elif not loop.is_closed():
+                # If loop exists but not running, use it
+                loop.run_until_complete(self.shutdown())
+            else:
+                # Loop is closed, try to create a new one
+                asyncio.run(self.shutdown())
+        except RuntimeError:
+            # No event loop or event loop is closed - close client synchronously
+            # httpx clients have a synchronous close method
+            try:
+                if hasattr(self.model_client, '_client') and self.model_client._client is not None:
+                    # For OpenAI/LiteLLM clients that wrap httpx
+                    if hasattr(self.model_client._client, 'close'):
+                        self.model_client._client.close()
+                logger.debug("Model client closed (sync fallback)")
+            except Exception as e:
+                logger.debug(f"Sync shutdown fallback failed: {e}")
 
     # =========================================================================
     # Error Handling

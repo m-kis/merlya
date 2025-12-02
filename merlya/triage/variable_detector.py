@@ -146,9 +146,29 @@ class VariableQueryDetector:
         """
         query_lower = query.lower()
 
-        # Strong indicators
+        # Exclude command contexts where @ is a hostname reference, not a variable query
+        # Examples: "/healthcheck @hostname", "check status on @server"
+        command_patterns = [
+            "/healthcheck",
+            "/hc",
+            "/health",
+            "/incident",
+            "/inc",
+            "/ssh",
+            "check status",
+            "connect to",
+            "run on",
+            "execute on",
+            "scan",
+        ]
+        for pattern in command_patterns:
+            if pattern in query_lower and "@" in query_lower:
+                # This is a command with a hostname reference, not a variable query
+                return False, 0.0
+
+        # Strong indicators - but only "variable" keywords, not bare "@"
+        # The "@" alone is ambiguous (could be hostname reference)
         strong_keywords = [
-            "@",  # Direct variable reference
             "variable",
             "variables",
         ]
@@ -156,6 +176,17 @@ class VariableQueryDetector:
         for kw in strong_keywords:
             if kw in query_lower:
                 return True, 0.8
+
+        # Check for @ only if it looks like a variable query context
+        # "show me @Test" vs "@server" alone
+        if "@" in query_lower:
+            # Only match if there's an explicit query about the variable
+            variable_query_words = ["show", "affiche", "display", "what is", "value of", "get"]
+            for word in variable_query_words:
+                if word in query_lower:
+                    return True, 0.75
+            # Bare "@hostname" without query context is NOT a variable query
+            return False, 0.0
 
         # Medium indicators (need context)
         medium_patterns = [
