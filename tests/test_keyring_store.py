@@ -213,12 +213,14 @@ class TestKeyValidation:
         assert KEY_PATTERN.match("with_underscore")
         assert KEY_PATTERN.match("with/slash/path")
         assert KEY_PATTERN.match("Mixed123")
+        assert KEY_PATTERN.match("with.dot")  # dots allowed for filenames like privatekey.pem
+        assert KEY_PATTERN.match("ssh-passphrase-id_ed25519.pem")
 
         # Invalid patterns
         assert not KEY_PATTERN.match("")
         assert not KEY_PATTERN.match("with space")
         assert not KEY_PATTERN.match("with@at")
-        assert not KEY_PATTERN.match("with.dot")
+        assert not KEY_PATTERN.match("with:colon")
 
     def test_validation_on_retrieve(self, mock_keyring):
         """Test that validation is applied on retrieve."""
