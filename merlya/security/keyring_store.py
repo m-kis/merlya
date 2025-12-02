@@ -23,8 +23,8 @@ from merlya.utils.logger import logger
 
 # Maximum key length to prevent abuse
 MAX_KEY_LENGTH = 256
-# Valid key pattern: alphanumeric, dash, underscore, slash (for paths)
-KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/]+$')
+# Valid key pattern: alphanumeric, dash, underscore, slash (for paths), dot (for filenames)
+KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/.]+$')
 
 # Import keyring with fallback
 try:
@@ -136,7 +136,7 @@ class KeyringSecretStore:
         if not KEY_PATTERN.match(key):
             raise ValueError(
                 "Secret key can only contain alphanumeric characters, "
-                "dashes, underscores, and forward slashes"
+                "dashes, underscores, forward slashes, and dots"
             )
 
     def store(self, key: str, value: str, require_persistence: bool = False) -> bool:
