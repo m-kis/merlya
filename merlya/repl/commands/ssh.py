@@ -27,6 +27,15 @@ from merlya.utils.logger import logger
 if TYPE_CHECKING:
     from merlya.repl.core import MerlyaREPL
 
+# Constants for secret key naming (DRY principle)
+SSH_KEY_GLOBAL = "ssh_key_global"
+SSH_PASSPHRASE_GLOBAL = "ssh-passphrase-global"
+SSH_PASSPHRASE_PREFIX = "ssh-passphrase-"
+
+# Input validation limits
+MAX_INPUT_LENGTH = 256
+MAX_PASSPHRASE_LENGTH = 1024
+
 
 class SSHCommandHandler:
     """
@@ -92,9 +101,17 @@ class SSHCommandHandler:
         if handler:
             try:
                 return handler()
+            except (KeyboardInterrupt, SystemExit):
+                raise  # Don't suppress these
+            except FileNotFoundError as e:
+                print_error(f"File not found: {e}")
+                return True
+            except PermissionError as e:
+                print_error(f"Permission denied: {e}")
+                return True
             except Exception as e:
                 logger.exception(f"SSH command error: {e}")
-                print_error(f"Command failed: {e}")
+                print_error(f"Unexpected error: {e}")
                 return True
 
         print_error(f"Unknown SSH subcommand: {cmd}")
@@ -124,14 +141,14 @@ class SSHCommandHandler:
 
         # 2. Global Key Configuration
         console.print("\n[bold]Global SSH Key[/bold]")
-        global_key = credentials.get_variable("ssh_key_global")
+        global_key = credentials.get_variable(SSH_KEY_GLOBAL)
         if global_key:
             console.print(f"  📁 Path: [cyan]{global_key}[/cyan]")
             if Path(global_key).exists():
                 console.print("  ✅ Status: [green]Key file exists[/green]")
                 # Check passphrase status
                 if check_key_needs_passphrase(global_key, skip_validation=True):
-                    has_passphrase = credentials.get_variable("ssh-passphrase-global")
+                    has_passphrase = credentials.get_variable(SSH_PASSPHRASE_GLOBAL)
                     if has_passphrase:
                         console.print("  🔑 Passphrase: [green]Cached for session[/green]")
                     else:
@@ -183,7 +200,7 @@ class SSHCommandHandler:
         table.add_column("Encrypted", style="yellow")
         table.add_column("Status", style="green")
 
-        global_key = credentials.get_variable("ssh_key_global")
+        global_key = credentials.get_variable(SSH_KEY_GLOBAL)
         default_key = credentials.get_default_key()
 
         for key_path in keys:
@@ -283,14 +300,14 @@ class SSHCommandHandler:
             return True
 
         credentials = self.repl.credentials
-        global_key = credentials.get_variable("ssh_key_global")
+        global_key = credentials.get_variable(SSH_KEY_GLOBAL)
 
         if global_key:
             console.print(f"  Path: [cyan]{global_key}[/cyan]")
             if Path(global_key).exists():
                 console.print("  Status: [green]Key file exists[/green]")
                 if check_key_needs_passphrase(global_key, skip_validation=True):
-                    has_passphrase = credentials.get_variable("ssh-passphrase-global")
+                    has_passphrase = credentials.get_variable(SSH_PASSPHRASE_GLOBAL)
                     if has_passphrase:
                         console.print("  Passphrase: [green]Cached for session[/green]")
                     else:
@@ -320,6 +337,12 @@ class SSHCommandHandler:
             return True
 
         key_path = args[0]
+
+        # Input validation
+        if len(key_path) > MAX_INPUT_LENGTH:
+            print_error("Path too long")
+            return True
+
         expanded_path = Path(key_path).expanduser().resolve()
 
         # Validate key file exists
@@ -331,27 +354,37 @@ class SSHCommandHandler:
             print_error(f"Not a file: {expanded_path}")
             return True
 
+        # Validate path security before storage
+        is_valid, resolved_path, error = validate_ssh_key_path(str(expanded_path))
+        if not is_valid:
+            print_error(f"Invalid SSH key path: {error}")
+            return True
+
         # Store in CONFIG variable
         from merlya.security.credentials import VariableType
         self.repl.credential_manager.set_variable(
-            "ssh_key_global", str(expanded_path), VariableType.CONFIG
+            SSH_KEY_GLOBAL, resolved_path, VariableType.CONFIG
         )
-        print_success(f"Global SSH key set to: {expanded_path}")
+        print_success(f"Global SSH key set to: {resolved_path}")
 
         # Check if key needs passphrase
-        key_needs_passphrase = check_key_needs_passphrase(str(expanded_path), skip_validation=True)
+        key_needs_passphrase = check_key_needs_passphrase(resolved_path, skip_validation=True)
 
         if key_needs_passphrase:
             console.print("[yellow]This key requires a passphrase.[/yellow]")
             try:
-                set_now = input("Set passphrase now? (Y/n): ").strip().lower()
-                if set_now != "n":
+                response = input("Set passphrase now? (Y/n): ").strip().lower()
+                if len(response) > 10:
+                    print_warning("Invalid input, skipping")
+                elif response != "n":
                     passphrase = getpass.getpass("SSH key passphrase (hidden): ")
-                    if passphrase:
+                    if passphrase and len(passphrase) <= MAX_PASSPHRASE_LENGTH:
                         self.repl.credential_manager.set_variable(
-                            "ssh-passphrase-global", passphrase, VariableType.SECRET
+                            SSH_PASSPHRASE_GLOBAL, passphrase, VariableType.SECRET
                         )
                         print_success("✅ Passphrase cached for this session")
+                    elif passphrase:
+                        print_warning("Passphrase too long, skipping")
                     else:
                         print_warning("Empty passphrase, skipping")
             except (KeyboardInterrupt, EOFError):
@@ -368,8 +401,8 @@ class SSHCommandHandler:
             print_warning("REPL context not available")
             return True
 
-        self.repl.credential_manager.delete_variable("ssh_key_global")
-        self.repl.credential_manager.delete_variable("ssh-passphrase-global")
+        self.repl.credential_manager.delete_variable(SSH_KEY_GLOBAL)
+        self.repl.credential_manager.delete_variable(SSH_PASSPHRASE_GLOBAL)
         print_success("Global SSH key configuration cleared")
         return True
 
@@ -470,30 +503,44 @@ class SSHCommandHandler:
                 print_error("SSH key path is required")
                 return True
 
-            # Expand and validate
+            # Input validation
+            if len(ssh_key_path) > MAX_INPUT_LENGTH:
+                print_error("Path too long")
+                return True
+
+            # Expand path
             expanded_path = Path(ssh_key_path).expanduser()
+
+            # Validate path security first
+            is_valid, resolved_path, error = validate_ssh_key_path(str(expanded_path))
+            if not is_valid:
+                print_error(f"Invalid SSH key path: {error}")
+                return True
+
             if not expanded_path.exists():
                 print_warning(f"SSH key not found at: {expanded_path}")
-                confirm = input("Continue anyway? (y/N): ").strip().lower()
-                if confirm != "y":
+                response = input("Continue anyway? (y/N): ").strip().lower()
+                if len(response) > 10 or response != "y":
                     return True
 
-            # Update metadata
-            metadata["ssh_key_path"] = str(expanded_path)
+            # Update metadata with validated path
+            metadata["ssh_key_path"] = resolved_path or str(expanded_path)
 
             # Ask about passphrase
-            has_passphrase = input("Set/update passphrase? (y/N): ").strip().lower()
-            if has_passphrase == "y":
-                secret_key = f"ssh-passphrase-{hostname}"
+            passphrase_response = input("Set/update passphrase? (y/N): ").strip().lower()
+            if len(passphrase_response) <= 10 and passphrase_response == "y":
+                secret_key = f"{SSH_PASSPHRASE_PREFIX}{hostname}"
                 passphrase = getpass.getpass("SSH key passphrase (hidden): ")
 
-                if passphrase:
+                if passphrase and len(passphrase) <= MAX_PASSPHRASE_LENGTH:
                     from merlya.security.credentials import VariableType
                     self.repl.credential_manager.set_variable(
                         secret_key, passphrase, VariableType.SECRET
                     )
                     metadata["ssh_passphrase_secret"] = secret_key
                     print_success(f"Passphrase stored as secret: @{secret_key}")
+                elif passphrase:
+                    print_warning("Passphrase too long, skipping")
 
             # Update host in inventory
             self.repo.add_host(
@@ -553,36 +600,43 @@ class SSHCommandHandler:
 
         key_ref = args[0]
 
+        # Input validation
+        if len(key_ref) > MAX_INPUT_LENGTH:
+            print_error("Key reference too long")
+            return True
+
         # Determine secret key name
         if key_ref.lower() == "global":
-            secret_key = "ssh-passphrase-global"
+            secret_key = SSH_PASSPHRASE_GLOBAL
             display_name = "global key"
         elif "/" in key_ref or key_ref.startswith("~"):
             # Full path provided
             key_name = Path(key_ref).name
-            secret_key = f"ssh-passphrase-{key_name}"
+            secret_key = f"{SSH_PASSPHRASE_PREFIX}{key_name}"
             display_name = key_name
         else:
             # Just key name (e.g., id_ed25519)
-            secret_key = f"ssh-passphrase-{key_ref}"
+            secret_key = f"{SSH_PASSPHRASE_PREFIX}{key_ref}"
             display_name = key_ref
 
         # Check if already cached
         existing = self.repl.credential_manager.get_variable(secret_key)
         if existing:
             console.print(f"Passphrase for [cyan]{display_name}[/cyan] is already cached.")
-            update = input("Update it? (y/N): ").strip().lower()
-            if update != "y":
+            response = input("Update it? (y/N): ").strip().lower()
+            if len(response) > 10 or response != "y":
                 return True
 
         try:
             passphrase = getpass.getpass(f"Enter passphrase for {display_name} (hidden): ")
-            if passphrase:
+            if passphrase and len(passphrase) <= MAX_PASSPHRASE_LENGTH:
                 from merlya.security.credentials import VariableType
                 self.repl.credential_manager.set_variable(
                     secret_key, passphrase, VariableType.SECRET
                 )
                 print_success(f"✅ Passphrase cached for session (stored as @{secret_key})")
+            elif passphrase:
+                print_warning("Passphrase too long, not saved")
             else:
                 print_warning("Empty passphrase, not saved")
         except (KeyboardInterrupt, EOFError):

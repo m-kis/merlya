@@ -97,8 +97,13 @@ class TestGlobalKeyManagement:
 
     def test_set_global_key(self, ssh_handler, mock_repl, mock_ssh_key):
         """Test: /ssh key set <path> sets global key."""
-        with patch('builtins.input', return_value='n'):  # Skip passphrase prompt
-            result = ssh_handler._set_global_key([mock_ssh_key])
+        # Mock path validation to allow temp files
+        with patch(
+            'merlya.repl.commands.ssh.validate_ssh_key_path',
+            return_value=(True, mock_ssh_key, None)
+        ):
+            with patch('builtins.input', return_value='n'):  # Skip passphrase prompt
+                result = ssh_handler._set_global_key([mock_ssh_key])
 
         assert result is True
         assert mock_repl.credential_manager.get_variable("ssh_key_global") == mock_ssh_key
@@ -428,9 +433,13 @@ class TestIntegration:
 
     def test_full_flow_set_and_clear_global_key(self, ssh_handler, mock_repl, mock_ssh_key):
         """Test: Full flow of setting and clearing global key."""
-        # Set key
-        with patch('builtins.input', return_value='n'):
-            ssh_handler._set_global_key([mock_ssh_key])
+        # Set key with mocked validation
+        with patch(
+            'merlya.repl.commands.ssh.validate_ssh_key_path',
+            return_value=(True, mock_ssh_key, None)
+        ):
+            with patch('builtins.input', return_value='n'):
+                ssh_handler._set_global_key([mock_ssh_key])
 
         assert mock_repl.credential_manager.get_variable("ssh_key_global") == mock_ssh_key
 
@@ -447,10 +456,14 @@ class TestIntegration:
             "metadata": {}
         }
 
-        # Set host key
-        with patch('builtins.input', side_effect=[mock_ssh_key, 'y']):
-            with patch('getpass.getpass', return_value='passphrase'):
-                ssh_handler._set_host_key("web-prod-01")
+        # Set host key with mocked validation
+        with patch(
+            'merlya.repl.commands.ssh.validate_ssh_key_path',
+            return_value=(True, mock_ssh_key, None)
+        ):
+            with patch('builtins.input', side_effect=[mock_ssh_key, 'y']):
+                with patch('getpass.getpass', return_value='passphrase'):
+                    ssh_handler._set_host_key("web-prod-01")
 
         # Verify add_host was called
         ssh_handler._repo.add_host.assert_called()
