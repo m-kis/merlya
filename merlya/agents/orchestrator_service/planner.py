@@ -121,7 +121,8 @@ Identify patterns across incidents.""",
             participants.append(self.knowledge_manager)
 
         # Use SelectorGroupChat for intelligent speaker selection
-        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(20)
+        # Limit to 15 messages to prevent long, confusing sessions
+        termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(15)
 
         self.team = SelectorGroupChat(
             participants=participants,
@@ -174,12 +175,25 @@ RULES:
 - NEVER ask "what do you want to do next?" or present option menus - just complete the task and provide your answer
 - For @variable queries → use get_variable_value() or get_user_variables()
 
+USER CORRECTIONS (CRITICAL):
+- When the user CORRECTS an error (e.g., "no, the right machine is ANSIBLE", "use X instead"):
+  1. Acknowledge briefly ("Got it, using ANSIBLE instead")
+  2. IMMEDIATELY CONTINUE with the corrected information
+  3. DO NOT terminate - the original task is NOT complete
+  4. Apply the correction and resume where you left off
+- Examples of corrections: "wrong host", "not that server", "use X instead", "the correct one is Y"
+- After a correction, treat it as "continue with the corrected value" not "task complete"
+
 RESPONSE FORMAT (Markdown with sections: Summary, Findings, Recommendations)
 - Give DIRECT ANSWERS to questions
 - Include specific data, configs, or results you found
 - For long analyses/documentation, use save_report() to save to /tmp, then show a summary
 
-TERMINATION: Provide a complete answer, then TERMINATE. Don't ask follow-up questions.
+TERMINATION:
+- ONLY TERMINATE when the ORIGINAL task is FULLY COMPLETE with a clear answer
+- If user provides a correction → CONTINUE working, do NOT terminate
+- If you encounter an error you cannot resolve → explain and TERMINATE
+- If you asked for info and got it → CONTINUE, don't wait for more input
 
 Environment: {self.env}"""
 
@@ -365,11 +379,12 @@ Environment: {self.env}"""
         )
 
         # Create a simple team with just the engineer
-        # Adjust message limit based on priority (P0/P1 = faster, fewer iterations)
+        # Keep message limits tight to prevent long, confusing sessions
+        # The agent should TERMINATE when task is complete, not keep going
         if priority_name in ("P0", "P1"):
-            max_messages = 15  # Faster response
+            max_messages = 12  # Fast response for urgent issues
         else:
-            max_messages = 25  # More thorough
+            max_messages = 18  # Standard - enough for 3-4 tool chains
 
         termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(max_messages)
 

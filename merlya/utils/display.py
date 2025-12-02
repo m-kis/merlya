@@ -82,6 +82,8 @@ class DisplayManager:
         Context manager for spinner display during long operations.
 
         Thread-safe: handles concurrent access and nested spinners gracefully.
+        For nested spinners, silently yields without printing to avoid
+        message duplication like "🧠 Processing...🧠 Connecting".
 
         Usage:
             with display.spinner("Connecting to host..."):
@@ -94,8 +96,8 @@ class DisplayManager:
         # Thread-safe check and set
         with self._spinner_lock:
             if self._spinner_active:
-                # Nested spinner - just print status (no lock needed for print)
-                self.console.print(f"[thinking]🧠 {message}[/thinking]")
+                # Nested spinner - silently yield to avoid message duplication
+                # The outer spinner will be updated by StatusManager.update_host_operation
                 yield None
                 return
             self._spinner_active = True

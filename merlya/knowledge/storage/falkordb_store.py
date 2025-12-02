@@ -33,6 +33,10 @@ class FalkorDBStore:
             return False
 
         try:
+            # Convert tags list to comma-separated string (FalkorDB doesn't support list properties)
+            tags = incident.get("tags", [])
+            tags_str = ",".join(tags) if isinstance(tags, list) else str(tags)
+
             self.client.create_node("Incident", {
                 "id": incident["id"],
                 "title": incident.get("title", ""),
@@ -40,7 +44,7 @@ class FalkorDBStore:
                 "priority": incident.get("priority", "P3"),
                 "status": incident.get("status", "open"),
                 "environment": incident.get("environment", ""),
-                "tags": incident.get("tags", []),
+                "tags": tags_str,
             })
             return True
         except Exception as e:

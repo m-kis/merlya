@@ -15,9 +15,13 @@ from merlya.utils.logger import logger
 
 class StatusManager:
     """
-    Manages Rich Status/spinner that can be paused for user input.
+    Manages Rich Status/spinner with contextual updates and interruption support.
 
-    This solves the issue where console.status() blocks input() calls.
+    Features:
+    - Dynamic message updates showing current operation
+    - Pause/resume for user input
+    - Activity logging for debugging
+    - Keyboard interrupt handling
     """
 
     def __init__(self, console=None):
@@ -25,15 +29,19 @@ class StatusManager:
         self._status = None
         self._message = ""
         self._is_active = False
+        self._operation_stack: list[str] = []  # Track nested operations
+        self._interrupted = False
 
     def set_console(self, console):
         """Set the Rich console to use."""
         self._console = console
 
-    def start(self, message: str = "[cyan]Processing...[/cyan]"):
-        """Start the status spinner."""
+    def start(self, message: str = "[cyan]🧠 Processing...[/cyan]"):
+        """Start the status spinner with initial message."""
         if self._console and not self._is_active:
             self._message = message
+            self._interrupted = False
+            self._operation_stack = []
             try:
                 self._status = self._console.status(message, spinner="dots")
                 self._status.start()
@@ -43,12 +51,61 @@ class StatusManager:
                 self._status = None
                 self._is_active = False
 
+    def update(self, message: str, operation: Optional[str] = None):
+        """
+        Update the spinner message with contextual information.
+
+        Args:
+            message: New message to display
+            operation: Optional operation name for tracking (e.g., 'scan_host', 'execute_command')
+        """
+        if not self._is_active or not self._status:
+            return
+
+        self._message = message
+        if operation:
+            self._operation_stack.append(operation)
+
+        try:
+            self._status.update(message)
+        except Exception:
+            pass  # Silently ignore update failures
+
+    def update_host_operation(self, operation: str, hostname: str, details: str = ""):
+        """
+        Update spinner with host-specific operation context.
+
+        Args:
+            operation: Operation type (e.g., 'scanning', 'executing', 'connecting')
+            hostname: Target hostname
+            details: Optional additional details
+        """
+        if not self._is_active or not self._status:
+            # Don't try to update if no spinner is active
+            return
+
+        emoji_map = {
+            'scanning': '🔍',
+            'executing': '⚡',
+            'connecting': '🔌',
+            'reading': '📖',
+            'writing': '✍️',
+            'checking': '🔒',
+            'elevating': '🔐',
+        }
+        emoji = emoji_map.get(operation.lower(), '🔄')
+        detail_str = f": {details}" if details else ""
+        # Use a clean message format - no prefix concatenation
+        message = f"[cyan]{emoji} {operation.capitalize()} [bold]{hostname}[/bold]{detail_str}[/cyan]"
+        self.update(message, operation=f"{operation}:{hostname}")
+
     def stop(self):
         """Stop the status spinner."""
         if self._status and self._is_active:
             self._status.stop()
             self._is_active = False
             self._status = None  # Explicit cleanup to prevent resource leak
+            self._operation_stack = []
 
     def resume(self):
         """Resume the status spinner with the previous message."""
@@ -62,6 +119,20 @@ class StatusManager:
                 self._status = None
                 self._is_active = False
 
+    def mark_interrupted(self):
+        """Mark that an interruption was requested."""
+        self._interrupted = True
+
+    @property
+    def was_interrupted(self) -> bool:
+        """Check if an interruption was requested."""
+        return self._interrupted
+
+    @property
+    def current_operation(self) -> Optional[str]:
+        """Get the current operation being performed."""
+        return self._operation_stack[-1] if self._operation_stack else None
+
     @contextmanager
     def pause_for_input(self):
         """Context manager to pause spinner during user input."""
@@ -71,7 +142,7 @@ class StatusManager:
         try:
             yield
         finally:
-            if was_active:
+            if was_active and not self._interrupted:
                 self.resume()
 
     @property
@@ -210,22 +281,93 @@ def initialize_tools(
     return _ctx
 
 
-def validate_host(hostname: str) -> tuple[bool, str]:
+def sanitize_hostname(hostname: str) -> tuple[str, bool]:
     """
-    Validate hostname against registry and inventory.
+    Sanitize hostname by removing LLM parsing artifacts.
 
-    Checks both the legacy host registry and the new inventory repository.
+    LLMs sometimes produce malformed hostnames with XML/HTML tags embedded,
+    such as: "MYSQL8CLUSTER4-1</parameter name="path">/etc/mysql/conf.d/*"
+
+    Args:
+        hostname: Raw hostname from LLM output
+
+    Returns:
+        (sanitized_hostname, was_modified)
+    """
+    import ipaddress
+    import re
+
+    if not hostname:
+        return hostname, False
+
+    # Skip sanitization for valid IP addresses (IPv4 or IPv6)
+    try:
+        ipaddress.ip_address(hostname)
+        return hostname, False  # Valid IP, don't sanitize
+    except ValueError:
+        pass  # Not an IP, continue sanitization
+
+    original = hostname
+
+    # Remove XML/HTML tags like </parameter...>, <param...>, etc.
+    # Pattern matches: < followed by optional /, word chars, optional attributes, and >
+    hostname = re.sub(r'</?[a-zA-Z][^>]*>', '', hostname)
+
+    # Remove anything after path separator (/) - handles "HOSTNAME/etc/..."
+    # But NOT colon, to preserve port numbers like host:22 for now
+    if '/' in hostname:
+        hostname = hostname.split('/')[0]
+
+    # Remove port suffix if present (host:22 -> host)
+    if ':' in hostname and not hostname.startswith('['):  # Not IPv6 [addr]:port
+        hostname = hostname.split(':')[0]
+
+    # Remove any remaining special chars that aren't valid in hostnames
+    # Valid hostname chars: ASCII alphanumeric, hyphen, dot (for FQDN)
+    # Use ASCII flag to exclude unicode characters (security)
+    hostname = re.sub(r'[^a-zA-Z0-9\-.]', '', hostname)
+
+    # Remove leading/trailing dots and hyphens
+    hostname = hostname.strip('.-')
+
+    return hostname, hostname != original
+
+
+def validate_host(hostname: str, context: Optional[str] = None) -> tuple[bool, str]:
+    """
+    Validate hostname against registry and inventory with disambiguation.
+
+    Uses intelligent host resolution to:
+    1. Sanitize hostname (remove LLM parsing artifacts)
+    2. Find exact matches
+    3. Resolve partial matches with confidence scoring
+    4. Provide disambiguation when multiple hosts match
+
+    Args:
+        hostname: Hostname to validate
+        context: Optional context for disambiguation (e.g., "ansible", "prod")
 
     Returns:
         (is_valid, message)
     """
+    from merlya.context.host_resolver import get_host_resolver
+
     ctx = get_tool_context()
+
+    # Sanitize hostname first (LLM sometimes produces malformed hostnames)
+    sanitized, was_modified = sanitize_hostname(hostname)
+    if was_modified:
+        logger.warning(f"🔧 Hostname sanitized: '{hostname}' -> '{sanitized}'")
+        hostname = sanitized
+
+    if not hostname:
+        return False, "❌ Empty hostname after sanitization"
 
     # Allow local execution
     if hostname in ["local", "localhost", "127.0.0.1"]:
         return True, "Local execution allowed"
 
-    # Check new inventory repository first
+    # Check new inventory repository first (exact match)
     if ctx.inventory_repo:
         try:
             host = ctx.inventory_repo.get_host_by_name(hostname)
@@ -238,7 +380,24 @@ def validate_host(hostname: str) -> tuple[bool, str]:
             # Unexpected errors - log at warning level for visibility
             logger.warning(f"Inventory lookup failed for '{hostname}': {type(e).__name__}: {e}")
 
-    # Fall back to legacy host registry
+    # Use intelligent host resolver for disambiguation
+    resolver = get_host_resolver(ctx.host_registry)
+    result = resolver.resolve(hostname, context)
+
+    if result.exact_match and result.host:
+        return True, f"Host '{result.host.hostname}' validated (exact match)"
+
+    if result.host and not result.disambiguation_needed:
+        # Good match with high confidence
+        confidence_pct = int(result.confidence * 100)
+        return True, f"Host '{result.host.hostname}' validated ({confidence_pct}% match)"
+
+    if result.disambiguation_needed:
+        # Multiple hosts match - need user to clarify
+        disambiguation_msg = resolver.format_disambiguation(result, hostname)
+        return False, f"❌ Ambiguous hostname: '{hostname}'\n\n{disambiguation_msg}"
+
+    # No match found - fall back to legacy registry for suggestions
     if not ctx.host_registry:
         ctx.host_registry = get_host_registry()
     if ctx.host_registry.is_empty():

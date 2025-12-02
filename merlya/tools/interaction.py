@@ -144,8 +144,13 @@ def ask_user(
         question: The question
 
     Returns:
-        User's response
+        User's response with continuation instructions
     """
+    from merlya.agents.orchestrator_service.continuation import (
+        ContinuationDecision,
+        get_continuation_detector,
+    )
+
     ctx = get_tool_context()
     logger.info(f"Tool: ask_user '{question}'")
 
@@ -154,9 +159,36 @@ def ask_user(
     # Use context's get_user_input which handles spinner pause
     try:
         response = ctx.get_user_input("   > ")
-        return f"User response: {response}\n\n**IMPORTANT**: Now continue with the original task using this information. Do NOT terminate until the task is fully complete."
+
+        # Analyze response to detect if it's a correction
+        detector = get_continuation_detector()
+        continuation = detector.analyze_user_response(response, agent_question=question)
+
+        if continuation.decision == ContinuationDecision.CONTINUE:
+            # User provided a correction or confirmation to continue
+            if continuation.next_action:
+                return (
+                    f"User response: {response}\n\n"
+                    f"**CORRECTION DETECTED**: {continuation.reason}\n"
+                    f"**ACTION REQUIRED**: {continuation.next_action}\n\n"
+                    f"⚠️ IMPORTANT: CONTINUE with the original task using this corrected information. "
+                    f"Do NOT terminate until the original task is FULLY COMPLETE."
+                )
+            else:
+                return (
+                    f"User response: {response}\n\n"
+                    f"**IMPORTANT**: Now continue with the original task using this information. "
+                    f"Do NOT terminate until the task is fully complete."
+                )
+        else:
+            # Normal response
+            return (
+                f"User response: {response}\n\n"
+                f"**IMPORTANT**: Process this information and continue with the original task. "
+                f"Do NOT terminate until the task is fully complete."
+            )
     except (KeyboardInterrupt, EOFError):
-        return "User cancelled input. Task aborted."
+        return "User cancelled input. Task aborted. TERMINATE."
 
 
 def remember_skill(

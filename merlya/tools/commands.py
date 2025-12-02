@@ -29,8 +29,16 @@ def execute_command(
     Returns:
         Command output with success/failure status
     """
+    from merlya.tools.base import get_status_manager
+
     ctx = get_tool_context()
     logger.info(f"⚡ Tool: execute_command on {target} - {reason}")
+
+    # Update spinner with contextual info
+    status = get_status_manager()
+    # Truncate command for display
+    cmd_display = command[:50] + "..." if len(command) > 50 else command
+    status.update_host_operation("executing", target, cmd_display)
 
     # Validate host
     is_valid, message = validate_host(target)

@@ -146,7 +146,21 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
             flags=re.IGNORECASE
         )
 
-    # 7. Redact credentials in connection strings (user:pass@host)
+    # 7. Redact password flags with subshell or command substitution
+    # Matches: -p$(echo PASSWORD), -p"$(cat /file)", -p'password'
+    # Common in MySQL commands: mysql -u user -p$(echo PASS) -e "..."
+    redacted = re.sub(
+        r'(-p)\$\([^)]+\)',
+        r'\1[REDACTED]',
+        redacted
+    )
+    # Also -p'value' or -p"value" (single letter flag with quoted value)
+    # Handle each quote type separately since backrefs don't work in char classes
+    for quote in ['"', "'"]:
+        pattern = rf"(-p){re.escape(quote)}(.{{3,}}?){re.escape(quote)}"
+        redacted = re.sub(pattern, rf'\1{quote}[REDACTED]{quote}', redacted)
+
+    # 8. Redact credentials in connection strings (user:pass@host)
     # Only replace password portion, preserve username and host
     # Matches: scheme://user:password@host
     # The pattern requires :// before user:pass@host to avoid matching other formats
@@ -162,7 +176,7 @@ def redact_sensitive_info(text: str, extra_secrets: Optional[List[str]] = None) 
         redacted
     )
 
-    # 8. Redact Authorization Bearer tokens
+    # 9. Redact Authorization Bearer tokens
     # Matches: Authorization: Bearer <token>, Bearer <token>
     # Bearer tokens are sensitive credentials that grant access
     # Token pattern includes: alphanumeric, dash, underscore, dot (JWT/base64url)

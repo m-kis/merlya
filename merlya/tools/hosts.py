@@ -140,8 +140,14 @@ def scan_host(
     Returns:
         Scan results
     """
+    from merlya.tools.base import get_status_manager
+
     ctx = get_tool_context()
     logger.info(f"🖥️ Tool: scan_host {hostname}")
+
+    # Update spinner with contextual info
+    status = get_status_manager()
+    status.update_host_operation("scanning", hostname)
 
     is_valid, message = validate_host(hostname)
     if not is_valid:

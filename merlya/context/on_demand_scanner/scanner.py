@@ -24,6 +24,7 @@ class OnDemandScanner:
     - Rate limiting to prevent overwhelming targets
     - Exponential backoff retry
     - Scan result caching
+    - Per-host locking to prevent duplicate concurrent scans
     - Progress callbacks
     """
 
@@ -51,6 +52,11 @@ class OnDemandScanner:
         self.rate_limiter = get_shared_rate_limiter(self.config)
         self._executor = None
         self._repo = None
+        # Per-host locks to prevent duplicate concurrent scans
+        # Stores (lock, last_used_timestamp) for TTL-based cleanup
+        self._host_locks: Dict[str, tuple[asyncio.Lock, float]] = {}
+        self._locks_lock = asyncio.Lock()  # Protects _host_locks
+        self._lock_cleanup_threshold = 500  # Cleanup when exceeding this many locks
 
     @property
     def repo(self):
@@ -59,6 +65,35 @@ class OnDemandScanner:
             from merlya.memory.persistence.inventory_repository import get_inventory_repository
             self._repo = get_inventory_repository()
         return self._repo
+
+    async def _get_host_lock(self, hostname: str) -> asyncio.Lock:
+        """Get or create a lock for a specific hostname with TTL-based cleanup."""
+        async with self._locks_lock:
+            # Periodic cleanup to prevent memory leak
+            if len(self._host_locks) > self._lock_cleanup_threshold:
+                self._cleanup_old_locks()
+
+            now = time.monotonic()
+            if hostname not in self._host_locks:
+                self._host_locks[hostname] = (asyncio.Lock(), now)
+            else:
+                # Update last used time
+                lock, _ = self._host_locks[hostname]
+                self._host_locks[hostname] = (lock, now)
+
+            return self._host_locks[hostname][0]
+
+    def _cleanup_old_locks(self) -> None:
+        """Remove locks for hosts not used in last hour (must hold _locks_lock)."""
+        cutoff = time.monotonic() - 3600  # 1 hour
+        to_remove = [
+            h for h, (lock, last_used) in self._host_locks.items()
+            if last_used < cutoff and not lock.locked()
+        ]
+        for hostname in to_remove:
+            del self._host_locks[hostname]
+        if to_remove:
+            logger.debug(f"Cleaned up {len(to_remove)} stale host locks")
 
     async def scan_hosts(
         self,
@@ -131,7 +166,11 @@ class OnDemandScanner:
         force: bool = False,
     ) -> ScanResult:
         """
-        Scan a single host.
+        Scan a single host with per-host locking to prevent duplicate scans.
+
+        When multiple concurrent callers request a scan of the same host,
+        the first acquires the lock and performs the scan. Subsequent callers
+        wait for the lock, then find the cached result and return immediately.
 
         Args:
             hostname: Hostname to scan
@@ -141,12 +180,29 @@ class OnDemandScanner:
         Returns:
             ScanResult object
         """
-        results = await self.scan_hosts([hostname], scan_type, force)
-        return results[0] if results else ScanResult(
-            hostname=hostname,
-            success=False,
-            error="No result returned"
-        )
+        # Get per-host lock to prevent duplicate concurrent scans
+        host_lock = await self._get_host_lock(hostname)
+
+        async with host_lock:
+            # Check cache again after acquiring lock (another caller may have just scanned)
+            if not force:
+                cached = self._get_cached(hostname, scan_type)
+                if cached:
+                    logger.debug(f"Using cached scan result for {hostname}")
+                    return ScanResult(
+                        hostname=hostname,
+                        success=True,
+                        data=cached,
+                        scanned_at=cached.get("scanned_at", "")
+                    )
+
+            # Perform the scan
+            results = await self.scan_hosts([hostname], scan_type, force)
+            return results[0] if results else ScanResult(
+                hostname=hostname,
+                success=False,
+                error="No result returned"
+            )
 
     async def _scan_batch(
         self,
