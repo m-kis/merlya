@@ -47,7 +47,7 @@ python-terraform = "^0.10"
 redis = "^5.2"
 sqlalchemy = "^2.0"
 # Data validation & security
-pydantic = "^2.10"
+pydantic = "^2.12"
 cryptography = "^44.0"
 keyring = "^25.5"
 # Utilities
