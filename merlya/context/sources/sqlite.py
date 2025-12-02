@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, TypeVar, Union
 
 from merlya.context.sources.base import BaseSource, Host, InventorySource
+from merlya.security.ssh_credentials import validate_hostname
 from merlya.utils.logger import logger
 
 T = TypeVar("T", List[str], Dict[str, Any])
@@ -86,6 +87,11 @@ class SQLiteSource(BaseSource):
         try:
             hostname = host_data.get("hostname")
             if not hostname:
+                return None
+
+            # Validate hostname format to prevent injection from corrupted DB
+            if not validate_hostname(hostname):
+                logger.debug(f"Invalid hostname format in database: {hostname[:50]}")
                 return None
 
             # Parse JSON fields using helper function

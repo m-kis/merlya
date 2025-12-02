@@ -11,14 +11,12 @@ Storage hierarchy (resolution order):
 2. System keyring (persistent, encrypted) - secure
 3. Environment variables - fallback
 
-Thread Safety Note:
-    The metadata tracking (list of secret keys) uses a simple read-modify-write
-    pattern without locking. In concurrent scenarios, this could lead to lost
-    updates if multiple threads modify metadata simultaneously. For typical
-    CLI usage (single-threaded), this is not an issue. For concurrent access,
-    consider using a threading.Lock or file-based locking.
+Thread Safety:
+    Metadata operations are protected by a threading.Lock to prevent
+    race conditions in concurrent access scenarios.
 """
 import re
+import threading
 from typing import Dict, List, Optional
 
 from merlya.utils.logger import logger
@@ -71,6 +69,7 @@ class KeyringSecretStore:
         self._available = HAS_KEYRING
         self._backend_name: Optional[str] = None
         self._unavailable_warned = False  # Track if we've already warned
+        self._metadata_lock = threading.Lock()  # Protect metadata operations
 
         if self._available:
             try:
@@ -282,35 +281,37 @@ class KeyringSecretStore:
             return []
 
     def _add_key_to_metadata(self, key: str) -> None:
-        """Add a key to the metadata tracking list."""
-        try:
-            keys = self.list_keys()
-            if key not in keys:
-                keys.append(key)
-                keyring.set_password(
-                    self.SERVICE_NAME, self.METADATA_KEY, "\n".join(keys)
-                )
-        except Exception as e:
-            logger.debug(f"⚠️ Failed to update metadata: {e}")
-
-    def _remove_key_from_metadata(self, key: str) -> None:
-        """Remove a key from the metadata tracking list."""
-        try:
-            keys = self.list_keys()
-            if key in keys:
-                keys.remove(key)
-                if keys:
+        """Add a key to the metadata tracking list (thread-safe)."""
+        with self._metadata_lock:
+            try:
+                keys = self.list_keys()
+                if key not in keys:
+                    keys.append(key)
                     keyring.set_password(
                         self.SERVICE_NAME, self.METADATA_KEY, "\n".join(keys)
                     )
-                else:
-                    # Clean up metadata if empty
-                    try:
-                        keyring.delete_password(self.SERVICE_NAME, self.METADATA_KEY)
-                    except PasswordDeleteError:
-                        pass
-        except Exception as e:
-            logger.debug(f"⚠️ Failed to update metadata: {e}")
+            except Exception as e:
+                logger.debug(f"⚠️ Failed to update metadata: {e}")
+
+    def _remove_key_from_metadata(self, key: str) -> None:
+        """Remove a key from the metadata tracking list (thread-safe)."""
+        with self._metadata_lock:
+            try:
+                keys = self.list_keys()
+                if key in keys:
+                    keys.remove(key)
+                    if keys:
+                        keyring.set_password(
+                            self.SERVICE_NAME, self.METADATA_KEY, "\n".join(keys)
+                        )
+                    else:
+                        # Clean up metadata if empty
+                        try:
+                            keyring.delete_password(self.SERVICE_NAME, self.METADATA_KEY)
+                        except PasswordDeleteError:
+                            pass
+            except Exception as e:
+                logger.debug(f"⚠️ Failed to update metadata: {e}")
 
     def clear_all(self) -> int:
         """

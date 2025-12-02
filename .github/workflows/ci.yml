@@ -12,6 +12,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +29,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
@@ -81,6 +83,7 @@ jobs:
 
   async-test-validation:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -120,6 +123,7 @@ jobs:
   config-tests:
     name: Configuration & Storage Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -163,6 +167,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # TODO: Remove continue-on-error once all mypy errors are fixed
     # Track progress: https://github.com/m-kis/merlya/issues (mypy cleanup issue)
     continue-on-error: true
@@ -196,6 +201,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -227,6 +233,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [lint, test, async-test-validation, config-tests, security]
     steps:
       - uses: actions/checkout@v4
@@ -250,6 +257,7 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [lint, test, typecheck, async-test-validation, config-tests, security, build]
     if: always()
     steps:

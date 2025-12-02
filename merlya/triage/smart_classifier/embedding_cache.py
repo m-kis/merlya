@@ -131,8 +131,8 @@ class EmbeddingCache:
         return self._model_name
 
     def _get_key(self, text: str) -> str:
-        """Generate cache key from text."""
-        return hashlib.md5(text.lower().strip().encode()).hexdigest()
+        """Generate cache key from text using SHA256."""
+        return hashlib.sha256(text.lower().strip().encode()).hexdigest()[:32]
 
     def get_embedding(self, text: str) -> "np.ndarray":
         """Get embedding for text, using cache if available."""

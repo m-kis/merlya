@@ -11,8 +11,12 @@ Modes:
 - ENHANCED: Multi-agent team with selector (complex tasks)
 """
 import os
+from collections import OrderedDict
 from enum import Enum
 from typing import Any, Callable, List, Optional
+
+# Maximum number of cached model clients to prevent unbounded memory growth
+MAX_CLIENT_CACHE_SIZE = 10
 
 from rich.console import Console
 
@@ -126,7 +130,8 @@ class Orchestrator(BaseOrchestrator):
         self._tools = self._collect_tools()
 
         # Client cache for task-specific models (must be before planner creation)
-        self._client_cache = {}
+        # Uses OrderedDict for LRU eviction when cache exceeds MAX_CLIENT_CACHE_SIZE
+        self._client_cache: OrderedDict[str, "OpenAIChatCompletionClient"] = OrderedDict()
 
         # Execution Planner
         # Pass client factory instead of single client
@@ -150,6 +155,9 @@ class Orchestrator(BaseOrchestrator):
         """
         Get or create a model client for a specific task.
 
+        Uses LRU eviction when cache exceeds MAX_CLIENT_CACHE_SIZE to prevent
+        unbounded memory growth.
+
         Args:
             task: Task type (correction, planning, synthesis)
 
@@ -157,9 +165,23 @@ class Orchestrator(BaseOrchestrator):
             Cached or new OpenAIChatCompletionClient
         """
         if task in self._client_cache:
+            # Move to end for LRU ordering
+            self._client_cache.move_to_end(task)
             return self._client_cache[task]
 
         client = self._create_model_client(task)
+
+        # Evict oldest entries if cache is full
+        while len(self._client_cache) >= MAX_CLIENT_CACHE_SIZE:
+            oldest_task, oldest_client = self._client_cache.popitem(last=False)
+            try:
+                # Best effort close - don't block on errors
+                if hasattr(oldest_client, '_client') and hasattr(oldest_client._client, 'close'):
+                    oldest_client._client.close()
+                logger.debug(f"Evicted cached client for task: {oldest_task}")
+            except Exception as e:
+                logger.debug(f"Error closing evicted client for {oldest_task}: {e}")
+
         self._client_cache[task] = client
         return client
 
@@ -266,7 +288,7 @@ class Orchestrator(BaseOrchestrator):
         self.shutdown_sync()
 
         # Clear cache
-        self._client_cache = {}
+        self._client_cache = OrderedDict()
 
         # Re-initialize planner with new factory
         self.planner = ExecutionPlanner(
