@@ -5,6 +5,7 @@ from rich.console import Console
 from merlya.agents import autogen_tools, knowledge_tools
 from merlya.triage.behavior import BehaviorProfile, get_behavior
 from merlya.triage.priority import Priority
+from merlya.triage.variable_detector import get_variable_detector
 from merlya.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -225,37 +226,18 @@ Environment: {self.env}"""
 
     def _detect_variable_query(self, user_query: str) -> Optional[str]:
         """
-        Detect if query is about user variables and provide context hint.
+        Detect if query is about user variables using semantic similarity.
+
+        Uses sentence-transformers for intelligent detection, with keyword fallback.
 
         Returns a context string if variable-related, None otherwise.
         """
-        import re
+        detector = get_variable_detector()
+        is_variable_query, confidence = detector.detect(user_query)
 
-        query_lower = user_query.lower()
-
-        # Detect variable-related queries
-        variable_patterns = [
-            r'@\w+',                    # Direct @variable reference
-            r'variable',                # Mentions "variable"
-            r'variables',               # Mentions "variables"
-            r'affiche.*variable',       # French: "display variable"
-            r'montre.*variable',        # French: "show variable"
-            r'liste.*variable',         # French: "list variable"
-            r'show.*variable',          # English: "show variable"
-            r'display.*variable',       # English: "display variable"
-            r'list.*variable',          # English: "list variable"
-            r'what.*is.*@',             # "What is @..."
-            r'qu.*est.*@',              # French: "What is @..."
-            r'valeur.*@',               # French: "value of @..."
-            r'value.*@',                # English: "value of @..."
-        ]
-
-        for pattern in variable_patterns:
-            if re.search(pattern, query_lower):
-                return """📌 **VARIABLE QUERY DETECTED**
-This query is about user-defined @variables in Merlya.
-Use get_user_variables() to list all variables, or get_variable_value(name) to get a specific one.
-Variables are set via `/variables set <key> <value>` and can be used as @key in queries."""
+        if is_variable_query:
+            logger.debug(f"📊 Variable query detected: confidence={confidence:.2f}")
+            return detector.get_context_hint()
 
         return None
 
