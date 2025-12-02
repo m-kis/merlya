@@ -467,13 +467,13 @@ class TestBehaviorProfiles:
         assert p0.auto_confirm_reads is True
         assert p0.response_format == "terse"
 
-    def test_p3_careful_mode(self):
-        """P3 should have careful mode settings."""
+    def test_p3_standard_mode(self):
+        """P3 should have standard mode settings with autonomous reads."""
         p3 = BEHAVIOR_PROFILES[Priority.P3]
         assert p3.max_analysis_time_seconds == 300
         assert p3.use_chain_of_thought is True
-        assert p3.auto_confirm_reads is False
-        assert p3.confirmation_mode == "all"
+        assert p3.auto_confirm_reads is True  # Autonomous for reads
+        assert p3.confirmation_mode == "writes_only"  # Only confirm writes
         assert p3.response_format == "detailed"
 
     def test_should_confirm(self):
@@ -485,8 +485,9 @@ class TestBehaviorProfiles:
         assert p0.should_confirm(is_write=False, is_critical=False) is False
         assert p0.should_confirm(is_write=True, is_critical=True) is True
 
-        # P3: all
-        assert p3.should_confirm(is_write=False, is_critical=False) is True
+        # P3: writes_only - autonomous for reads, confirm writes
+        assert p3.should_confirm(is_write=False, is_critical=False) is False  # Reads don't need confirmation
+        assert p3.should_confirm(is_write=True, is_critical=False) is True  # Writes need confirmation
         assert p3.should_confirm(is_write=True, is_critical=True) is True
 
     def test_get_behavior(self):
@@ -521,8 +522,8 @@ class TestIntegration:
         behavior = get_behavior(result.priority)
 
         assert result.priority == Priority.P3
-        assert behavior.auto_confirm_reads is False
-        assert behavior.confirmation_mode == "all"
+        assert behavior.auto_confirm_reads is True  # P3 now auto-confirms reads
+        assert behavior.confirmation_mode == "writes_only"  # Only writes need confirmation
 
     def test_priority_result_fields(self):
         """PriorityResult should have all expected fields."""

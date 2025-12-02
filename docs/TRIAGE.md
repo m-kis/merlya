@@ -236,27 +236,28 @@ Based on intent, Merlya adapts its behavior:
 ### QUERY Mode
 ```
 - Focus: GATHER and PRESENT information
-- Collect requested information efficiently
+- Collect requested information efficiently using tools
+- Execute read operations autonomously
 - Present results clearly and organized
-- READ-ONLY: avoid making changes
 ```
 
 ### ACTION Mode
 ```
-- Focus: EXECUTE safely
-- Verify targets before acting
-- Execute the requested task
+- Focus: EXECUTE the requested task
+- Verify targets, then execute autonomously
+- For read/diagnostic operations: proceed without asking
+- For write/destructive operations: describe briefly then execute
 - Report results clearly
 ```
 
 ### ANALYSIS Mode
 ```
-- Focus: INVESTIGATE and RECOMMEND
-- Dig deep: check logs, configs, status
+- Focus: INVESTIGATE and RESOLVE
+- Dig deep: check logs, configs, status - use tools autonomously
 - EXPLAIN what you find in clear terms
-- PROPOSE solutions with example commands
-- Ask before executing any fixes
-- This is a teaching moment: educate the user
+- Execute read-only operations without asking (list, status, logs, configs)
+- For write/modify operations (restart, stop, delete, config changes): explain what you'll do, then proceed
+- Provide a complete analysis with findings and next steps
 ```
 
 ---
@@ -268,9 +269,9 @@ Each priority level has a `BehaviorProfile` that adapts agent behavior:
 | Priority | Response Format | Max Commands | Confirmation Mode | Chain of Thought |
 |----------|-----------------|--------------|-------------------|------------------|
 | **P0** | `terse` | 10 | `critical_only` | ❌ Disabled |
-| **P1** | `summary` | 10 | `writes_only` | ❌ Disabled |
-| **P2** | `normal` | 5 | `writes_only` | ✅ Enabled |
-| **P3** | `detailed` | 3 | `all` | ✅ Enabled |
+| **P1** | `summary` | 8 | `critical_only` | ❌ Disabled |
+| **P2** | `detailed` | 5 | `writes_only` | ✅ Enabled |
+| **P3** | `detailed` | 5 | `writes_only` | ✅ Enabled |
 
 ### Behavior Details
 
@@ -278,6 +279,7 @@ Each priority level has a `BehaviorProfile` that adapts agent behavior:
 
 - Act quickly, gather essential info
 - Auto-confirm read operations
+- Execute autonomously for reads/diagnostics
 - Focus on immediate resolution
 - Fewer message iterations (15 max)
 
@@ -285,15 +287,16 @@ Each priority level has a `BehaviorProfile` that adapts agent behavior:
 
 - Take time to analyze thoroughly
 - Show reasoning
-- Confirm write operations
+- Auto-confirm read operations
+- Confirm write operations only
 - Standard iterations (25 max)
 
-**P3 - Careful Mode:**
+**P3 - Standard Mode:**
 
 - Full analysis with chain-of-thought
-- Confirm all operations
-- Detailed responses with explanations
-- Let user decide next steps
+- Execute read operations autonomously
+- Confirm write/destructive operations only
+- Detailed responses with explanations and next steps
 
 ### Model Selection by Priority
 

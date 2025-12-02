@@ -104,17 +104,17 @@ BEHAVIOR_PROFILES: Dict[Priority, BehaviorProfile] = {
     ),
 
     Priority.P3: BehaviorProfile(
-        # P3: NORMAL - Full analysis, careful execution
+        # P3: NORMAL - Full analysis, autonomous for reads
         max_analysis_time_seconds=300,
         use_chain_of_thought=True,
         show_thinking=True,
         parallel_execution=False,
-        auto_confirm_reads=False,  # Ask for everything (maintenance mode)
-        auto_confirm_writes=False,
-        max_commands_before_pause=3,
-        confirmation_mode="all",
+        auto_confirm_reads=True,  # Auto-confirm reads for autonomous investigation
+        auto_confirm_writes=False,  # Still confirm writes for safety
+        max_commands_before_pause=5,  # Allow more commands before pause
+        confirmation_mode="writes_only",  # Only confirm writes, not reads
         response_format="detailed",
-        include_next_steps=False,  # Let user decide
+        include_next_steps=True,  # Suggest next steps
         include_explanations=True,
     ),
 }
@@ -146,7 +146,7 @@ def describe_behavior(priority: Priority) -> str:
             "detailed responses with explanations"
         ),
         Priority.P3: (
-            "CAREFUL MODE: Confirming all commands, "
+            "STANDARD MODE: Auto-confirming reads, confirming writes, "
             f"max {behavior.max_commands_before_pause} commands before pause, "
             "detailed responses with explanations"
         ),

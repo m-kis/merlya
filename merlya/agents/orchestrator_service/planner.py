@@ -161,10 +161,10 @@ VARIABLES SYSTEM:
 
 WORKFLOW:
 1. Understand the real problem
-2. Gather info (logs, configs, status) - use tools appropriately
+2. Gather info (logs, configs, status) - use tools to investigate autonomously
 3. Analyze and explain findings clearly
-4. Recommend solutions with example commands
-5. Execute only when asked or for simple actions
+4. Execute read-only operations without asking (logs, status, configs, disk info)
+5. For write operations (restart, stop, delete, modify): explain briefly, then proceed
 
 RULES:
 - list_hosts() FIRST before acting on hosts
@@ -272,36 +272,37 @@ Environment: {self.env}"""
 - Provide detailed explanations"""
         else:  # P3
             return f"""
-📋 **PRIORITY: {priority_name} - CAREFUL MODE**
+📋 **PRIORITY: {priority_name} - STANDARD MODE**
 - Full analysis with chain-of-thought
-- Confirm all operations
+- Execute read operations autonomously (no need to ask)
+- Confirm write/destructive operations only
 - Maximum {behavior.max_commands_before_pause} commands before pause
-- Detailed responses with explanations
-- Let user decide next steps"""
+- Detailed responses with explanations and next steps"""
 
     def _get_intent_guidance(self, intent: str) -> str:
         """Get intent-specific guidance to inject into the task."""
         if intent == "analysis":
             return """
-🔍 **MODE: ANALYSIS** - Your focus is to INVESTIGATE and RECOMMEND.
-- Dig deep: check logs, configs, status
+🔍 **MODE: ANALYSIS** - Your focus is to INVESTIGATE and RESOLVE.
+- Dig deep: check logs, configs, status - USE TOOLS AUTONOMOUSLY
 - EXPLAIN what you find in clear terms
-- PROPOSE solutions with example commands
-- Ask before executing any fixes
-- This is a teaching moment: educate the user"""
+- Execute read-only operations without asking (list, status, logs, configs)
+- For write/modify operations (restart, stop, delete, config changes): explain what you'll do, then proceed
+- Provide a complete analysis with findings and next steps"""
 
         elif intent == "query":
             return """
 📋 **MODE: QUERY** - Your focus is to GATHER and PRESENT information.
-- Collect the requested information efficiently
+- Collect the requested information efficiently using tools
 - Present results clearly and organized
-- This is READ-ONLY: avoid making changes"""
+- Execute read operations autonomously"""
 
         else:  # action
             return """
-⚡ **MODE: ACTION** - Your focus is to EXECUTE safely.
-- Verify targets before acting
-- Execute the requested task
+⚡ **MODE: ACTION** - Your focus is to EXECUTE the requested task.
+- Verify targets, then EXECUTE - be autonomous
+- For read/diagnostic operations: proceed without asking
+- For write/destructive operations: describe briefly then execute
 - Report results clearly"""
 
     async def execute_basic(
