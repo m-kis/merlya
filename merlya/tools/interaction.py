@@ -1,7 +1,7 @@
 """
 User interaction and learning tools.
 """
-from typing import Annotated, Dict, Optional
+from typing import Annotated, Optional
 
 from merlya.tools.base import get_tool_context, validate_host
 from merlya.utils.logger import logger
