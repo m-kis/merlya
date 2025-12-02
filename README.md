@@ -8,16 +8,50 @@
 
 ## Features
 
-- Natural language queries for infrastructure management
-- Multi-LLM support (OpenRouter, Anthropic, OpenAI, Ollama)
-- SSH execution with your existing credentials (`~/.ssh/config`, `ssh-agent`)
-- Interactive REPL with conversation memory
-- Persistent secrets with system keyring (macOS Keychain, Windows Credential Locker, Linux SecretService)
-- Task-specific model routing (fast models for fixes, powerful models for planning)
-- Comprehensive logging system with runtime configuration
-- Extensible slash commands and hooks system
-- Host validation to prevent hallucinated commands
-- Risk assessment for dangerous operations
+### Core Capabilities
+
+- **Natural Language Interface** - Query and manage infrastructure using plain English
+- **Multi-LLM Support** - OpenRouter, Anthropic, OpenAI, Ollama (local/offline)
+- **Multi-Agent Orchestration** - AutoGen 0.7+ powered agent teams
+- **48 Slash Commands** - Comprehensive CLI command system
+- **SSH Execution** - Connection pooling, key management, passphrase caching
+
+### Security & Credentials
+
+- **Persistent Secrets** - System keyring integration (macOS Keychain, Windows Credential Locker, Linux SecretService)
+- **Session Secrets** - In-memory temporary credentials with TTL
+- **SSH Key Management** - Per-host key configuration, agent forwarding
+- **Permission Detection** - Automatic capability detection on hosts
+- **Audit Logging** - Compliance-ready action logging
+
+### Intelligence & Learning
+
+- **Smart Triage** - AI/embedding/keyword-based request classification (P0-P3)
+- **Knowledge Graph** - FalkorDB incident memory and pattern learning
+- **CVE Monitoring** - Vulnerability tracking integration
+- **Error Analysis** - Semantic error classification and auto-correction suggestions
+
+### Infrastructure Management
+
+- **Local Scanner** - Comprehensive local machine scanning (12h TTL, SQLite cache)
+- **Remote Scanner** - JIT on-demand SSH-based scanning
+- **Host Registry** - Metadata, relationships, versioning
+- **Inventory System** - Multi-format import (CSV/JSON/YAML/INI/hosts/ssh-config)
+
+### CI/CD Integration
+
+- **GitHub Actions** - Full workflow management, failure analysis
+- **Learning Engine** - Learn from CI failures for better suggestions
+- **Extensible** - Plugin architecture for GitLab, Jenkins, CircleCI
+
+### Executors
+
+- **SSH** - Connection pooling, error correction
+- **Ansible** - Playbook execution
+- **Terraform** - Plan/apply/destroy operations
+- **Kubernetes** - kubectl integration
+- **AWS** - Cloud API operations
+- **Docker** - Container management
 
 ## Installation
 
@@ -40,14 +74,8 @@ pip install "merlya[all]"
 ### From Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/m-kis/merlya.git
 cd merlya
-
-# Install with Poetry
-poetry install
-
-# Or with extras
 poetry install -E all
 ```
 
@@ -66,7 +94,7 @@ poetry install -E all
 export OPENROUTER_API_KEY="sk-or-..."
 # or ANTHROPIC_API_KEY, OPENAI_API_KEY, OLLAMA_HOST
 
-# Launch interactive REPL (default)
+# Launch interactive REPL
 merlya
 
 # Or run a single query
@@ -88,50 +116,96 @@ MongoDB Preprod hosts:
   - mongo-preprod-2: 198.51.100.20
 
 > check if mongodb is running on mongo-preprod-1
-Checking mongodb status...
 [SSH] systemctl status mongod
 mongod.service - MongoDB Database Server
    Active: active (running)
 
-> /scan --full
-Scanning all hosts...
-
 > /help
 ```
 
-### Single Query Mode
+### Command Reference
 
-```bash
-# Simple query
-merlya ask "what services are running on web-prod-1"
-
-# Dry-run (see plan without executing)
-merlya ask "restart nginx on lb-prod-1" --dry-run
-
-# Auto-confirm critical actions
-merlya ask "restart mongodb" --confirm
-```
-
-### Slash Commands
+#### Context & Scanning
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show available commands |
-| `/scan` | Scan infrastructure |
+| `/scan` | Scan local machine or specific host |
 | `/scan --full` | Full SSH scan of all hosts |
-| `/hosts` | List known hosts |
-| `/secret set <name>` | Store a persistent secret |
+| `/refresh` | Force refresh context cache |
+| `/cache-stats` | Show cache validity, TTL, fingerprints |
+| `/context` | Show current infrastructure context |
+| `/permissions` | Show detected permission capabilities |
+
+#### Secrets & Variables
+
+| Command | Description |
+|---------|-------------|
+| `/secret set <name>` | Store persistent secret (keyring) |
 | `/secret list` | List stored secrets |
+| `/secret delete <name>` | Delete a secret |
 | `/variables set <key> <value>` | Set a variable |
-| `/variables set-secret <key>` | Set a session secret (hidden input) |
+| `/variables set-secret <key>` | Set session secret (hidden input, TTL) |
+
+#### SSH Management
+
+| Command | Description |
+|---------|-------------|
+| `/ssh keys` | List available SSH keys |
+| `/ssh host <host> set-key <key>` | Set SSH key for host |
+| `/ssh passphrase <key>` | Cache SSH key passphrase |
+| `/ssh test <host>` | Test SSH connectivity |
+
+#### Inventory
+
+| Command | Description |
+|---------|-------------|
+| `/inventory list` | List inventory sources |
+| `/inventory show <source>` | Show hosts from source |
+| `/inventory search <pattern>` | Search hosts |
+| `/inventory add <file>` | Import from CSV/JSON/YAML/INI |
+| `/inventory add-host` | Interactive host addition |
+| `/inventory export <format>` | Export as JSON/CSV/YAML |
+| `/inventory relations` | AI-suggested host relations |
+
+#### CI/CD
+
+| Command | Description |
+|---------|-------------|
+| `/cicd status` | Show recent CI run status |
+| `/cicd workflows` | List available workflows |
+| `/cicd runs` | List recent runs |
+| `/cicd analyze <run_id>` | Deep analysis of failure |
+| `/cicd trigger <workflow>` | Trigger workflow execution |
+| `/debug-workflow` | Debug most recent failure |
+
+#### Model & Configuration
+
+| Command | Description |
+|---------|-------------|
 | `/model list` | List available models |
 | `/model set <provider> <model>` | Switch LLM model |
 | `/model task set <task> <model>` | Set task-specific model |
 | `/log level <level>` | Change log verbosity |
-| `/log show` | Display recent logs |
-| `/inventory list` | List inventory sources |
-| `/clear` | Clear conversation |
-| `/exit` | Exit REPL |
+| `/log show [n]` | Display recent logs |
+| `/stats` | Show usage statistics |
+
+#### Session Management
+
+| Command | Description |
+|---------|-------------|
+| `/conversations` | List conversations |
+| `/new [title]` | Start new conversation |
+| `/load <id>` | Load conversation |
+| `/compact` | Compress conversation (reduce tokens) |
+| `/delete <id>` | Delete conversation |
+
+#### Triage & Learning
+
+| Command | Description |
+|---------|-------------|
+| `/triage <query>` | Test priority classification |
+| `/feedback` | Correct triage classifications |
+| `/triage-stats` | Show learned patterns |
 
 ### Persistent Secrets
 
@@ -141,17 +215,11 @@ Store secrets securely using your system's keyring:
 # Store a secret (prompts for hidden input)
 /secret set db-password
 
-# List stored secrets
-/secret list
-
 # Use secrets in queries with @name syntax
 check mongodb status with password @db-password
-
-# Delete a secret
-/secret delete db-password
 ```
 
-Secrets are stored in:
+Storage priority:
 
 1. **System Keyring** (preferred): macOS Keychain, Windows Credential Locker, Linux SecretService
 2. **Encrypted File** (fallback): `~/.merlya/secrets.enc`
@@ -161,35 +229,19 @@ Secrets are stored in:
 Configure different models for different task types:
 
 ```bash
-# Use fast model for quick fixes
+# Use fast model for quick fixes (P0/P1 priority)
 /model task set correction claude-3-5-haiku-latest
 
-# Use powerful model for complex planning
+# Use powerful model for complex planning (P3)
 /model task set planning claude-sonnet-4
 
-# Use balanced model for general tasks
+# Use balanced model for general tasks (P2)
 /model task set synthesis claude-sonnet-4
-```
-
-### Logging
-
-Control log verbosity at runtime:
-
-```bash
-# Set log level
-/log level debug    # Show all logs
-/log level info     # Normal verbosity
-/log level warning  # Only warnings and errors
-/log level error    # Only errors
-
-# View recent logs
-/log show
-/log show 50        # Show last 50 entries
 ```
 
 ### Custom Commands
 
-Create markdown files in `~/.merlya/commands/` or `.merlya/commands/`:
+Create markdown files in `~/.merlya/commands/`:
 
 ```markdown
 ---
@@ -244,6 +296,7 @@ Host *.prod
 ### Inventory Sources
 
 Merlya discovers hosts from:
+
 - `/etc/hosts`
 - `~/.ssh/config`
 - SSH scanning
@@ -251,33 +304,39 @@ Merlya discovers hosts from:
 
 ## Architecture
 
-```
+```text
 User Query
-    |
-    v
-+-------------------+
-|   REPL / CLI      |
-+-------------------+
-    |
-    v
-+-------------------+
-|   Orchestrator    |  <- AutoGen/AG2 multi-agent
-+-------------------+
-    |
-    v
-+-------------------+
-|   LLM Router      |  <- Task-specific model selection
-+-------------------+
-    |
-    v
-+-------------------+
-|  Context Manager  |  <- Host registry, SSH scan results
-+-------------------+
-    |
-    v
-+-------------------+
-|  SSH Executor     |  <- Connection pooling, error correction
-+-------------------+
+    │
+    ▼
+┌───────────────────┐
+│   REPL / CLI      │  48 slash commands
+└───────────────────┘
+    │
+    ▼
+┌───────────────────┐
+│   Orchestrator    │  AutoGen 0.7+ multi-agent
+└───────────────────┘
+    │
+    ├──▶ SentinelAgent (security)
+    ├──▶ DiagnosticAgent (analysis)
+    ├──▶ RemediationAgent (actions)
+    ├──▶ ProvisioningAgent (infra)
+    └──▶ MonitoringAgent (health)
+    │
+    ▼
+┌───────────────────┐
+│   LLM Router      │  Task-specific model selection
+└───────────────────┘
+    │
+    ▼
+┌───────────────────┐
+│  Context Manager  │  JIT scanning, smart cache
+└───────────────────┘
+    │
+    ▼
+┌───────────────────┐
+│    Executors      │  SSH, Ansible, Terraform, K8s, AWS
+└───────────────────┘
 ```
 
 ## Security
@@ -285,6 +344,7 @@ User Query
 ### Risk Assessment
 
 Commands are evaluated before execution:
+
 - **Low**: read-only (ps, cat, df) - auto-execute
 - **Moderate**: config changes (chmod) - prompt confirmation
 - **Critical**: destructive (rm, reboot, stop) - requires `--confirm`
@@ -295,36 +355,14 @@ All commands are validated against the host registry. Operations on unknown/hall
 
 ### Credential Management
 
-When authentication errors occur (MongoDB, MySQL, PostgreSQL, SSH), Merlya:
+When authentication errors occur, Merlya:
 
-1. **Detects the error** - Classifies it as a credential issue with confidence score
-2. **Prompts the user** - Asks for username/password via secure input (getpass)
-3. **Caches credentials** - Stores in-memory with 15-minute TTL
-4. **Retries automatically** - Re-executes the command with new credentials
+1. **Detects the error** - Classifies with confidence score
+2. **Prompts the user** - Secure input (getpass)
+3. **Caches credentials** - In-memory with 15-minute TTL
+4. **Retries automatically** - Re-executes with new credentials
 
-```bash
-# Example flow
-> check mongodb status on db-prod-01
-
-Authentication required for:
-   Service: MongoDB
-   Target: db-prod-01
-   Error: Authentication failed
-
-Would you like to provide credentials? (yes/no)
-> yes
-   Username: admin
-   Password: ****
-
-Credentials stored successfully! (TTL: 15 minutes)
-```
-
-Credentials are:
-
-- Never persisted to disk (use `/secret` for persistent storage)
-- Never logged (even in debug mode)
-- Validated against injection attacks
-- Available as `@mongodb-user` / `@mongodb-pass` variables
+Use `/secret` for persistent storage or `/variables set-secret` for session-only secrets.
 
 ### Audit Trail
 
@@ -335,42 +373,35 @@ All actions logged to `~/.merlya/logs/`
 ### Knowledge Graph (FalkorDB)
 
 ```bash
-# Install with knowledge support
 pip install "merlya[knowledge]"
 
 # Start FalkorDB
 docker run -p 6379:6379 falkordb/falkordb
 
-# Enable in Merlya
 export FALKORDB_HOST="localhost"
 ```
 
-### Hooks
+Features:
 
-Create `~/.merlya/hooks.yaml` to intercept tool executions:
+- Incident memory with similarity matching
+- Pattern learning from past incidents
+- CVE vulnerability tracking
+- Web search integration
 
-```yaml
-hooks:
-  tool_execute_start:
-    - name: audit
-      action: log
-      config:
-        file: /var/log/merlya-audit.log
+### Smart Triage (Embeddings)
+
+```bash
+pip install "merlya[smart-triage]"
 ```
+
+Uses sentence-transformers for semantic classification when LLM is unavailable.
 
 ## Development
 
 ```bash
-# Install dev dependencies
 poetry install
-
-# Run tests
 pytest
-
-# Type checking
 mypy merlya
-
-# Linting
 ruff check merlya/
 ```
 
@@ -380,18 +411,15 @@ See [ROADMAP.md](ROADMAP.md) for planned features.
 
 **Coming in v0.4.0:**
 
-- Ansible playbook execution
-- Terraform integration
-- Kubernetes support (kubectl)
-- Session export/import
 - Docker image
+- Session export/import
+- Enhanced Ansible/Terraform/K8s integration
+- Cloud provider APIs (AWS, GCP, Azure)
 
 ## License
 
 **MIT License with Commons Clause** - See [LICENSE](LICENSE)
 
-This software is free to use for personal, educational, and community purposes.
+Free for personal, educational, and community use.
 
-**Commercial use, sale, for-profit redistribution, or integration into a paid product/service is strictly prohibited without written permission from the author, Cedric Merlin and M-KIS.**
-
-For commercial licensing inquiries, please contact the author.
+**Commercial use prohibited without written permission from Cedric Merlin and M-KIS.**
