@@ -67,7 +67,7 @@ beautifulsoup4 = "^4.12"
 falkordb = {version = "^1.2", optional = true}
 duckduckgo-search = {version = "^8.0", optional = true}
 # Smart triage with embeddings (optional)
-sentence-transformers = {version = "^3.0", optional = true}
+sentence-transformers = {version = "^5.1", optional = true}
 
 [tool.poetry.extras]
 knowledge = ["falkordb", "duckduckgo-search"]
