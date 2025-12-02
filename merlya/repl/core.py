@@ -51,35 +51,74 @@ def suppress_asyncio_errors():
             "Task was destroyed but it is pending",
             "exception=CancelledError",
             "asyncio.exceptions.CancelledError",
-            "Traceback (most recent call last):",  # Only suppress if followed by known patterns
             "_GatheringFuture",
             "AgentInstantiationContext",
             "during handling of the above exception",
-            "Event loop is closed",  # httpx client cleanup during reload
+            "During handling of the above exception",
+            "Event loop is closed",
             "RuntimeError: Event loop is closed",
+            "KeyboardInterrupt",
+            "httpcore._async",
+            "anyio._backends",
+            "autogen_core._single_threaded_agent_runtime",
+            "autogen_core._routed_agent",
+            "autogen_core._base_agent",
+            "autogen_agentchat",
+            "openai/_base_client",
+            "openai/resources/chat",
+            "httpx/_client",
+            "httpx/_models",
+            "httpx/_transports",
         ]
 
         def __init__(self, original):
             self._original = original
-            self._buffer = ""
+            self._buffer = []
+            self._suppressing = False
 
         def write(self, text):
-            # Buffer text to handle multi-line patterns
-            self._buffer += text
-
-            # Check if we should suppress this output
-            if any(pattern in self._buffer for pattern in self.NOISE_PATTERNS):
-                # Clear buffer but don't output
-                if "\n" in text:
-                    self._buffer = ""
+            # When we start seeing a traceback or known error, suppress until clean
+            if "Traceback (most recent call last):" in text:
+                self._suppressing = True
+                self._buffer = [text]
                 return
 
-            # If buffer doesn't contain noise, output it
+            if self._suppressing:
+                self._buffer.append(text)
+                # Check if this is the end of the traceback (empty line or new non-indented line)
+                # or if buffer contains enough context to decide
+                buffer_text = "".join(self._buffer)
+                if any(pattern in buffer_text for pattern in self.NOISE_PATTERNS):
+                    # Known noise pattern - discard the whole traceback
+                    if text.endswith("\n") and not text.startswith(" ") and not text.startswith("\t"):
+                        # End of traceback section - clear and continue suppressing
+                        self._buffer = []
+                    return
+                elif len(self._buffer) > 50 or (text == "\n" and len(self._buffer) > 3):
+                    # Unknown traceback that's grown large or ended - might be real error
+                    # But check one more time for noise patterns
+                    if not any(p in buffer_text for p in self.NOISE_PATTERNS):
+                        # Actually output it - it's a real error
+                        for line in self._buffer:
+                            self._original.write(line)
+                    self._buffer = []
+                    self._suppressing = False
+                return
+
+            # Check for single-line noise patterns
+            if any(pattern in text for pattern in self.NOISE_PATTERNS):
+                return
+
+            # Normal output
             self._original.write(text)
-            if "\n" in text:
-                self._buffer = ""
 
         def flush(self):
+            # On flush, output any buffered non-noise content
+            if self._buffer and not self._suppressing:
+                buffer_text = "".join(self._buffer)
+                if not any(p in buffer_text for p in self.NOISE_PATTERNS):
+                    self._original.write(buffer_text)
+                self._buffer = []
             self._original.flush()
 
         # Forward other attributes to original stderr
@@ -313,7 +352,8 @@ class MerlyaREPL:
                     command_line = lines[0].strip()
                     remaining_text = '\n'.join(lines[1:]).strip() if len(lines) > 1 else ''
 
-                    result = asyncio.run(self.command_handler.handle_command(command_line))
+                    with suppress_asyncio_errors():
+                        result = asyncio.run(self.command_handler.handle_command(command_line))
                     if result == CommandResult.EXIT:
                         break
                     if result in (CommandResult.HANDLED, CommandResult.FAILED):
@@ -735,12 +775,13 @@ class MerlyaREPL:
         # Get conversation history for context
         conversation_history = self._get_recent_history()
 
-        response = asyncio.run(
-            self.orchestrator.process_request(
-                user_query=resolved_query,
-                conversation_history=conversation_history
+        with suppress_asyncio_errors():
+            response = asyncio.run(
+                self.orchestrator.process_request(
+                    user_query=resolved_query,
+                    conversation_history=conversation_history
+                )
             )
-        )
         self.conversation_manager.add_assistant_message(response)
         return response
 
