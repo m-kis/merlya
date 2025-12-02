@@ -118,15 +118,20 @@ class Orchestrator(BaseOrchestrator):
             credentials=self.credentials,
         )
 
-        # Configure model client
-        self.model_client = self._create_model_client()
+        # Configure model client (legacy support)
+        # We don't initialize a single client anymore, but keep the attribute for backward compatibility if needed
+        self.model_client = None
 
         # Collect tools as callables
         self._tools = self._collect_tools()
 
+        # Client cache for task-specific models (must be before planner creation)
+        self._client_cache = {}
+
         # Execution Planner
+        # Pass client factory instead of single client
         self.planner = ExecutionPlanner(
-            model_client=self.model_client,
+            client_factory=self._get_client_for_task,
             tools=self._tools,
             env=self.env,
             console=self.console
@@ -141,8 +146,25 @@ class Orchestrator(BaseOrchestrator):
     # Model Client Configuration (new API)
     # =========================================================================
 
-    def _create_model_client(self) -> "OpenAIChatCompletionClient":
-        """Create OpenAI-compatible model client.
+    def _get_client_for_task(self, task: str = "synthesis") -> "OpenAIChatCompletionClient":
+        """
+        Get or create a model client for a specific task.
+        
+        Args:
+            task: Task type (correction, planning, synthesis)
+            
+        Returns:
+            Cached or new OpenAIChatCompletionClient
+        """
+        if task in self._client_cache:
+            return self._client_cache[task]
+            
+        client = self._create_model_client(task)
+        self._client_cache[task] = client
+        return client
+
+    def _create_model_client(self, task: Optional[str] = None) -> "OpenAIChatCompletionClient":
+        """Create OpenAI-compatible model client for specific task.
 
         Priority: Environment variables > Config file > Defaults
         Provider is determined solely by ModelConfig (unified config).
@@ -156,11 +178,15 @@ class Orchestrator(BaseOrchestrator):
 
         # ✅ FIX: Get model for THE ACTUAL PROVIDER, not config_provider
         # This ensures we use the correct model for the selected provider
-
+        
+        # Get task-specific model ID
+        # Note: We pass the task to get_model to resolve aliases (haiku/sonnet/opus)
+        # to the correct model ID for the provider
+        
         # Ollama (local LLM)
         if provider == "ollama" or os.getenv("OLLAMA_MODEL"):
-            model = os.getenv("OLLAMA_MODEL") or model_config.get_model("ollama")
-            logger.info(f"✅ Using Ollama: {model}")
+            model = os.getenv("OLLAMA_MODEL") or model_config.get_model("ollama", task=task)
+            logger.info(f"✅ Using Ollama for {task or 'default'}: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key="ollama",
@@ -179,8 +205,8 @@ class Orchestrator(BaseOrchestrator):
             if not api_key:
                 raise ValueError("OPENROUTER_API_KEY not set.")
             # ✅ FIX: Get model for "openrouter", not config_provider
-            model = os.getenv("OPENROUTER_MODEL") or model_config.get_model("openrouter")
-            logger.info(f"✅ Using OpenRouter: {model}")
+            model = os.getenv("OPENROUTER_MODEL") or model_config.get_model("openrouter", task=task)
+            logger.info(f"✅ Using OpenRouter for {task or 'default'}: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
@@ -199,8 +225,8 @@ class Orchestrator(BaseOrchestrator):
             if not api_key:
                 raise ValueError("ANTHROPIC_API_KEY not set.")
             # ✅ FIX: Get model for "anthropic", not config_provider
-            model = os.getenv("ANTHROPIC_MODEL") or model_config.get_model("anthropic")
-            logger.info(f"✅ Using Anthropic: {model}")
+            model = os.getenv("ANTHROPIC_MODEL") or model_config.get_model("anthropic", task=task)
+            logger.info(f"✅ Using Anthropic for {task or 'default'}: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
@@ -219,8 +245,8 @@ class Orchestrator(BaseOrchestrator):
             if not api_key:
                 raise ValueError("OPENAI_API_KEY not set.")
             # ✅ FIX: Get model for "openai", not config_provider
-            model = os.getenv("OPENAI_MODEL") or model_config.get_model("openai")
-            logger.info(f"✅ Using OpenAI: {model}")
+            model = os.getenv("OPENAI_MODEL") or model_config.get_model("openai", task=task)
+            logger.info(f"✅ Using OpenAI for {task or 'default'}: {model}")
             return OpenAIChatCompletionClient(
                 model=model,
                 api_key=api_key,
@@ -237,26 +263,15 @@ class Orchestrator(BaseOrchestrator):
 
         logger.info("Reloading agents...")
 
-        # Close old model client to prevent "Event loop is closed" errors
-        # The client uses httpx internally which has async connections
-        old_client = self.model_client
-        if old_client is not None:
-            try:
-                # Try to get the current event loop, or create a new one
-                try:
-                    loop = asyncio.get_running_loop()
-                    # If we're in an async context, schedule the close
-                    loop.create_task(old_client.close())
-                except RuntimeError:
-                    # No running loop - create a new one just for cleanup
-                    asyncio.run(old_client.close())
-            except Exception as e:
-                # Log but don't fail - the old client may already be closed
-                logger.debug(f"Could not close old model client: {e}")
+        # Close old model clients
+        self.shutdown_sync()
+        
+        # Clear cache
+        self._client_cache = {}
 
-        self.model_client = self._create_model_client()
+        # Re-initialize planner with new factory
         self.planner = ExecutionPlanner(
-            model_client=self.model_client,
+            client_factory=self._get_client_for_task,
             tools=self._tools,
             env=self.env,
             console=self.console
@@ -360,15 +375,17 @@ class Orchestrator(BaseOrchestrator):
     async def shutdown(self) -> None:
         """Clean shutdown of orchestrator resources.
 
-        Closes the model client to prevent 'Event loop is closed' errors
+        Closes all model clients to prevent 'Event loop is closed' errors
         from httpx connections during garbage collection.
         """
-        if self.model_client is not None:
+        for task, client in self._client_cache.items():
             try:
-                await self.model_client.close()
-                logger.debug("Model client closed successfully")
+                await client.close()
+                logger.debug(f"Model client for {task} closed successfully")
             except Exception as e:
-                logger.debug(f"Error closing model client: {e}")
+                logger.debug(f"Error closing model client for {task}: {e}")
+        
+        self._client_cache = {}
 
     def shutdown_sync(self) -> None:
         """Synchronous wrapper for shutdown.
@@ -378,7 +395,7 @@ class Orchestrator(BaseOrchestrator):
         """
         import asyncio
 
-        if self.model_client is None:
+        if not self._client_cache:
             return
 
         try:
@@ -408,17 +425,18 @@ class Orchestrator(BaseOrchestrator):
 
     def _close_client_sync(self) -> None:
         """Best-effort synchronous client cleanup."""
-        if self.model_client is None:
+        if not self._client_cache:
             return
 
-        try:
-            # Try common client structures
-            client = getattr(self.model_client, '_client', None)
-            if client is not None and hasattr(client, 'close'):
-                client.close()
-                logger.debug("Model client closed (sync fallback)")
-        except Exception as e:
-            logger.debug(f"Sync shutdown fallback failed: {e}")
+        for task, client in self._client_cache.items():
+            try:
+                # Try common client structures
+                inner_client = getattr(client, '_client', None)
+                if inner_client is not None and hasattr(inner_client, 'close'):
+                    inner_client.close()
+                    logger.debug(f"Model client for {task} closed (sync fallback)")
+            except Exception as e:
+                logger.debug(f"Sync shutdown fallback failed for {task}: {e}")
 
     # =========================================================================
     # Error Handling

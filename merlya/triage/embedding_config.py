@@ -2,11 +2,13 @@
 Embedding Model Configuration.
 
 Centralized configuration for sentence-transformers models used in Merlya.
-Supports dynamic model switching and environment variable configuration.
+Supports dynamic model switching, file persistence, and environment variable configuration.
 """
+import json
 import os
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from merlya.utils.logger import logger
@@ -127,9 +129,15 @@ class EmbeddingConfig:
 
     Singleton pattern for consistent configuration across the application.
     Supports:
-    - Environment variable configuration (MERLYA_EMBEDDING_MODEL)
+    - File persistence (~/.merlya/config.json)
+    - Environment variable override (MERLYA_EMBEDDING_MODEL)
     - Runtime model switching
     - Model information and listing
+
+    Priority order:
+    1. Environment variable (highest priority)
+    2. Config file (~/.merlya/config.json)
+    3. Default model (lowest priority)
     """
 
     _instance: Optional["EmbeddingConfig"] = None
@@ -149,22 +157,84 @@ class EmbeddingConfig:
             if self._initialized:
                 return
 
-            # Load from environment or use default
-            self._current_model = os.getenv(ENV_VAR_MODEL, DEFAULT_MODEL)
+            # Config file path (shared with llm/model_config.py)
+            self._config_dir = Path.home() / ".merlya"
+            self._config_file = self._config_dir / "config.json"
 
-            # Validate model exists
+            # Priority: env var > config file > default
+            self._current_model = self._load_model()
+
+            # Log if using a custom model (not in recommended list)
             if self._current_model not in AVAILABLE_MODELS:
-                logger.warning(
-                    f"⚠️ Unknown embedding model '{self._current_model}', "
-                    f"falling back to '{DEFAULT_MODEL}'"
+                logger.info(
+                    f"ℹ️ Using custom embedding model: {self._current_model} "
+                    f"(not in recommended list, will be loaded from HuggingFace)"
                 )
-                self._current_model = DEFAULT_MODEL
 
             # Callback for model change notifications
             self._on_change_callbacks: List[Callable[[str, str], None]] = []
 
             self._initialized = True
             logger.debug(f"✅ EmbeddingConfig initialized with model: {self._current_model}")
+
+    def _load_model(self) -> str:
+        """
+        Load embedding model from config sources.
+
+        Priority: env var > config file > default
+        """
+        # 1. Environment variable (highest priority)
+        env_model = os.getenv(ENV_VAR_MODEL)
+        if env_model:
+            logger.debug(f"📌 Using embedding model from env var: {env_model}")
+            return env_model
+
+        # 2. Config file
+        if self._config_file.exists():
+            try:
+                with open(self._config_file, 'r') as f:
+                    config = json.load(f)
+                    file_model = config.get("embedding_model")
+                    if file_model:
+                        logger.debug(f"📌 Using embedding model from config file: {file_model}")
+                        return file_model
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load embedding model from config: {e}")
+
+        # 3. Default
+        logger.debug(f"📌 Using default embedding model: {DEFAULT_MODEL}")
+        return DEFAULT_MODEL
+
+    def _save_to_config(self, model_name: str) -> None:
+        """
+        Save embedding model to config file.
+
+        Merges with existing config to preserve other settings.
+        """
+        try:
+            # Ensure config directory exists
+            self._config_dir.mkdir(parents=True, exist_ok=True)
+
+            # Load existing config or create new
+            config = {}
+            if self._config_file.exists():
+                try:
+                    with open(self._config_file, 'r') as f:
+                        config = json.load(f)
+                except Exception:
+                    pass
+
+            # Update embedding model
+            config["embedding_model"] = model_name
+
+            # Save config
+            with open(self._config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+
+            logger.debug(f"💾 Saved embedding model to config: {model_name}")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to save embedding model to config: {e}")
 
     @property
     def current_model(self) -> str:
@@ -206,7 +276,10 @@ class EmbeddingConfig:
         old_model = self._current_model
         self._current_model = model_name
 
-        # Update environment variable for persistence
+        # Persist to config file (survives restarts)
+        self._save_to_config(model_name)
+
+        # Also update environment variable for current session
         os.environ[ENV_VAR_MODEL] = model_name
 
         logger.info(f"✅ Embedding model changed: {old_model} → {model_name}")

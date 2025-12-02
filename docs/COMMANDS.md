@@ -16,6 +16,7 @@ Complete reference for all slash commands available in the Merlya interactive RE
 | `/context` | Show current context |
 | `/model` | Model configuration |
 | `/variables` | Manage variables |
+| `/secret` | Manage persistent secrets |
 | `/inventory` | Manage hosts |
 | `/cicd` | CI/CD management |
 | `/mcp` | MCP server management |
@@ -361,6 +362,129 @@ Clear only secrets (memory-only variables).
 ### `/credentials`
 
 Alias for `/variables` (backward compatibility).
+
+---
+
+## Persistent Secrets
+
+Persistent secrets are stored securely using the system keyring (macOS Keychain, Windows Credential Locker, Linux SecretService). Unlike `/variables secret` which stores in memory only, `/secret` persists across sessions.
+
+### `/secret`
+
+Show help for secret management.
+
+```bash
+/secret
+/secret help
+```
+
+---
+
+### `/secret set <name> [value]`
+
+Store a persistent secret. If value is not provided, prompts for secure hidden input.
+
+```bash
+# Prompt for value (recommended - hidden input)
+/secret set db-password
+
+# Set directly (visible in terminal history - use with caution)
+/secret set api-key sk-xxx123
+```
+
+---
+
+### `/secret get <name>`
+
+Retrieve a secret value (displays masked by default).
+
+```bash
+/secret get db-password
+```
+
+---
+
+### `/secret list`
+
+List all stored secrets (values are masked).
+
+```bash
+/secret list
+```
+
+**Output:**
+```
+Persistent Secrets
+==================
+🔐 db-password     : ********
+🔐 api-key         : ********
+🔐 ssh-passphrase  : ********
+
+Total: 3 secrets stored in system keyring
+```
+
+---
+
+### `/secret delete <name>`
+
+Delete a persistent secret.
+
+```bash
+/secret delete old-api-key
+```
+
+---
+
+### `/secret clear`
+
+Delete ALL persistent secrets (with confirmation).
+
+```bash
+/secret clear
+```
+
+---
+
+### `/secret export [file]`
+
+Export secrets to encrypted file (for backup/migration).
+
+```bash
+/secret export ~/merlya-secrets.enc
+```
+
+---
+
+### `/secret import <file>`
+
+Import secrets from encrypted file.
+
+```bash
+/secret import ~/merlya-secrets.enc
+```
+
+---
+
+### Using Secrets in Queries
+
+Reference persistent secrets with `@name` syntax:
+
+```bash
+# Store credentials
+/secret set mongo-user
+/secret set mongo-pass
+
+# Use in query
+check mongodb status with user @mongo-user password @mongo-pass
+```
+
+---
+
+### Storage Backend Priority
+
+1. **System Keyring** (preferred): macOS Keychain, Windows Credential Locker, Linux SecretService
+2. **Encrypted File** (fallback): `~/.merlya/secrets.enc` with Fernet encryption
+3. **Memory Only** (last resort): If all else fails, secrets are session-only
 
 ---
 

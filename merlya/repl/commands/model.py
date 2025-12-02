@@ -337,10 +337,30 @@ class ModelCommandHandler:
 
         elif subcmd == 'list':
             # List valid tasks and their current configuration
-            console.print("\n[bold]Valid Tasks:[/bold]")
-            console.print("  • correction - Fast corrections (typos, simple fixes)")
-            console.print("  • planning   - Complex reasoning (architecture, design)")
-            console.print("  • synthesis  - General tasks (balanced workload)")
+            console.print("\n[bold]Valid Tasks & Current Configuration:[/bold]")
+            
+            task_descriptions = {
+                "correction": "Fast corrections (typos, simple fixes)",
+                "planning": "Complex reasoning (architecture, design)",
+                "synthesis": "General tasks (balanced workload)",
+            }
+            
+            # Get current configuration
+            task_models = model_config.get_task_models()
+            provider = model_config.get_provider()
+            
+            for task, desc in task_descriptions.items():
+                # Get configured alias/model
+                configured = task_models.get(task, model_config.TASK_MODELS.get(task, "default"))
+                
+                # Resolve to actual model ID
+                actual_model = model_config.get_model(provider, task=task)
+                
+                console.print(f"  • [cyan]{task:<12}[/cyan] - {desc}")
+                console.print(f"    Configured: [yellow]{configured}[/yellow]")
+                console.print(f"    Actual:     [green]{actual_model}[/green]")
+                console.print()
+
             console.print("\n[bold]Model Aliases:[/bold]")
             console.print("  • haiku  - Fastest, cheapest (Claude Haiku or GPT-4o-mini)")
             console.print("  • sonnet - Balanced (Claude Sonnet or GPT-4o)")
@@ -470,7 +490,8 @@ class ModelCommandHandler:
 
         console.print()
         console.print("[dim]ℹ️ Used for: Triage classification, Tool selection, Error analysis[/dim]")
-        console.print("[dim]📝 Tip: Set via MERLYA_EMBEDDING_MODEL env var for persistence[/dim]")
+        console.print("[dim]💾 Configuration saved to ~/.merlya/config.json (persists across restarts)[/dim]")
+        console.print("[dim]📝 Override with MERLYA_EMBEDDING_MODEL env var if needed[/dim]")
         console.print("[dim]💡 You can use any HuggingFace model compatible with sentence-transformers[/dim]")
         console.print()
 

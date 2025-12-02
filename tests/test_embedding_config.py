@@ -4,7 +4,9 @@ Tests for Embedding Model Configuration.
 Tests the centralized embedding model configuration system.
 """
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -20,13 +22,27 @@ from merlya.triage.embedding_config import (
 
 
 @pytest.fixture(autouse=True)
-def reset_embedding_config():
-    """Reset singleton between tests."""
+def reset_embedding_config(tmp_path, monkeypatch):
+    """Reset singleton between tests and use isolated config."""
     EmbeddingConfig.reset_instance()
     # Clean up env var
     if ENV_VAR_MODEL in os.environ:
         del os.environ[ENV_VAR_MODEL]
+
+    # Use a temporary config directory to isolate tests from real config
+    temp_config_dir = tmp_path / ".merlya"
+    temp_config_dir.mkdir()
+    temp_config_file = temp_config_dir / "config.json"
+
+    # Create a fresh instance and patch its paths before it loads config
+    config = EmbeddingConfig()
+    config._config_dir = temp_config_dir
+    config._config_file = temp_config_file
+    # Force reload from temp location
+    config._current_model = config._load_model()
+
     yield
+
     EmbeddingConfig.reset_instance()
     if ENV_VAR_MODEL in os.environ:
         del os.environ[ENV_VAR_MODEL]
@@ -122,12 +138,13 @@ class TestEmbeddingConfig:
         config = EmbeddingConfig()
         assert config.current_model == "all-MiniLM-L6-v2"
 
-    def test_invalid_env_var_fallback(self):
-        """Should fall back to default for invalid env var."""
-        os.environ[ENV_VAR_MODEL] = "invalid-model-name"
+    def test_custom_env_var_accepted(self):
+        """Should accept custom models from env var (not in AVAILABLE_MODELS)."""
+        os.environ[ENV_VAR_MODEL] = "custom-model-name"
         EmbeddingConfig.reset_instance()
         config = EmbeddingConfig()
-        assert config.current_model == DEFAULT_MODEL
+        # Custom models are now accepted (will be loaded from HuggingFace)
+        assert config.current_model == "custom-model-name"
 
     def test_set_model_valid(self):
         """set_model should work for valid models."""
@@ -309,6 +326,80 @@ class TestModelSpecs:
         assert info.dimensions == 768
         assert info.speed == "slow"
         assert info.quality == "best"
+
+
+class TestFilePersistence:
+    """Tests for config file persistence."""
+
+    def test_set_model_persists_to_file(self):
+        """set_model should save to config file."""
+        # Get the singleton (already patched by autouse fixture)
+        config = get_embedding_config()
+
+        config.set_model("all-MiniLM-L6-v2")
+
+        # Verify file was created and contains the model
+        assert config._config_file.exists()
+        with open(config._config_file) as f:
+            data = json.load(f)
+        assert data.get("embedding_model") == "all-MiniLM-L6-v2"
+
+    def test_set_model_preserves_existing_config(self):
+        """set_model should not overwrite other config keys."""
+        config = get_embedding_config()
+
+        # Write some existing config
+        with open(config._config_file, 'w') as f:
+            json.dump({"provider": "openrouter", "models": {}}, f)
+
+        config.set_model("all-MiniLM-L6-v2")
+
+        # Verify existing config is preserved
+        with open(config._config_file) as f:
+            data = json.load(f)
+        assert data.get("provider") == "openrouter"
+        assert data.get("models") == {}
+        assert data.get("embedding_model") == "all-MiniLM-L6-v2"
+
+    def test_load_model_from_file(self):
+        """Should load model from config file on init."""
+        config = get_embedding_config()
+
+        # Write config with embedding model
+        with open(config._config_file, 'w') as f:
+            json.dump({"embedding_model": "thenlper/gte-small"}, f)
+
+        # Force reload
+        loaded_model = config._load_model()
+        assert loaded_model == "thenlper/gte-small"
+
+    def test_env_var_priority_over_file(self):
+        """Environment variable should override config file."""
+        config = get_embedding_config()
+
+        # Write config with embedding model
+        with open(config._config_file, 'w') as f:
+            json.dump({"embedding_model": "thenlper/gte-small"}, f)
+
+        # Set env var
+        os.environ[ENV_VAR_MODEL] = "all-MiniLM-L6-v2"
+
+        try:
+            # Env var should take priority
+            loaded_model = config._load_model()
+            assert loaded_model == "all-MiniLM-L6-v2"
+        finally:
+            del os.environ[ENV_VAR_MODEL]
+
+    def test_custom_model_persisted(self):
+        """Custom models should be persisted to config file."""
+        config = get_embedding_config()
+
+        config.set_model("Qwen/Qwen3-Embedding-0.6B")
+
+        with open(config._config_file) as f:
+            data = json.load(f)
+        assert data.get("embedding_model") == "Qwen/Qwen3-Embedding-0.6B"
 
 
 if __name__ == "__main__":

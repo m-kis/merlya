@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persistent Secure Secret Storage** (`/secret` command)
+  - Secure secrets stored using system keyring (macOS Keychain, Windows Credential Locker, Linux SecretService)
+  - Fallback to encrypted file storage when keyring unavailable
+  - Secrets persist across sessions and survive restarts
+  - Commands: `/secret set`, `/secret get`, `/secret list`, `/secret delete`
+  - Use `@secret_name` in queries to reference secrets
+- **Embedding Model Persistence**
+  - Embedding model choice saved to `~/.merlya/config.json`
+  - Survives restarts without requiring environment variables
+  - Priority: env var > config file > default
+  - Supports custom HuggingFace models
+- **Task-Specific Model Routing**
+  - Configure different models for different task types
+  - `correction`: Quick fixes (use fast/cheap model like haiku)
+  - `planning`: Complex reasoning (use powerful model like opus)
+  - `synthesis`: General tasks (use balanced model like sonnet)
+  - Commands: `/model task set <task> <model>`
 - Interactive inventory setup wizard (`/inventory setup`)
   - Guides first-time users through host and SSH key configuration
   - Auto-detects existing SSH keys and prompts for passphrase
@@ -21,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Report Display Issue**: Web search and analysis reports now display content
+  - `save_report` returns actual content instead of just success message
+  - Report content captured and displayed in response synthesis
+  - Large reports (>500 chars) returned directly without re-synthesis
+- **Application Exit Hanging**: Fixed ThreadPoolExecutor not shutting down
+  - Added `shutdown_persistence_executor()` with `atexit` handler
+  - Proper cleanup on REPL exit prevents hanging threads
 - **CRITICAL**: Agent TERMINATE without response issue
   - Agents now provide meaningful summaries before terminating
   - Improved response extraction handles edge cases

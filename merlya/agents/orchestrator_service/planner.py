@@ -26,8 +26,8 @@ except ImportError:
 class ExecutionPlanner:
     """Handles agent team creation and execution planning."""
 
-    def __init__(self, model_client: Any, tools: List[Callable[..., Any]], env: str = "dev", console: Optional[Console] = None):
-        self.model_client = model_client
+    def __init__(self, client_factory: Callable[[str], Any], tools: List[Callable[..., Any]], env: str = "dev", console: Optional[Console] = None):
+        self.client_factory = client_factory
         self.tools = tools
         self.env = env
         self.console = console or Console()
@@ -56,9 +56,10 @@ class ExecutionPlanner:
             )
 
         # Engineer (main agent with tools)
+        # Default to synthesis model for general engineering tasks
         self.engineer = AssistantAgent(  # type: ignore[assignment]
             name="DevSecOps_Engineer",
-            model_client=self.model_client,
+            model_client=self.client_factory("synthesis"),
             tools=self.tools,  # type: ignore[arg-type]
             system_message=self._get_engineer_prompt(),
             description="Expert DevSecOps engineer who executes infrastructure tasks using tools.",
@@ -72,9 +73,10 @@ class ExecutionPlanner:
     def _init_enhanced_agents(self, knowledge_db):
         """Initialize additional agents for ENHANCED mode."""
         # Planner (no tools, just planning)
+        # Use planning model (e.g. Opus) for complex reasoning
         self.planner = AssistantAgent(
             name="Planner",
-            model_client=self.model_client,
+            model_client=self.client_factory("planning"),
             system_message="""You are the planning specialist.
 Analyze requests and break them into clear steps.
 Identify dependencies and suggest which agent handles each step.
@@ -86,7 +88,7 @@ After planning, hand off to the DevSecOps_Engineer for execution.""",
         # Security Expert
         self.security_expert = AssistantAgent(
             name="Security_Expert",
-            model_client=self.model_client,
+            model_client=self.client_factory("synthesis"),
             tools=[autogen_tools.audit_host, autogen_tools.analyze_security_logs],
             system_message="""You are the security expert.
 Review all actions for security implications.
@@ -99,7 +101,7 @@ Flag dangerous commands and suggest safer alternatives.""",
         if knowledge_db:
             self.knowledge_manager = AssistantAgent(
                 name="Knowledge_Manager",
-                model_client=self.model_client,
+                model_client=self.client_factory("synthesis"),
                 tools=[
                     knowledge_tools.record_incident,
                     knowledge_tools.search_knowledge,
@@ -126,7 +128,7 @@ Identify patterns across incidents.""",
 
         self.team = SelectorGroupChat(
             participants=participants,
-            model_client=self.model_client,
+            model_client=self.client_factory("synthesis"),
             termination_condition=termination,
             selector_prompt="""Select the next speaker based on the conversation flow:
 1. START with Planner to create a plan (unless it's a simple follow-up).
@@ -354,6 +356,25 @@ Environment: {self.env}"""
         priority_name = priority or "P3"
         behavior = self._get_behavior_for_priority(priority_name)
 
+        # Determine task type for model selection
+        # P0/P1 -> correction (fast)
+        # P2 -> synthesis (balanced)
+        # P3 -> planning (thorough)
+        task_type = "synthesis"
+        if priority_name in ("P0", "P1"):
+            task_type = "correction"
+        elif priority_name == "P3":
+            task_type = "planning"
+            
+        # Create a temporary engineer with the specific model for this task
+        engineer = AssistantAgent(
+            name="DevSecOps_Engineer",
+            model_client=self.client_factory(task_type),
+            tools=self.tools,
+            system_message=self._get_engineer_prompt(),
+            description="Expert DevSecOps engineer who executes infrastructure tasks using tools.",
+        )
+
         # Detect variable-related queries
         variable_context = self._detect_variable_query(user_query)
 
@@ -389,7 +410,7 @@ Environment: {self.env}"""
         termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(max_messages)
 
         team = RoundRobinGroupChat(
-            participants=[self.engineer],
+            participants=[engineer],
             termination_condition=termination,
         )
 
@@ -546,7 +567,12 @@ Try:
 - `/help` for available commands"""
 
     def _collect_tool_outputs(self, result: "TaskResult") -> List[str]:
-        """Collect all tool execution outputs from the conversation."""
+        """Collect all tool execution outputs from the conversation.
+
+        Includes:
+        - Tool results starting with SUCCESS/ERROR
+        - Report content from save_report (contains the actual report)
+        """
         outputs = []
 
         for msg in result.messages:
@@ -567,10 +593,34 @@ Try:
                     if output_part and len(output_part) < 2000:  # Limit size
                         outputs.append(output_part)
 
+            # Collect save_report outputs (contains the actual report content)
+            # These end with "📄 *Report saved to:" and contain the report content
+            elif "📄 *Report saved to:" in content:
+                # This is a report - extract content before the footer
+                report_parts = content.split("---\n📄 *Report saved to:")
+                if report_parts and report_parts[0].strip():
+                    report_content = report_parts[0].strip()
+                    # Limit size but keep more for reports (they're meant to be displayed)
+                    if len(report_content) < 10000:
+                        outputs.append(report_content)
+                    else:
+                        outputs.append(report_content[:10000] + "\n... (truncated)")
+
         return outputs
 
     async def _generate_synthesis(self, user_query: str, tool_outputs: List[str]) -> str:
-        """Generate a synthesis from tool outputs using the LLM."""
+        """Generate a synthesis from tool outputs using the LLM.
+
+        If tool_outputs contains a full report (from save_report), return it directly
+        without re-synthesizing to avoid losing content.
+        """
+        # Check if we have a large report - return it directly (it's already formatted)
+        for output in tool_outputs:
+            # Reports from save_report are typically > 500 chars and markdown formatted
+            if len(output) > 500 and (output.startswith("##") or output.startswith("#") or "**" in output[:100]):
+                logger.debug("📄 Returning report content directly (no synthesis needed)")
+                return output
+
         # Combine outputs (limit total size)
         combined = "\n---\n".join(tool_outputs[:5])  # Max 5 outputs
         if len(combined) > 4000:
@@ -596,7 +646,7 @@ Provide your synthesis now:"""
             # Use the model client to generate synthesis
             from autogen_core import CancellationToken
 
-            response = await self.model_client.create(
+            response = await self.client_factory("synthesis").create(
                 messages=[{"role": "user", "content": synthesis_prompt}],
                 cancellation_token=CancellationToken(),
             )

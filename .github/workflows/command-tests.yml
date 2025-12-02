@@ -199,6 +199,28 @@ jobs:
         run: |
           poetry run pytest tests/ -v -k "session" --tb=short || echo "Session tests completed"
 
+  test-secret-command:
+    name: Test '/secret' REPL command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test secret command module
+        run: |
+          poetry run pytest tests/test_keyring_store.py -v --tb=short
+          echo "✅ Secret/Keyring tests passed"
+
   notify:
     runs-on: ubuntu-latest
     needs: [
@@ -210,7 +232,8 @@ jobs:
       test-cicd-command,
       test-inventory-command,
       test-context-command,
-      test-session-command
+      test-session-command,
+      test-secret-command
     ]
     if: always()
     steps:
@@ -233,7 +256,7 @@ jobs:
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
           # Count passed/failed (use || true to avoid exit code 1 when PASSED is 0)
-          TOTAL=9
+          TOTAL=10
           PASSED=0
           [ "${{ needs.test-run-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
           [ "${{ needs.test-setup-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
@@ -244,6 +267,7 @@ jobs:
           [ "${{ needs.test-inventory-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
           [ "${{ needs.test-context-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
           [ "${{ needs.test-session-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
+          [ "${{ needs.test-secret-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
           FAILED=$((TOTAL - PASSED))
 
           # Determine overall status

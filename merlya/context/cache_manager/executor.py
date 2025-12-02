@@ -2,6 +2,7 @@
 Cache Persistence Executor.
 """
 
+import atexit
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -24,3 +25,21 @@ def get_persistence_executor() -> ThreadPoolExecutor:
                 thread_name_prefix="CachePersist"
             )
         return _persistence_executor
+
+
+def shutdown_persistence_executor(wait: bool = False) -> None:
+    """Shutdown the persistence executor.
+
+    Args:
+        wait: If True, wait for pending tasks to complete.
+              If False (default), cancel pending tasks for faster shutdown.
+    """
+    global _persistence_executor
+    with _persistence_executor_lock:
+        if _persistence_executor is not None:
+            _persistence_executor.shutdown(wait=wait, cancel_futures=not wait)
+            _persistence_executor = None
+
+
+# Register cleanup on interpreter exit
+atexit.register(lambda: shutdown_persistence_executor(wait=False))

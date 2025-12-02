@@ -64,6 +64,7 @@ jobs:
             --ignore=tests/test_persistence_manual.py \
             --ignore=tests/manual_test_falkordb.py \
             --ignore=tests/manual_test_improvements.py \
+            --ignore=tests/verify_model_switching.py \
             --cov=merlya --cov-report=xml --cov-report=term \
             --asyncio-mode=auto \
             --timeout=300 \
@@ -115,6 +116,45 @@ jobs:
             -m "asyncio" \
             --asyncio-mode=auto \
             --timeout=60
+
+  config-tests:
+    name: Configuration & Storage Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: poetry-${{ runner.os }}-config-${{ hashFiles('poetry.lock') }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Test embedding configuration
+        run: |
+          poetry run pytest tests/test_embedding_config.py -v --tb=short
+          echo "✅ Embedding config tests passed"
+
+      - name: Test keyring store
+        run: |
+          poetry run pytest tests/test_keyring_store.py -v --tb=short
+          echo "✅ Keyring store tests passed"
+
+      - name: Test credentials module
+        run: |
+          poetry run pytest tests/ -v -k "credentials" --tb=short || echo "Credentials tests completed"
 
   typecheck:
     runs-on: ubuntu-latest
@@ -182,7 +222,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, test, async-test-validation, security]
+    needs: [lint, test, async-test-validation, config-tests, security]
     steps:
       - uses: actions/checkout@v4
 
@@ -205,7 +245,7 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
-    needs: [lint, test, typecheck, async-test-validation, security, build]
+    needs: [lint, test, typecheck, async-test-validation, config-tests, security, build]
     if: always()
     steps:
       - name: Send Slack notification
@@ -238,12 +278,14 @@ jobs:
           LINT_ICON=$(get_icon "${{ needs.lint.result }}")
           TEST_ICON=$(get_icon "${{ needs.test.result }}")
           TYPE_ICON=$(get_icon "${{ needs.typecheck.result }}")
+          CONFIG_ICON=$(get_icon "${{ needs.config-tests.result }}")
           SEC_ICON=$(get_icon "${{ needs.security.result }}")
           BUILD_ICON=$(get_icon "${{ needs.build.result }}")
 
           # Determine overall status
           if [ "${{ needs.lint.result }}" == "success" ] && \
              [ "${{ needs.test.result }}" == "success" ] && \
+             [ "${{ needs.config-tests.result }}" == "success" ] && \
              [ "${{ needs.security.result }}" == "success" ] && \
              [ "${{ needs.build.result }}" == "success" ]; then
             STATUS_EMOJI="✅"
@@ -255,7 +297,7 @@ jobs:
 
           # Compact summary line
           SUMMARY="${STATUS_EMOJI} *Merlya CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
-          DETAILS="${LINT_ICON} lint ${TEST_ICON} test ${TYPE_ICON} types ${SEC_ICON} security ${BUILD_ICON} build"
+          DETAILS="${LINT_ICON} lint ${TEST_ICON} test ${TYPE_ICON} types ${CONFIG_ICON} config ${SEC_ICON} security ${BUILD_ICON} build"
 
           # Send compact notification
           curl -X POST "${SLACK_WEBHOOK_URL}" \

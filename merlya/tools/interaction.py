@@ -605,7 +605,17 @@ def save_report(
         # Notify user via console
         ctx.console.print(f"\n📄 [bold green]Report saved:[/bold green] {filepath}")
 
-        return f"✅ Report saved to: {filepath}\n\nThe user can view it with: `cat {filepath}`"
+        # Return the content so it gets displayed to the user
+        # Note: We return the full content (not just "success") so the user sees the report
+        preview_length = 8000  # Reasonable preview length
+        content_preview = content[:preview_length]
+        if len(content) > preview_length:
+            content_preview += f"\n\n... (truncated, full report at: {filepath})"
+
+        return f"""{content_preview}
+
+---
+📄 *Report saved to: `{filepath}`*"""
 
     except OSError as e:
         logger.error(f"Failed to save report (filesystem error): {e}", exc_info=True)
