@@ -11,7 +11,6 @@ import os
 import tempfile
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -22,12 +21,10 @@ from merlya.memory.persistence.metrics_repository import (
     LLMCallMetric,
     MetricsRepository,
     QueryMetric,
-    get_metrics_repository,
 )
 from merlya.utils.stats_manager import (
     StatsManager,
     Timer,
-    get_stats_manager,
 )
 
 
@@ -373,7 +370,7 @@ class TestStatsManager:
     def test_time_llm_call_error_handling(self, stats_manager):
         """Test LLM call timing records errors."""
         try:
-            with stats_manager.time_llm_call("openrouter", "gpt-4") as timer:
+            with stats_manager.time_llm_call("openrouter", "gpt-4"):
                 raise ValueError("Test error")
         except ValueError:
             pass
