@@ -238,15 +238,27 @@ class FalkorDBClient:
         Returns:
             Created node properties if return_node is True
         """
+        import json
+        import re
+
+        # Validate label to prevent Cypher injection
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', label):
+            raise ValueError(f"Invalid label format: {label}")
+
         # Add timestamp if not present
         if "created_at" not in properties:
             properties["created_at"] = datetime.now().isoformat()
 
-        # Serialize list values to comma-separated strings (FalkorDB doesn't support list params)
+        # Serialize complex values (FalkorDB doesn't support list/dict params)
+        # Use JSON for proper round-tripping and to preserve data integrity
         serialized_props = {}
         for k, v in properties.items():
-            if isinstance(v, list):
-                serialized_props[k] = ",".join(str(item) for item in v)
+            # Validate property key
+            if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', k):
+                raise ValueError(f"Invalid property key: {k}")
+
+            if isinstance(v, (list, dict)):
+                serialized_props[k] = json.dumps(v)
             else:
                 serialized_props[k] = v
 

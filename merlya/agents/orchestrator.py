@@ -374,6 +374,7 @@ class Orchestrator(BaseOrchestrator):
         """Synchronous wrapper for shutdown.
 
         Use this when not in an async context (e.g., REPL exit).
+        Best effort cleanup - may not complete if event loop is in problematic state.
         """
         import asyncio
 
@@ -384,25 +385,40 @@ class Orchestrator(BaseOrchestrator):
             # Try to get the current event loop
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # If loop is running, schedule the shutdown
-                loop.create_task(self.shutdown())
+                # Cannot synchronously wait while loop is running
+                # Log and skip - the running code should handle cleanup
+                logger.debug("Cannot shutdown_sync while event loop is running")
+                return
             elif not loop.is_closed():
                 # If loop exists but not running, use it
                 loop.run_until_complete(self.shutdown())
-            else:
-                # Loop is closed, try to create a new one
-                asyncio.run(self.shutdown())
+                logger.debug("Model client closed successfully")
+                return
         except RuntimeError:
-            # No event loop or event loop is closed - close client synchronously
-            # httpx clients have a synchronous close method
-            try:
-                if hasattr(self.model_client, '_client') and self.model_client._client is not None:
-                    # For OpenAI/LiteLLM clients that wrap httpx
-                    if hasattr(self.model_client._client, 'close'):
-                        self.model_client._client.close()
+            pass  # Fall through to sync fallback
+
+        # Fallback: try to create a new loop or close synchronously
+        try:
+            asyncio.run(self.shutdown())
+            logger.debug("Model client closed (new loop)")
+        except RuntimeError:
+            # Best-effort synchronous cleanup
+            # Note: Relies on internal httpx structure - may not work on all clients
+            self._close_client_sync()
+
+    def _close_client_sync(self) -> None:
+        """Best-effort synchronous client cleanup."""
+        if self.model_client is None:
+            return
+
+        try:
+            # Try common client structures
+            client = getattr(self.model_client, '_client', None)
+            if client is not None and hasattr(client, 'close'):
+                client.close()
                 logger.debug("Model client closed (sync fallback)")
-            except Exception as e:
-                logger.debug(f"Sync shutdown fallback failed: {e}")
+        except Exception as e:
+            logger.debug(f"Sync shutdown fallback failed: {e}")
 
     # =========================================================================
     # Error Handling
