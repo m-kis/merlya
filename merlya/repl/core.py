@@ -453,10 +453,15 @@ class MerlyaREPL:
 
         show_welcome(self.env, self.session_manager.current_session_id, self.config.language, conv_info)
 
+        # Track consecutive interrupts to allow force-quit
+        consecutive_interrupts = 0
+
         while True:
             try:
                 # Get user input
                 user_input = self.session.prompt("\nMerlya> ").strip()
+                # Reset interrupt counter on successful input
+                consecutive_interrupts = 0
 
                 if not user_input:
                     continue
@@ -547,8 +552,14 @@ class MerlyaREPL:
                     print_markdown(response)
 
             except KeyboardInterrupt:
-                # Clean interrupt - just print a newline and continue
-                console.print("\n[yellow]⏹ Interrupted[/yellow]")
+                consecutive_interrupts += 1
+                if consecutive_interrupts >= 3:
+                    console.print("\n[yellow]⏹ Force quit (3 consecutive interrupts)[/yellow]")
+                    break
+                elif consecutive_interrupts == 2:
+                    console.print("\n[yellow]⏹ Interrupted. Press Ctrl+C again to force quit.[/yellow]")
+                else:
+                    console.print("\n[yellow]⏹ Interrupted[/yellow]")
                 continue
             except EOFError:
                 break
