@@ -4,6 +4,16 @@ Merlya - AI-powered infrastructure orchestration CLI.
 A natural language interface for managing infrastructure,
 executing commands, and automating operations.
 """
+import warnings
+
+# Suppress noisy autogen warnings that don't affect functionality
+# "Finish reason mismatch" occurs with some LLM providers but is harmless
+warnings.filterwarnings(
+    "ignore",
+    message="Finish reason mismatch",
+    category=UserWarning,
+    module="autogen_agentchat"
+)
 
 try:
     from importlib.metadata import PackageNotFoundError, version
