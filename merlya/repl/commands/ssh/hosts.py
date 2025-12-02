@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import List
 
 from merlya.repl.ui import console, print_error, print_success, print_warning
-from merlya.security.ssh_credentials import validate_ssh_key_path
 from merlya.security.credentials import VariableType
+from merlya.security.ssh_credentials import validate_ssh_key_path
 
 SSH_PASSPHRASE_PREFIX = "ssh-passphrase-"
 MAX_INPUT_LENGTH = 256

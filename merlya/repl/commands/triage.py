@@ -2,7 +2,8 @@
 Triage command handler.
 """
 from merlya.repl.ui import console, print_error, print_success, print_warning
-from merlya.triage import classify_priority, describe_behavior, Intent, Priority
+from merlya.triage import Intent, Priority, classify_priority, describe_behavior
+
 
 def handle_triage_command(repl, args):
     """Handle /triage command to test priority classification."""

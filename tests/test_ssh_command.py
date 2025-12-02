@@ -14,9 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from merlya.repl.commands.ssh import SSHCommandHandler
+from merlya.repl.commands.ssh import SSHCommandHandler, agent, hosts, keys, passphrase, test
 from merlya.security.credentials import CredentialManager, VariableType
-from merlya.repl.commands.ssh import keys, agent, hosts, passphrase, test
 
 
 @pytest.fixture

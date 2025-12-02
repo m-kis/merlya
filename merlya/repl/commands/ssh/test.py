@@ -6,6 +6,7 @@ from typing import List
 from merlya.repl.ui import console, print_error, print_success, print_warning
 from merlya.security.ssh_credentials import sanitize_path_for_log
 
+
 def handle_test(handler, args: List[str]) -> bool:
     """Test SSH connection to a host."""
     if not args:

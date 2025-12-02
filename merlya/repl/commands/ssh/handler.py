@@ -1,7 +1,8 @@
 """
 Main SSH command handler that dispatches to sub-handlers.
 """
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
+
 from merlya.repl.ui import print_error
 from merlya.utils.logger import logger
 
@@ -52,8 +53,8 @@ class SSHCommandHandler:
         Returns True to indicate the REPL should continue.
         """
         from merlya.repl.commands.ssh.agent import show_agent
-        from merlya.repl.commands.ssh.keys import show_keys, handle_key, show_overview
         from merlya.repl.commands.ssh.hosts import handle_host
+        from merlya.repl.commands.ssh.keys import handle_key, show_keys, show_overview
         from merlya.repl.commands.ssh.passphrase import handle_passphrase
         from merlya.repl.commands.ssh.test import handle_test
 

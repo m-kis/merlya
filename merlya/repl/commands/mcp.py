@@ -2,7 +2,9 @@
 MCP command handler.
 """
 from rich.table import Table
+
 from merlya.repl.ui import console, print_error, print_success, print_warning
+
 
 def handle_mcp_command(repl, args):
     """Handle /mcp command for MCP server management."""

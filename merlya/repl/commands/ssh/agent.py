@@ -2,7 +2,9 @@
 SSH agent command handler.
 """
 from rich.table import Table
+
 from merlya.repl.ui import console, print_warning
+
 
 def show_agent(handler) -> bool:
     """Show detailed ssh-agent information."""

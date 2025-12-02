@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import List
 
 from rich.table import Table
+
 from merlya.repl.ui import console, print_error, print_success, print_warning
-from merlya.security.ssh_credentials import check_key_needs_passphrase, validate_ssh_key_path
 from merlya.security.credentials import VariableType
+from merlya.security.ssh_credentials import check_key_needs_passphrase, validate_ssh_key_path
 
 # Constants for secret key naming
 SSH_KEY_GLOBAL = "ssh_key_global"
