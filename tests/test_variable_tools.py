@@ -6,8 +6,9 @@ Ensures that:
 2. Variable query detection works for French/English
 3. Integration with credentials system works
 """
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 class TestVariableQueryDetection:
@@ -74,9 +75,9 @@ class TestGetUserVariables:
 
     def test_returns_message_when_no_credentials(self):
         """Should return error when credentials not available."""
-        from merlya.tools.interaction import get_user_variables
         from merlya.tools import base as tools_base
         from merlya.tools.base import ToolContext
+        from merlya.tools.interaction import get_user_variables
 
         # Save and replace global context
         old_ctx = tools_base._ctx
@@ -89,9 +90,9 @@ class TestGetUserVariables:
 
     def test_returns_empty_message_when_no_variables(self):
         """Should return helpful message when no variables defined."""
-        from merlya.tools.interaction import get_user_variables
         from merlya.tools import base as tools_base
         from merlya.tools.base import ToolContext
+        from merlya.tools.interaction import get_user_variables
 
         # Mock credentials with no variables
         mock_credentials = MagicMock()
@@ -112,9 +113,9 @@ class TestGetVariableValue:
 
     def test_returns_error_for_missing_variable(self):
         """Should return error when variable not found."""
-        from merlya.tools.interaction import get_variable_value
         from merlya.tools import base as tools_base
         from merlya.tools.base import ToolContext
+        from merlya.tools.interaction import get_variable_value
 
         # Mock credentials with no variables
         mock_credentials = MagicMock()
@@ -131,10 +132,10 @@ class TestGetVariableValue:
 
     def test_returns_value_for_existing_variable(self):
         """Should return value when variable exists."""
-        from merlya.tools.interaction import get_variable_value
+        from merlya.security.credentials import VariableType
         from merlya.tools import base as tools_base
         from merlya.tools.base import ToolContext
-        from merlya.security.credentials import VariableType
+        from merlya.tools.interaction import get_variable_value
 
         # Mock credentials with a variable
         mock_credentials = MagicMock()
@@ -152,10 +153,10 @@ class TestGetVariableValue:
 
     def test_masks_secret_variables(self):
         """Should mask secret variable values."""
-        from merlya.tools.interaction import get_variable_value
+        from merlya.security.credentials import VariableType
         from merlya.tools import base as tools_base
         from merlya.tools.base import ToolContext
-        from merlya.security.credentials import VariableType
+        from merlya.tools.interaction import get_variable_value
 
         # Mock credentials with a secret
         mock_credentials = MagicMock()
@@ -174,10 +175,10 @@ class TestGetVariableValue:
 
     def test_strips_at_prefix(self):
         """Should handle @prefix in variable name."""
-        from merlya.tools.interaction import get_variable_value
+        from merlya.security.credentials import VariableType
         from merlya.tools import base as tools_base
         from merlya.tools.base import ToolContext
-        from merlya.security.credentials import VariableType
+        from merlya.tools.interaction import get_variable_value
 
         mock_credentials = MagicMock()
         mock_credentials.get_variable.return_value = "value"
@@ -186,7 +187,7 @@ class TestGetVariableValue:
         old_ctx = tools_base._ctx
         try:
             tools_base._ctx = ToolContext(credentials=mock_credentials)
-            result = get_variable_value("@Test")
+            get_variable_value("@Test")
             # Should call get_variable with "Test", not "@Test"
             mock_credentials.get_variable.assert_called_with("Test")
         finally:
