@@ -2,9 +2,10 @@
 Tests for continuation detection logic.
 """
 import pytest
+
 from merlya.agents.orchestrator_service.continuation import (
-    ContinuationDecision,
     ContinuationContext,
+    ContinuationDecision,
     ContinuationDetector,
     get_continuation_detector,
     should_continue,

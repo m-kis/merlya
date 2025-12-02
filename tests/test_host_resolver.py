@@ -1,8 +1,10 @@
 """
 Tests for host resolver with disambiguation.
 """
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from merlya.context.host_resolver import (
     HostResolver,
     ResolvedHost,

@@ -1,8 +1,6 @@
 """
 Tests for hostname sanitization functionality.
 """
-import pytest
-
 from merlya.tools.base import sanitize_hostname
 
 
