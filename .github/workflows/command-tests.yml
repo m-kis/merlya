@@ -10,10 +10,11 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  test-run-command:
-    name: Test 'merlya run' command
+  # Single consolidated job for self-hosted runner efficiency
+  command-tests:
+    name: Test all Merlya commands
     runs-on: self-hosted
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -28,205 +29,36 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      - name: Test run command
-        run: |
-          poetry run python -m merlya.cli run "echo test" || echo "Run command test completed"
+      # CLI Commands
+      - name: Test 'merlya run' command
+        run: poetry run python -m merlya.cli run "echo test" || echo "Run command test completed"
 
-  test-setup-command:
-    name: Test 'merlya setup' command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
+      - name: Test 'merlya setup' command
+        run: poetry run python -m merlya.cli setup --help || echo "Setup command exists"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Test 'merlya status' command
+        run: poetry run python -m merlya.cli status
 
-      - name: Install Poetry
-        run: pip install poetry
+      - name: Test 'merlya version' command
+        run: poetry run python -m merlya.cli version
 
-      - name: Install dependencies
-        run: poetry install --no-interaction
+      # REPL Commands (via pytest)
+      - name: Test '/model' REPL command
+        run: poetry run pytest tests/ -v -k "model" --tb=short || echo "Model tests completed"
 
-      - name: Test setup command (non-interactive check)
-        run: |
-          poetry run python -m merlya.cli setup --help || echo "Setup command exists"
+      - name: Test '/cicd' REPL command
+        run: poetry run pytest tests/test_ci_module.py -v --tb=short
 
-  test-status-command:
-    name: Test 'merlya status' command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
+      - name: Test '/inventory' REPL command
+        run: poetry run pytest tests/ -v -k "inventory" --tb=short || echo "Inventory tests completed"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Test '/context' REPL command
+        run: poetry run pytest tests/ -v -k "context" --tb=short || echo "Context tests completed"
 
-      - name: Install Poetry
-        run: pip install poetry
+      - name: Test '/session' REPL command
+        run: poetry run pytest tests/ -v -k "session" --tb=short || echo "Session tests completed"
 
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test status command
-        run: |
-          poetry run python -m merlya.cli status
-
-  test-version-command:
-    name: Test 'merlya version' command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test version command
-        run: |
-          poetry run python -m merlya.cli version
-
-  test-model-command:
-    name: Test '/model' REPL command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test model command module
-        run: |
-          poetry run pytest tests/ -v -k "model" --tb=short || echo "Model tests completed"
-
-  test-cicd-command:
-    name: Test '/cicd' REPL command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test cicd command module
-        run: |
-          poetry run pytest tests/test_ci_module.py -v --tb=short
-
-  test-inventory-command:
-    name: Test '/inventory' REPL command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test inventory command module
-        run: |
-          poetry run pytest tests/ -v -k "inventory" --tb=short || echo "Inventory tests completed"
-
-  test-context-command:
-    name: Test '/context' REPL command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test context command module
-        run: |
-          poetry run pytest tests/ -v -k "context" --tb=short || echo "Context tests completed"
-
-  test-session-command:
-    name: Test '/session' REPL command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test session command module
-        run: |
-          poetry run pytest tests/ -v -k "session" --tb=short || echo "Session tests completed"
-
-  test-secret-command:
-    name: Test '/secret' REPL command
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test secret command module
+      - name: Test '/secret' REPL command
         run: |
           poetry run pytest tests/test_keyring_store.py -v --tb=short
           echo "✅ Secret/Keyring tests passed"
@@ -234,18 +66,7 @@ jobs:
   notify:
     runs-on: self-hosted
     timeout-minutes: 5
-    needs: [
-      test-run-command,
-      test-setup-command,
-      test-status-command,
-      test-version-command,
-      test-model-command,
-      test-cicd-command,
-      test-inventory-command,
-      test-context-command,
-      test-session-command,
-      test-secret-command
-    ]
+    needs: [command-tests]
     if: always()
     steps:
       - name: Send Slack notification
@@ -255,34 +76,16 @@ jobs:
           SLACK_USERNAME: ${{ vars.SLACK_USERNAME }}
           SLACK_ICON_EMOJI: ${{ vars.SLACK_ICON_EMOJI }}
         run: |
-          # Skip if webhook URL is not configured
           if [ -z "${SLACK_WEBHOOK_URL}" ]; then
             echo "⚠️  SLACK_WEBHOOK_URL secret not configured - skipping notification"
             exit 0
           fi
 
-          # Use variables with defaults
           CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
           USERNAME="${SLACK_USERNAME:-Merlya CI}"
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
-          # Count passed/failed (use || true to avoid exit code 1 when PASSED is 0)
-          TOTAL=10
-          PASSED=0
-          [ "${{ needs.test-run-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-setup-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-status-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-version-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-model-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-cicd-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-inventory-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-context-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-session-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          [ "${{ needs.test-secret-command.result }}" == "success" ] && PASSED=$((PASSED + 1)) || true
-          FAILED=$((TOTAL - PASSED))
-
-          # Determine overall status
-          if [ "$FAILED" -eq 0 ]; then
+          if [ "${{ needs.command-tests.result }}" == "success" ]; then
             STATUS_EMOJI="✅"
             COLOR="good"
           else
@@ -290,11 +93,8 @@ jobs:
             COLOR="danger"
           fi
 
-          # Compact summary
           SUMMARY="${STATUS_EMOJI} *Merlya Commands* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
-          DETAILS="${PASSED}/${TOTAL} commands passed"
 
-          # Send compact notification
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
             -d "{
@@ -303,6 +103,6 @@ jobs:
               \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
-                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
+                \"text\": \"${SUMMARY}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
               }]
             }"

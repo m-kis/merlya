@@ -10,9 +10,10 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  lint:
+  # Single consolidated job for self-hosted runner efficiency
+  ci:
     runs-on: self-hosted
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -21,41 +22,35 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install dependencies
+        run: |
+          pip install poetry ruff mypy types-paramiko types-PyYAML types-requests
+          poetry install --no-interaction
 
+      # Lint
       - name: Lint
         run: ruff check merlya/ tests/ --output-format=github
 
-  test:
-    runs-on: self-hosted
-    timeout-minutes: 25
-    strategy:
-      matrix:
-        python-version: ['3.11', '3.12', '3.13']
-    steps:
-      - uses: actions/checkout@v4
+      # Type check (non-blocking)
+      - name: Type check
+        continue-on-error: true
+        run: |
+          echo "::warning::Typecheck is currently non-blocking."
+          mypy merlya/ --ignore-missing-imports --no-error-summary || true
+          ERRORS=$(mypy merlya/ --ignore-missing-imports 2>&1 | grep -c "error:" || echo "0")
+          echo "Total mypy errors: $ERRORS"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
+      # Security audit
+      - name: Security audit
+        run: |
+          if grep -rn "shell=True" merlya/ci/ --include="*.py" | grep -v "^.*#.*shell=True"; then
+            echo "ERROR: shell=True found in CI module - security vulnerability!"
+            exit 1
+          fi
+          echo "Security audit passed: no shell=True in CI module"
 
-      - name: Cache Poetry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: poetry-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Run tests with coverage
+      # Run all tests
+      - name: Run tests
         run: |
           poetry run pytest tests/ -v --tb=short \
             --ignore=tests/test_ollama_manual.py \
@@ -74,178 +69,7 @@ jobs:
             || echo "Tests completed (some may have been skipped)"
         timeout-minutes: 20
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.11'
-        with:
-          files: coverage.xml
-          fail_ci_if_error: false
-
-  async-test-validation:
-    runs-on: self-hosted
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache Poetry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: poetry-${{ runner.os }}-asynctest-${{ hashFiles('poetry.lock') }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Verify async test discovery
-        run: |
-          poetry run pytest tests/test_orchestrator_error_handling.py \
-            --collect-only -q
-          echo "Async test file discovery: SUCCESS"
-
-      - name: Run async tests with explicit marker
-        run: |
-          poetry run pytest tests/test_orchestrator_error_handling.py \
-            -v --tb=short \
-            -m "asyncio" \
-            --asyncio-mode=auto \
-            --timeout=60
-
-  config-tests:
-    name: Configuration & Storage Tests
-    runs-on: self-hosted
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache Poetry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: poetry-${{ runner.os }}-config-${{ hashFiles('poetry.lock') }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Test embedding configuration
-        run: |
-          poetry run pytest tests/test_embedding_config.py -v --tb=short
-          echo "✅ Embedding config tests passed"
-
-      - name: Test keyring store
-        run: |
-          poetry run pytest tests/test_keyring_store.py -v --tb=short
-          echo "✅ Keyring store tests passed"
-
-      - name: Test log configuration
-        run: |
-          poetry run pytest tests/test_log_config.py -v --tb=short
-          echo "✅ Log config tests passed"
-
-      - name: Test credentials module
-        run: |
-          poetry run pytest tests/ -v -k "credentials" --tb=short || echo "Credentials tests completed"
-
-  typecheck:
-    runs-on: self-hosted
-    timeout-minutes: 15
-    # TODO: Remove continue-on-error once all mypy errors are fixed
-    # Track progress: https://github.com/m-kis/merlya/issues (mypy cleanup issue)
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: mypy-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
-
-      - name: Install dependencies
-        run: |
-          pip install poetry
-          poetry install --no-interaction
-          pip install mypy types-paramiko types-PyYAML types-requests
-
-      - name: Type check
-        run: |
-          echo "::warning::Typecheck is currently non-blocking. See GitHub issues for cleanup progress."
-          mypy merlya/ --ignore-missing-imports --no-error-summary || true
-          # Count errors for tracking
-          ERRORS=$(mypy merlya/ --ignore-missing-imports 2>&1 | grep -c "error:" || echo "0")
-          echo "Total mypy errors: $ERRORS"
-
-  security:
-    runs-on: self-hosted
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Run security tests
-        run: |
-          poetry run pytest tests/test_ci_module.py -v \
-            -k "Security or ResourceLimits" \
-            --tb=short
-
-      - name: Check for shell=True usage (security audit)
-        run: |
-          # Fail if shell=True is found in CI module (except comments)
-          if grep -rn "shell=True" merlya/ci/ --include="*.py" | grep -v "^.*#.*shell=True"; then
-            echo "ERROR: shell=True found in CI module - security vulnerability!"
-            exit 1
-          fi
-          echo "Security audit passed: no shell=True in CI module"
-
-  build:
-    runs-on: self-hosted
-    timeout-minutes: 10
-    needs: [lint, test, async-test-validation, config-tests, security]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
+      # Build package
       - name: Build package
         run: poetry build
 
@@ -255,10 +79,16 @@ jobs:
           name: dist
           path: dist/
 
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+
   notify:
     runs-on: self-hosted
     timeout-minutes: 5
-    needs: [lint, test, typecheck, async-test-validation, config-tests, security, build]
+    needs: [ci]
     if: always()
     steps:
       - name: Send Slack notification
@@ -268,39 +98,16 @@ jobs:
           SLACK_USERNAME: ${{ vars.SLACK_USERNAME }}
           SLACK_ICON_EMOJI: ${{ vars.SLACK_ICON_EMOJI }}
         run: |
-          # Skip if webhook URL is not configured
           if [ -z "${SLACK_WEBHOOK_URL}" ]; then
             echo "⚠️  SLACK_WEBHOOK_URL secret not configured - skipping notification"
             exit 0
           fi
 
-          # Use variables with defaults
           CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
           USERNAME="${SLACK_USERNAME:-Merlya CI}"
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
-          # Build compact status icons
-          get_icon() {
-            case "$1" in
-              success) echo "✓" ;;
-              failure) echo "✗" ;;
-              *) echo "○" ;;
-            esac
-          }
-
-          LINT_ICON=$(get_icon "${{ needs.lint.result }}")
-          TEST_ICON=$(get_icon "${{ needs.test.result }}")
-          TYPE_ICON=$(get_icon "${{ needs.typecheck.result }}")
-          CONFIG_ICON=$(get_icon "${{ needs.config-tests.result }}")
-          SEC_ICON=$(get_icon "${{ needs.security.result }}")
-          BUILD_ICON=$(get_icon "${{ needs.build.result }}")
-
-          # Determine overall status
-          if [ "${{ needs.lint.result }}" == "success" ] && \
-             [ "${{ needs.test.result }}" == "success" ] && \
-             [ "${{ needs.config-tests.result }}" == "success" ] && \
-             [ "${{ needs.security.result }}" == "success" ] && \
-             [ "${{ needs.build.result }}" == "success" ]; then
+          if [ "${{ needs.ci.result }}" == "success" ]; then
             STATUS_EMOJI="✅"
             COLOR="good"
           else
@@ -308,11 +115,8 @@ jobs:
             COLOR="danger"
           fi
 
-          # Compact summary line
           SUMMARY="${STATUS_EMOJI} *Merlya CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
-          DETAILS="${LINT_ICON} lint ${TEST_ICON} test ${TYPE_ICON} types ${CONFIG_ICON} config ${SEC_ICON} security ${BUILD_ICON} build"
 
-          # Send compact notification
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
             -d "{
@@ -321,6 +125,6 @@ jobs:
               \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
-                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
+                \"text\": \"${SUMMARY}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
               }]
             }"
