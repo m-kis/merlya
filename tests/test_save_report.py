@@ -34,7 +34,7 @@ class TestSaveReport:
                     content="This is test content."
                 )
 
-                assert "✅ Report saved to:" in result
+                assert "Report saved to:" in result
                 assert temp_reports_dir.name in result
 
                 # Verify file was created
@@ -58,7 +58,7 @@ class TestSaveReport:
                     filename="my-custom-report"
                 )
 
-                assert "✅ Report saved to:" in result
+                assert "Report saved to:" in result
 
                 # Verify filename contains custom name
                 reports = list(temp_reports_dir.glob("*.md"))
@@ -113,7 +113,7 @@ class TestSaveReport:
                 )
 
                 # Should succeed with sanitized filename
-                assert "✅ Report saved to:" in result
+                assert "Report saved to:" in result
 
                 # Verify file is in correct directory
                 reports = list(temp_reports_dir.glob("*.md"))
@@ -132,7 +132,7 @@ class TestSaveReport:
                     filename="report<>:\"|?*name"
                 )
 
-                assert "✅ Report saved to:" in result
+                assert "Report saved to:" in result
 
                 # Verify file was created with sanitized name
                 reports = list(temp_reports_dir.glob("*.md"))
@@ -195,7 +195,7 @@ class TestSaveReport:
 
                 result = save_report(title="Test", content="Content")
 
-                assert "✅ Report saved to:" in result
+                assert "Report saved to:" in result
                 assert reports_dir.exists()
 
     def test_save_report_console_notification(self, mock_context, temp_reports_dir):

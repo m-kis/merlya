@@ -217,12 +217,14 @@ def check_key_needs_passphrase(key_path: str, skip_validation: bool = False) -> 
         import paramiko
 
         # Try key types in order of commonality
+        # Note: DSSKey may not exist in newer paramiko versions
         key_classes = [
             paramiko.RSAKey,
             paramiko.Ed25519Key,
             paramiko.ECDSAKey,
-            paramiko.DSSKey,
         ]
+        if hasattr(paramiko, 'DSSKey'):
+            key_classes.append(paramiko.DSSKey)
 
         for key_class in key_classes:
             try:
@@ -290,13 +292,15 @@ def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, O
         import paramiko
 
         # Try key types in order of commonality
-        # RSA first (most common in legacy systems), then Ed25519 (modern), ECDSA, DSS
+        # RSA first (most common in legacy systems), then Ed25519 (modern), ECDSA
+        # Note: DSSKey may not exist in newer paramiko versions
         key_classes = [
             paramiko.RSAKey,
             paramiko.Ed25519Key,
             paramiko.ECDSAKey,
-            paramiko.DSSKey,
         ]
+        if hasattr(paramiko, 'DSSKey'):
+            key_classes.append(paramiko.DSSKey)
 
         last_error = None
         for key_class in key_classes:

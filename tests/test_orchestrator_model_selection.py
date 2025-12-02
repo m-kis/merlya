@@ -38,7 +38,7 @@ class TestOrchestratorModelSelection:
 
     @patch.dict(os.environ, {
         "OPENROUTER_API_KEY": "test-key",
-        "MERLYA_PROVIDER": "openrouter"  # ✅ Force provider to openrouter
+        "MERLYA_PROVIDER": "openrouter"
     }, clear=True)
     @patch('merlya.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('merlya.agents.orchestrator.ModelConfig')
@@ -53,33 +53,30 @@ class TestOrchestratorModelSelection:
         When using OpenRouter, should use OpenRouter model from config,
         NOT the Ollama model (regression test for bug).
         """
-        # Import and mock OpenAIChatCompletionClient
         import merlya.agents.orchestrator as orch_module
         mock_client = MagicMock()
         orch_module.OpenAIChatCompletionClient = mock_client
 
         mock_config_class.return_value = mock_model_config
 
-        # Mock StorageManager to prevent stdin reads
         mock_storage_instance = MagicMock()
         mock_storage.return_value = mock_storage_instance
 
-        # Create orchestrator - StorageManager is mocked to prevent stdin reads
-        # This allows _create_model_client to run (we only care about the side effect)
-        _ = Orchestrator(mode=OrchestratorMode.BASIC)
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
 
-        # Verify that OpenAIChatCompletionClient was called with correct model
+        # Trigger client creation by calling _get_client_for_task
+        orchestrator._get_client_for_task("synthesis")
+
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs
 
-        # Should use OpenRouter model, NOT Ollama model
         assert call_kwargs["model"] == "anthropic/claude-4.5-sonnet-20250929"
         assert call_kwargs["model"] != "mistral-small3.1:latest"
         assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
 
     @patch.dict(os.environ, {
         "ANTHROPIC_API_KEY": "test-key",
-        "MERLYA_PROVIDER": "anthropic"  # ✅ Force provider to anthropic
+        "MERLYA_PROVIDER": "anthropic"
     }, clear=True)
     @patch('merlya.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('merlya.agents.orchestrator.ModelConfig')
@@ -100,7 +97,10 @@ class TestOrchestratorModelSelection:
         mock_storage_instance = MagicMock()
         mock_storage.return_value = mock_storage_instance
 
-        _ = Orchestrator(mode=OrchestratorMode.BASIC)
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Trigger client creation
+        orchestrator._get_client_for_task("synthesis")
 
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs
@@ -111,7 +111,7 @@ class TestOrchestratorModelSelection:
 
     @patch.dict(os.environ, {
         "OPENAI_API_KEY": "test-key",
-        "MERLYA_PROVIDER": "openai"  # ✅ Force provider to openai
+        "MERLYA_PROVIDER": "openai"
     }, clear=True)
     @patch('merlya.agents.orchestrator.HAS_AUTOGEN', True)
     @patch('merlya.agents.orchestrator.ModelConfig')
@@ -132,7 +132,10 @@ class TestOrchestratorModelSelection:
         mock_storage_instance = MagicMock()
         mock_storage.return_value = mock_storage_instance
 
-        _ = Orchestrator(mode=OrchestratorMode.BASIC)
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Trigger client creation
+        orchestrator._get_client_for_task("synthesis")
 
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs
@@ -165,7 +168,10 @@ class TestOrchestratorModelSelection:
         mock_storage_instance = MagicMock()
         mock_storage.return_value = mock_storage_instance
 
-        _ = Orchestrator(mode=OrchestratorMode.BASIC)
+        orchestrator = Orchestrator(mode=OrchestratorMode.BASIC)
+
+        # Trigger client creation
+        orchestrator._get_client_for_task("synthesis")
 
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args.kwargs

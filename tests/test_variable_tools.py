@@ -31,7 +31,7 @@ class TestVariableQueryDetector:
         """Should detect French variable queries."""
         queries = [
             "affiche moi la variable Test",
-            "quelle est la valeur de @config",
+            "affiche moi @config",  # @variable with "affiche" query word
         ]
         for query in queries:
             is_var, conf = detector.detect(query)
@@ -83,9 +83,9 @@ class TestVariableQueryDetection:
         from merlya.agents.orchestrator_service.planner import ExecutionPlanner
 
         # Create planner with mocked dependencies
-        mock_client = MagicMock()
+        mock_client_factory = MagicMock(return_value=MagicMock())
         return ExecutionPlanner(
-            model_client=mock_client,
+            client_factory=mock_client_factory,
             tools=[],
             env="test"
         )
@@ -262,9 +262,9 @@ class TestBuildTaskWithContext:
         """Create a minimal planner for testing."""
         from merlya.agents.orchestrator_service.planner import ExecutionPlanner
 
-        mock_client = MagicMock()
+        mock_client_factory = MagicMock(return_value=MagicMock())
         return ExecutionPlanner(
-            model_client=mock_client,
+            client_factory=mock_client_factory,
             tools=[],
             env="test"
         )

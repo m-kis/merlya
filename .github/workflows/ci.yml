@@ -36,9 +36,13 @@ jobs:
         continue-on-error: true
         run: |
           echo "::warning::Typecheck is currently non-blocking."
-          mypy merlya/ --ignore-missing-imports --no-error-summary || true
-          ERRORS=$(mypy merlya/ --ignore-missing-imports 2>&1 | grep -c "error:" || echo "0")
+          MYPY_OUTPUT=$(mypy merlya/ --ignore-missing-imports 2>&1) || true
+          echo "$MYPY_OUTPUT"
+          ERRORS=$(echo "$MYPY_OUTPUT" | grep -c "error:" || echo "0")
           echo "Total mypy errors: $ERRORS"
+          if [ "$ERRORS" -gt 0 ]; then
+            exit 1
+          fi
 
       # Security audit
       - name: Security audit

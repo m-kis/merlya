@@ -31,10 +31,10 @@ jobs:
 
       # CLI Commands
       - name: Test 'merlya run' command
-        run: poetry run python -m merlya.cli run "echo test" || echo "Run command test completed"
+        run: poetry run python -m merlya.cli run "echo test"
 
       - name: Test 'merlya setup' command
-        run: poetry run python -m merlya.cli setup --help || echo "Setup command exists"
+        run: poetry run python -m merlya.cli setup --help
 
       - name: Test 'merlya status' command
         run: poetry run python -m merlya.cli status
@@ -44,24 +44,22 @@ jobs:
 
       # REPL Commands (via pytest)
       - name: Test '/model' REPL command
-        run: poetry run pytest tests/ -v -k "model" --tb=short || echo "Model tests completed"
+        run: poetry run pytest tests/ -v -k "model" --tb=short
 
       - name: Test '/cicd' REPL command
         run: poetry run pytest tests/test_ci_module.py -v --tb=short
 
       - name: Test '/inventory' REPL command
-        run: poetry run pytest tests/ -v -k "inventory" --tb=short || echo "Inventory tests completed"
+        run: poetry run pytest tests/ -v -k "inventory" --tb=short
 
       - name: Test '/context' REPL command
-        run: poetry run pytest tests/ -v -k "context" --tb=short || echo "Context tests completed"
+        run: poetry run pytest tests/ -v -k "context" --tb=short
 
       - name: Test '/session' REPL command
-        run: poetry run pytest tests/ -v -k "session" --tb=short || echo "Session tests completed"
+        run: poetry run pytest tests/ -v -k "session" --tb=short
 
       - name: Test '/secret' REPL command
-        run: |
-          poetry run pytest tests/test_keyring_store.py -v --tb=short
-          echo "✅ Secret/Keyring tests passed"
+        run: poetry run pytest tests/test_keyring_store.py -v --tb=short
 
   notify:
     runs-on: self-hosted
