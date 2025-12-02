@@ -8,6 +8,7 @@ from merlya.llm.model_config import ModelConfig
 from merlya.llm.ollama_client import OllamaClient, get_ollama_client
 from merlya.utils.display import get_display_manager
 from merlya.utils.logger import logger
+from merlya.utils.stats_manager import get_stats_manager
 
 
 class LLMRouter:
@@ -168,10 +169,17 @@ class LLMRouter:
             logger.warning("No valid LLM provider configured. Returning mock response.")
             return self._get_mock_response(prompt, system_prompt)
 
+        stats = get_stats_manager()
         try:
-            return self._call_with_spinner(
-                call_func, prompt, system_prompt, model, show_spinner
-            )
+            with stats.time_llm_call(self.provider, model, task_type=task) as timer:
+                result = self._call_with_spinner(
+                    call_func, prompt, system_prompt, model, show_spinner
+                )
+                # Estimate tokens (rough approximation: ~4 chars per token)
+                prompt_tokens = (len(prompt) + len(system_prompt)) // 4
+                completion_tokens = len(result) // 4
+                timer.set_tokens(prompt_tokens, completion_tokens)
+            return result
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
             return f"Error: {str(e)}"

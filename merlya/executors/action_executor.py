@@ -1,4 +1,5 @@
 import subprocess
+import time
 from typing import Any, Dict, List, Optional
 
 from merlya.executors.ssh import SSHManager
@@ -8,6 +9,7 @@ from merlya.triage import ErrorAnalysis, get_error_analyzer
 from merlya.utils.display import get_display_manager
 from merlya.utils.logger import logger
 from merlya.utils.security import redact_sensitive_info
+from merlya.utils.stats_manager import get_stats_manager
 
 
 class ActionExecutor:
@@ -112,16 +114,34 @@ class ActionExecutor:
             return self._execute_remote(target, command, timeout=timeout, show_spinner=show_spinner)
 
     def _execute_local(self, command: str, timeout: int = 60) -> Dict[str, Any]:
+        stats = get_stats_manager()
+        start_time = time.perf_counter()
         try:
+            import shlex
+            # SECURITY: Use shlex.split to parse command and shell=False to prevent injection
+            args = shlex.split(command)
+
             proc_result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=timeout
+                args, shell=False, capture_output=True, text=True, timeout=timeout
             )
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
             result = {
                 "exit_code": proc_result.returncode,
                 "stdout": proc_result.stdout.strip(),
                 "stderr": proc_result.stderr.strip(),
                 "success": proc_result.returncode == 0,
+                "duration_ms": duration_ms,
             }
+
+            # Record action metrics
+            stats.record_action(
+                target="localhost",
+                command_type="local",
+                duration_ms=duration_ms,
+                exit_code=proc_result.returncode,
+                success=proc_result.returncode == 0,
+                risk_level=self.risk_assessor.assess(command).get("level", "unknown"),
+            )
 
             # Analyze errors on failure
             if proc_result.returncode != 0 and proc_result.stderr:
@@ -136,10 +156,19 @@ class ActionExecutor:
                     }
 
             return result
+        except ValueError as e:
+            # shlex raises ValueError for unbalanced quotes
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            stats.record_action("localhost", "local", duration_ms, -1, False, "unknown")
+            return {"success": False, "error": f"Command parsing error: {e}"}
         except subprocess.TimeoutExpired:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            stats.record_action("localhost", "local", duration_ms, -1, False, "unknown")
             logger.error(f"⏱️ Command timed out after {timeout}s")
             return {"success": False, "error": f"Command timed out after {timeout} seconds"}
         except Exception as e:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            stats.record_action("localhost", "local", duration_ms, -1, False, "unknown")
             return {"success": False, "error": str(e)}
 
     def _execute_remote(
@@ -149,16 +178,31 @@ class ActionExecutor:
         timeout: int = 60,
         show_spinner: bool = True
     ) -> Dict[str, Any]:
+        stats = get_stats_manager()
+        start_time = time.perf_counter()
+
         exit_code, stdout, stderr = self.ssh_manager.execute(
             host, command, timeout=timeout, show_spinner=show_spinner
         )
 
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
         result = {
             "exit_code": exit_code,
             "stdout": stdout,
             "stderr": stderr,
             "success": exit_code == 0,
+            "duration_ms": duration_ms,
         }
+
+        # Record action metrics
+        stats.record_action(
+            target=host,
+            command_type="remote",
+            duration_ms=duration_ms,
+            exit_code=exit_code,
+            success=exit_code == 0,
+            risk_level=self.risk_assessor.assess(command).get("level", "unknown"),
+        )
 
         # Analyze errors on failure
         if exit_code != 0 and stderr:

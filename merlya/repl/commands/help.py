@@ -12,7 +12,7 @@ from merlya.repl.ui import console
 
 # Available help topics
 HELP_TOPICS = [
-    'model', 'variables', 'inventory', 'cicd', 'mcp', 'context', 'session'
+    'model', 'variables', 'inventory', 'cicd', 'mcp', 'context', 'session', 'stats'
 ]
 
 # Quick reference for main help
@@ -46,6 +46,8 @@ SLASH_COMMANDS = {
     '/compact': 'Compact current conversation',
     '/delete': 'Delete conversation <id>',
     '/reset': 'Reset agents memory',
+    # Statistics
+    '/stats': 'Show app statistics (llm, queries, actions, embeddings, agents)',
     # Other
     '/language': 'Change language (en/fr)',
     '/reload-commands': 'Reload custom commands',

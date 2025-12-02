@@ -25,6 +25,7 @@ from merlya.repl.ui import console, print_error, print_markdown, print_success, 
 from merlya.tools.base import get_status_manager
 from merlya.utils.config import ConfigManager
 from merlya.utils.logger import logger
+from merlya.utils.stats_manager import get_stats_manager
 
 
 @contextlib.contextmanager
@@ -191,8 +192,14 @@ class MerlyaREPL:
         # Setup SSH credentials (passphrase) on first run if needed
         self._setup_ssh_credentials()
 
+        # Stats manager for metrics collection
+        self.stats_manager = get_stats_manager()
+
         # Start session
         self.session_manager.start_session(metadata={"env": env, "mode": "repl"})
+
+        # Set session ID for metrics tracking
+        self.stats_manager.set_session_id(self.session_manager.current_session_id)
 
     def _load_env_file(self):
         """Load .env file to set API keys in environment.
@@ -319,8 +326,47 @@ class MerlyaREPL:
             # Don't fail startup if SSH setup fails
             logger.debug(f"SSH credential setup skipped: {e}")
 
+    def _check_provider_readiness(self) -> str:
+        """
+        Check if the configured LLM provider is ready.
+
+        Returns:
+            Status string to append to welcome message, or empty if all good.
+        """
+        from merlya.llm.readiness import check_provider_readiness, format_readiness_result
+
+        try:
+            result = check_provider_readiness()
+
+            if result.ready and not result.warnings:
+                # All good - just log it
+                return f"**Provider**: ✅ {result.provider} ({result.model})\n"
+
+            # Format result for display
+            formatted = format_readiness_result(result)
+
+            if result.errors:
+                # Critical error - show prominently
+                console.print("\n[bold red]⚠️ Provider Readiness Check Failed[/bold red]")
+                console.print(formatted)
+                console.print("[dim]Fix the issues above or change provider with /model provider <name>[/dim]\n")
+                return f"**Provider**: ❌ {result.provider} (not ready)\n"
+
+            elif result.warnings:
+                # Warnings only - show but continue
+                return f"**Provider**: ⚠️ {result.provider} ({result.model}) - {len(result.warnings)} warning(s)\n"
+
+            return f"**Provider**: ✅ {result.provider} ({result.model})\n"
+
+        except Exception as e:
+            logger.warning(f"Provider readiness check failed: {e}")
+            return "**Provider**: ⚠️ Check failed\n"
+
     def start(self):
         """Start the REPL loop."""
+        # Check provider readiness before starting
+        provider_status = self._check_provider_readiness()
+
         # Show welcome message
         conv = self.conversation_manager.current_conversation
         conv_info = ""
@@ -330,6 +376,9 @@ class MerlyaREPL:
 **Conversation**: {conv.id} ({len(conv.messages)} messages, {conv.token_count:,} tokens)
 **Token usage**: {token_usage:.1f}% of limit
 """
+        # Add provider status
+        conv_info += provider_status
+
         # Add memory status
         memory_status = "✅ FalkorDB" if self.orchestrator.has_long_term_memory else "💾 SQLite only"
         conv_info += f"**Memory**: {memory_status}\n"
@@ -390,6 +439,9 @@ class MerlyaREPL:
 
                 # Use StatusManager so tools can pause spinner for user input
                 status_manager = get_status_manager()
+                query_timer = self.stats_manager.start_timer()
+                query_success = True
+                query_error = None
                 try:
                     status_manager.set_console(console)
                     status_manager.start("[cyan]🧠 Processing...[/cyan]")
@@ -404,8 +456,21 @@ class MerlyaREPL:
                                 original_query=user_input if resolved_query != user_input else None,
                             )
                         )
+                except Exception as e:
+                    query_success = False
+                    query_error = str(e)
+                    raise
                 finally:
                     status_manager.stop()
+                    # Record query metrics
+                    query_timer.stop()
+                    self.stats_manager.record_query(
+                        query_length=len(user_input),
+                        response_length=len(response) if 'response' in dir() else 0,
+                        total_time_ms=query_timer.elapsed_ms(),
+                        success=query_success,
+                        error=query_error,
+                    )
 
                 self.conversation_manager.add_assistant_message(response)
                 # Display response with markdown formatting

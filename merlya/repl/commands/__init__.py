@@ -9,6 +9,7 @@ from merlya.repl.commands.help import SLASH_COMMANDS, HelpCommandHandler
 from merlya.repl.commands.inventory import InventoryCommandHandler
 from merlya.repl.commands.model import ModelCommandHandler
 from merlya.repl.commands.session import SessionCommandHandler
+from merlya.repl.commands.stats import StatsCommandHandler
 from merlya.repl.commands.variables import VariablesCommandHandler
 
 # Re-export CommandHandler and CommandResult from handlers.py for backward compatibility
@@ -24,4 +25,5 @@ __all__ = [
     "VariablesCommandHandler",
     "SessionCommandHandler",
     "InventoryCommandHandler",
+    "StatsCommandHandler",
 ]

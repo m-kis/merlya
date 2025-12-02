@@ -46,6 +46,7 @@ class CommandHandler:
         self._session_handler = None
         self._help_handler = None
         self._cicd_handler = None
+        self._stats_handler = None
 
     @property
     def context_handler(self):
@@ -94,6 +95,14 @@ class CommandHandler:
             from merlya.repl.commands.cicd import CICDCommandHandler
             self._cicd_handler = CICDCommandHandler(self.repl)
         return self._cicd_handler
+
+    @property
+    def stats_handler(self):
+        """Lazy load stats handler."""
+        if self._stats_handler is None:
+            from merlya.repl.commands.stats import StatsCommandHandler
+            self._stats_handler = StatsCommandHandler(self.repl)
+        return self._stats_handler
 
     async def handle_command(self, command: str) -> CommandResult:
         """
@@ -202,6 +211,9 @@ class CommandHandler:
             # CI/CD commands
             '/cicd': lambda: self.cicd_handler.handle_cicd(args),
             '/debug-workflow': lambda: self.cicd_handler.handle_debug_workflow(args),
+
+            # Statistics
+            '/stats': lambda: self.stats_handler.handle_stats(args),
 
             # Delegated to core.py (triage, mcp, language)
             '/mcp': lambda: self.repl.handle_mcp_command(args),
