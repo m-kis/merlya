@@ -338,24 +338,24 @@ class ModelCommandHandler:
         elif subcmd == 'list':
             # List valid tasks and their current configuration
             console.print("\n[bold]Valid Tasks & Current Configuration:[/bold]")
-            
+
             task_descriptions = {
                 "correction": "Fast corrections (typos, simple fixes)",
                 "planning": "Complex reasoning (architecture, design)",
                 "synthesis": "General tasks (balanced workload)",
             }
-            
+
             # Get current configuration
             task_models = model_config.get_task_models()
             provider = model_config.get_provider()
-            
+
             for task, desc in task_descriptions.items():
                 # Get configured alias/model
                 configured = task_models.get(task, model_config.TASK_MODELS.get(task, "default"))
-                
+
                 # Resolve to actual model ID
                 actual_model = model_config.get_model(provider, task=task)
-                
+
                 console.print(f"  • [cyan]{task:<12}[/cyan] - {desc}")
                 console.print(f"    Configured: [yellow]{configured}[/yellow]")
                 console.print(f"    Actual:     [green]{actual_model}[/green]")

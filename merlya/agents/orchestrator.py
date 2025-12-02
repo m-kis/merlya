@@ -149,16 +149,16 @@ class Orchestrator(BaseOrchestrator):
     def _get_client_for_task(self, task: str = "synthesis") -> "OpenAIChatCompletionClient":
         """
         Get or create a model client for a specific task.
-        
+
         Args:
             task: Task type (correction, planning, synthesis)
-            
+
         Returns:
             Cached or new OpenAIChatCompletionClient
         """
         if task in self._client_cache:
             return self._client_cache[task]
-            
+
         client = self._create_model_client(task)
         self._client_cache[task] = client
         return client
@@ -178,11 +178,11 @@ class Orchestrator(BaseOrchestrator):
 
         # ✅ FIX: Get model for THE ACTUAL PROVIDER, not config_provider
         # This ensures we use the correct model for the selected provider
-        
+
         # Get task-specific model ID
         # Note: We pass the task to get_model to resolve aliases (haiku/sonnet/opus)
         # to the correct model ID for the provider
-        
+
         # Ollama (local LLM)
         if provider == "ollama" or os.getenv("OLLAMA_MODEL"):
             model = os.getenv("OLLAMA_MODEL") or model_config.get_model("ollama", task=task)
@@ -259,13 +259,12 @@ class Orchestrator(BaseOrchestrator):
 
     def reload_agents(self) -> None:
         """Reload agents with current configuration."""
-        import asyncio
 
         logger.info("Reloading agents...")
 
         # Close old model clients
         self.shutdown_sync()
-        
+
         # Clear cache
         self._client_cache = {}
 
@@ -384,7 +383,7 @@ class Orchestrator(BaseOrchestrator):
                 logger.debug(f"Model client for {task} closed successfully")
             except Exception as e:
                 logger.debug(f"Error closing model client for {task}: {e}")
-        
+
         self._client_cache = {}
 
     def shutdown_sync(self) -> None:

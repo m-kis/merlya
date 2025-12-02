@@ -365,7 +365,7 @@ Environment: {self.env}"""
             task_type = "correction"
         elif priority_name == "P3":
             task_type = "planning"
-            
+
         # Create a temporary engineer with the specific model for this task
         engineer = AssistantAgent(
             name="DevSecOps_Engineer",
