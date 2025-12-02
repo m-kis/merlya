@@ -48,6 +48,7 @@ from merlya.tools import (
     recall_skill,
     remember_skill,
     request_elevation,
+    save_report,
     scan_host,
     service_control,
     tail_logs,
@@ -110,4 +111,5 @@ __all__ = [
     "remember_skill",
     "recall_skill",
     "request_elevation",
+    "save_report",
 ]
