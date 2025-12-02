@@ -377,10 +377,16 @@ class Orchestrator(BaseOrchestrator):
         Closes all model clients to prevent 'Event loop is closed' errors
         from httpx connections during garbage collection.
         """
-        for task, client in self._client_cache.items():
+        for task, client in list(self._client_cache.items()):
             try:
                 await client.close()
                 logger.debug(f"Model client for {task} closed successfully")
+            except RuntimeError as e:
+                # Event loop closed errors are expected during shutdown - ignore silently
+                if "Event loop is closed" in str(e):
+                    pass
+                else:
+                    logger.debug(f"Error closing model client for {task}: {e}")
             except Exception as e:
                 logger.debug(f"Error closing model client for {task}: {e}")
 
