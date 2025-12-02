@@ -52,7 +52,14 @@ from .infra_tools import (
     PreviewFileEditTool,
     RollbackTool,
 )
-from .interaction import ask_user, recall_skill, remember_skill, request_elevation
+from .interaction import (
+    ask_user,
+    get_user_variables,
+    get_variable_value,
+    recall_skill,
+    remember_skill,
+    request_elevation,
+)
 from .security import analyze_security_logs, audit_host
 from .system import (
     disk_info,
@@ -110,6 +117,8 @@ __all__ = [
     "web_fetch",
     # Interaction
     "ask_user",
+    "get_user_variables",
+    "get_variable_value",
     "remember_skill",
     "recall_skill",
     "request_elevation",

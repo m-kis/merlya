@@ -124,6 +124,27 @@ class TestModularTools:
         assert callable(remember_skill)
         assert callable(recall_skill)
 
+    def test_variable_tools_exist(self):
+        """Variable tools should be importable."""
+        from merlya.tools.interaction import get_user_variables, get_variable_value
+
+        assert callable(get_user_variables)
+        assert callable(get_variable_value)
+
+    def test_variable_tools_from_main_module(self):
+        """Variable tools should be importable from main module."""
+        from merlya.tools import get_user_variables, get_variable_value
+
+        assert callable(get_user_variables)
+        assert callable(get_variable_value)
+
+    def test_variable_tools_from_autogen_compat(self):
+        """Variable tools should be importable from autogen_tools for backward compat."""
+        from merlya.agents.autogen_tools import get_user_variables, get_variable_value
+
+        assert callable(get_user_variables)
+        assert callable(get_variable_value)
+
 
 class TestInfraToolsExist:
     """Test that infra tools are still exported."""

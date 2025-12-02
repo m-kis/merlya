@@ -292,6 +292,8 @@ class Orchestrator(BaseOrchestrator):
             autogen_tools.web_fetch,
             # Interaction & Learning
             autogen_tools.ask_user,
+            autogen_tools.get_user_variables,
+            autogen_tools.get_variable_value,
             autogen_tools.remember_skill,
             autogen_tools.recall_skill,
             autogen_tools.request_elevation,

@@ -34,6 +34,8 @@ from merlya.tools import (
     find_file,
     get_infrastructure_context,
     get_tool_context,
+    get_user_variables,
+    get_variable_value,
     glob_files,
     grep_files,
     initialize_tools,
@@ -103,6 +105,8 @@ __all__ = [
     "web_fetch",
     # Interaction
     "ask_user",
+    "get_user_variables",
+    "get_variable_value",
     "remember_skill",
     "recall_skill",
     "request_elevation",

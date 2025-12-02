@@ -137,98 +137,127 @@ Return only the agent name.""",
         )
 
     def _get_engineer_prompt(self) -> str:
-        """Get system prompt for Engineer - Expert DevSecOps/Linux Engineer."""
-        return f"""You are a SENIOR DevSecOps/Linux Engineer with 15+ years of experience.
-You have deep expertise in: Linux systems, databases (MongoDB, PostgreSQL, MySQL),
-Kubernetes, Docker, networking, security, and infrastructure automation.
+        """Get system prompt for Engineer - Expert DevSecOps/Linux Engineer.
 
-YOUR ROLE:
-- You are NOT just a command executor
-- You THINK like an expert engineer: analyze, understand root causes, propose solutions
-- You EXPLAIN technical concepts clearly
-- You RECOMMEND best practices and alternatives
-- You GUIDE users through complex problems
+        Optimized for token efficiency while maintaining capability.
+        """
+        return f"""You are an expert DevSecOps/Linux Engineer. You THINK, ANALYZE, and RECOMMEND solutions—not just execute commands blindly.
 
-Available Tools:
-CORE: list_hosts(), scan_host(hostname), execute_command(target, command, reason), check_permissions(target)
-FILES: read_remote_file(host, path, lines), write_remote_file(host, path, content, backup), tail_logs(host, path, lines, grep)
-SYSTEM: disk_info(host), memory_info(host), process_list(host), network_connections(host)
-SERVICES: service_control(host, service, action)
-CONTAINERS: docker_exec(container, command, host), kubectl_exec(namespace, pod, command)
-INTERACTION: ask_user(question), request_elevation(target, command, error_message, reason)
+TOOLS:
+- HOSTS: list_hosts(), scan_host(hostname), check_permissions(target)
+- EXEC: execute_command(target, command, reason)
+- FILES: read_remote_file(host, path), write_remote_file(host, path, content), tail_logs(host, path, lines, grep)
+- SYSTEM: disk_info(host), memory_info(host), process_list(host), network_connections(host), service_control(host, service, action)
+- CONTAINERS: docker_exec(container, command), kubectl_exec(namespace, pod, command)
+- VARIABLES: get_user_variables(), get_variable_value(name) - access user-defined @variables
+- INTERACTION: ask_user(question), request_elevation(target, command, error_message)
 
-HOW TO RESPOND:
-1. **Understand first**: What is the user REALLY trying to solve?
-2. **Investigate**: Gather relevant information (logs, configs, status)
-3. **Analyze**: Identify root cause or explain current state
-4. **Recommend**: Propose solutions with clear explanations
-5. **Execute if asked**: Only execute after explaining what you'll do
+VARIABLES SYSTEM:
+- Users define variables with `/variables set <key> <value>` (e.g., @Test, @proddb)
+- When asked about a @variable, use get_variable_value(name) to retrieve it
+- Use get_user_variables() to list all defined variables
+- @variables are substituted in queries, so "check @myserver" becomes "check actual-hostname"
 
-RESPONSE FORMAT (Markdown):
-## Analysis
-[What you found and what it means]
+WORKFLOW:
+1. Understand the real problem
+2. Gather info (logs, configs, status) - use tools appropriately
+3. Analyze and explain findings clearly
+4. Recommend solutions with example commands
+5. Execute only when asked or for simple actions
 
-## Root Cause / Explanation
-[Technical explanation in clear terms]
+RULES:
+- list_hosts() FIRST before acting on hosts
+- EXPLAIN reasoning, don't just execute
+- On "Permission denied" → use request_elevation()
+- After ask_user() → CONTINUE task, don't terminate
+- For @variable queries → use get_variable_value() or get_user_variables()
 
-## Recommendations
-[Concrete solutions with example commands]
-```bash
-# Example command with explanation
-command here
-```
+RESPONSE FORMAT (Markdown with sections: Analysis, Recommendations, Next Steps)
 
-## Next Steps
-[What the user should do next]
-
-CRITICAL RULES:
-- Use list_hosts() FIRST to verify hosts exist
-- ALWAYS scan a host before acting on it
-- EXPLAIN your reasoning, don't just execute blindly
-- For complex issues, ASK if the user wants you to execute fixes
-- When using ask_user() to get information, CONTINUE the task after receiving the response - do NOT terminate until the full task is complete
-- When a command fails with "Permission denied", use request_elevation() to ask user for privilege escalation
-
-TERMINATION RULES:
-- NEVER say just "TERMINATE" without content - you MUST provide a summary first
-- ALWAYS end with a clear summary of what was done and what the results are
-- Format: Write your complete response, then on a NEW LINE write "TERMINATE"
-- If you have nothing to report, explain why (e.g., "No hosts configured" or "Could not connect")
+TERMINATION: Always provide a summary before TERMINATE. Never terminate without content.
 
 Environment: {self.env}"""
 
-    def _build_task_with_context(self, user_query: str, conversation_history: Optional[List[Dict[str, Any]]] = None) -> str:
+    def _build_task_with_context(
+        self,
+        user_query: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        variable_context: Optional[str] = None
+    ) -> str:
         """
-        Build task string with conversation context.
+        Build task string with conversation and variable context.
 
         Injects recent conversation history so the agent understands
         references like "this server", "the file", etc.
+
+        Also injects variable context hint when query mentions @variables.
         """
-        if not conversation_history:
-            return user_query
+        parts = []
 
-        # Take last N exchanges (user + assistant pairs) to keep context manageable
-        max_context_messages = 6  # 3 exchanges
-        recent = conversation_history[-max_context_messages:]
+        # Add variable context if provided
+        if variable_context:
+            parts.append(variable_context)
 
-        if not recent:
-            return user_query
+        # Add conversation history if available
+        if conversation_history:
+            # Take last N exchanges (user + assistant pairs) to keep context manageable
+            max_context_messages = 6  # 3 exchanges
+            recent = conversation_history[-max_context_messages:]
 
-        # Build context summary
-        context_parts = ["[Previous conversation context:]"]
-        for msg in recent:
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            # Truncate long messages
-            if len(content) > 500:
-                content = content[:500] + "..."
-            prefix = "User" if role == "user" else "Assistant"
-            context_parts.append(f"{prefix}: {content}")
+            if recent:
+                parts.append("[Previous conversation context:]")
+                for msg in recent:
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    # Truncate long messages
+                    if len(content) > 500:
+                        content = content[:500] + "..."
+                    prefix = "User" if role == "user" else "Assistant"
+                    parts.append(f"{prefix}: {content}")
+                parts.append("")
 
-        context_parts.append("\n[Current request:]")
-        context_parts.append(user_query)
+        # Add current request
+        if parts:
+            parts.append("[Current request:]")
+        parts.append(user_query)
 
-        return "\n".join(context_parts)
+        return "\n".join(parts)
+
+    def _detect_variable_query(self, user_query: str) -> Optional[str]:
+        """
+        Detect if query is about user variables and provide context hint.
+
+        Returns a context string if variable-related, None otherwise.
+        """
+        import re
+
+        query_lower = user_query.lower()
+
+        # Detect variable-related queries
+        variable_patterns = [
+            r'@\w+',                    # Direct @variable reference
+            r'variable',                # Mentions "variable"
+            r'variables',               # Mentions "variables"
+            r'affiche.*variable',       # French: "display variable"
+            r'montre.*variable',        # French: "show variable"
+            r'liste.*variable',         # French: "list variable"
+            r'show.*variable',          # English: "show variable"
+            r'display.*variable',       # English: "display variable"
+            r'list.*variable',          # English: "list variable"
+            r'what.*is.*@',             # "What is @..."
+            r'qu.*est.*@',              # French: "What is @..."
+            r'valeur.*@',               # French: "value of @..."
+            r'value.*@',                # English: "value of @..."
+        ]
+
+        for pattern in variable_patterns:
+            if re.search(pattern, query_lower):
+                return """📌 **VARIABLE QUERY DETECTED**
+This query is about user-defined @variables in Merlya.
+Use get_user_variables() to list all variables, or get_variable_value(name) to get a specific one.
+Variables are set via `/variables set <key> <value>` and can be used as @key in queries."""
+
+        return None
 
     def _get_behavior_for_priority(self, priority_name: str) -> BehaviorProfile:
         """Get BehaviorProfile for a priority level."""
@@ -323,8 +352,11 @@ Environment: {self.env}"""
         priority_name = priority or "P3"
         behavior = self._get_behavior_for_priority(priority_name)
 
+        # Detect variable-related queries
+        variable_context = self._detect_variable_query(user_query)
+
         # Build task with conversation context
-        task = self._build_task_with_context(user_query, conversation_history)
+        task = self._build_task_with_context(user_query, conversation_history, variable_context)
 
         # Add priority-specific guidance (adapts agent behavior)
         priority_guidance = self._get_priority_guidance(priority_name)
@@ -384,8 +416,11 @@ Environment: {self.env}"""
         # Get behavior profile based on priority
         behavior = self._get_behavior_for_priority(priority_name)
 
+        # Detect variable-related queries
+        variable_context = self._detect_variable_query(user_query)
+
         # Build base task with context
-        base_task = self._build_task_with_context(user_query, conversation_history)
+        base_task = self._build_task_with_context(user_query, conversation_history, variable_context)
 
         # Add priority-specific guidance (adapts agent behavior)
         priority_guidance = self._get_priority_guidance(priority_name)

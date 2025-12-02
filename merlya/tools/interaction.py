@@ -1,10 +1,132 @@
 """
 User interaction and learning tools.
 """
-from typing import Annotated, Optional
+from typing import Annotated, Dict, Optional
 
 from merlya.tools.base import get_tool_context, validate_host
 from merlya.utils.logger import logger
+
+
+def get_user_variables(
+    filter_type: Annotated[Optional[str], "Filter by type: 'host', 'config', 'secret', or None for all"] = None
+) -> str:
+    """
+    Get user-defined variables from the session.
+
+    Use this tool when the user asks about their variables, wants to see
+    what variables are defined, or references a @variable.
+
+    Args:
+        filter_type: Optional type filter ('host', 'config', 'secret', or None for all)
+
+    Returns:
+        Formatted list of variables with their types and values (secrets are masked)
+    """
+    ctx = get_tool_context()
+    logger.info(f"Tool: get_user_variables (filter_type={filter_type})")
+
+    if not ctx.credentials:
+        return "❌ Credential manager not available"
+
+    try:
+        from merlya.security.credentials import VariableType
+
+        # Get all typed variables
+        variables = ctx.credentials.list_variables_typed()
+
+        if not variables:
+            return "ℹ️ No user variables defined.\n\nUse `/variables set <key> <value>` to define a variable, then reference it with @key in your queries."
+
+        # Filter by type if specified
+        if filter_type:
+            try:
+                target_type = VariableType(filter_type.lower())
+                variables = {
+                    k: v for k, v in variables.items()
+                    if v[1] == target_type
+                }
+                if not variables:
+                    return f"ℹ️ No variables of type '{filter_type}' defined."
+            except ValueError:
+                return f"❌ Invalid type filter '{filter_type}'. Valid types: host, config, secret"
+
+        # Format output
+        output_lines = ["📋 **User Variables:**", ""]
+        for key, (value, var_type) in sorted(variables.items()):
+            # Mask secrets
+            if var_type == VariableType.SECRET:
+                display_value = "********"
+            elif len(value) > 80:
+                display_value = value[:40] + "..." + value[-35:]
+            else:
+                display_value = value
+
+            type_emoji = {"host": "🖥️", "config": "⚙️", "secret": "🔐"}.get(var_type.value, "📌")
+            output_lines.append(f"- **@{key}** ({type_emoji} {var_type.value}): `{display_value}`")
+
+        output_lines.extend([
+            "",
+            "💡 Use @variable_name in your queries to substitute the value.",
+            "   Example: 'check status on @prodserver'"
+        ])
+
+        return "\n".join(output_lines)
+
+    except Exception as e:
+        logger.error(f"Failed to get variables: {e}")
+        return f"❌ Error retrieving variables: {e}"
+
+
+def get_variable_value(
+    variable_name: Annotated[str, "Name of the variable (without @)"]
+) -> str:
+    """
+    Get the value of a specific user variable.
+
+    Use this when the user asks about a specific variable like @Test.
+
+    Args:
+        variable_name: Name of the variable (without the @ prefix)
+
+    Returns:
+        The variable value and type, or error if not found
+    """
+    ctx = get_tool_context()
+    logger.info(f"Tool: get_variable_value '{variable_name}'")
+
+    if not ctx.credentials:
+        return "❌ Credential manager not available"
+
+    try:
+        from merlya.security.credentials import VariableType
+
+        # Clean up variable name (remove @ if present)
+        clean_name = variable_name.lstrip('@')
+
+        # Get variable value
+        value = ctx.credentials.get_variable(clean_name)
+        if value is None:
+            # List available variables as suggestion
+            available = list(ctx.credentials.list_variables().keys())
+            if available:
+                suggestions = ", ".join([f"@{v}" for v in available[:5]])
+                return f"❌ Variable '@{clean_name}' not found.\n\nAvailable variables: {suggestions}"
+            return f"❌ Variable '@{clean_name}' not found. No variables are defined yet."
+
+        # Get type
+        var_type = ctx.credentials.get_variable_type(clean_name)
+
+        # Mask secrets
+        if var_type == VariableType.SECRET:
+            display_value = "********"
+            return f"🔐 **@{clean_name}** (secret): `{display_value}`\n\n_Secret values are never displayed for security._"
+        else:
+            type_emoji = {"host": "🖥️", "config": "⚙️"}.get(var_type.value, "📌")
+            return f"{type_emoji} **@{clean_name}** ({var_type.value}): `{value}`"
+
+    except Exception as e:
+        logger.error(f"Failed to get variable: {e}")
+        return f"❌ Error retrieving variable: {e}"
 
 
 def ask_user(
