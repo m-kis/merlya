@@ -151,7 +151,7 @@ TOOLS:
 - SYSTEM: disk_info(host), memory_info(host), process_list(host), network_connections(host), service_control(host, service, action)
 - CONTAINERS: docker_exec(container, command), kubectl_exec(namespace, pod, command)
 - VARIABLES: get_user_variables(), get_variable_value(name) - access user-defined @variables
-- INTERACTION: ask_user(question), request_elevation(target, command, error_message)
+- INTERACTION: ask_user(question) - ONLY for missing critical info, request_elevation(target, command, error_message), save_report(title, content) - save long analyses to /tmp
 
 VARIABLES SYSTEM:
 - Users define variables with `/variables set <key> <value>` (e.g., @Test, @proddb)
@@ -170,12 +170,16 @@ RULES:
 - list_hosts() FIRST before acting on hosts
 - EXPLAIN reasoning, don't just execute
 - On "Permission denied" → use request_elevation()
-- After ask_user() → CONTINUE task, don't terminate
+- ONLY use ask_user() when you NEED critical information to proceed (hostname, credentials, choice between options)
+- NEVER ask "what do you want to do next?" or present option menus - just complete the task and provide your answer
 - For @variable queries → use get_variable_value() or get_user_variables()
 
-RESPONSE FORMAT (Markdown with sections: Analysis, Recommendations, Next Steps)
+RESPONSE FORMAT (Markdown with sections: Summary, Findings, Recommendations)
+- Give DIRECT ANSWERS to questions
+- Include specific data, configs, or results you found
+- For long analyses/documentation, use save_report() to save to /tmp, then show a summary
 
-TERMINATION: Always provide a summary before TERMINATE. Never terminate without content.
+TERMINATION: Provide a complete answer, then TERMINATE. Don't ask follow-up questions.
 
 Environment: {self.env}"""
 
@@ -277,25 +281,26 @@ Environment: {self.env}"""
 - Execute read operations autonomously (no need to ask)
 - Confirm write/destructive operations only
 - Maximum {behavior.max_commands_before_pause} commands before pause
-- Detailed responses with explanations and next steps"""
+- Detailed responses with explanations - give direct answers"""
 
     def _get_intent_guidance(self, intent: str) -> str:
         """Get intent-specific guidance to inject into the task."""
         if intent == "analysis":
             return """
-🔍 **MODE: ANALYSIS** - Your focus is to INVESTIGATE and RESOLVE.
+🔍 **MODE: ANALYSIS** - Your focus is to INVESTIGATE and ANSWER.
 - Dig deep: check logs, configs, status - USE TOOLS AUTONOMOUSLY
-- EXPLAIN what you find in clear terms
+- EXPLAIN what you find in clear terms with SPECIFIC DATA
 - Execute read-only operations without asking (list, status, logs, configs)
 - For write/modify operations (restart, stop, delete, config changes): explain what you'll do, then proceed
-- Provide a complete analysis with findings and next steps"""
+- ANSWER the user's question directly - don't ask what they want to do next"""
 
         elif intent == "query":
             return """
 📋 **MODE: QUERY** - Your focus is to GATHER and PRESENT information.
 - Collect the requested information efficiently using tools
-- Present results clearly and organized
-- Execute read operations autonomously"""
+- Present results clearly with SPECIFIC DATA (configs, values, status)
+- Execute read operations autonomously
+- Give a DIRECT ANSWER - no follow-up questions needed"""
 
         else:  # action
             return """
@@ -303,7 +308,7 @@ Environment: {self.env}"""
 - Verify targets, then EXECUTE - be autonomous
 - For read/diagnostic operations: proceed without asking
 - For write/destructive operations: describe briefly then execute
-- Report results clearly"""
+- Report results clearly - no need to ask what's next"""
 
     async def execute_basic(
         self,

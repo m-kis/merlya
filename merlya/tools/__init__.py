@@ -59,6 +59,7 @@ from .interaction import (
     recall_skill,
     remember_skill,
     request_elevation,
+    save_report,
 )
 from .security import analyze_security_logs, audit_host
 from .system import (
@@ -122,6 +123,7 @@ __all__ = [
     "remember_skill",
     "recall_skill",
     "request_elevation",
+    "save_report",
     # CI/CD
     "get_ci_status",
     "list_ci_workflows",

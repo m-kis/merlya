@@ -297,6 +297,7 @@ class Orchestrator(BaseOrchestrator):
             autogen_tools.remember_skill,
             autogen_tools.recall_skill,
             autogen_tools.request_elevation,
+            autogen_tools.save_report,
             # Knowledge Graph tools
             knowledge_tools.record_incident,
             knowledge_tools.search_knowledge,
