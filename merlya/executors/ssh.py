@@ -5,6 +5,7 @@ import paramiko
 
 from merlya.executors.connectivity import ConnectivityPlanner
 from merlya.executors.ssh_connection_pool import get_connection_pool
+from merlya.executors.ssh_utils import read_channel_with_timeout
 from merlya.security.credentials import CredentialManager
 from merlya.utils.display import get_display_manager
 from merlya.utils.logger import logger
@@ -173,27 +174,28 @@ class SSHManager:
             return -1, "", str(e)
 
         try:
-
-            # Execute command
+            # Execute command using transport channel for proper timeout control
             logger.debug(f"⚡ Executing: {redact_sensitive_info(command)}")
-            stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
 
-            # Set timeout on channel
-            stdout.channel.settimeout(timeout)
+            transport = client.get_transport()
+            if not transport or not transport.is_active():
+                logger.error(f"❌ SSH transport not active for {host}")
+                return -1, "", "SSH transport not active"
 
-            # Wait for completion
-            try:
-                exit_code = stdout.channel.recv_exit_status()
-                out = stdout.read().decode('utf-8', errors='replace').strip()
-                err = stderr.read().decode('utf-8', errors='replace').strip()
+            channel = transport.open_session()
+            channel.settimeout(timeout)
+            channel.exec_command(command)
 
-                logger.debug(f"✅ Command completed with exit code {exit_code}")
+            # Read with proper timeout protection (prevents blocking on Broken Pipe)
+            out, err, exit_code = read_channel_with_timeout(channel, timeout)
 
-                return exit_code, out, err
+            logger.debug(f"✅ Command completed with exit code {exit_code}")
 
-            except socket.timeout:
-                logger.error(f"⏱️ Command timed out after {timeout}s on {host}")
-                return -1, "", f"Command timed out after {timeout} seconds"
+            return exit_code, out, err
+
+        except socket.timeout:
+            logger.error(f"⏱️ Command timed out after {timeout}s on {host}")
+            return -1, "", f"Command timed out after {timeout} seconds"
 
         except paramiko.AuthenticationException as e:
             logger.error(f"🔒 SSH authentication failed for {user}@{host}: {e}")
@@ -202,10 +204,6 @@ class SSHManager:
         except paramiko.SSHException as e:
             logger.error(f"❌ SSH error on {host}: {e}")
             return -1, "", f"SSH error: {e}"
-
-        except socket.timeout:
-            logger.error(f"⏱️ SSH connection timed out on {host}")
-            return -1, "", "SSH connection timed out"
 
         except Exception as e:
             logger.error(f"❌ Unexpected error connecting to {host}: {e}")
