@@ -11,7 +11,7 @@ env:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
         run: ruff check merlya/ tests/ --output-format=github
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 25
     strategy:
       matrix:
@@ -82,7 +82,7 @@ jobs:
           fail_ci_if_error: false
 
   async-test-validation:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -122,7 +122,7 @@ jobs:
 
   config-tests:
     name: Configuration & Storage Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -166,7 +166,7 @@ jobs:
           poetry run pytest tests/ -v -k "credentials" --tb=short || echo "Credentials tests completed"
 
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     # TODO: Remove continue-on-error once all mypy errors are fixed
     # Track progress: https://github.com/m-kis/merlya/issues (mypy cleanup issue)
@@ -200,7 +200,7 @@ jobs:
           echo "Total mypy errors: $ERRORS"
 
   security:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -232,7 +232,7 @@ jobs:
           echo "Security audit passed: no shell=True in CI module"
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     needs: [lint, test, async-test-validation, config-tests, security]
     steps:
@@ -256,7 +256,7 @@ jobs:
           path: dist/
 
   notify:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
     needs: [lint, test, typecheck, async-test-validation, config-tests, security, build]
     if: always()
