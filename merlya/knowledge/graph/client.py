@@ -209,12 +209,14 @@ class FalkorDBClient:
         for row in result.result_set:
             row_dict = {}
             for i, col in enumerate(result.header):
+                # FalkorDB header format is [[type, name], ...], extract name
+                col_name = col[1] if isinstance(col, list) and len(col) > 1 else str(col)
                 value = row[i]
                 # Handle Node objects
                 if hasattr(value, 'properties'):
-                    row_dict[col] = dict(value.properties)
+                    row_dict[col_name] = dict(value.properties)
                 else:
-                    row_dict[col] = value
+                    row_dict[col_name] = value
             parsed.append(row_dict)
 
         return parsed
