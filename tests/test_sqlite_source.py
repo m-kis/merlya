@@ -1,7 +1,6 @@
 """
 Tests for SQLiteSource - loads hosts from InventoryRepository.
 """
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -157,7 +156,6 @@ class TestHostRegistrySQLiteIntegration:
     def test_host_registry_loads_sqlite_source(self):
         """Test: HostRegistry includes SQLiteSource in loaded sources."""
         from merlya.context.host_registry import HostRegistry
-        from merlya.context.sources.base import InventorySource
 
         # Mock all sources to return empty to test source loading
         with patch('merlya.context.sources.sqlite.SQLiteSource.load') as mock_sqlite:

@@ -15,9 +15,6 @@ from collections import OrderedDict
 from enum import Enum
 from typing import Any, Callable, List, Optional
 
-# Maximum number of cached model clients to prevent unbounded memory growth
-MAX_CLIENT_CACHE_SIZE = 10
-
 from rich.console import Console
 
 from merlya.agents import autogen_tools, knowledge_tools
@@ -27,6 +24,9 @@ from merlya.agents.orchestrator_service.planner import ExecutionPlanner
 from merlya.llm.model_config import ModelConfig
 from merlya.utils.config import ConfigManager
 from merlya.utils.logger import logger
+
+# Maximum number of cached model clients to prevent unbounded memory growth
+MAX_CLIENT_CACHE_SIZE = 10
 
 # Optional imports
 try:

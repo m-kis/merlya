@@ -17,8 +17,8 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 # Optional imports for embeddings
 try:
     import numpy as np
-    from sentence_transformers import SentenceTransformer
     import torch
+    from sentence_transformers import SentenceTransformer
 
     HAS_EMBEDDINGS = True
 except ImportError:

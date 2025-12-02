@@ -470,6 +470,7 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
     def test_incorrect_passphrase_returns_false(self, tmp_path):
         """Test: Incorrect passphrase returns (False, error_message)."""
         import paramiko
+
         from merlya.security.ssh_credentials import validate_passphrase_for_key
 
         key_path = tmp_path / "encrypted_key"
@@ -499,6 +500,7 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
     def test_password_required_returns_false(self, tmp_path):
         """Test: Key requires passphrase but none provided."""
         import paramiko
+
         from merlya.security.ssh_credentials import validate_passphrase_for_key
 
         key_path = tmp_path / "needs_pass"
