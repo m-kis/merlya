@@ -216,10 +216,12 @@ def check_key_needs_passphrase(key_path: str, skip_validation: bool = False) -> 
     try:
         import paramiko
 
+        # Try key types in order of commonality
         key_classes = [
+            paramiko.RSAKey,
             paramiko.Ed25519Key,
             paramiko.ECDSAKey,
-            paramiko.RSAKey,
+            paramiko.DSSKey,
         ]
 
         for key_class in key_classes:
@@ -287,12 +289,16 @@ def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, O
     try:
         import paramiko
 
+        # Try key types in order of commonality
+        # RSA first (most common in legacy systems), then Ed25519 (modern), ECDSA, DSS
         key_classes = [
+            paramiko.RSAKey,
             paramiko.Ed25519Key,
             paramiko.ECDSAKey,
-            paramiko.RSAKey,
+            paramiko.DSSKey,
         ]
 
+        last_error = None
         for key_class in key_classes:
             try:
                 # Try to load key with passphrase
@@ -307,17 +313,28 @@ def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, O
                 # Check for wrong passphrase indicators
                 if "incorrect" in error_str or "decrypt" in error_str or "bad" in error_str:
                     return False, "Incorrect passphrase"
-                if "not a valid" in error_str:
-                    # Wrong key type, try next class
+                # Wrong key type indicators - try next class
+                # "encountered RSA key" means Ed25519Key saw RSA format
+                # "not a valid" means generic wrong type
+                # "expected OPENSSH" means wrong format for this key class
+                if any(x in error_str for x in ["not a valid", "encountered", "expected"]):
+                    last_error = str(e)
                     continue
-                # Other SSH error
-                return False, f"SSH error: {e}"
+                # Other SSH error - might be passphrase related
+                last_error = str(e)
+                continue
             except FileNotFoundError:
                 return False, "Key file not found"
             except PermissionError:
                 return False, "Permission denied reading key file"
+            except Exception as e:
+                # Catch other errors (e.g., binascii.Error for corrupt keys)
+                last_error = f"{type(e).__name__}: {e}"
+                continue
 
         # If we tried all key classes without success
+        if last_error:
+            return False, f"Could not load key: {last_error}"
         return False, "Unrecognized key format"
 
     except ImportError:
