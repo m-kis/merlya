@@ -39,12 +39,37 @@ def suppress_asyncio_errors():
 
     Set MERLYA_DEBUG_ERRORS=1 to disable suppression and see all errors.
     """
+    import logging
     import os
 
     # Debug mode: disable suppression entirely
     if os.getenv("MERLYA_DEBUG_ERRORS"):
         yield
         return
+
+    # Suppress autogen_core logger during interrupt handling
+    # This prevents "Error processing publish message" from being logged
+    autogen_logger = logging.getLogger("autogen_core")
+    autogen_agentchat_logger = logging.getLogger("autogen_agentchat")
+
+    # Add a filter to suppress specific error messages
+    class InterruptFilter(logging.Filter):
+        """Filter out noisy errors during Ctrl+C interrupts."""
+
+        SUPPRESSED_MESSAGES = [
+            "Error processing publish message",
+            "task_done() called too many times",
+            "CancelledError",
+            "Event loop is closed",
+        ]
+
+        def filter(self, record):
+            msg = record.getMessage()
+            return not any(pattern in msg for pattern in self.SUPPRESSED_MESSAGES)
+
+    interrupt_filter = InterruptFilter()
+    autogen_logger.addFilter(interrupt_filter)
+    autogen_agentchat_logger.addFilter(interrupt_filter)
 
     old_stderr = sys.stderr
 
@@ -150,6 +175,9 @@ def suppress_asyncio_errors():
         yield
     finally:
         sys.stderr = old_stderr
+        # Remove the filters from autogen loggers
+        autogen_logger.removeFilter(interrupt_filter)
+        autogen_agentchat_logger.removeFilter(interrupt_filter)
 
 
 class MerlyaREPL:
@@ -530,243 +558,23 @@ class MerlyaREPL:
 
     def handle_mcp_command(self, args):
         """Handle /mcp command for MCP server management."""
-        from rich.table import Table
-
-        if not args:
-            console.print("[yellow]Usage:[/yellow]")
-            console.print("  /mcp list - List configured servers")
-            console.print("  /mcp add - Add a new server (interactive)")
-            console.print("  /mcp delete <name> - Remove a server")
-            console.print("  /mcp show <name> - Show server details")
-            console.print("  /mcp examples - Show example configurations")
-            return True
-
-        cmd = args[0]
-
-        if cmd == 'list':
-            servers = self.mcp_manager.list_servers()
-            if not servers:
-                print_warning("No MCP servers configured")
-                console.print("[dim]💡 Use /mcp add to configure a server[/dim]")
-            else:
-                table = Table(title="MCP Servers")
-                table.add_column("Name", style="cyan")
-                table.add_column("Command", style="green")
-                table.add_column("Status", style="yellow")
-
-                for name, config in servers.items():
-                    cmd_str = config.get('command', 'N/A')
-                    status = "[green]✅[/green]" if config.get('enabled', True) else "[red]❌[/red]"
-                    table.add_row(name, cmd_str[:50], status)
-                console.print(table)
-
-        elif cmd == 'add':
-            console.print("\n[bold cyan]➕ Add MCP Server[/bold cyan]\n")
-            try:
-                name = input("Server name: ").strip()
-                command = input("Command (e.g., npx, uvx): ").strip()
-                args_str = input("Arguments (space-separated, or empty): ").strip()
-                env_str = input("Environment variables (KEY=VALUE, comma-separated, or empty): ").strip()
-
-                if name and command:
-                    server_args = args_str.split() if args_str else []
-                    # Parse environment variables
-                    env_vars = {}
-                    if env_str:
-                        for pair in env_str.split(','):
-                            pair = pair.strip()
-                            if '=' in pair:
-                                key, value = pair.split('=', 1)
-                                env_vars[key.strip()] = value.strip()
-
-                    # Build config dict as expected by MCPManager
-                    config = {
-                        "type": "stdio",
-                        "command": command,
-                        "args": server_args,
-                    }
-                    if env_vars:
-                        config["env"] = env_vars
-
-                    self.mcp_manager.add_server(name, config)
-                    print_success(f"MCP server '{name}' added")
-                else:
-                    print_error("Name and command are required")
-            except (KeyboardInterrupt, EOFError):
-                print_warning("Cancelled")
-
-        elif cmd == 'delete' and len(args) > 1:
-            name = args[1]
-            if self.mcp_manager.remove_server(name):
-                print_success(f"Server '{name}' removed")
-            else:
-                print_error(f"Server '{name}' not found")
-
-        elif cmd == 'show' and len(args) > 1:
-            name = args[1]
-            servers = self.mcp_manager.list_servers()
-            if name in servers:
-                config = servers[name]
-                console.print(f"\n[bold]{name}[/bold]")
-                console.print(f"  Command: {config.get('command')}")
-                console.print(f"  Args: {config.get('args', [])}")
-                console.print(f"  Env: {config.get('env', {})}")
-            else:
-                print_error(f"Server '{name}' not found")
-
-        elif cmd == 'examples':
-            console.print("\n[bold]Example MCP Servers:[/bold]\n")
-            console.print("  [cyan]Filesystem:[/cyan]")
-            console.print("    npx @modelcontextprotocol/server-filesystem /path/to/dir\n")
-            console.print("  [cyan]Git:[/cyan]")
-            console.print("    npx @modelcontextprotocol/server-git --repository /path/to/repo\n")
-            console.print("  [cyan]PostgreSQL:[/cyan]")
-            console.print("    npx @modelcontextprotocol/server-postgres postgresql://...\n")
-
-        return True
+        from merlya.repl.commands.mcp import handle_mcp_command
+        return handle_mcp_command(self, args)
 
     def handle_language_command(self, args):
         """Handle /language command to change language preference."""
-        if not args:
-            current = self.config.language or 'en'
-            console.print(f"Current language: [cyan]{current}[/cyan]")
-            console.print("Usage: /language <en|fr>")
-            return True
-
-        lang = args[0].lower()
-        if lang in ['en', 'english']:
-            self.config.language = 'en'
-            print_success("Language set to English")
-        elif lang in ['fr', 'french', 'français']:
-            self.config.language = 'fr'
-            print_success("Langue définie sur Français")
-        else:
-            print_error("Supported languages: en, fr")
-
-        return True
+        from merlya.repl.commands.language import handle_language_command
+        return handle_language_command(self, args)
 
     def handle_triage_command(self, args):
         """Handle /triage command to test priority classification."""
-        from merlya.triage import classify_priority, describe_behavior
-
-        if not args:
-            console.print("[yellow]Usage:[/yellow] /triage <query>")
-            console.print("Example: /triage production database is down")
-            return True
-
-        query = ' '.join(args)
-        result = classify_priority(query)
-
-        console.print("\n[bold]🎯 Triage Analysis[/bold]")
-        console.print(f"  Query: [dim]{query}[/dim]")
-        console.print(f"  Priority: [{result.priority.color}]{result.priority.label}[/{result.priority.color}]")
-        console.print(f"  🖥️ Environment: {result.environment or 'unknown'}")
-        console.print(f"  📊 Impact: {result.impact or 'unknown'}")
-        console.print(f"  ⚙️ Service: {result.service or 'unknown'}")
-        console.print("\n[bold]📋 Behavior Profile:[/bold]")
-        console.print(describe_behavior(result.priority))
-
-        return True
+        from merlya.repl.commands.triage import handle_triage_command
+        return handle_triage_command(self, args)
 
     def handle_feedback_command(self, args):
         """Handle /feedback command to correct triage classification."""
-        from merlya.triage import Intent, Priority
-
-        if not args:
-            self._show_feedback_help()
-            return True
-
-        # Parse arguments: /feedback <intent> <priority> [query]
-        # or: /feedback --last <intent> <priority>
-        use_last = '--last' in args
-        if use_last:
-            args = [a for a in args if a != '--last']
-
-        if len(args) < 2:
-            self._show_feedback_help()
-            return True
-
-        intent_str = args[0].lower()
-        priority_str = args[1].upper()
-        query = ' '.join(args[2:]) if len(args) > 2 else None
-
-        # Validate intent
-        intent_map = {
-            'query': Intent.QUERY,
-            'action': Intent.ACTION,
-            'analysis': Intent.ANALYSIS,
-        }
-        if intent_str not in intent_map:
-            print_error(f"Invalid intent: {intent_str}")
-            console.print("[dim]Valid intents: query, action, analysis[/dim]")
-            return True
-
-        # Validate priority
-        if priority_str not in ('P0', 'P1', 'P2', 'P3'):
-            print_error(f"Invalid priority: {priority_str}")
-            console.print("[dim]Valid priorities: P0, P1, P2, P3[/dim]")
-            return True
-
-        intent = intent_map[intent_str]
-        priority = Priority[priority_str]
-
-        # Get query to correct
-        if not query and use_last:
-            # Use last query from intent parser
-            if hasattr(self.orchestrator, 'intent_parser') and self.orchestrator.intent_parser._last_query:
-                query = self.orchestrator.intent_parser._last_query
-            else:
-                print_error("No previous query to correct. Use: /feedback <intent> <priority> <query>")
-                return True
-
-        if not query:
-            print_error("Please provide a query to correct")
-            self._show_feedback_help()
-            return True
-
-        # Provide feedback
-        try:
-            success = self.orchestrator.intent_parser.provide_feedback(
-                query=query,
-                correct_intent=intent,
-                correct_priority=priority,
-            )
-
-            if success:
-                print_success("Feedback recorded!")
-                console.print(f"  Query: [dim]{query[:50]}{'...' if len(query) > 50 else ''}[/dim]")
-                console.print(f"  Intent: [cyan]{intent.value}[/cyan]")
-                console.print(f"  Priority: [{priority.color}]{priority.label}[/{priority.color}]")
-                console.print("[dim]This correction will improve future classifications.[/dim]")
-            else:
-                print_warning("Could not store feedback (FalkorDB may not be available)")
-
-        except Exception as e:
-            print_error(f"Feedback failed: {e}")
-
-        return True
-
-    def _show_feedback_help(self):
-        """Show help for /feedback command."""
-        console.print("[yellow]Usage:[/yellow]")
-        console.print("  /feedback <intent> <priority> <query>  - Correct a specific query")
-        console.print("  /feedback --last <intent> <priority>   - Correct last query")
-        console.print()
-        console.print("[yellow]Intents:[/yellow]")
-        console.print("  [cyan]query[/cyan]    - Information request (list, show, what is)")
-        console.print("  [cyan]action[/cyan]   - Execute/modify (restart, check, deploy)")
-        console.print("  [cyan]analysis[/cyan] - Investigation (diagnose, why, troubleshoot)")
-        console.print()
-        console.print("[yellow]Priorities:[/yellow]")
-        console.print("  [bold red]P0[/bold red] - CRITICAL (production down, data loss)")
-        console.print("  [bold yellow]P1[/bold yellow] - URGENT (degraded, security issue)")
-        console.print("  [cyan]P2[/cyan] - IMPORTANT (performance, warnings)")
-        console.print("  [dim]P3[/dim] - NORMAL (maintenance, questions)")
-        console.print()
-        console.print("[yellow]Examples:[/yellow]")
-        console.print("  /feedback query P3 list my servers")
-        console.print("  /feedback action P1 restart nginx on prod")
-        console.print("  /feedback --last analysis P2")
+        from merlya.repl.commands.triage import handle_feedback_command
+        return handle_feedback_command(self, args)
 
     def handle_triage_stats_command(self, args):
         """Handle /triage-stats command to show learning statistics."""

@@ -16,6 +16,7 @@ import pytest
 
 from merlya.repl.commands.ssh import SSHCommandHandler
 from merlya.security.credentials import CredentialManager, VariableType
+from merlya.repl.commands.ssh import keys, agent, hosts, passphrase, test
 
 
 @pytest.fixture
@@ -51,28 +52,28 @@ class TestSSHCommandHandling:
 
     def test_handle_no_args_shows_overview(self, ssh_handler):
         """Test: /ssh without args shows overview."""
-        with patch.object(ssh_handler, '_show_overview', return_value=True) as mock:
+        with patch('merlya.repl.commands.ssh.keys.show_overview', return_value=True) as mock:
             result = ssh_handler.handle([])
             mock.assert_called_once()
             assert result is True
 
     def test_handle_info_shows_overview(self, ssh_handler):
         """Test: /ssh info shows overview."""
-        with patch.object(ssh_handler, '_show_overview', return_value=True) as mock:
+        with patch('merlya.repl.commands.ssh.keys.show_overview', return_value=True) as mock:
             result = ssh_handler.handle(['info'])
             mock.assert_called_once()
             assert result is True
 
     def test_handle_keys_shows_keys(self, ssh_handler):
         """Test: /ssh keys shows key list."""
-        with patch.object(ssh_handler, '_show_keys', return_value=True) as mock:
+        with patch('merlya.repl.commands.ssh.keys.show_keys', return_value=True) as mock:
             result = ssh_handler.handle(['keys'])
             mock.assert_called_once()
             assert result is True
 
     def test_handle_agent_shows_agent(self, ssh_handler):
         """Test: /ssh agent shows agent status."""
-        with patch.object(ssh_handler, '_show_agent', return_value=True) as mock:
+        with patch('merlya.repl.commands.ssh.agent.show_agent', return_value=True) as mock:
             result = ssh_handler.handle(['agent'])
             mock.assert_called_once()
             assert result is True
@@ -98,25 +99,25 @@ class TestGlobalKeyManagement:
         """Test: /ssh key set <path> sets global key."""
         # Mock path validation to allow temp files
         with patch(
-            'merlya.repl.commands.ssh.validate_ssh_key_path',
+            'merlya.repl.commands.ssh.keys.validate_ssh_key_path',
             return_value=(True, mock_ssh_key, None)
         ):
             with patch('builtins.input', return_value='n'):  # Skip passphrase prompt
-                result = ssh_handler._set_global_key([mock_ssh_key])
+                result = keys.set_global_key(ssh_handler, [mock_ssh_key])
 
         assert result is True
         assert mock_repl.credential_manager.get_variable("ssh_key_global") == mock_ssh_key
 
     def test_set_global_key_missing_path(self, ssh_handler, capsys):
         """Test: /ssh key set without path shows error."""
-        result = ssh_handler._set_global_key([])
+        result = keys.set_global_key(ssh_handler, [])
         assert result is True
         captured = capsys.readouterr()
         assert "Usage" in captured.out
 
     def test_set_global_key_file_not_found(self, ssh_handler, capsys):
         """Test: /ssh key set with nonexistent file shows error."""
-        result = ssh_handler._set_global_key(['/nonexistent/path/key'])
+        result = keys.set_global_key(ssh_handler, ['/nonexistent/path/key'])
         assert result is True
         captured = capsys.readouterr()
         assert "not found" in captured.out
@@ -131,7 +132,7 @@ class TestGlobalKeyManagement:
             "ssh-passphrase-global", "secret", VariableType.SECRET
         )
 
-        result = ssh_handler._clear_global_key()
+        result = keys.clear_global_key(ssh_handler)
 
         assert result is True
         assert mock_repl.credential_manager.get_variable("ssh_key_global") is None
@@ -143,7 +144,7 @@ class TestGlobalKeyManagement:
             "ssh_key_global", mock_ssh_key, VariableType.CONFIG
         )
 
-        result = ssh_handler._show_global_key()
+        result = keys.show_global_key(ssh_handler)
         assert result is True
 
 
@@ -155,7 +156,7 @@ class TestHostKeyManagement:
         ssh_handler._repo = MagicMock()
         ssh_handler._repo.get_host_by_name.return_value = None
 
-        result = ssh_handler._show_host_config("unknown-host")
+        result = hosts.show_host_config(ssh_handler, "unknown-host")
 
         assert result is True
         captured = capsys.readouterr()
@@ -172,7 +173,7 @@ class TestHostKeyManagement:
             }
         }
 
-        result = ssh_handler._show_host_config("web-prod-01")
+        result = hosts.show_host_config(ssh_handler, "web-prod-01")
         assert result is True
 
     def test_clear_host_config(self, ssh_handler, mock_repl, mock_ssh_key):
@@ -190,7 +191,7 @@ class TestHostKeyManagement:
             "ssh-passphrase-web-prod-01", "secret", VariableType.SECRET
         )
 
-        result = ssh_handler._clear_host_config("web-prod-01")
+        result = hosts.clear_host_config(ssh_handler, "web-prod-01")
 
         assert result is True
         ssh_handler._repo.add_host.assert_called_once()
@@ -205,7 +206,7 @@ class TestPassphraseManagement:
     def test_passphrase_for_global(self, ssh_handler, mock_repl):
         """Test: /ssh passphrase global caches global passphrase."""
         with patch('getpass.getpass', return_value='my-passphrase'):
-            result = ssh_handler._handle_passphrase(['global'])
+            result = passphrase.handle_passphrase(ssh_handler, ['global'])
 
         assert result is True
         assert mock_repl.credential_manager.get_variable("ssh-passphrase-global") == "my-passphrase"
@@ -213,7 +214,7 @@ class TestPassphraseManagement:
     def test_passphrase_for_key_name(self, ssh_handler, mock_repl):
         """Test: /ssh passphrase <key_name> caches passphrase."""
         with patch('getpass.getpass', return_value='key-passphrase'):
-            result = ssh_handler._handle_passphrase(['id_ed25519'])
+            result = passphrase.handle_passphrase(ssh_handler, ['id_ed25519'])
 
         assert result is True
         assert mock_repl.credential_manager.get_variable("ssh-passphrase-id_ed25519") == "key-passphrase"
@@ -221,7 +222,7 @@ class TestPassphraseManagement:
     def test_passphrase_empty_skipped(self, ssh_handler, mock_repl, capsys):
         """Test: Empty passphrase is not saved."""
         with patch('getpass.getpass', return_value=''):
-            result = ssh_handler._handle_passphrase(['id_rsa'])
+            result = passphrase.handle_passphrase(ssh_handler, ['id_rsa'])
 
         assert result is True
         assert mock_repl.credential_manager.get_variable("ssh-passphrase-id_rsa") is None
@@ -230,7 +231,7 @@ class TestPassphraseManagement:
 
     def test_passphrase_no_args(self, ssh_handler, capsys):
         """Test: /ssh passphrase without args shows usage."""
-        result = ssh_handler._handle_passphrase([])
+        result = passphrase.handle_passphrase(ssh_handler, [])
         assert result is True
         captured = capsys.readouterr()
         assert "Usage" in captured.out
@@ -241,7 +242,7 @@ class TestConnectionTesting:
 
     def test_test_no_hostname(self, ssh_handler, capsys):
         """Test: /ssh test without hostname shows error."""
-        result = ssh_handler._handle_test([])
+        result = test.handle_test(ssh_handler, [])
         assert result is True
         captured = capsys.readouterr()
         assert "Usage" in captured.out
@@ -257,7 +258,7 @@ class TestConnectionTesting:
                 mock_repl.credentials, 'resolve_ssh_for_host',
                 return_value=('/path/to/key', None, 'default')
             ):
-                result = ssh_handler._handle_test(['web-prod-01'])
+                result = test.handle_test(ssh_handler, ['web-prod-01'])
 
         assert result is True
 
@@ -272,7 +273,7 @@ class TestConnectionTesting:
                 mock_repl.credentials, 'resolve_ssh_for_host',
                 return_value=('/path/to/key', None, 'default')
             ):
-                result = ssh_handler._handle_test(['web-prod-01'])
+                result = test.handle_test(ssh_handler, ['web-prod-01'])
 
         assert result is True
 
@@ -282,37 +283,37 @@ class TestKeySubcommand:
 
     def test_key_no_args_shows_global(self, ssh_handler):
         """Test: /ssh key without args shows global config."""
-        with patch.object(ssh_handler, '_show_global_key', return_value=True) as mock:
-            result = ssh_handler._handle_key([])
+        with patch('merlya.repl.commands.ssh.keys.show_global_key', return_value=True) as mock:
+            result = keys.handle_key(ssh_handler, [])
             mock.assert_called_once()
             assert result is True
 
     def test_key_show(self, ssh_handler):
         """Test: /ssh key show shows global config."""
-        with patch.object(ssh_handler, '_show_global_key', return_value=True) as mock:
-            result = ssh_handler._handle_key(['show'])
+        with patch('merlya.repl.commands.ssh.keys.show_global_key', return_value=True) as mock:
+            result = keys.handle_key(ssh_handler, ['show'])
             mock.assert_called_once()
             assert result is True
 
     def test_key_set(self, ssh_handler):
         """Test: /ssh key set routes to set function."""
-        with patch.object(ssh_handler, '_set_global_key', return_value=True) as mock:
-            result = ssh_handler._handle_key(['set', '/path/to/key'])
-            mock.assert_called_once_with(['/path/to/key'])
+        with patch('merlya.repl.commands.ssh.keys.set_global_key', return_value=True) as mock:
+            result = keys.handle_key(ssh_handler, ['set', '/path/to/key'])
+            mock.assert_called_once_with(ssh_handler, ['/path/to/key'])
             assert result is True
 
     def test_key_clear(self, ssh_handler):
         """Test: /ssh key clear routes to clear function."""
-        with patch.object(ssh_handler, '_clear_global_key', return_value=True) as mock:
-            result = ssh_handler._handle_key(['clear'])
+        with patch('merlya.repl.commands.ssh.keys.clear_global_key', return_value=True) as mock:
+            result = keys.handle_key(ssh_handler, ['clear'])
             mock.assert_called_once()
             assert result is True
 
     def test_key_path_directly(self, ssh_handler):
         """Test: /ssh key <path> sets key directly."""
-        with patch.object(ssh_handler, '_set_global_key', return_value=True) as mock:
-            result = ssh_handler._handle_key(['/path/to/key'])
-            mock.assert_called_once_with(['/path/to/key'])
+        with patch('merlya.repl.commands.ssh.keys.set_global_key', return_value=True) as mock:
+            result = keys.handle_key(ssh_handler, ['/path/to/key'])
+            mock.assert_called_once_with(ssh_handler, ['/path/to/key'])
             assert result is True
 
 
@@ -321,37 +322,37 @@ class TestHostSubcommand:
 
     def test_host_no_args(self, ssh_handler, capsys):
         """Test: /ssh host without args shows error."""
-        result = ssh_handler._handle_host([])
+        result = hosts.handle_host(ssh_handler, [])
         assert result is True
         captured = capsys.readouterr()
         assert "Usage" in captured.out
 
     def test_host_show_default(self, ssh_handler):
         """Test: /ssh host <name> defaults to show."""
-        with patch.object(ssh_handler, '_show_host_config', return_value=True) as mock:
-            result = ssh_handler._handle_host(['web-prod-01'])
-            mock.assert_called_once_with('web-prod-01')
+        with patch('merlya.repl.commands.ssh.hosts.show_host_config', return_value=True) as mock:
+            result = hosts.handle_host(ssh_handler, ['web-prod-01'])
+            mock.assert_called_once_with(ssh_handler, 'web-prod-01')
             assert result is True
 
     def test_host_show_explicit(self, ssh_handler):
         """Test: /ssh host <name> show routes correctly."""
-        with patch.object(ssh_handler, '_show_host_config', return_value=True) as mock:
-            result = ssh_handler._handle_host(['web-prod-01', 'show'])
-            mock.assert_called_once_with('web-prod-01')
+        with patch('merlya.repl.commands.ssh.hosts.show_host_config', return_value=True) as mock:
+            result = hosts.handle_host(ssh_handler, ['web-prod-01', 'show'])
+            mock.assert_called_once_with(ssh_handler, 'web-prod-01')
             assert result is True
 
     def test_host_set(self, ssh_handler):
         """Test: /ssh host <name> set routes correctly."""
-        with patch.object(ssh_handler, '_set_host_key', return_value=True) as mock:
-            result = ssh_handler._handle_host(['web-prod-01', 'set'])
-            mock.assert_called_once_with('web-prod-01')
+        with patch('merlya.repl.commands.ssh.hosts.set_host_key', return_value=True) as mock:
+            result = hosts.handle_host(ssh_handler, ['web-prod-01', 'set'])
+            mock.assert_called_once_with(ssh_handler, 'web-prod-01')
             assert result is True
 
     def test_host_clear(self, ssh_handler):
         """Test: /ssh host <name> clear routes correctly."""
-        with patch.object(ssh_handler, '_clear_host_config', return_value=True) as mock:
-            result = ssh_handler._handle_host(['web-prod-01', 'clear'])
-            mock.assert_called_once_with('web-prod-01')
+        with patch('merlya.repl.commands.ssh.hosts.clear_host_config', return_value=True) as mock:
+            result = hosts.handle_host(ssh_handler, ['web-prod-01', 'clear'])
+            mock.assert_called_once_with(ssh_handler, 'web-prod-01')
             assert result is True
 
 
@@ -361,7 +362,7 @@ class TestOverviewDisplay:
     def test_overview_without_repl(self, capsys):
         """Test: Overview without REPL shows warning."""
         handler = SSHCommandHandler(repl=None)
-        result = handler._show_overview()
+        result = keys.show_overview(handler)
         assert result is True
         captured = capsys.readouterr()
         assert "not available" in captured.out
@@ -371,7 +372,7 @@ class TestOverviewDisplay:
         with patch.object(mock_repl.credentials, 'supports_agent', return_value=True):
             with patch.object(mock_repl.credentials, 'get_agent_keys', return_value=['key1']):
                 with patch.object(mock_repl.credentials, 'get_ssh_keys', return_value=[]):
-                    result = ssh_handler._show_overview()
+                    result = keys.show_overview(ssh_handler)
 
         assert result is True
 
@@ -382,7 +383,7 @@ class TestAgentDisplay:
     def test_agent_without_repl(self, capsys):
         """Test: Agent status without REPL shows warning."""
         handler = SSHCommandHandler(repl=None)
-        result = handler._show_agent()
+        result = agent.show_agent(handler)
         assert result is True
         captured = capsys.readouterr()
         assert "not available" in captured.out
@@ -390,7 +391,7 @@ class TestAgentDisplay:
     def test_agent_not_available(self, ssh_handler, mock_repl, capsys):
         """Test: Agent not available shows warning."""
         with patch.object(mock_repl.credentials, 'supports_agent', return_value=False):
-            result = ssh_handler._show_agent()
+            result = agent.show_agent(ssh_handler)
 
         assert result is True
         captured = capsys.readouterr()
@@ -403,7 +404,7 @@ class TestKeysDisplay:
     def test_keys_without_repl(self, capsys):
         """Test: Keys list without REPL shows warning."""
         handler = SSHCommandHandler(repl=None)
-        result = handler._show_keys()
+        result = keys.show_keys(handler)
         assert result is True
         captured = capsys.readouterr()
         assert "not available" in captured.out
@@ -411,7 +412,7 @@ class TestKeysDisplay:
     def test_keys_no_keys_found(self, ssh_handler, mock_repl, capsys):
         """Test: No keys found shows message."""
         with patch.object(mock_repl.credentials, 'get_ssh_keys', return_value=[]):
-            result = ssh_handler._show_keys()
+            result = keys.show_keys(ssh_handler)
 
         assert result is True
         captured = capsys.readouterr()
@@ -422,7 +423,7 @@ class TestKeysDisplay:
         with patch.object(mock_repl.credentials, 'get_ssh_keys', return_value=[mock_ssh_key]):
             with patch.object(mock_repl.credentials, 'get_variable', return_value=None):
                 with patch.object(mock_repl.credentials, 'get_default_key', return_value=None):
-                    result = ssh_handler._show_keys()
+                    result = keys.show_keys(ssh_handler)
 
         assert result is True
 
@@ -434,16 +435,16 @@ class TestIntegration:
         """Test: Full flow of setting and clearing global key."""
         # Set key with mocked validation
         with patch(
-            'merlya.repl.commands.ssh.validate_ssh_key_path',
+            'merlya.repl.commands.ssh.keys.validate_ssh_key_path',
             return_value=(True, mock_ssh_key, None)
         ):
             with patch('builtins.input', return_value='n'):
-                ssh_handler._set_global_key([mock_ssh_key])
+                keys.set_global_key(ssh_handler, [mock_ssh_key])
 
         assert mock_repl.credential_manager.get_variable("ssh_key_global") == mock_ssh_key
 
         # Clear key
-        ssh_handler._clear_global_key()
+        keys.clear_global_key(ssh_handler)
 
         assert mock_repl.credential_manager.get_variable("ssh_key_global") is None
 
@@ -457,12 +458,12 @@ class TestIntegration:
 
         # Set host key with mocked validation
         with patch(
-            'merlya.repl.commands.ssh.validate_ssh_key_path',
+            'merlya.repl.commands.ssh.hosts.validate_ssh_key_path',
             return_value=(True, mock_ssh_key, None)
         ):
             with patch('builtins.input', side_effect=[mock_ssh_key, 'y']):
                 with patch('getpass.getpass', return_value='passphrase'):
-                    ssh_handler._set_host_key("web-prod-01")
+                    hosts.set_host_key(ssh_handler, "web-prod-01")
 
         # Verify add_host was called
         ssh_handler._repo.add_host.assert_called()

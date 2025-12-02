@@ -130,3 +130,83 @@ class TestIntegration:
         """Verify single query processing uses error suppression."""
         source = inspect.getsource(MerlyaREPL.process_single_query)
         assert "suppress_asyncio_errors" in source
+
+
+class TestLoggingFilter:
+    """Test the logging filter for autogen_core messages."""
+
+    def test_logging_filter_suppresses_autogen_errors(self):
+        """Verify logging filter suppresses 'Error processing publish message'."""
+        import io
+        import logging
+
+        # Use the parent logger directly (filter is added to autogen_core)
+        parent_logger = logging.getLogger("autogen_core")
+        parent_logger.setLevel(logging.DEBUG)
+
+        # Capture log output on the parent logger
+        captured = io.StringIO()
+        handler = logging.StreamHandler(captured)
+        handler.setLevel(logging.DEBUG)
+        parent_logger.addHandler(handler)
+
+        # Log outside the context manager - should appear
+        parent_logger.error("Error processing publish message for Agent_123")
+        outside_output = captured.getvalue()
+
+        # Clear the buffer
+        captured.truncate(0)
+        captured.seek(0)
+
+        # Log inside the context manager - should be suppressed
+        with suppress_asyncio_errors():
+            parent_logger.error("Error processing publish message for Agent_456")
+
+        inside_output = captured.getvalue()
+
+        # Cleanup
+        parent_logger.removeHandler(handler)
+
+        # Outside context: message should appear
+        assert "Agent_123" in outside_output
+
+        # Inside context: message should be suppressed
+        assert "Agent_456" not in inside_output
+
+    def test_logging_filter_allows_other_messages(self):
+        """Verify logging filter allows non-suppressed messages through."""
+        import io
+        import logging
+
+        test_logger = logging.getLogger("autogen_core.test2")
+        test_logger.setLevel(logging.DEBUG)
+
+        captured = io.StringIO()
+        handler = logging.StreamHandler(captured)
+        handler.setLevel(logging.DEBUG)
+        test_logger.addHandler(handler)
+
+        with suppress_asyncio_errors():
+            test_logger.info("Normal informational message")
+
+        output = captured.getvalue()
+        test_logger.removeHandler(handler)
+
+        assert "Normal informational message" in output
+
+    def test_logging_filter_removed_after_context(self):
+        """Verify logging filter is properly removed after context exits."""
+        import logging
+
+        autogen_logger = logging.getLogger("autogen_core")
+        initial_filters = len(autogen_logger.filters)
+
+        with suppress_asyncio_errors():
+            during_filters = len(autogen_logger.filters)
+
+        after_filters = len(autogen_logger.filters)
+
+        # Filter should be added during context
+        assert during_filters == initial_filters + 1
+        # Filter should be removed after context
+        assert after_filters == initial_filters
