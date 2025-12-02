@@ -49,6 +49,7 @@ class CommandHandler:
         self._stats_handler = None
         self._ssh_handler = None
         self._secret_handler = None
+        self._log_handler = None
 
     @property
     def context_handler(self):
@@ -121,6 +122,14 @@ class CommandHandler:
             from merlya.repl.commands.secret import SecretCommandHandler
             self._secret_handler = SecretCommandHandler(self.repl)
         return self._secret_handler
+
+    @property
+    def log_handler(self):
+        """Lazy load log handler."""
+        if self._log_handler is None:
+            from merlya.repl.commands.log import LogCommandHandler
+            self._log_handler = LogCommandHandler(self.repl)
+        return self._log_handler
 
     async def handle_command(self, command: str) -> CommandResult:
         """
@@ -218,6 +227,9 @@ class CommandHandler:
 
             # Secret commands
             '/secret': lambda: self.secret_handler.handle(args),
+
+            # Log commands
+            '/log': lambda: self.log_handler.handle(args),
 
             # Session/conversation commands
             '/session': lambda: self.session_handler.handle_session(args),

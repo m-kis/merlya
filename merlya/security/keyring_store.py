@@ -10,10 +10,23 @@ Storage hierarchy (resolution order):
 1. Session cache (in-memory, 15min TTL) - fastest
 2. System keyring (persistent, encrypted) - secure
 3. Environment variables - fallback
+
+Thread Safety Note:
+    The metadata tracking (list of secret keys) uses a simple read-modify-write
+    pattern without locking. In concurrent scenarios, this could lead to lost
+    updates if multiple threads modify metadata simultaneously. For typical
+    CLI usage (single-threaded), this is not an issue. For concurrent access,
+    consider using a threading.Lock or file-based locking.
 """
+import re
 from typing import Dict, List, Optional
 
 from merlya.utils.logger import logger
+
+# Maximum key length to prevent abuse
+MAX_KEY_LENGTH = 256
+# Valid key pattern: alphanumeric, dash, underscore, slash (for paths)
+KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/]+$')
 
 # Import keyring with fallback
 try:
@@ -77,6 +90,28 @@ class KeyringSecretStore:
         """Build full key with service prefix."""
         return f"{self.SERVICE_NAME}{self.KEY_SEPARATOR}{key}"
 
+    def _validate_key(self, key: str) -> None:
+        """
+        Validate a secret key.
+
+        Args:
+            key: The key to validate
+
+        Raises:
+            ValueError: If the key is invalid
+        """
+        if not key:
+            raise ValueError("Secret key cannot be empty")
+        if len(key) > MAX_KEY_LENGTH:
+            raise ValueError(f"Secret key too long (max {MAX_KEY_LENGTH} chars)")
+        if '\n' in key or '\r' in key:
+            raise ValueError("Secret key cannot contain newlines")
+        if not KEY_PATTERN.match(key):
+            raise ValueError(
+                "Secret key can only contain alphanumeric characters, "
+                "dashes, underscores, and forward slashes"
+            )
+
     def store(self, key: str, value: str) -> bool:
         """
         Store a secret in the system keyring.
@@ -87,10 +122,16 @@ class KeyringSecretStore:
 
         Returns:
             True if stored successfully, False otherwise
+
+        Raises:
+            ValueError: If the key is invalid
         """
         if not self._available:
             logger.warning("⚠️ Keyring not available, secret not persisted")
             return False
+
+        # Validate key before storing
+        self._validate_key(key)
 
         try:
             full_key = self._full_key(key)
@@ -100,10 +141,12 @@ class KeyringSecretStore:
             logger.info(f"✅ Secret stored in keyring: {key}")
             return True
         except KeyringError as e:
-            logger.error(f"❌ Failed to store secret in keyring: {e}")
+            # Sanitize error message to avoid leaking secret values
+            logger.error(f"❌ Failed to store secret '{key}' in keyring: {type(e).__name__}")
             return False
         except Exception as e:
-            logger.error(f"❌ Unexpected error storing secret: {e}")
+            # Log only the exception type, not the message (may contain secrets)
+            logger.error(f"❌ Unexpected error storing secret '{key}': {type(e).__name__}")
             return False
 
     def retrieve(self, key: str) -> Optional[str]:
@@ -115,9 +158,15 @@ class KeyringSecretStore:
 
         Returns:
             Secret value if found, None otherwise
+
+        Raises:
+            ValueError: If the key is invalid
         """
         if not self._available:
             return None
+
+        # Validate key before retrieving
+        self._validate_key(key)
 
         try:
             full_key = self._full_key(key)
@@ -126,10 +175,11 @@ class KeyringSecretStore:
                 logger.debug(f"🔐 Secret retrieved from keyring: {key}")
             return value
         except KeyringError as e:
-            logger.warning(f"⚠️ Failed to retrieve secret from keyring: {e}")
+            # Sanitize error - don't log exception message
+            logger.warning(f"⚠️ Failed to retrieve secret '{key}': {type(e).__name__}")
             return None
         except Exception as e:
-            logger.warning(f"⚠️ Unexpected error retrieving secret: {e}")
+            logger.warning(f"⚠️ Unexpected error retrieving secret '{key}': {type(e).__name__}")
             return None
 
     def delete(self, key: str) -> bool:
@@ -141,9 +191,15 @@ class KeyringSecretStore:
 
         Returns:
             True if deleted successfully, False otherwise
+
+        Raises:
+            ValueError: If the key is invalid
         """
         if not self._available:
             return False
+
+        # Validate key before deleting
+        self._validate_key(key)
 
         try:
             full_key = self._full_key(key)
@@ -156,10 +212,11 @@ class KeyringSecretStore:
             logger.debug(f"🔍 Secret not found in keyring: {key}")
             return False
         except KeyringError as e:
-            logger.error(f"❌ Failed to delete secret from keyring: {e}")
+            # Sanitize error - don't log exception message
+            logger.error(f"❌ Failed to delete secret '{key}': {type(e).__name__}")
             return False
         except Exception as e:
-            logger.error(f"❌ Unexpected error deleting secret: {e}")
+            logger.error(f"❌ Unexpected error deleting secret '{key}': {type(e).__name__}")
             return False
 
     def list_keys(self) -> List[str]:

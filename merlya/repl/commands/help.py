@@ -12,7 +12,7 @@ from merlya.repl.ui import console
 
 # Available help topics
 HELP_TOPICS = [
-    'model', 'variables', 'secret', 'inventory', 'ssh', 'cicd', 'mcp', 'context', 'session', 'stats'
+    'model', 'variables', 'secret', 'log', 'inventory', 'ssh', 'cicd', 'mcp', 'context', 'session', 'stats'
 ]
 
 # Quick reference for main help
@@ -31,6 +31,8 @@ SLASH_COMMANDS = {
     '/variables': 'Manage variables (set, set-host, list, delete, clear)',
     # Secrets
     '/secret': 'Manage secrets (set, list, persist, delete, clear, info)',
+    # Logs
+    '/log': 'Log management (show, level, tail, stats, clear, set)',
     # Inventory
     '/inventory': 'Manage hosts (add, list, show, search, remove, export, relations)',
     # CI/CD
@@ -88,6 +90,8 @@ class HelpCommandHandler:
             self._show_variables_help()
         elif topic in ('secret', 'secrets', 'credentials'):
             self._show_secret_help()
+        elif topic in ('log', 'logs', 'logging'):
+            self._show_log_help()
         elif topic == 'inventory':
             self._show_inventory_help()
         elif topic == 'ssh':
@@ -134,6 +138,7 @@ class HelpCommandHandler:
             'model': 'LLM providers, local models, task routing, embeddings',
             'variables': 'Host aliases, config variables',
             'secret': 'Secure secret storage with keyring integration',
+            'log': 'Log management, levels, rotation, viewing',
             'inventory': 'Host management, import/export, relations',
             'ssh': 'SSH keys, agent, passphrases, connection testing',
             'cicd': 'CI/CD pipelines, workflows, debugging',
@@ -277,6 +282,72 @@ When retrieving a secret, Merlya checks in order:
 /secret set api-key
 /secret persist api-key
 check mongodb on @db-prod using @db-password
+```
+"""
+        console.print(Markdown(help_text))
+
+    def _show_log_help(self) -> None:
+        """Show detailed log management help."""
+        help_text = """
+## Log Management
+
+Comprehensive logging system with configurable levels, rotation, and viewing.
+
+**Log Location:**
+- Default: `~/.merlya/logs/app.log`
+- Configurable via `/log set log_dir <path>`
+
+**Commands:**
+```
+/log show                  # Show current configuration
+/log level <level> [target] # Set level (DEBUG/INFO/WARNING/ERROR)
+/log tail [N]              # Show last N lines (default: 50)
+/log stats                 # Show log file statistics
+/log dir                   # Show log directory path
+/log clear [--all]         # Clear old logs (--all includes current)
+/log set <key> <value>     # Set configuration option
+/log format <json|text>    # Set log format
+/log rotate                # Force log rotation
+```
+
+**Log Levels:**
+| Level    | Description |
+|----------|-------------|
+| TRACE    | Most verbose, internal details |
+| DEBUG    | Debug information |
+| INFO     | General information |
+| SUCCESS  | Successful operations |
+| WARNING  | Warnings (default for console) |
+| ERROR    | Errors |
+| CRITICAL | Critical errors |
+
+**Configuration Options:**
+| Option            | Default      | Description |
+|-------------------|--------------|-------------|
+| log_dir           | ~/.merlya/logs | Log directory |
+| app_log_name      | app.log      | Log filename |
+| file_level        | DEBUG        | File log level |
+| console_level     | WARNING      | Console log level |
+| rotation_size     | 10 MB        | Rotate when file exceeds |
+| rotation_time     | 1 day        | Time-based rotation |
+| retention         | 1 week       | Keep old logs for |
+| max_files         | 10           | Max rotated files |
+| compression       | gz           | Compress rotated (gz/zip/none) |
+| json_logs         | false        | Use JSON format |
+| console_enabled   | false        | Enable console logging |
+
+**Environment Variables:**
+- `MERLYA_LOG_DIR` - Override log directory
+- `MERLYA_LOG_LEVEL` - Override console level
+- `MERLYA_LOG_FILE_LEVEL` - Override file level
+
+**Examples:**
+```
+/log level DEBUG               # Set both to DEBUG
+/log level INFO file           # Set file level only
+/log set rotation_size "20 MB" # Change rotation size
+/log set json_logs true        # Enable JSON format
+/log tail 100                  # View last 100 lines
 ```
 """
         console.print(Markdown(help_text))

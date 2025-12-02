@@ -152,6 +152,11 @@ jobs:
           poetry run pytest tests/test_keyring_store.py -v --tb=short
           echo "✅ Keyring store tests passed"
 
+      - name: Test log configuration
+        run: |
+          poetry run pytest tests/test_log_config.py -v --tb=short
+          echo "✅ Log config tests passed"
+
       - name: Test credentials module
         run: |
           poetry run pytest tests/ -v -k "credentials" --tb=short || echo "Credentials tests completed"

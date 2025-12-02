@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from merlya.security.keyring_store import (
+    KEY_PATTERN,
+    MAX_KEY_LENGTH,
     KeyringSecretStore,
     get_keyring_store,
     reset_keyring_store,
@@ -147,6 +149,88 @@ class TestKeyringSecretStore:
 
         assert deleted == 2
         assert mock_keyring.delete_password.call_count >= 2
+
+
+class TestKeyValidation:
+    """Tests for secret key validation."""
+
+    def test_empty_key_rejected(self, mock_keyring):
+        """Test that empty keys are rejected."""
+        store = KeyringSecretStore()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            store.store("", "value")
+
+    def test_key_too_long_rejected(self, mock_keyring):
+        """Test that keys exceeding max length are rejected."""
+        store = KeyringSecretStore()
+        long_key = "a" * (MAX_KEY_LENGTH + 1)
+        with pytest.raises(ValueError, match="too long"):
+            store.store(long_key, "value")
+
+    def test_key_with_newline_rejected(self, mock_keyring):
+        """Test that keys with newlines are rejected."""
+        store = KeyringSecretStore()
+        with pytest.raises(ValueError, match="cannot contain newlines"):
+            store.store("key\nwith\nnewlines", "value")
+
+    def test_key_with_carriage_return_rejected(self, mock_keyring):
+        """Test that keys with carriage returns are rejected."""
+        store = KeyringSecretStore()
+        with pytest.raises(ValueError, match="cannot contain newlines"):
+            store.store("key\rwith\rcr", "value")
+
+    def test_key_with_invalid_chars_rejected(self, mock_keyring):
+        """Test that keys with invalid characters are rejected."""
+        store = KeyringSecretStore()
+        invalid_keys = ["key with spaces", "key@symbol", "key#hash", "key$dollar"]
+        for key in invalid_keys:
+            with pytest.raises(ValueError, match="can only contain"):
+                store.store(key, "value")
+
+    def test_valid_key_patterns(self, mock_keyring):
+        """Test that valid key patterns are accepted."""
+        mock_keyring.get_password.return_value = None  # No existing metadata
+        store = KeyringSecretStore()
+
+        valid_keys = [
+            "simple-key",
+            "key_with_underscores",
+            "key123",
+            "cred/mongodb/host/user",
+            "UPPERCASE_KEY",
+            "MixedCase-Key_123",
+        ]
+        for key in valid_keys:
+            # Should not raise
+            result = store.store(key, "value")
+            assert result is True
+
+    def test_key_pattern_regex(self):
+        """Test the KEY_PATTERN regex directly."""
+        # Valid patterns
+        assert KEY_PATTERN.match("simple")
+        assert KEY_PATTERN.match("with-dash")
+        assert KEY_PATTERN.match("with_underscore")
+        assert KEY_PATTERN.match("with/slash/path")
+        assert KEY_PATTERN.match("Mixed123")
+
+        # Invalid patterns
+        assert not KEY_PATTERN.match("")
+        assert not KEY_PATTERN.match("with space")
+        assert not KEY_PATTERN.match("with@at")
+        assert not KEY_PATTERN.match("with.dot")
+
+    def test_validation_on_retrieve(self, mock_keyring):
+        """Test that validation is applied on retrieve."""
+        store = KeyringSecretStore()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            store.retrieve("")
+
+    def test_validation_on_delete(self, mock_keyring):
+        """Test that validation is applied on delete."""
+        store = KeyringSecretStore()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            store.delete("")
 
 
 class TestKeyringCredentialHelpers:

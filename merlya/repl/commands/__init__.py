@@ -7,6 +7,7 @@ This module provides modular command handlers for the Merlya REPL.
 from merlya.repl.commands.context import ContextCommandHandler
 from merlya.repl.commands.help import SLASH_COMMANDS, HelpCommandHandler
 from merlya.repl.commands.inventory import InventoryCommandHandler
+from merlya.repl.commands.log import LogCommandHandler
 from merlya.repl.commands.model import ModelCommandHandler
 from merlya.repl.commands.secret import SecretCommandHandler
 from merlya.repl.commands.session import SessionCommandHandler
@@ -25,6 +26,7 @@ __all__ = [
     "ModelCommandHandler",
     "VariablesCommandHandler",
     "SecretCommandHandler",
+    "LogCommandHandler",
     "SessionCommandHandler",
     "InventoryCommandHandler",
     "StatsCommandHandler",

@@ -99,11 +99,11 @@ class SecretCommandHandler:
             # Store based on persistence flag
             if persist:
                 if not self._keyring.is_available:
-                    print_error("❌ Keyring not available. Secret stored in session only.")
+                    print_error("Keyring not available. Secret stored in session only.")
                     self._store_session_secret(key, value)
                 else:
                     if self._keyring.store(key, value):
-                        print_success(f"🔐 Secret '{key}' stored in system keyring (persistent)")
+                        print_success(f"Secret '{key}' stored in system keyring (persistent)")
                         # Also cache in session for immediate use
                         self._store_session_secret(key, value, silent=True)
                     else:
@@ -111,11 +111,15 @@ class SecretCommandHandler:
                         return False
             else:
                 self._store_session_secret(key, value)
-                print_success(f"🔒 Secret '{key}' stored in session (expires on exit)")
+                print_success(f"Secret '{key}' stored in session (expires on exit)")
                 console.print("[dim]Use --persist to store in system keyring[/dim]")
 
             return True
 
+        except ValueError as e:
+            # Key validation error
+            print_error(f"Invalid key: {e}")
+            return False
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Cancelled[/yellow]")
             return False
