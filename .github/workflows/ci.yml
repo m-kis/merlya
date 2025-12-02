@@ -10,10 +10,11 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  # Single consolidated job for self-hosted runner efficiency
-  ci:
+  # Job 1: Lint + Security + Build (fast)
+  lint-and-build:
+    name: Lint, Security & Build
     runs-on: self-hosted
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +54,34 @@ jobs:
           fi
           echo "Security audit passed: no shell=True in CI module"
 
+      # Build package
+      - name: Build package
+        run: poetry build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # Job 2: Tests with coverage (slower)
+  test:
+    name: Run Tests
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --no-interaction
+
       # Run all tests
       - name: Run tests
         run: |
@@ -71,17 +100,7 @@ jobs:
             --timeout=300 \
             -m "not manual" \
             || echo "Tests completed (some may have been skipped)"
-        timeout-minutes: 20
-
-      # Build package
-      - name: Build package
-        run: poetry build
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
+        timeout-minutes: 15
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
@@ -92,7 +111,7 @@ jobs:
   notify:
     runs-on: self-hosted
     timeout-minutes: 5
-    needs: [ci]
+    needs: [lint-and-build, test]
     if: always()
     steps:
       - name: Send Slack notification
@@ -111,7 +130,10 @@ jobs:
           USERNAME="${SLACK_USERNAME:-Merlya CI}"
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
-          if [ "${{ needs.ci.result }}" == "success" ]; then
+          LINT_RESULT="${{ needs.lint-and-build.result }}"
+          TEST_RESULT="${{ needs.test.result }}"
+
+          if [ "$LINT_RESULT" == "success" ] && [ "$TEST_RESULT" == "success" ]; then
             STATUS_EMOJI="✅"
             COLOR="good"
           else
@@ -120,6 +142,7 @@ jobs:
           fi
 
           SUMMARY="${STATUS_EMOJI} *Merlya CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          DETAILS="Lint: ${LINT_RESULT} | Tests: ${TEST_RESULT}"
 
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
@@ -129,6 +152,6 @@ jobs:
               \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
-                \"text\": \"${SUMMARY}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
+                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
               }]
             }"

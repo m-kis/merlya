@@ -10,11 +10,11 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  # Single consolidated job for self-hosted runner efficiency
-  command-tests:
-    name: Test all Merlya commands
+  # Job 1: CLI Commands
+  cli-commands:
+    name: Test CLI Commands
     runs-on: self-hosted
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +42,25 @@ jobs:
       - name: Test 'merlya version' command
         run: poetry run python -m merlya.cli version
 
-      # REPL Commands (via pytest)
+  # Job 2: REPL Commands (via pytest)
+  repl-commands:
+    name: Test REPL Commands
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
       - name: Test '/model' REPL command
         run: poetry run pytest tests/ -v -k "model" --tb=short
 
@@ -64,7 +82,7 @@ jobs:
   notify:
     runs-on: self-hosted
     timeout-minutes: 5
-    needs: [command-tests]
+    needs: [cli-commands, repl-commands]
     if: always()
     steps:
       - name: Send Slack notification
@@ -83,7 +101,10 @@ jobs:
           USERNAME="${SLACK_USERNAME:-Merlya CI}"
           ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
 
-          if [ "${{ needs.command-tests.result }}" == "success" ]; then
+          CLI_RESULT="${{ needs.cli-commands.result }}"
+          REPL_RESULT="${{ needs.repl-commands.result }}"
+
+          if [ "$CLI_RESULT" == "success" ] && [ "$REPL_RESULT" == "success" ]; then
             STATUS_EMOJI="✅"
             COLOR="good"
           else
@@ -92,6 +113,7 @@ jobs:
           fi
 
           SUMMARY="${STATUS_EMOJI} *Merlya Commands* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          DETAILS="CLI: ${CLI_RESULT} | REPL: ${REPL_RESULT}"
 
           curl -X POST "${SLACK_WEBHOOK_URL}" \
             -H 'Content-Type: application/json' \
@@ -101,6 +123,6 @@ jobs:
               \"icon_emoji\": \"${ICON_EMOJI}\",
               \"attachments\": [{
                 \"color\": \"${COLOR}\",
-                \"text\": \"${SUMMARY}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
+                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
               }]
             }"
