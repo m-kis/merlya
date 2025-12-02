@@ -310,6 +310,30 @@ def request_elevation(
         return f"❌ FAILED (even with elevation)\n\nError:\n{error}"
 
 
+def _cleanup_old_reports(reports_dir: Path, max_age_days: int = 7) -> int:
+    """
+    Remove reports older than max_age_days.
+
+    Args:
+        reports_dir: Directory containing reports
+        max_age_days: Maximum age in days before deletion
+
+    Returns:
+        Number of files deleted
+    """
+    deleted = 0
+    cutoff = datetime.now().timestamp() - (max_age_days * 86400)
+    try:
+        for report in reports_dir.glob("*.md"):
+            if report.stat().st_mtime < cutoff:
+                report.unlink()
+                deleted += 1
+                logger.debug(f"Cleaned up old report: {report}")
+    except Exception as e:
+        logger.warning(f"Error during report cleanup: {e}")
+    return deleted
+
+
 def save_report(
     title: Annotated[str, "Report title (e.g., 'Infrastructure Analysis', 'HAProxy Config')"],
     content: Annotated[str, "Full report content in markdown format"],
@@ -322,6 +346,7 @@ def save_report(
     or detailed findings that the user might want to reference later.
 
     The report is saved to /tmp/merlya_reports/ and the path is returned.
+    Old reports (>7 days) are automatically cleaned up.
 
     Args:
         title: Report title (used in the file header)
@@ -337,6 +362,7 @@ def save_report(
     MAX_REPORT_SIZE = 10 * 1024 * 1024  # 10 MB
     MAX_TITLE_LENGTH = 200
     MAX_FILENAME_LENGTH = 50
+    CLEANUP_MAX_AGE_DAYS = 7
 
     ctx = get_tool_context()
     logger.info(f"Tool: save_report '{title[:50]}...'")
@@ -354,6 +380,9 @@ def save_report(
         base_dir = os.getenv("MERLYA_REPORTS_DIR", str(Path(tempfile.gettempdir()) / "merlya_reports"))
         reports_dir = Path(base_dir)
         reports_dir.mkdir(exist_ok=True, parents=True)
+
+        # Cleanup old reports (run periodically, not blocking)
+        _cleanup_old_reports(reports_dir, CLEANUP_MAX_AGE_DAYS)
 
         # Generate safe filename (prevent path traversal)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

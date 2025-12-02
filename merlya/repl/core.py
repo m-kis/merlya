@@ -36,40 +36,59 @@ def suppress_asyncio_errors():
     When user presses Ctrl+C during an async operation, AutoGen can print
     verbose error messages like "Error processing publish message" and
     "task_done() called too many times". This filters them out for a cleaner UX.
+
+    Set MERLYA_DEBUG_ERRORS=1 to disable suppression and see all errors.
     """
+    import os
+
+    # Debug mode: disable suppression entirely
+    if os.getenv("MERLYA_DEBUG_ERRORS"):
+        yield
+        return
+
     old_stderr = sys.stderr
 
     # Create a filter that suppresses known noisy patterns
     class FilteredStderr:
         """Stderr wrapper that filters out known noisy error patterns."""
 
+        # Buffer size limits
+        MAX_TRACEBACK_LINES = 50  # Maximum lines to buffer before deciding
+        MIN_COMPLETE_TRACEBACK = 3  # Minimum lines for a complete traceback
+
         # Patterns to suppress (common AutoGen/asyncio shutdown noise)
+        # These are specific error messages that occur during normal Ctrl+C interrupts
         NOISE_PATTERNS = [
+            # AutoGen internal errors during shutdown
             "Error processing publish message",
             "task_done() called too many times",
             "unhandled exception during asyncio.run() shutdown",
-            "CancelledError",
-            "Task was destroyed but it is pending",
-            "exception=CancelledError",
+            # Asyncio cancellation (expected during interrupt)
             "asyncio.exceptions.CancelledError",
-            "_GatheringFuture",
+            "exception=CancelledError",
+            "Task was destroyed but it is pending",
+            "_GatheringFuture exception=",
+            # AutoGen context errors
             "AgentInstantiationContext",
+            # Chained exception headers (we only care about the root cause)
             "during handling of the above exception",
             "During handling of the above exception",
+            # Event loop cleanup
             "Event loop is closed",
             "RuntimeError: Event loop is closed",
-            "KeyboardInterrupt",
-            "httpcore._async",
-            "anyio._backends",
+            # HTTP client shutdown errors
+            "httpcore._async.connection",
+            "anyio._backends._asyncio",
+            # AutoGen module paths in tracebacks
             "autogen_core._single_threaded_agent_runtime",
             "autogen_core._routed_agent",
             "autogen_core._base_agent",
-            "autogen_agentchat",
-            "openai/_base_client",
-            "openai/resources/chat",
-            "httpx/_client",
-            "httpx/_models",
-            "httpx/_transports",
+            "autogen_agentchat.base",
+            # OpenAI/httpx client shutdown
+            "openai/_base_client.py",
+            "openai/resources/chat/completions",
+            "httpx/_client.py",
+            "httpx/_transports/default",
         ]
 
         def __init__(self, original):
@@ -95,7 +114,7 @@ def suppress_asyncio_errors():
                         # End of traceback section - clear and continue suppressing
                         self._buffer = []
                     return
-                elif len(self._buffer) > 50 or (text == "\n" and len(self._buffer) > 3):
+                elif len(self._buffer) > self.MAX_TRACEBACK_LINES or (text == "\n" and len(self._buffer) > self.MIN_COMPLETE_TRACEBACK):
                     # Unknown traceback that's grown large or ended - might be real error
                     # But check one more time for noise patterns
                     if not any(p in buffer_text for p in self.NOISE_PATTERNS):
