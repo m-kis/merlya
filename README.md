@@ -15,14 +15,34 @@
 ## Installation
 
 ```bash
-# With pip
-pip install .
-
-# Or with poetry
+# Basic installation (core features only)
 poetry install
 
-# Optional: knowledge graph support
-pip install ".[knowledge]"
+# With knowledge graph support (DuckDuckGo search, FalkorDB)
+poetry install -E knowledge
+
+# With smart error triage (ML-based error classification)
+poetry install -E smart-triage
+
+# Full installation (all features)
+poetry install -E all
+```
+
+### Installation Extras
+
+| Extra | Dependencies | Features |
+|-------|-------------|----------|
+| `knowledge` | `duckduckgo-search`, `falkordb` | Web search, knowledge graph storage |
+| `smart-triage` | `sentence-transformers`, `falkordb` | ML-based error classification, semantic tool selection |
+| `all` | All of the above | Full feature set |
+
+### With pip
+
+```bash
+pip install .                    # Basic
+pip install ".[knowledge]"       # With knowledge graph
+pip install ".[smart-triage]"    # With ML error triage
+pip install ".[all]"             # Everything
 ```
 
 ## Quick Start
@@ -198,6 +218,39 @@ Commands are evaluated before execution:
 ### Host Validation
 
 All commands are validated against the host registry. Operations on unknown/hallucinated hostnames are blocked.
+
+### Credential Management
+
+When authentication errors occur (MongoDB, MySQL, PostgreSQL, SSH), Merlya:
+
+1. **Detects the error** - Classifies it as a credential issue with confidence score
+2. **Prompts the user** - Asks for username/password via secure input (getpass)
+3. **Caches credentials** - Stores in-memory with 15-minute TTL
+4. **Retries automatically** - Re-executes the command with new credentials
+
+```bash
+# Example flow
+> check mongodb status on db-prod-01
+
+🔐 Authentication required for:
+   Service: MongoDB
+   Target: db-prod-01
+   Error: Authentication failed
+
+Would you like to provide credentials? (yes/no)
+> yes
+   Username: admin
+   Password: ****
+
+✅ Credentials stored successfully! (TTL: 15 minutes)
+```
+
+Credentials are:
+
+- Never persisted to disk
+- Never logged (even in debug mode)
+- Validated against injection attacks
+- Available as `@mongodb-user` / `@mongodb-pass` variables
 
 ### Audit Trail
 
