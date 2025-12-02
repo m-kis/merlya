@@ -2,29 +2,52 @@
 
 **AI-powered infrastructure orchestration CLI** - A natural language interface for managing your infrastructure.
 
+[![PyPI version](https://badge.fury.io/py/merlya.svg)](https://pypi.org/project/merlya/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT%20Commons%20Clause-yellow.svg)](LICENSE)
+
 ## Features
 
 - Natural language queries for infrastructure management
 - Multi-LLM support (OpenRouter, Anthropic, OpenAI, Ollama)
 - SSH execution with your existing credentials (`~/.ssh/config`, `ssh-agent`)
 - Interactive REPL with conversation memory
+- Persistent secrets with system keyring (macOS Keychain, Windows Credential Locker, Linux SecretService)
+- Task-specific model routing (fast models for fixes, powerful models for planning)
+- Comprehensive logging system with runtime configuration
 - Extensible slash commands and hooks system
 - Host validation to prevent hallucinated commands
 - Risk assessment for dangerous operations
 
 ## Installation
 
+### From PyPI (Recommended)
+
 ```bash
-# Basic installation (core features only)
-poetry install
+# Basic installation
+pip install merlya
 
 # With knowledge graph support (DuckDuckGo search, FalkorDB)
-poetry install -E knowledge
+pip install "merlya[knowledge]"
 
 # With smart error triage (ML-based error classification)
-poetry install -E smart-triage
+pip install "merlya[smart-triage]"
 
 # Full installation (all features)
+pip install "merlya[all]"
+```
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/m-kis/merlya.git
+cd merlya
+
+# Install with Poetry
+poetry install
+
+# Or with extras
 poetry install -E all
 ```
 
@@ -35,15 +58,6 @@ poetry install -E all
 | `knowledge` | `duckduckgo-search`, `falkordb` | Web search, knowledge graph storage |
 | `smart-triage` | `sentence-transformers`, `falkordb` | ML-based error classification, semantic tool selection |
 | `all` | All of the above | Full feature set |
-
-### With pip
-
-```bash
-pip install .                    # Basic
-pip install ".[knowledge]"       # With knowledge graph
-pip install ".[smart-triage]"    # With ML error triage
-pip install ".[all]"             # Everything
-```
 
 ## Quick Start
 
@@ -106,12 +120,72 @@ merlya ask "restart mongodb" --confirm
 | `/scan` | Scan infrastructure |
 | `/scan --full` | Full SSH scan of all hosts |
 | `/hosts` | List known hosts |
+| `/secret set <name>` | Store a persistent secret |
+| `/secret list` | List stored secrets |
 | `/variables set <key> <value>` | Set a variable |
-| `/variables set-secret <key>` | Set a secret (hidden input) |
+| `/variables set-secret <key>` | Set a session secret (hidden input) |
 | `/model list` | List available models |
 | `/model set <provider> <model>` | Switch LLM model |
+| `/model task set <task> <model>` | Set task-specific model |
+| `/log level <level>` | Change log verbosity |
+| `/log show` | Display recent logs |
+| `/inventory list` | List inventory sources |
 | `/clear` | Clear conversation |
 | `/exit` | Exit REPL |
+
+### Persistent Secrets
+
+Store secrets securely using your system's keyring:
+
+```bash
+# Store a secret (prompts for hidden input)
+/secret set db-password
+
+# List stored secrets
+/secret list
+
+# Use secrets in queries with @name syntax
+check mongodb status with password @db-password
+
+# Delete a secret
+/secret delete db-password
+```
+
+Secrets are stored in:
+
+1. **System Keyring** (preferred): macOS Keychain, Windows Credential Locker, Linux SecretService
+2. **Encrypted File** (fallback): `~/.merlya/secrets.enc`
+
+### Task-Specific Model Routing
+
+Configure different models for different task types:
+
+```bash
+# Use fast model for quick fixes
+/model task set correction claude-3-5-haiku-latest
+
+# Use powerful model for complex planning
+/model task set planning claude-sonnet-4
+
+# Use balanced model for general tasks
+/model task set synthesis claude-sonnet-4
+```
+
+### Logging
+
+Control log verbosity at runtime:
+
+```bash
+# Set log level
+/log level debug    # Show all logs
+/log level info     # Normal verbosity
+/log level warning  # Only warnings and errors
+/log level error    # Only errors
+
+# View recent logs
+/log show
+/log show 50        # Show last 50 entries
+```
 
 ### Custom Commands
 
@@ -192,7 +266,7 @@ User Query
     |
     v
 +-------------------+
-|   LLM Router      |  <- OpenRouter, Anthropic, OpenAI, Ollama
+|   LLM Router      |  <- Task-specific model selection
 +-------------------+
     |
     v
@@ -232,7 +306,7 @@ When authentication errors occur (MongoDB, MySQL, PostgreSQL, SSH), Merlya:
 # Example flow
 > check mongodb status on db-prod-01
 
-🔐 Authentication required for:
+Authentication required for:
    Service: MongoDB
    Target: db-prod-01
    Error: Authentication failed
@@ -242,19 +316,19 @@ Would you like to provide credentials? (yes/no)
    Username: admin
    Password: ****
 
-✅ Credentials stored successfully! (TTL: 15 minutes)
+Credentials stored successfully! (TTL: 15 minutes)
 ```
 
 Credentials are:
 
-- Never persisted to disk
+- Never persisted to disk (use `/secret` for persistent storage)
 - Never logged (even in debug mode)
 - Validated against injection attacks
 - Available as `@mongodb-user` / `@mongodb-pass` variables
 
 ### Audit Trail
 
-All actions logged to `~/.merlya/merlya.log`
+All actions logged to `~/.merlya/logs/`
 
 ## Optional Features
 
@@ -262,7 +336,7 @@ All actions logged to `~/.merlya/merlya.log`
 
 ```bash
 # Install with knowledge support
-pip install ".[knowledge]"
+pip install "merlya[knowledge]"
 
 # Start FalkorDB
 docker run -p 6379:6379 falkordb/falkordb
@@ -295,7 +369,22 @@ pytest
 
 # Type checking
 mypy merlya
+
+# Linting
+ruff check merlya/
 ```
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned features.
+
+**Coming in v0.4.0:**
+
+- Ansible playbook execution
+- Terraform integration
+- Kubernetes support (kubectl)
+- Session export/import
+- Docker image
 
 ## License
 
@@ -303,6 +392,6 @@ mypy merlya
 
 This software is free to use for personal, educational, and community purposes.
 
-**Commercial use, sale, for-profit redistribution, or integration into a paid product/service is strictly prohibited without written permission from the author, Cédric Merlin and M-KIS.**
+**Commercial use, sale, for-profit redistribution, or integration into a paid product/service is strictly prohibited without written permission from the author, Cedric Merlin and M-KIS.**
 
 For commercial licensing inquiries, please contact the author.
