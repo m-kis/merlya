@@ -455,13 +455,17 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
 -----END OPENSSH PRIVATE KEY-----
 """)
 
-        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
-            # Simulate successful load
-            mock_load.return_value = object()
+        with patch('merlya.security.ssh_credentials.validate_ssh_key_path') as mock_validate:
+            # Mock path validation to return success
+            mock_validate.return_value = (True, str(key_path), None)
 
-            is_valid, error = validate_passphrase_for_key(str(key_path), "anypass")
-            assert is_valid is True
-            assert error is None
+            with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+                # Simulate successful load
+                mock_load.return_value = object()
+
+                is_valid, error = validate_passphrase_for_key(str(key_path), "anypass")
+                assert is_valid is True
+                assert error is None
 
     def test_incorrect_passphrase_returns_false(self, tmp_path):
         """Test: Incorrect passphrase returns (False, error_message)."""
@@ -471,25 +475,26 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
         key_path = tmp_path / "encrypted_key"
         key_path.write_text("dummy encrypted key content")
 
-        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
-            # Simulate wrong passphrase
-            mock_load.side_effect = paramiko.ssh_exception.SSHException("Incorrect padding")
+        with patch('merlya.security.ssh_credentials.validate_ssh_key_path') as mock_validate:
+            mock_validate.return_value = (True, str(key_path), None)
 
-            is_valid, error = validate_passphrase_for_key(str(key_path), "wrongpass")
-            assert is_valid is False
-            assert error is not None
-            assert "Incorrect passphrase" in error
+            with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+                # Simulate wrong passphrase
+                mock_load.side_effect = paramiko.ssh_exception.SSHException("Incorrect padding")
+
+                is_valid, error = validate_passphrase_for_key(str(key_path), "wrongpass")
+                assert is_valid is False
+                assert error is not None
+                assert "Incorrect passphrase" in error
 
     def test_key_not_found_returns_false(self):
         """Test: Non-existent key returns (False, error)."""
         from merlya.security.ssh_credentials import validate_passphrase_for_key
 
-        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
-            mock_load.side_effect = FileNotFoundError()
-
-            is_valid, error = validate_passphrase_for_key("/nonexistent/key", "pass")
-            assert is_valid is False
-            assert "not found" in error.lower()
+        # Path validation catches non-existent files
+        is_valid, error = validate_passphrase_for_key("/nonexistent/key", "pass")
+        assert is_valid is False
+        assert "not exist" in error.lower() or "not found" in error.lower()
 
     def test_password_required_returns_false(self, tmp_path):
         """Test: Key requires passphrase but none provided."""
@@ -499,9 +504,21 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
         key_path = tmp_path / "needs_pass"
         key_path.write_text("encrypted key")
 
-        with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
-            mock_load.side_effect = paramiko.ssh_exception.PasswordRequiredException()
+        with patch('merlya.security.ssh_credentials.validate_ssh_key_path') as mock_validate:
+            mock_validate.return_value = (True, str(key_path), None)
 
-            is_valid, error = validate_passphrase_for_key(str(key_path), "")
-            assert is_valid is False
-            assert "passphrase" in error.lower()
+            with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+                mock_load.side_effect = paramiko.ssh_exception.PasswordRequiredException()
+
+                is_valid, error = validate_passphrase_for_key(str(key_path), "")
+                assert is_valid is False
+                assert "passphrase" in error.lower()
+
+    def test_path_validation_failure(self):
+        """Test: Invalid path returns (False, path_error)."""
+        from merlya.security.ssh_credentials import validate_passphrase_for_key
+
+        # Test with path outside allowed directories (triggers path validation)
+        is_valid, error = validate_passphrase_for_key("/etc/passwd", "pass")
+        assert is_valid is False
+        assert "outside allowed" in error.lower() or "not" in error.lower()

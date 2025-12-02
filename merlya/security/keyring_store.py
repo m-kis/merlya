@@ -140,25 +140,34 @@ class KeyringSecretStore:
                 "dashes, underscores, and forward slashes"
             )
 
-    def store(self, key: str, value: str) -> bool:
+    def store(self, key: str, value: str, require_persistence: bool = False) -> bool:
         """
         Store a secret in the system keyring.
 
         Args:
             key: Secret name (e.g., "db-password", "cred/mongodb/db-prod-01")
             value: Secret value
+            require_persistence: If True, raises RuntimeError when keyring unavailable
+                instead of silently returning False. Use this for critical secrets
+                that MUST be persisted.
 
         Returns:
             True if stored successfully, False otherwise
 
         Raises:
             ValueError: If the key is invalid
+            RuntimeError: If require_persistence=True and keyring is unavailable
         """
         if not self._available:
             # Only warn once to avoid log spam
             if not self._unavailable_warned:
                 logger.warning("⚠️ Keyring not available, secrets will not be persisted")
                 self._unavailable_warned = True
+            if require_persistence:
+                raise RuntimeError(
+                    "Keyring not available but persistent storage was required. "
+                    "Install and configure a keyring backend."
+                )
             return False
 
         # Validate key before storing

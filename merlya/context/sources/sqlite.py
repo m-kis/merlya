@@ -5,11 +5,37 @@ Loads hosts from the InventoryRepository SQLite database,
 allowing hosts added via `/inventory add` to be used
 in the HostRegistry for validation and resolution.
 """
+import json
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypeVar, Union
 
 from merlya.context.sources.base import BaseSource, Host, InventorySource
 from merlya.utils.logger import logger
+
+T = TypeVar("T", List[str], Dict[str, Any])
+
+
+def _parse_json_field(value: Union[str, T, None], default: T) -> T:
+    """
+    Parse a JSON field that may be a string, already parsed, or None.
+
+    Args:
+        value: The field value (JSON string, parsed value, or None)
+        default: Default value to return on parse failure
+
+    Returns:
+        Parsed value or default
+    """
+    if value is None:
+        return default
+    if isinstance(value, (list, dict)):
+        return value  # type: ignore
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return default
+    return default
 
 
 class SQLiteSource(BaseSource):
@@ -62,33 +88,10 @@ class SQLiteSource(BaseSource):
             if not hostname:
                 return None
 
-            # Extract aliases
-            aliases = host_data.get("aliases") or []
-            if isinstance(aliases, str):
-                # Handle JSON string
-                import json
-                try:
-                    aliases = json.loads(aliases)
-                except json.JSONDecodeError:
-                    aliases = []
-
-            # Extract groups
-            groups = host_data.get("groups") or []
-            if isinstance(groups, str):
-                import json
-                try:
-                    groups = json.loads(groups)
-                except json.JSONDecodeError:
-                    groups = []
-
-            # Extract metadata
-            metadata = host_data.get("metadata") or {}
-            if isinstance(metadata, str):
-                import json
-                try:
-                    metadata = json.loads(metadata)
-                except json.JSONDecodeError:
-                    metadata = {}
+            # Parse JSON fields using helper function
+            aliases = _parse_json_field(host_data.get("aliases"), [])
+            groups = _parse_json_field(host_data.get("groups"), [])
+            metadata = _parse_json_field(host_data.get("metadata"), {})
 
             # Parse last_seen timestamp
             last_seen = None

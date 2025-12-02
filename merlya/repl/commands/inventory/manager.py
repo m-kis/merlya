@@ -45,10 +45,13 @@ class InventoryManager:
                 ip_address=ip_address,
                 environment=environment,
             )
+        except ImportError:
+            # HostRegistry not available - this is fine, host is still in SQLite
+            pass
         except Exception as e:
-            # Don't fail the add operation if sync fails
+            # Don't fail the add operation if sync fails - host is still persisted
             from merlya.utils.logger import logger
-            logger.debug(f"⚠️ Failed to sync host registry: {e}")
+            logger.debug(f"Host '{hostname}' added to DB but registry sync failed: {type(e).__name__}")
 
     def handle_remove(self, args: List[str]) -> bool:
         """Handle /inventory remove <source>."""

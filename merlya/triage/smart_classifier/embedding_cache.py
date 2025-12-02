@@ -18,11 +18,13 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 try:
     import numpy as np
     from sentence_transformers import SentenceTransformer
+    import torch
 
     HAS_EMBEDDINGS = True
 except ImportError:
     HAS_EMBEDDINGS = False
     np = None  # type: ignore
+    torch = None  # type: ignore
     logger.debug("⚠️ sentence-transformers not installed. Using keyword-only classification.")
 
 
@@ -59,8 +61,69 @@ class EmbeddingCache:
             )
         if self._model is None:
             logger.info(f"🔄 Loading embedding model: {self._model_name}")
-            self._model = SentenceTransformer(self._model_name)
+            self._model = self._load_model(self._model_name)
         return self._model
+
+    def _load_model(self, model_name: str) -> "SentenceTransformer":
+        """
+        Load a SentenceTransformer model with proper device handling.
+
+        This handles the 'meta tensor' error that occurs when switching models,
+        by ensuring proper device placement during model loading.
+
+        Args:
+            model_name: Name or path of the model to load
+
+        Returns:
+            Loaded SentenceTransformer model
+
+        Raises:
+            RuntimeError: If model loading fails after all attempts
+        """
+        # Determine the device to use
+        device = "cpu"
+        if torch is not None:
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                device = "mps"
+
+        try:
+            # Try loading with explicit device to avoid meta tensor issues
+            model = SentenceTransformer(
+                model_name,
+                device=device,
+                trust_remote_code=True,  # Some models require this
+            )
+            return model
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            # Handle meta tensor error by forcing CPU load first
+            if "meta tensor" in error_msg or "cannot copy out of meta" in error_msg:
+                logger.warning(
+                    f"⚠️ Meta tensor error, attempting CPU-only load for: {model_name}"
+                )
+                try:
+                    # Force CPU load without any device movement
+                    model = SentenceTransformer(
+                        model_name,
+                        device="cpu",
+                        trust_remote_code=True,
+                    )
+                    # If MPS/CUDA was requested, try moving after load
+                    if device != "cpu":
+                        try:
+                            model = model.to(device)
+                        except RuntimeError:
+                            logger.info(f"📱 Model staying on CPU (device '{device}' unavailable)")
+                    return model
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback CPU load also failed: {fallback_error}")
+                    raise RuntimeError(
+                        f"Failed to load model '{model_name}': {fallback_error}"
+                    ) from fallback_error
+            else:
+                raise
 
     @property
     def model_name(self) -> str:

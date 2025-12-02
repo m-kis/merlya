@@ -264,7 +264,7 @@ def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, O
     to verify it's correct before storing it.
 
     Args:
-        key_path: Path to the SSH key file (should already be validated)
+        key_path: Path to the SSH key file
         passphrase: Passphrase to test
 
     Returns:
@@ -279,6 +279,11 @@ def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, O
         else:
             print(f"Invalid: {error}")
     """
+    # CRITICAL: Validate path security first - prevents access to system keys
+    is_path_valid, resolved_path, path_error = validate_ssh_key_path(key_path)
+    if not is_path_valid or not resolved_path:
+        return False, path_error or "Invalid key path"
+
     try:
         import paramiko
 
@@ -287,9 +292,6 @@ def validate_passphrase_for_key(key_path: str, passphrase: str) -> Tuple[bool, O
             paramiko.ECDSAKey,
             paramiko.RSAKey,
         ]
-
-        # Expand and resolve path
-        resolved_path = str(Path(key_path).expanduser().resolve())
 
         for key_class in key_classes:
             try:
