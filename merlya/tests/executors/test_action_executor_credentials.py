@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from merlya.executors.action_executor import ActionExecutor
-from merlya.triage.error_analyzer import ErrorAnalysis, ErrorType
+
 
 class TestActionExecutorCredentials(unittest.TestCase):
     def setUp(self):
@@ -23,7 +23,7 @@ class TestActionExecutorCredentials(unittest.TestCase):
         mock_redact.side_effect = lambda x: x
         target = "remote-host"
         command = "mongo --eval 'db.stats()'"
-        
+
         # Mock _execute_remote to fail first, then succeed
         # First failure result
         fail_result = {
@@ -39,7 +39,7 @@ class TestActionExecutorCredentials(unittest.TestCase):
                 "matched_pattern": "Authentication failed"
             }
         }
-        
+
         # Second success result
         success_result = {
             "success": True,
@@ -48,27 +48,27 @@ class TestActionExecutorCredentials(unittest.TestCase):
             "stderr": "",
             "duration_ms": 100
         }
-        
+
         self.executor._execute_remote = MagicMock(side_effect=[fail_result, success_result])
-        
+
         # Mock prompt_credentials to return valid credentials
         self.executor.prompt_credentials = MagicMock(return_value=("user", "pass"))
-        
+
         # Execute
         result = self.executor.execute(target, command)
-        
+
         # Verify
         self.assertTrue(result["success"])
         self.assertEqual(self.executor._execute_remote.call_count, 2)
         self.executor.prompt_credentials.assert_called_once()
-        
+
     @patch("merlya.executors.action_executor.redact_sensitive_info")
     def test_execute_no_retry_if_credentials_cancelled(self, mock_redact):
         """Test that execute stops retrying if credential prompt is cancelled."""
         mock_redact.side_effect = lambda x: x
         target = "remote-host"
         command = "mongo --eval 'db.stats()'"
-        
+
         fail_result = {
             "success": False,
             "exit_code": 1,
@@ -79,15 +79,15 @@ class TestActionExecutorCredentials(unittest.TestCase):
                 "needs_credentials": True
             }
         }
-        
+
         self.executor._execute_remote = MagicMock(return_value=fail_result)
-        
+
         # Mock prompt_credentials to return None (cancelled)
         self.executor.prompt_credentials = MagicMock(return_value=None)
-        
+
         # Execute
         result = self.executor.execute(target, command)
-        
+
         # Verify
         self.assertFalse(result["success"])
         self.assertEqual(self.executor._execute_remote.call_count, 1) # Should stop after 1st attempt and prompt
