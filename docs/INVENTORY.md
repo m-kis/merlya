@@ -92,19 +92,15 @@ Merlya's inventory system manages your infrastructure hosts with support for mul
 
 ### SSH Key Management
 
+SSH key configuration has been moved to the centralized `/ssh` command.
+See [CREDENTIALS.md](CREDENTIALS.md) or use `/help ssh` for details.
+
 ```bash
-# Show usage and current config
-/inventory ssh-key
-
-# Global SSH key (used for all hosts without specific config)
-/inventory ssh-key set <path>       # Set global default key
-/inventory ssh-key show             # Show global config
-/inventory ssh-key clear            # Clear global key
-
-# Per-host SSH key (overrides global)
-/inventory ssh-key <hostname> set   # Set key for specific host
-/inventory ssh-key <hostname> show  # Show host SSH config
-/inventory ssh-key <hostname> clear # Clear host SSH config
+# Quick reference
+/ssh                           # Overview
+/ssh key set ~/.ssh/id_ed25519 # Set global key
+/ssh host <hostname> set       # Set per-host key
+/ssh test <hostname>           # Test connection
 ```
 
 ### Relations
@@ -195,46 +191,25 @@ When you use `@hostname`:
 
 ## SSH Key Configuration
 
-Merlya provides flexible SSH key management with global defaults and per-host overrides.
+SSH key management is now centralized in the `/ssh` command. See [CREDENTIALS.md](CREDENTIALS.md) for full documentation.
+
+### Quick Reference
+
+```bash
+/ssh                           # Show SSH overview
+/ssh key set ~/.ssh/id_ed25519 # Set global key
+/ssh host <hostname> set       # Set per-host key
+/ssh test <hostname>           # Test connection
+```
 
 ### Key Resolution Priority
 
 When connecting to a host, Merlya resolves SSH keys in this order:
 
-1. **Host-specific key** from inventory metadata
-2. **Global key** set via `/inventory ssh-key set`
+1. **Host-specific key** from inventory metadata (`ssh_key_path`)
+2. **Global key** set via `/ssh key set`
 3. **~/.ssh/config** `IdentityFile` for the host
 4. **Default keys** (id_ed25519, id_ecdsa, id_rsa)
-
-### Setting a Global SSH Key
-
-```bash
-# Set global default key (used for all hosts without specific config)
-/inventory ssh-key set ~/.ssh/id_ed25519
-
-# If key is encrypted, you'll be prompted for passphrase
-> This key appears to be encrypted.
-> Set passphrase now? (Y/n): y
-> SSH key passphrase (hidden): ********
-✓ Passphrase cached (session only, not persisted)
-```
-
-### Per-Host SSH Key
-
-```bash
-# Set key for a specific host
-/inventory ssh-key web-prod-01 set
-> SSH key path [~/.ssh/id_rsa]: ~/.ssh/id_web_prod
-> Set/update passphrase? (y/N): y
-> SSH key passphrase (hidden): ********
-✓ Passphrase stored as secret
-
-# View host SSH config
-/inventory ssh-key web-prod-01 show
-
-# Clear host-specific config (will fall back to global)
-/inventory ssh-key web-prod-01 clear
-```
 
 ### Passphrase Handling
 

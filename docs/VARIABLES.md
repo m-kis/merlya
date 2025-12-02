@@ -159,8 +159,8 @@ check health of @staging-api
 # Store SSH key passphrase as secret
 /variables set-secret ssh-passphrase-proddb
 
-# The inventory system will use this for hosts with SSH keys
-# See: /inventory ssh-key <host>
+# The SSH system will use this for hosts with SSH keys
+# See: /ssh host <hostname> set
 ```
 
 ---

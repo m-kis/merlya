@@ -1,7 +1,7 @@
 """
 Context-related command handlers.
 
-Handles: /scan, /refresh, /cache-stats, /context, /ssh-info, /permissions
+Handles: /scan, /refresh, /cache-stats, /context, /permissions
 """
 
 from rich.table import Table
@@ -154,32 +154,6 @@ class ContextCommandHandler:
 
         except Exception as e:
             print_error(f"Failed to get context: {e}")
-
-        return True
-
-    def handle_ssh_info(self) -> bool:
-        """Show SSH configuration and available keys."""
-        try:
-            console.print("\n[bold]SSH Configuration[/bold]\n")
-
-            if self.repl.credentials.supports_agent():
-                agent_keys = self.repl.credentials.get_agent_keys()
-                if agent_keys:
-                    console.print(f"[green]ssh-agent: {len(agent_keys)} keys loaded[/green]")
-                else:
-                    print_warning("ssh-agent detected but no keys")
-            else:
-                print_warning("ssh-agent not available")
-
-            keys = self.repl.credentials.get_ssh_keys()
-            console.print(f"\nSSH Keys: {len(keys)} available")
-
-            default_key = self.repl.credentials.get_default_key()
-            if default_key:
-                console.print(f"Default: {default_key}\n")
-
-        except Exception as e:
-            print_error(f"Failed to get SSH info: {e}")
 
         return True
 

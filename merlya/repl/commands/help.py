@@ -12,7 +12,7 @@ from merlya.repl.ui import console
 
 # Available help topics
 HELP_TOPICS = [
-    'model', 'variables', 'inventory', 'cicd', 'mcp', 'context', 'session', 'stats'
+    'model', 'variables', 'inventory', 'ssh', 'cicd', 'mcp', 'context', 'session', 'stats'
 ]
 
 # Quick reference for main help
@@ -22,8 +22,9 @@ SLASH_COMMANDS = {
     '/refresh': 'Force refresh context [hostname]',
     '/cache-stats': 'Show cache statistics',
     '/context': 'Show current context',
-    '/ssh-info': 'Show SSH configuration',
     '/permissions': 'Show permission capabilities [hostname]',
+    # SSH
+    '/ssh': 'SSH management (keys, agent, passphrase, test)',
     # Model
     '/model': 'Model management (show, list, set, provider, local, task, embedding)',
     # Variables
@@ -85,6 +86,8 @@ class HelpCommandHandler:
             self._show_variables_help()
         elif topic == 'inventory':
             self._show_inventory_help()
+        elif topic == 'ssh':
+            self._show_ssh_help()
         elif topic == 'cicd':
             self._show_cicd_help()
         elif topic == 'mcp':
@@ -126,7 +129,8 @@ class HelpCommandHandler:
         topics_info = {
             'model': 'LLM providers, local models, task routing, embeddings',
             'variables': 'Host aliases, config variables, secrets',
-            'inventory': 'Host management, import/export, relations, SSH keys',
+            'inventory': 'Host management, import/export, relations',
+            'ssh': 'SSH keys, agent, passphrases, connection testing',
             'cicd': 'CI/CD pipelines, workflows, debugging',
             'mcp': 'Model Context Protocol servers',
             'context': 'Infrastructure scanning, caching',
@@ -248,16 +252,54 @@ Supported formats: CSV, JSON, YAML, INI, /etc/hosts, ~/.ssh/config
 - `/inventory relations suggest` - Same as above
 - `/inventory relations list` - List validated relations
 
-**SSH Key Management:**
-- `/inventory ssh-key <host>` - Show SSH config
-- `/inventory ssh-key <host> set` - Set SSH key (interactive)
-- `/inventory ssh-key <host> clear` - Remove SSH config
-
-Passphrases stored as secrets (memory-only).
-
 **Host References:**
 Use `@hostname` in prompts: `check nginx on @web-prod-01`
 Tab completion available for inventory hosts.
+
+**SSH Configuration:**
+For SSH key management, use `/ssh` commands (see `/help ssh`).
+"""
+        console.print(Markdown(help_text))
+
+    def _show_ssh_help(self) -> None:
+        """Show detailed SSH help."""
+        help_text = """
+## SSH Management
+
+**Overview & Status:**
+- `/ssh` - Show SSH configuration overview
+- `/ssh info` - Same as /ssh
+- `/ssh keys` - List available SSH keys in ~/.ssh
+- `/ssh agent` - Show ssh-agent status and loaded keys
+
+**Global Key Configuration:**
+Configure a default SSH key used for all hosts without specific config.
+
+- `/ssh key set <path>` - Set global default SSH key
+- `/ssh key show` - Show global key configuration
+- `/ssh key clear` - Clear global key configuration
+
+**Per-Host Key Configuration:**
+Configure SSH keys for specific inventory hosts.
+
+- `/ssh host <hostname> show` - Show SSH config for host
+- `/ssh host <hostname> set` - Set SSH key for host (interactive)
+- `/ssh host <hostname> clear` - Clear SSH config for host
+
+**Passphrase Management:**
+Passphrases are stored in memory only (not persisted, expire on exit).
+
+- `/ssh passphrase global` - Cache passphrase for global key
+- `/ssh passphrase <key_name>` - Cache passphrase for specific key
+
+**Connection Testing:**
+- `/ssh test <hostname>` - Test SSH connection to host
+
+**Key Resolution Priority:**
+1. Host-specific key (from inventory metadata)
+2. Global key (`/ssh key set`)
+3. `~/.ssh/config` IdentityFile
+4. Default keys (id_ed25519, id_rsa, etc.)
 """
         console.print(Markdown(help_text))
 
@@ -322,8 +364,10 @@ Example: After adding filesystem server, say 'list files in /tmp'
 - `/refresh <hostname>` - Force refresh cache for specific host
 - `/cache-stats` - Show cache statistics
 - `/context` - Show current context summary
-- `/ssh-info` - Show SSH configuration and keys
 - `/permissions [host]` - Show/detect permission capabilities
+
+**SSH Configuration:**
+For SSH management, use `/ssh` (see `/help ssh`).
 
 **Scanning Philosophy (JIT):**
 - Local machine: Comprehensive scan, cached for 12h in SQLite

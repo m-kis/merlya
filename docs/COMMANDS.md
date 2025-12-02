@@ -7,11 +7,11 @@ Complete reference for all slash commands available in the Merlya interactive RE
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands |
-| `/help <topic>` | Detailed help (model, variables, inventory, cicd, mcp, context, session, triage) |
+| `/help <topic>` | Detailed help (model, variables, inventory, ssh, cicd, mcp, context, session, triage) |
 | `/scan` | Scan local or specific host |
 | `/refresh` | Force refresh context |
 | `/cache-stats` | Show cache statistics |
-| `/ssh-info` | Show SSH configuration |
+| `/ssh` | SSH management (keys, agent, passphrase, test) |
 | `/permissions` | Show permission capabilities |
 | `/context` | Show current context |
 | `/model` | Model configuration |
@@ -89,13 +89,46 @@ Remote Hosts: 3 cached (TTL: 30m)
 
 ---
 
-### `/ssh-info`
+### `/ssh`
 
-Show SSH configuration details.
+Centralized SSH key and connection management.
 
 ```bash
-/ssh-info
+# Show SSH overview (agent, keys, global config)
+/ssh
+
+# Show available SSH keys
+/ssh keys
+
+# Show ssh-agent status
+/ssh agent
+
+# Global key management
+/ssh key set ~/.ssh/id_ed25519
+/ssh key show
+/ssh key clear
+
+# Per-host key management
+/ssh host web-prod-01 show
+/ssh host web-prod-01 set
+/ssh host web-prod-01 clear
+
+# Passphrase management
+/ssh passphrase global
+/ssh passphrase id_ed25519
+
+# Connection testing
+/ssh test web-prod-01
 ```
+
+**Key Resolution Priority:**
+
+1. Host-specific key (from inventory metadata)
+2. Global key (`/ssh key set`)
+3. `~/.ssh/config` IdentityFile
+4. Default keys (id_ed25519, id_rsa, etc.)
+
+Passphrases are cached in memory only and expire on exit.
 
 ---
 
@@ -432,25 +465,6 @@ Show inventory statistics.
 ```bash
 /inventory stats
 ```
-
----
-
-### `/inventory ssh-key <hostname>`
-
-Manage SSH key configuration for a host.
-
-```bash
-# Show SSH config for host
-/inventory ssh-key web-prod-01
-
-# Set SSH key (interactive)
-/inventory ssh-key web-prod-01 set
-
-# Clear SSH configuration
-/inventory ssh-key web-prod-01 clear
-```
-
-Passphrases are stored as secrets (memory-only, NOT persisted).
 
 ---
 

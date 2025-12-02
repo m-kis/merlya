@@ -47,6 +47,7 @@ class CommandHandler:
         self._help_handler = None
         self._cicd_handler = None
         self._stats_handler = None
+        self._ssh_handler = None
 
     @property
     def context_handler(self):
@@ -103,6 +104,14 @@ class CommandHandler:
             from merlya.repl.commands.stats import StatsCommandHandler
             self._stats_handler = StatsCommandHandler(self.repl)
         return self._stats_handler
+
+    @property
+    def ssh_handler(self):
+        """Lazy load SSH handler."""
+        if self._ssh_handler is None:
+            from merlya.repl.commands.ssh import SSHCommandHandler
+            self._ssh_handler = SSHCommandHandler(self.repl)
+        return self._ssh_handler
 
     async def handle_command(self, command: str) -> CommandResult:
         """
@@ -186,9 +195,11 @@ class CommandHandler:
             '/scan': lambda: self.context_handler.handle_scan(args),
             '/refresh': lambda: self.context_handler.handle_refresh(args),
             '/cache-stats': lambda: self.context_handler.handle_cache_stats(),
-            '/ssh-info': lambda: self.context_handler.handle_ssh_info(),
             '/permissions': lambda: self.context_handler.handle_permissions(args),
             '/context': lambda: self.context_handler.handle_context(),
+
+            # SSH management (centralized)
+            '/ssh': lambda: self.ssh_handler.handle(args),
 
             # Model commands
             '/model': lambda: self.model_handler.handle(args),

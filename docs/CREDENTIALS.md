@@ -14,19 +14,34 @@ Merlya supports three types of variables:
 
 ## SSH Key Management
 
+All SSH-related functionality is centralized in the `/ssh` command.
+
+### SSH Overview
+
+```bash
+# Show SSH configuration overview (agent, keys, global config)
+/ssh
+
+# List available SSH keys
+/ssh keys
+
+# Show ssh-agent status
+/ssh agent
+```
+
 ### Global SSH Key (Recommended)
 
 Set a default SSH key used for all hosts without specific configuration:
 
 ```bash
 # Set global SSH key
-/inventory ssh-key set ~/.ssh/id_ed25519
+/ssh key set ~/.ssh/id_ed25519
 
 # View current configuration
-/inventory ssh-key show
+/ssh key show
 
 # Clear global key
-/inventory ssh-key clear
+/ssh key clear
 ```
 
 ### Per-Host SSH Key
@@ -34,14 +49,14 @@ Set a default SSH key used for all hosts without specific configuration:
 Override the global key for specific hosts:
 
 ```bash
-# Set host-specific key
-/inventory ssh-key web-prod-01 set
+# Set host-specific key (interactive)
+/ssh host web-prod-01 set
 
 # View host SSH config
-/inventory ssh-key web-prod-01 show
+/ssh host web-prod-01 show
 
 # Clear host-specific key
-/inventory ssh-key web-prod-01 clear
+/ssh host web-prod-01 clear
 ```
 
 ### Key Resolution Priority
@@ -49,7 +64,7 @@ Override the global key for specific hosts:
 When connecting to a host, Merlya resolves SSH keys in this order:
 
 1. **Host-specific key** from inventory metadata (`ssh_key_path`)
-2. **Global key** set via `/inventory ssh-key set`
+2. **Global key** set via `/ssh key set`
 3. **~/.ssh/config** `IdentityFile` for the host
 4. **Default keys** (id_ed25519, id_ecdsa, id_rsa)
 
@@ -63,9 +78,21 @@ SSH key passphrases are:
 - **Cleared automatically** on REPL exit
 
 ```bash
-# Passphrase will be prompted automatically when needed
-# Or set it explicitly with secure input
+# Cache passphrase for global key
+/ssh passphrase global
+
+# Cache passphrase for specific key
+/ssh passphrase id_ed25519
+
+# Or via variables
 /variables set-secret ssh-passphrase-global
+```
+
+### Connection Testing
+
+```bash
+# Test SSH connection to a host
+/ssh test web-prod-01
 ```
 
 ### Security Features

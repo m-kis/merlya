@@ -110,7 +110,6 @@ class InventoryCommandHandler:
             "snapshot": lambda a: self.manager.handle_snapshot(a),
             "relations": lambda a: self.relations.handle_relations(a),
             "stats": lambda a: self.viewer.handle_stats(a),
-            "ssh-key": lambda a: self.manager.handle_ssh_key(a, self.repl),
             "setup": lambda a: self._handle_setup_wizard(),  # Interactive setup
             "help": lambda _: self._show_help(),
         }
@@ -316,13 +315,6 @@ class InventoryCommandHandler:
         console.print("  /inventory stats              Show inventory statistics")
         console.print()
 
-        console.print("[bold]SSH Key Management:[/bold]")
-        console.print("  /inventory ssh-key set <path>   Set global default SSH key")
-        console.print("  /inventory ssh-key show         Show global SSH key config")
-        console.print("  /inventory ssh-key <host> set   Set SSH key for specific host")
-        console.print("  [dim]Passphrase: prompted on first use, cached for session[/dim]")
-        console.print()
-
         console.print("[bold]Other:[/bold]")
         console.print("  /inventory export <file>      Export inventory to file")
         console.print("  /inventory snapshot [name]    Create inventory snapshot")
@@ -332,4 +324,8 @@ class InventoryCommandHandler:
         console.print("[bold]Using Hosts in Prompts:[/bold]")
         console.print("  Reference hosts with @: [cyan]check nginx on @web-prod-01[/cyan]")
         console.print("  Auto-completes from inventory (press Tab)")
+        console.print()
+
+        console.print("[bold]SSH Configuration:[/bold]")
+        console.print("  Use [cyan]/ssh[/cyan] for SSH key management (see [cyan]/help ssh[/cyan])")
         return True
