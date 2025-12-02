@@ -42,6 +42,7 @@ openai = "^2.0"
 litellm = "^1.80"
 openai-agents = "^0.6.0"
 pyautogen = "^0.10.0"
+autogen-ext = {version = "^0.7", extras = ["openai"]}
 # Infrastructure
 python-terraform = "^0.10"
 redis = "^5.2"
