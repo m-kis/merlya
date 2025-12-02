@@ -59,8 +59,13 @@ def suppress_asyncio_errors():
         SUPPRESSED_MESSAGES = [
             "Error processing publish message",
             "task_done() called too many times",
+            "ValueError('task_done()",
             "CancelledError",
             "Event loop is closed",
+            "KeyboardInterrupt",
+            "_process_publish",
+            "_process_send",
+            "Task finished",
         ]
 
         def filter(self, record):
@@ -87,10 +92,18 @@ def suppress_asyncio_errors():
             # AutoGen internal errors during shutdown
             "Error processing publish message",
             "task_done() called too many times",
+            "ValueError('task_done()",  # Variant with exception wrapper
+            "ValueError: task_done()",  # Another variant
             "unhandled exception during asyncio.run() shutdown",
+            # Task lifecycle messages
+            "Task finished name=",
+            "task: <Task finished",
+            "_process_publish() done",
+            "_process_send() done",
             # Asyncio cancellation (expected during interrupt)
             "asyncio.exceptions.CancelledError",
             "exception=CancelledError",
+            "exception=ValueError",  # Generic exception wrapper
             "Task was destroyed but it is pending",
             "_GatheringFuture exception=",
             # AutoGen context errors
@@ -101,6 +114,7 @@ def suppress_asyncio_errors():
             # Event loop cleanup
             "Event loop is closed",
             "RuntimeError: Event loop is closed",
+            "raise KeyboardInterrupt()",  # Direct interrupt raise
             # HTTP client shutdown errors
             "httpcore._async.connection",
             "anyio._backends._asyncio",
@@ -109,11 +123,18 @@ def suppress_asyncio_errors():
             "autogen_core._routed_agent",
             "autogen_core._base_agent",
             "autogen_agentchat.base",
+            "autogen_agentchat/agents",
             # OpenAI/httpx client shutdown
             "openai/_base_client.py",
             "openai/resources/chat/completions",
             "httpx/_client.py",
             "httpx/_transports/default",
+            # Python asyncio internals
+            "asyncio/runners.py",
+            "asyncio/base_events.py",
+            "asyncio/queues.py",
+            "selectors.py",
+            "_selector.control",
         ]
 
         def __init__(self, original):
@@ -550,6 +571,13 @@ class MerlyaREPL:
         # Clean shutdown of orchestrator to prevent httpx "Event loop is closed" errors
         if hasattr(self, 'orchestrator') and self.orchestrator is not None:
             self.orchestrator.shutdown_sync()
+
+        # Shutdown background executors to prevent hanging threads
+        try:
+            from merlya.context.cache_manager.executor import shutdown_persistence_executor
+            shutdown_persistence_executor(wait=False)
+        except Exception:
+            pass  # Best effort cleanup
 
         print_success("Goodbye!")
         self.session_manager.end_session()
