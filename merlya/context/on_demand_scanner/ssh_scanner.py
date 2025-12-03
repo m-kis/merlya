@@ -169,17 +169,26 @@ async def ssh_scan(
 
         loop = asyncio.get_running_loop()
         logger.debug(f"🔌 SSH connecting to {connect_target} (credentials from {hostname})")
-        await loop.run_in_executor(
-            None,
-            lambda: client.connect(
-                connect_target,  # Use resolved IP, not hostname
-                username=user,
-                key_filename=key_path,
-                passphrase=passphrase,
-                timeout=config.connect_timeout,
-                allow_agent=agent_available,
+
+        # Wrap executor call with asyncio.wait_for to enforce timeout
+        # This protects against executor blocking indefinitely (DNS, agent, etc.)
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: client.connect(
+                        connect_target,  # Use resolved IP, not hostname
+                        username=user,
+                        key_filename=key_path,
+                        passphrase=passphrase,
+                        timeout=config.connect_timeout,
+                        allow_agent=agent_available,
+                    )
+                ),
+                timeout=config.connect_timeout + 5.0  # Extra margin for executor overhead
             )
-        )
+        except asyncio.TimeoutError as e:
+            raise TimeoutError(f"SSH connection to {connect_target} timed out after {config.connect_timeout + 5}s") from e
 
         data["ssh_connected"] = True
         data["ssh_user"] = user
