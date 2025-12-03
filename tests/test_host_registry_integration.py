@@ -7,8 +7,9 @@ These tests verify that the components work together correctly:
 3. Cache invalidation works correctly after inventory changes
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestHostRegistryInventoryIntegration:
@@ -65,6 +66,7 @@ class TestHostRegistryInventoryIntegration:
     def test_get_host_registry_thread_safety(self):
         """Test that get_host_registry is thread-safe."""
         import threading
+
         from merlya.context.host_registry import get_host_registry, reset_host_registry
 
         reset_host_registry()
@@ -106,8 +108,9 @@ class TestSSHUserFromInventory:
 
     def test_get_user_for_host_checks_inventory_first(self, mock_repo_with_ssh_user):
         """Test that get_user_for_host checks inventory metadata first."""
-        from merlya.security.ssh_credentials import SSHCredentialMixin
         from pathlib import Path
+
+        from merlya.security.ssh_credentials import SSHCredentialMixin
 
         # Create a mock class that uses the mixin
         class MockCredManager(SSHCredentialMixin):
@@ -134,8 +137,9 @@ class TestSSHUserFromInventory:
 
     def test_get_user_for_host_falls_back_to_ssh_config(self):
         """Test fallback to SSH config when inventory has no ssh_user."""
-        from merlya.security.ssh_credentials import SSHCredentialMixin
         from pathlib import Path
+
+        from merlya.security.ssh_credentials import SSHCredentialMixin
 
         class MockCredManager(SSHCredentialMixin):
             def __init__(self):
@@ -180,8 +184,8 @@ class TestInventoryManagerSync:
 
     def test_sync_host_registry_invalidates_cache(self, mock_repo):
         """Test that _sync_host_registry invalidates cache after adding host."""
-        from merlya.repl.commands.inventory.manager import InventoryManager
         from merlya.context.host_registry import get_host_registry, reset_host_registry
+        from merlya.repl.commands.inventory.manager import InventoryManager
 
         reset_host_registry()
         manager = InventoryManager(mock_repo)
