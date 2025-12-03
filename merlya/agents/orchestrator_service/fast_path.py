@@ -16,7 +16,16 @@ import asyncio
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
+
+# Hostname validation pattern (RFC 1123)
+VALID_HOSTNAME_PATTERN = re.compile(
+    r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+    r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+)
+
+# Timeout for tool execution (seconds)
+TOOL_EXECUTION_TIMEOUT = 120
 
 from merlya.utils.logger import logger
 
@@ -279,7 +288,7 @@ class FastPathDetector:
         scan_patterns = [
             r"scan\s+(?:me\s+)?(?:the\s+)?@?\w",
             r"scann?e?\s+(?:moi\s+)?(?:le\s+)?@?\w",
-            r"what.*(?:service|running).*(?:on\s+)?@?\w",
+            r"what.{0,50}?(?:service|running).{0,50}?(?:on\s+)?@?\w",
             r"(?:list|show)\s+services?\s+(?:on\s+)?@?\w",
             r"quels?\s+(?:sont\s+)?(?:les\s+)?services?",
         ]
@@ -337,6 +346,15 @@ class FastPathDetector:
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
 
+    def _validate_hostname(self, hostname: str) -> bool:
+        """Validate hostname according to RFC 1123."""
+        if not hostname or len(hostname) > 253:
+            return False
+        # Allow IP addresses as well
+        if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', hostname):
+            return True
+        return bool(VALID_HOSTNAME_PATTERN.match(hostname))
+
     def _extract_hostname(self, query: str) -> Optional[str]:
         """Extract hostname from query."""
         # Match @variable patterns
@@ -354,7 +372,12 @@ class FastPathDetector:
                 if hostname.lower() in ("the", "le", "la", "un", "une", "my", "mon", "ma"):
                     continue
                 # Resolve @variable if credentials manager available
-                return self._resolve_variable(hostname)
+                resolved = self._resolve_variable(hostname)
+                # Validate hostname to prevent injection
+                if not self._validate_hostname(resolved):
+                    logger.warning(f"⚠️ Invalid hostname format rejected")
+                    continue
+                return resolved
 
         return None
 
@@ -397,7 +420,8 @@ class FastPathDetector:
             try:
                 resolved = self._credentials.get_variable(clean_value)
                 if resolved:
-                    logger.debug(f"📝 Resolved @{clean_value} → {resolved}")
+                    # Never log resolved credential values
+                    logger.debug(f"📝 Resolved @{clean_value} → [REDACTED]")
                     return resolved
             except Exception as e:
                 logger.debug(f"Variable resolution failed for {clean_value}: {e}")
@@ -468,13 +492,25 @@ class FastPathExecutor:
 
         logger.info(f"⚡ Fast path: scan_host({match.hostname}, user={match.username})")
 
-        # Execute in thread to avoid blocking event loop (tools may do I/O)
-        if match.username:
-            result = await asyncio.to_thread(scan_host, match.hostname, match.username)
-        else:
-            result = await asyncio.to_thread(scan_host, match.hostname)
-
-        return result
+        try:
+            # Execute in thread with timeout to avoid blocking event loop
+            if match.username:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(scan_host, match.hostname, match.username),
+                    timeout=TOOL_EXECUTION_TIMEOUT
+                )
+            else:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(scan_host, match.hostname),
+                    timeout=TOOL_EXECUTION_TIMEOUT
+                )
+            return result
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ scan_host timed out after {TOOL_EXECUTION_TIMEOUT}s")
+            return None
+        except Exception as e:
+            logger.error(f"❌ scan_host execution failed: {e}")
+            return None
 
     async def _execute_list_hosts(self, match: FastPathMatch) -> Optional[str]:
         """Execute list_hosts fast path."""
@@ -485,11 +521,20 @@ class FastPathExecutor:
 
         logger.info(f"⚡ Fast path: list_hosts(environment={match.environment})")
 
-        env = match.environment or "all"
-        # Execute in thread to avoid blocking event loop
-        result = await asyncio.to_thread(list_hosts, environment=env)
-
-        return result
+        try:
+            env = match.environment or "all"
+            # Execute in thread with timeout to avoid blocking event loop
+            result = await asyncio.wait_for(
+                asyncio.to_thread(list_hosts, environment=env),
+                timeout=TOOL_EXECUTION_TIMEOUT
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ list_hosts timed out after {TOOL_EXECUTION_TIMEOUT}s")
+            return None
+        except Exception as e:
+            logger.error(f"❌ list_hosts execution failed: {e}")
+            return None
 
     async def _execute_check_host(self, match: FastPathMatch) -> Optional[str]:
         """Execute check_host fast path (uses scan_host)."""
@@ -503,7 +548,16 @@ class FastPathExecutor:
 
         logger.info(f"⚡ Fast path: check_host({match.hostname})")
 
-        # Execute in thread to avoid blocking event loop
-        result = await asyncio.to_thread(scan_host, match.hostname)
-
-        return result
+        try:
+            # Execute in thread with timeout to avoid blocking event loop
+            result = await asyncio.wait_for(
+                asyncio.to_thread(scan_host, match.hostname),
+                timeout=TOOL_EXECUTION_TIMEOUT
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ check_host timed out after {TOOL_EXECUTION_TIMEOUT}s")
+            return None
+        except Exception as e:
+            logger.error(f"❌ check_host execution failed: {e}")
+            return None
