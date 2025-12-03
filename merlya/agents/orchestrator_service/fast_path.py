@@ -18,20 +18,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-# Hostname validation pattern (RFC 1123)
-VALID_HOSTNAME_PATTERN = re.compile(
-    r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
-    r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-)
-
-# Timeout for tool execution (seconds)
-TOOL_EXECUTION_TIMEOUT = 120
-
 from merlya.utils.logger import logger
 
 # Optional imports for embeddings
 try:
-    from merlya.triage.smart_classifier.embedding_cache import EmbeddingCache, HAS_EMBEDDINGS
+    from merlya.triage.smart_classifier.embedding_cache import (
+        HAS_EMBEDDINGS,
+        EmbeddingCache,
+    )
 except ImportError:
     HAS_EMBEDDINGS = False
     EmbeddingCache = None  # type: ignore
@@ -40,6 +34,15 @@ try:
     import numpy as np
 except ImportError:
     np = None  # type: ignore
+
+# Hostname validation pattern (RFC 1123)
+VALID_HOSTNAME_PATTERN = re.compile(
+    r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+    r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+)
+
+# Timeout for tool execution (seconds)
+TOOL_EXECUTION_TIMEOUT = 120
 
 
 class FastPathType(Enum):
@@ -375,7 +378,7 @@ class FastPathDetector:
                 resolved = self._resolve_variable(hostname)
                 # Validate hostname to prevent injection
                 if not self._validate_hostname(resolved):
-                    logger.warning(f"⚠️ Invalid hostname format rejected")
+                    logger.warning("⚠️ Invalid hostname format rejected")
                     continue
                 return resolved
 

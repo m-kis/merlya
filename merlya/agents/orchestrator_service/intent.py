@@ -82,7 +82,7 @@ class IntentParser:
         if self._ai_classifier:
             cached = self._ai_classifier._get_from_cache(user_query)
             if cached:
-                logger.debug(f"⚡ Using cached classification for query")
+                logger.debug("⚡ Using cached classification for query")
                 priority_result = PriorityResult(
                     priority=cached.priority,
                     confidence=0.95,
