@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 import paramiko
 
+from merlya.context.host_resolution import resolve_host
 from merlya.executors.connectivity import ConnectivityPlanner
 from merlya.executors.ssh_connection_pool import get_connection_pool
 from merlya.executors.ssh_utils import read_channel_with_timeout
@@ -10,36 +11,6 @@ from merlya.security.credentials import CredentialManager
 from merlya.utils.display import get_display_manager
 from merlya.utils.logger import logger
 from merlya.utils.security import redact_sensitive_info
-
-
-def _resolve_host_ip_from_inventory(hostname: str) -> Optional[str]:
-    """
-    Resolve hostname to IP address using inventory data.
-
-    Falls back to None if host is not in inventory or has no IP.
-    This allows using inventory-defined IPs for hosts that don't
-    have DNS entries (e.g., internal servers, VMs).
-
-    Args:
-        hostname: Hostname to resolve
-
-    Returns:
-        IP address string or None if not found
-    """
-    try:
-        from merlya.memory.persistence.inventory_repository import get_inventory_repository
-        repo = get_inventory_repository()
-        host = repo.get_host_by_name(hostname)
-        if host:
-            ip = host.get("ip_address") or host.get("ip")
-            if ip and ip != "unknown":
-                logger.debug(f"📍 Resolved {hostname} to {ip} from inventory")
-                return ip
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.debug(f"Could not resolve IP from inventory: {e}")
-    return None
 
 
 class SSHManager:
@@ -162,20 +133,13 @@ class SSHManager:
         if passphrase:
             connect_kwargs["passphrase"] = passphrase
 
-        # Determine connection strategy
-        # Try to resolve IP for routing check - inventory first, then DNS
-        target_ip = _resolve_host_ip_from_inventory(host)
-        connect_host = host  # Host to actually connect to
+        # Determine connection strategy using unified host resolution
+        # Priority: inventory IP > DNS > hostname
+        resolved = resolve_host(host)
+        connect_host = resolved.connect_address  # IP if available, else hostname
+        target_ip = resolved.ip_address
 
-        if target_ip:
-            # Use inventory IP for connection if DNS doesn't resolve
-            connect_host = target_ip
-        else:
-            # Fallback to DNS resolution
-            try:
-                target_ip = socket.gethostbyname(host)
-            except socket.gaierror:
-                pass
+        logger.debug(f"📍 Host resolution: {resolved}")
 
         strategy = self.connectivity.get_connection_strategy(host, target_ip)
 

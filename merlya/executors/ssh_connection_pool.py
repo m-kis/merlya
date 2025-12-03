@@ -2,6 +2,11 @@
 SSH Connection Pool for managing persistent connections.
 Handles 2FA by reusing authenticated connections.
 Includes circuit breaker to prevent repeated failed connection attempts.
+
+Key design decisions:
+- Connections are keyed by CANONICAL HOSTNAME, not IP
+- Circuit breaker tracks failures by canonical hostname
+- This ensures connection reuse works correctly even when IP/hostname are used interchangeably
 """
 import threading
 import time
@@ -26,6 +31,7 @@ class SSHConnectionPool:
     - Auto-closes stale connections
     - Thread-safe
     - Circuit breaker to prevent repeated failed connection attempts
+    - Uses canonical hostname for consistent pooling (IP and hostname map to same connection)
     """
 
     def __init__(self, max_idle_time: int = 3600, circuit_breaker_threshold: int = 3, circuit_breaker_timeout: int = 300):
@@ -41,26 +47,56 @@ class SSHConnectionPool:
         self.max_idle_time = max_idle_time
         self.lock = threading.Lock()
 
-        # Circuit breaker state: {host: {'timestamp': float, 'count': int, 'error': str}}
+        # Circuit breaker state: {canonical_host: {'timestamp': float, 'count': int, 'error': str}}
+        # Uses canonical hostname to prevent bypass via IP/hostname switching
         self.failed_hosts: Dict[str, Dict] = {}
         self.circuit_breaker_threshold = circuit_breaker_threshold
         self.circuit_breaker_timeout = circuit_breaker_timeout
 
+    def _get_canonical_hostname(self, host: str) -> str:
+        """
+        Get canonical hostname for pooling consistency.
+
+        If host is an IP, try to find the corresponding hostname from inventory.
+        This ensures that connections to the same host via different identifiers
+        are pooled together.
+
+        Args:
+            host: Hostname or IP address
+
+        Returns:
+            Canonical hostname for this host
+        """
+        try:
+            from merlya.context.host_resolution import get_canonical_hostname
+            return get_canonical_hostname(host)
+        except ImportError:
+            return host
+
     def _connection_key(self, host: str, user: str) -> str:
-        """Generate unique key for a connection."""
-        return f"{user}@{host}"
+        """
+        Generate unique key for a connection.
+
+        Uses canonical hostname to ensure consistent pooling.
+        """
+        canonical = self._get_canonical_hostname(host)
+        return f"{user}@{canonical}"
 
     def _check_circuit_breaker(self, host: str):
         """
         Check if circuit breaker is open for this host.
 
+        Uses canonical hostname to prevent bypass via IP/hostname switching.
+
         Raises:
             CircuitBreakerOpen: If the circuit breaker is open for this host
         """
-        if host not in self.failed_hosts:
+        canonical = self._get_canonical_hostname(host)
+
+        if canonical not in self.failed_hosts:
             return  # No failures recorded, OK to proceed
 
-        failure_info = self.failed_hosts[host]
+        failure_info = self.failed_hosts[canonical]
         count = failure_info['count']
         timestamp = failure_info['timestamp']
         error = failure_info.get('error', '')
@@ -74,7 +110,7 @@ class SSHConnectionPool:
 
         if any(dns_error in error for dns_error in dns_errors) or count >= 10:
             raise CircuitBreakerOpen(
-                f"Host '{host}' is permanently unreachable: {error}"
+                f"Host '{canonical}' is permanently unreachable: {error}"
             )
 
         # Temporary circuit breaker (connection refused, timeout, etc.)
@@ -83,39 +119,42 @@ class SSHConnectionPool:
             if elapsed < self.circuit_breaker_timeout:
                 remaining = int(self.circuit_breaker_timeout - elapsed)
                 raise CircuitBreakerOpen(
-                    f"Host '{host}' circuit breaker is OPEN "
+                    f"Host '{canonical}' circuit breaker is OPEN "
                     f"(failed {count} times, retry in {remaining}s)"
                 )
             else:
                 # Timeout expired - reset and allow retry
-                logger.info(f"{log_prefix('🔄')} Circuit breaker timeout expired for {host}, resetting")
-                del self.failed_hosts[host]
+                logger.info(f"{log_prefix('🔄')} Circuit breaker timeout expired for {canonical}, resetting")
+                del self.failed_hosts[canonical]
 
     def _record_failure(self, host: str, error: Exception):
         """
         Record connection failure for circuit breaker.
 
+        Uses canonical hostname to prevent bypass via IP/hostname switching.
+
         Args:
             host: Hostname that failed
             error: Exception that occurred
         """
+        canonical = self._get_canonical_hostname(host)
         error_str = str(error)
 
-        if host in self.failed_hosts:
-            failure_info = self.failed_hosts[host]
+        if canonical in self.failed_hosts:
+            failure_info = self.failed_hosts[canonical]
             failure_info['count'] += 1
             failure_info['timestamp'] = time.time()
             failure_info['error'] = error_str
         else:
-            self.failed_hosts[host] = {
+            self.failed_hosts[canonical] = {
                 'timestamp': time.time(),
                 'count': 1,
                 'error': error_str
             }
 
-        count = self.failed_hosts[host]['count']
+        count = self.failed_hosts[canonical]['count']
         logger.warning(
-            f"{log_prefix('⚠️')} SSH failure recorded for {host}: {count} failure(s) "
+            f"{log_prefix('⚠️')} SSH failure recorded for {canonical}: {count} failure(s) "
             f"(circuit breaker threshold: {self.circuit_breaker_threshold})"
         )
 
@@ -185,9 +224,11 @@ class SSHConnectionPool:
                 logger.info(f"{log_prefix('✓')} Established SSH connection to {key} (will be reused for {self.max_idle_time}s)")
 
                 # Clear any previous failures for this host (successful connection)
-                if host in self.failed_hosts:
-                    logger.debug(f"{log_prefix('✅')} Clearing circuit breaker state for {host} (successful connection)")
-                    del self.failed_hosts[host]
+                # Use canonical hostname to ensure we clear the correct entry
+                canonical = self._get_canonical_hostname(host)
+                if canonical in self.failed_hosts:
+                    logger.debug(f"{log_prefix('✅')} Clearing circuit breaker state for {canonical} (successful connection)")
+                    del self.failed_hosts[canonical]
 
                 return client
 
