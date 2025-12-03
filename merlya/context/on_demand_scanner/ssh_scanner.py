@@ -145,13 +145,18 @@ async def ssh_scan(
                     "This is insecure and should only be used for testing."
                 )
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        elif policy_name == "warning":
+            # WarningPolicy: Log warning but accept unknown hosts
+            # Suitable for internal networks where hosts may not be pre-registered
+            client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            logger.debug("SSH host key policy: WarningPolicy (allows unknown hosts with warning)")
         elif policy_name == "reject":
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
             logger.debug("SSH host key policy: RejectPolicy (strictest)")
         else:
-            # Default: RejectPolicy - safest option for production
-            client.set_missing_host_key_policy(paramiko.RejectPolicy())
-            logger.debug("SSH host key policy: RejectPolicy (default, strictest)")
+            # Default: WarningPolicy - balanced for most use cases
+            client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            logger.debug("SSH host key policy: WarningPolicy (default)")
 
         # Check if ssh-agent is available
         from merlya.security.credentials import CredentialManager

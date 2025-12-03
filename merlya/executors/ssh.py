@@ -12,6 +12,36 @@ from merlya.utils.logger import logger
 from merlya.utils.security import redact_sensitive_info
 
 
+def _resolve_host_ip_from_inventory(hostname: str) -> Optional[str]:
+    """
+    Resolve hostname to IP address using inventory data.
+
+    Falls back to None if host is not in inventory or has no IP.
+    This allows using inventory-defined IPs for hosts that don't
+    have DNS entries (e.g., internal servers, VMs).
+
+    Args:
+        hostname: Hostname to resolve
+
+    Returns:
+        IP address string or None if not found
+    """
+    try:
+        from merlya.memory.persistence.inventory_repository import get_inventory_repository
+        repo = get_inventory_repository()
+        host = repo.get_host_by_name(hostname)
+        if host:
+            ip = host.get("ip_address") or host.get("ip")
+            if ip and ip != "unknown":
+                logger.debug(f"📍 Resolved {hostname} to {ip} from inventory")
+                return ip
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"Could not resolve IP from inventory: {e}")
+    return None
+
+
 class SSHManager:
     """
     SSH manager that uses the same credentials as the user's terminal.
@@ -133,12 +163,19 @@ class SSHManager:
             connect_kwargs["passphrase"] = passphrase
 
         # Determine connection strategy
-        # Try to resolve IP for routing check
-        target_ip = None
-        try:
-            target_ip = socket.gethostbyname(host)
-        except socket.gaierror:
-            pass
+        # Try to resolve IP for routing check - inventory first, then DNS
+        target_ip = _resolve_host_ip_from_inventory(host)
+        connect_host = host  # Host to actually connect to
+
+        if target_ip:
+            # Use inventory IP for connection if DNS doesn't resolve
+            connect_host = target_ip
+        else:
+            # Fallback to DNS resolution
+            try:
+                target_ip = socket.gethostbyname(host)
+            except socket.gaierror:
+                pass
 
         strategy = self.connectivity.get_connection_strategy(host, target_ip)
 
@@ -147,16 +184,17 @@ class SSHManager:
             nonlocal strategy
             if strategy.method == 'jump':
                 return self._connect_via_jump_host(
-                    host, strategy.jump_host, user, connect_kwargs
+                    connect_host, strategy.jump_host, user, connect_kwargs
                 ), True
             else:
                 if self.use_pool and self.pool:
-                    conn = self.pool.get_connection(host, user, **connect_kwargs)
+                    # Use connect_host (IP from inventory or hostname)
+                    conn = self.pool.get_connection(connect_host, user, **connect_kwargs)
                     return conn, False
                 else:
                     client = paramiko.SSHClient()
                     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                    client.connect(host, username=user, **connect_kwargs)
+                    client.connect(connect_host, username=user, **connect_kwargs)
                     return client, True
 
         try:

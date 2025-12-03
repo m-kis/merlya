@@ -15,6 +15,36 @@ from .rate_limiter import get_shared_rate_limiter
 from .ssh_scanner import ssh_scan
 
 
+def _resolve_host_ip_from_inventory(hostname: str) -> Optional[str]:
+    """
+    Resolve hostname to IP address using inventory data.
+
+    Falls back to None if host is not in inventory or has no IP.
+    This allows using inventory-defined IPs for hosts that don't
+    have DNS entries (e.g., internal servers, VMs).
+
+    Args:
+        hostname: Hostname to resolve
+
+    Returns:
+        IP address string or None if not found
+    """
+    try:
+        from merlya.memory.persistence.inventory_repository import get_inventory_repository
+        repo = get_inventory_repository()
+        host = repo.get_host_by_name(hostname)
+        if host:
+            ip = host.get("ip_address") or host.get("ip")
+            if ip and ip != "unknown":
+                logger.debug(f"📍 Resolved {hostname} to {ip} from inventory")
+                return ip
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"Could not resolve IP from inventory: {e}")
+    return None
+
+
 class OnDemandScanner:
     """
     On-demand host scanner with parallel execution and retry logic.
@@ -302,38 +332,50 @@ class OnDemandScanner:
             "scanned_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Resolve hostname to IP (non-blocking, supports IPv4 and IPv6)
-        # Use timeout to prevent indefinite blocking on slow DNS
-        dns_timeout = min(self.config.connect_timeout, 5.0)
-        try:
-            loop = asyncio.get_running_loop()
-            # getaddrinfo returns list of (family, type, proto, canonname, sockaddr)
-            # sockaddr is (ip, port) for IPv4 or (ip, port, flow, scope) for IPv6
-            addrinfo = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-                ),
-                timeout=dns_timeout
-            )
-            if addrinfo:
-                # Extract IP from first result's sockaddr (index 4), IP is always index 0
-                data["ip"] = addrinfo[0][4][0]
-                # Store all resolved addresses for completeness
-                all_ips = list({info[4][0] for info in addrinfo})
-                if len(all_ips) > 1:
-                    data["all_ips"] = all_ips
-                data["dns_resolved"] = True
-            else:
-                data["dns_resolved"] = False
-        except asyncio.TimeoutError:
-            logger.debug(f"⏱️ DNS resolution timed out for {hostname}")
-            data["dns_resolved"] = False
-        except socket.gaierror:
-            data["dns_resolved"] = False
+        # Try to resolve IP from inventory first (for hosts without DNS)
+        inventory_ip = _resolve_host_ip_from_inventory(hostname)
+        connect_host = hostname  # Host/IP to use for connectivity checks
 
-        # Check connectivity
-        data["reachable"] = await self._check_connectivity(hostname)
+        if inventory_ip:
+            data["ip"] = inventory_ip
+            data["ip_source"] = "inventory"
+            data["dns_resolved"] = False  # We used inventory, not DNS
+            connect_host = inventory_ip
+        else:
+            # Fallback to DNS resolution (non-blocking, supports IPv4 and IPv6)
+            # Use timeout to prevent indefinite blocking on slow DNS
+            dns_timeout = min(self.config.connect_timeout, 5.0)
+            try:
+                loop = asyncio.get_running_loop()
+                # getaddrinfo returns list of (family, type, proto, canonname, sockaddr)
+                # sockaddr is (ip, port) for IPv4 or (ip, port, flow, scope) for IPv6
+                addrinfo = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+                    ),
+                    timeout=dns_timeout
+                )
+                if addrinfo:
+                    # Extract IP from first result's sockaddr (index 4), IP is always index 0
+                    data["ip"] = addrinfo[0][4][0]
+                    data["ip_source"] = "dns"
+                    connect_host = data["ip"]
+                    # Store all resolved addresses for completeness
+                    all_ips = list({info[4][0] for info in addrinfo})
+                    if len(all_ips) > 1:
+                        data["all_ips"] = all_ips
+                    data["dns_resolved"] = True
+                else:
+                    data["dns_resolved"] = False
+            except asyncio.TimeoutError:
+                logger.debug(f"⏱️ DNS resolution timed out for {hostname}")
+                data["dns_resolved"] = False
+            except socket.gaierror:
+                data["dns_resolved"] = False
+
+        # Check connectivity using resolved IP or hostname
+        data["reachable"] = await self._check_connectivity(connect_host)
 
         if not data["reachable"]:
             return data
