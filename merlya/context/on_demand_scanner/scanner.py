@@ -361,10 +361,11 @@ class OnDemandScanner:
         connect_timeout = self.config.connect_timeout
 
         def check():
+            # Set socket default timeout to prevent indefinite blocking on DNS
+            old_timeout = socket.getdefaulttimeout()
             try:
-                # DNS resolution with timeout
-                # Note: socket.getaddrinfo doesn't support timeout directly,
-                # but running in executor + asyncio.wait_for provides timeout
+                socket.setdefaulttimeout(dns_timeout)
+                # DNS resolution (now respects socket timeout)
                 addrinfo = socket.getaddrinfo(
                     hostname, port, socket.AF_UNSPEC, socket.SOCK_STREAM
                 )
@@ -381,6 +382,8 @@ class OnDemandScanner:
                 return False
             except Exception:
                 return False
+            finally:
+                socket.setdefaulttimeout(old_timeout)
 
         try:
             # Wrap in timeout to prevent indefinite blocking on DNS

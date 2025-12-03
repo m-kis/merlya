@@ -15,6 +15,7 @@ Storage hierarchy for secrets (resolution order):
 import getpass
 import os
 import re
+import threading
 import time
 from enum import Enum
 from pathlib import Path
@@ -56,13 +57,19 @@ class CredentialManager(SSHCredentialMixin):
     - Automatic expiration cleanup on access
     - Keyring uses OS-native encryption
 
+    Thread Safety:
+    - This singleton is accessed from multiple async contexts (scanner, SSH executor)
+    - All mutable operations are protected by internal locks
+    - Safe for concurrent access from multiple threads/tasks
+
     Note:
     - This is a Singleton to ensure all components share the same credentials
     - Use reset_instance() in tests to reset state between test cases
     """
 
-    # Singleton instance
+    # Singleton instance and lock for thread-safe initialization
     _instance: Optional["CredentialManager"] = None
+    _instance_lock = threading.Lock()
 
     # Storage key for variables in SQLite
     STORAGE_KEY = "user_variables"
@@ -72,14 +79,17 @@ class CredentialManager(SSHCredentialMixin):
 
     def __new__(cls, storage_manager=None):
         """
-        Singleton pattern - returns existing instance or creates new one.
+        Singleton pattern with thread-safe double-checked locking.
 
         Note: If an instance exists but storage_manager is provided,
         it will update the storage manager (allows late initialization).
         """
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._instance_lock:
+                # Double-check inside lock to prevent race condition
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self, storage_manager=None):
@@ -107,6 +117,9 @@ class CredentialManager(SSHCredentialMixin):
 
         # Variables with types: {key: (value, VariableType)}
         self._variables: Dict[str, Tuple[str, VariableType]] = {}
+
+        # Lock for thread-safe access to mutable state
+        self._lock = threading.Lock()
 
         # Storage manager for persistence
         self._storage = storage_manager
@@ -209,46 +222,50 @@ class CredentialManager(SSHCredentialMixin):
         return (time.time() - timestamp) > self.CREDENTIAL_TTL
 
     def _cleanup_expired_credentials(self):
-        """Remove expired credentials from session cache."""
+        """Remove expired credentials from session cache (thread-safe)."""
         current_time = time.time()
-        expired_keys = [
-            key for key, (_, __, timestamp) in self.session_credentials.items()
-            if (current_time - timestamp) > self.CREDENTIAL_TTL
-        ]
-        for key in expired_keys:
-            del self.session_credentials[key]
-            logger.debug(f"🔒 Expired credential removed: {key}")
+        with self._lock:
+            expired_keys = [
+                key for key, (_, __, timestamp) in self.session_credentials.items()
+                if (current_time - timestamp) > self.CREDENTIAL_TTL
+            ]
+            for key in expired_keys:
+                del self.session_credentials[key]
+                logger.debug(f"🔒 Expired credential removed: {key}")
 
     def _get_cached_credential(self, cache_key: str) -> Optional[Tuple[str, str]]:
         """
-        Get cached credential if not expired.
+        Get cached credential if not expired (thread-safe).
 
         Returns:
             Tuple of (username, password) if valid, None if expired or not found
         """
-        if cache_key not in self.session_credentials:
-            return None
+        with self._lock:
+            if cache_key not in self.session_credentials:
+                return None
 
-        username, password, timestamp = self.session_credentials[cache_key]
-        if self._is_credential_expired(timestamp):
-            del self.session_credentials[cache_key]
-            logger.debug(f"🔒 Credential expired: {cache_key}")
-            return None
+            username, password, timestamp = self.session_credentials[cache_key]
+            if self._is_credential_expired(timestamp):
+                del self.session_credentials[cache_key]
+                logger.debug(f"🔒 Credential expired: {cache_key}")
+                return None
 
-        return (username, password)
+            return (username, password)
 
     def _cache_credential(self, cache_key: str, username: str, password: str):
-        """Cache credential with current timestamp (string key)."""
-        self.session_credentials[cache_key] = (username, password, time.time())
+        """Cache credential with current timestamp (thread-safe)."""
+        with self._lock:
+            self.session_credentials[cache_key] = (username, password, time.time())
 
     def _cache_credential_tuple(self, cache_key: tuple, username: str, password: str):
         """
-        Cache credential with tuple key for collision-safe storage.
+        Cache credential with tuple key for collision-safe storage (thread-safe).
 
         Using tuple keys like (service, target) prevents cache key collision attacks
         where "service@evil" + "target" would collide with "service" + "evil@target".
         """
-        self.session_credentials[cache_key] = (username, password, time.time())
+        with self._lock:
+            self.session_credentials[cache_key] = (username, password, time.time())
 
     # =========================================================================
     # Database Credentials
@@ -317,8 +334,9 @@ class CredentialManager(SSHCredentialMixin):
         return env_user_key in os.environ and env_pass_key in os.environ
 
     def clear_session_credentials(self):
-        """Clear cached credentials from session."""
-        self.session_credentials.clear()
+        """Clear cached credentials from session (thread-safe)."""
+        with self._lock:
+            self.session_credentials.clear()
 
     # =========================================================================
     # User Variables (@variables)
@@ -326,16 +344,17 @@ class CredentialManager(SSHCredentialMixin):
 
     def set_variable(self, key: str, value: str, var_type: VariableType = VariableType.CONFIG):
         """
-        Set a user variable.
+        Set a user variable (thread-safe).
 
         Args:
             key: Variable name (e.g., "proddb", "mongo-user")
             value: Variable value
             var_type: Type of variable (HOST, CONFIG, SECRET)
         """
-        self._variables[key] = (value, var_type)
+        with self._lock:
+            self._variables[key] = (value, var_type)
 
-        # Auto-save if not a secret
+        # Auto-save if not a secret (outside lock to avoid blocking)
         if var_type != VariableType.SECRET:
             self._save_variables()
 
@@ -377,7 +396,7 @@ class CredentialManager(SSHCredentialMixin):
 
     def get_variable(self, key: str) -> Optional[str]:
         """
-        Get a variable value with storage hierarchy for secrets.
+        Get a variable value with storage hierarchy for secrets (thread-safe).
 
         Resolution order for secrets:
         1. Session cache (in-memory)
@@ -386,22 +405,24 @@ class CredentialManager(SSHCredentialMixin):
 
         Note: Access to SECRET type variables is audit logged for security tracking.
         """
-        # Check session variables first
-        if key in self._variables:
-            value, var_type = self._variables[key]
+        # Check session variables first (thread-safe read)
+        with self._lock:
+            if key in self._variables:
+                value, var_type = self._variables[key]
 
-            # Audit log secret access (security requirement)
-            if var_type == VariableType.SECRET:
-                logger.info(f"🔐 Secret accessed: {key} (type=SECRET, source=session)")
+                # Audit log secret access (security requirement)
+                if var_type == VariableType.SECRET:
+                    logger.info(f"🔐 Secret accessed: {key} (type=SECRET, source=session)")
 
-            return value
+                return value
 
         # For unknown keys, check keyring (might be a persisted secret)
         keyring_value = self.keyring_store.retrieve(key)
         if keyring_value:
             logger.info(f"🔐 Secret accessed: {key} (source=keyring)")
-            # Cache in session for faster access
-            self._variables[key] = (keyring_value, VariableType.SECRET)
+            # Cache in session for faster access (thread-safe write)
+            with self._lock:
+                self._variables[key] = (keyring_value, VariableType.SECRET)
             return keyring_value
 
         # Check environment variable as fallback
@@ -414,47 +435,54 @@ class CredentialManager(SSHCredentialMixin):
         return None
 
     def get_variable_type(self, key: str) -> Optional[VariableType]:
-        """Get a variable's type."""
-        if key in self._variables:
-            return self._variables[key][1]
+        """Get a variable's type (thread-safe)."""
+        with self._lock:
+            if key in self._variables:
+                return self._variables[key][1]
         return None
 
     def delete_variable(self, key: str) -> bool:
-        """Delete a variable. Returns True if deleted, False if not found."""
-        if key in self._variables:
-            del self._variables[key]
-            self._save_variables()
-            return True
+        """Delete a variable (thread-safe). Returns True if deleted, False if not found."""
+        with self._lock:
+            if key in self._variables:
+                del self._variables[key]
+                self._save_variables()
+                return True
         return False
 
     def list_variables(self) -> Dict[str, str]:
-        """List all variables (values only, for backward compatibility)."""
-        return {key: value for key, (value, _) in self._variables.items()}
+        """List all variables (thread-safe, values only for backward compatibility)."""
+        with self._lock:
+            return {key: value for key, (value, _) in self._variables.items()}
 
     def list_variables_typed(self) -> Dict[str, Tuple[str, VariableType]]:
-        """List all variables with their types."""
-        return self._variables.copy()
+        """List all variables with their types (thread-safe)."""
+        with self._lock:
+            return self._variables.copy()
 
     def list_variables_by_type(self, var_type: VariableType) -> Dict[str, str]:
-        """List variables of a specific type."""
-        return {
-            key: value
-            for key, (value, vtype) in self._variables.items()
-            if vtype == var_type
-        }
+        """List variables of a specific type (thread-safe)."""
+        with self._lock:
+            return {
+                key: value
+                for key, (value, vtype) in self._variables.items()
+                if vtype == var_type
+            }
 
     def clear_variables(self):
-        """Clear all variables."""
-        self._variables.clear()
+        """Clear all variables (thread-safe)."""
+        with self._lock:
+            self._variables.clear()
         self._save_variables()
 
     def clear_secrets(self):
-        """Clear only secret variables (keeps HOST and CONFIG)."""
-        self._variables = {
-            key: (value, vtype)
-            for key, (value, vtype) in self._variables.items()
-            if vtype != VariableType.SECRET
-        }
+        """Clear only secret variables (thread-safe, keeps HOST and CONFIG)."""
+        with self._lock:
+            self._variables = {
+                key: (value, vtype)
+                for key, (value, vtype) in self._variables.items()
+                if vtype != VariableType.SECRET
+            }
         # No need to save - secrets weren't persisted anyway
 
     # =========================================================================
@@ -488,8 +516,12 @@ class CredentialManager(SSHCredentialMixin):
         # Track secret variable names to exclude from inventory resolution
         secret_var_names = set()
 
+        # Take a snapshot of variables for thread-safe iteration
+        with self._lock:
+            variables_snapshot = list(self._variables.items())
+
         # Replace all known user variables first (higher priority)
-        for key, (value, var_type) in self._variables.items():
+        for key, (value, var_type) in variables_snapshot:
             # Skip secrets if resolve_secrets is False
             if var_type == VariableType.SECRET and not resolve_secrets:
                 secret_var_names.add(key)

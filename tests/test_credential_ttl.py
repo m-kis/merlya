@@ -179,3 +179,75 @@ def test_singleton_with_storage_manager_updates():
     cm2 = CredentialManager(storage_manager=mock_storage)
     assert cm1 is cm2, "Should be same singleton"
     assert cm1._storage is mock_storage, "Storage should be updated"
+
+
+# =============================================================================
+# Thread Safety Tests
+# =============================================================================
+
+
+def test_singleton_thread_safety():
+    """Test: Concurrent instantiation creates only one instance."""
+    import threading
+
+    instances = []
+    errors = []
+
+    def create_instance():
+        try:
+            cm = CredentialManager()
+            instances.append(cm)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=create_instance) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Errors during concurrent instantiation: {errors}"
+    assert len(instances) == 10, "All threads should get an instance"
+    # All threads should get the same instance
+    assert all(inst is instances[0] for inst in instances), "Singleton violated"
+
+
+def test_concurrent_variable_access():
+    """Test: Concurrent reads/writes don't corrupt data."""
+    import threading
+
+    cm = CredentialManager()
+    errors = []
+    success_count = {"writes": 0, "reads": 0}
+
+    def writer(key_prefix: str):
+        try:
+            for i in range(50):
+                cm.set_variable(f"{key_prefix}-{i}", f"value-{i}", VariableType.CONFIG)
+                success_count["writes"] += 1
+        except Exception as e:
+            errors.append(e)
+
+    def reader():
+        try:
+            for _ in range(50):
+                _ = cm.list_variables()
+                success_count["reads"] += 1
+        except Exception as e:
+            errors.append(e)
+
+    # Mix writers and readers
+    threads = []
+    for i in range(3):
+        threads.append(threading.Thread(target=writer, args=(f"key{i}",)))
+    for _ in range(2):
+        threads.append(threading.Thread(target=reader))
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Concurrent access errors: {errors}"
+    assert success_count["writes"] == 150, "All writes should complete"
+    assert success_count["reads"] == 100, "All reads should complete"
