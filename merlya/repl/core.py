@@ -243,6 +243,54 @@ def _filtered_excepthook(exc_type, exc_value, exc_tb):
     _original_excepthook(exc_type, exc_value, exc_tb)
 
 
+def _make_asyncio_exception_handler():
+    """
+    Create a custom asyncio exception handler that suppresses shutdown noise.
+    """
+    def handler(loop, context):
+        # Extract exception info
+        exception = context.get('exception')
+        message = context.get('message', '')
+
+        # Build full error string for pattern matching
+        error_parts = [message]
+        if exception:
+            error_parts.append(str(exception))
+            error_parts.append(type(exception).__name__)
+
+        full_error = ' '.join(error_parts)
+
+        # Suppress known noise patterns
+        if any(pattern in full_error for pattern in _NOISE_PATTERNS):
+            return  # Silently ignore
+
+        # Also suppress httpx/httpcore aclose errors during shutdown
+        if 'aclose' in full_error and 'Event loop is closed' in full_error:
+            return
+
+        # For other errors, log them (but not to stderr to avoid noise)
+        from merlya.utils.logger import logger
+        logger.debug(f"Asyncio exception: {full_error}")
+
+    return handler
+
+
+def run_async_quiet(coro):
+    """
+    Run an async coroutine with suppressed shutdown noise.
+
+    This wrapper ensures the asyncio exception handler is installed
+    on the event loop created by asyncio.run().
+    """
+    async def wrapped():
+        # Install exception handler on the running loop
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(_make_asyncio_exception_handler())
+        return await coro
+
+    return asyncio.run(wrapped())
+
+
 def install_error_filter():
     """
     Install global error filter to suppress noisy asyncio shutdown errors.
@@ -266,6 +314,14 @@ def install_error_filter():
             original_unraisable(unraisable)
 
         sys.unraisablehook = filtered_unraisable
+
+    # Install asyncio exception handler to suppress httpx shutdown noise
+    try:
+        loop = asyncio.get_event_loop()
+        loop.set_exception_handler(_make_asyncio_exception_handler())
+    except RuntimeError:
+        # No event loop yet - will be set when loop is created
+        pass
 
     # Register atexit handler to restore stderr filter during shutdown
     def cleanup_stderr():
@@ -577,7 +633,7 @@ class MerlyaREPL:
                     remaining_text = '\n'.join(lines[1:]).strip() if len(lines) > 1 else ''
 
                     with suppress_asyncio_errors():
-                        result = asyncio.run(self.command_handler.handle_command(command_line))
+                        result = run_async_quiet(self.command_handler.handle_command(command_line))
                     if result == CommandResult.EXIT:
                         break
                     if result in (CommandResult.HANDLED, CommandResult.FAILED):
@@ -620,10 +676,9 @@ class MerlyaREPL:
                 try:
                     status_manager.set_console(console)
                     status_manager.start("[cyan]🧠 Processing...[/cyan]")
-                    # Wrap asyncio.run with error suppression to hide noisy AutoGen
-                    # shutdown messages when user presses Ctrl+C
+                    # Use run_async_quiet to suppress httpx/asyncio shutdown noise
                     with suppress_asyncio_errors():
-                        response = asyncio.run(
+                        response = run_async_quiet(
                             self.orchestrator.process_request(
                                 user_query=resolved_query,
                                 conversation_history=conversation_history,
@@ -837,7 +892,7 @@ class MerlyaREPL:
         conversation_history = self._get_recent_history()
 
         with suppress_asyncio_errors():
-            response = asyncio.run(
+            response = run_async_quiet(
                 self.orchestrator.process_request(
                     user_query=resolved_query,
                     conversation_history=conversation_history
