@@ -459,9 +459,10 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
             # Mock path validation to return success
             mock_validate.return_value = (True, str(key_path), None)
 
-            with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
-                # Simulate successful load
-                mock_load.return_value = object()
+            # Mock all key types - RSAKey is tried first
+            with patch('paramiko.RSAKey.from_private_key_file') as mock_rsa:
+                # Simulate successful load on first try (RSA)
+                mock_rsa.return_value = object()
 
                 is_valid, error = validate_passphrase_for_key(str(key_path), "anypass")
                 assert is_valid is True

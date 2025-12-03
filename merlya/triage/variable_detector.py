@@ -181,7 +181,11 @@ class VariableQueryDetector:
         # "show me @Test" vs "@server" alone
         if "@" in query_lower:
             # Only match if there's an explicit query about the variable
-            variable_query_words = ["show", "affiche", "display", "what is", "value of", "get"]
+            # Includes French: "valeur de", "quelle est", "montre"
+            variable_query_words = [
+                "show", "affiche", "display", "what is", "value of", "get",
+                "valeur de", "quelle est", "montre",
+            ]
             for word in variable_query_words:
                 if word in query_lower:
                     return True, 0.75
