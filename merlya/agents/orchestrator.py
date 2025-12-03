@@ -9,6 +9,11 @@ Uses autogen-agentchat 0.7+ async API.
 Modes:
 - BASIC: Single engineer agent (fast, simple tasks)
 - ENHANCED: Multi-agent team with selector (complex tasks)
+
+Performance Optimizations:
+- Fast paths for simple queries (scan, list hosts) bypass orchestration
+- Intent classification caching
+- Automatic mode downgrade for simple intents
 """
 import os
 from collections import OrderedDict
@@ -19,6 +24,11 @@ from rich.console import Console
 
 from merlya.agents import autogen_tools, knowledge_tools
 from merlya.agents.base_orchestrator import BaseOrchestrator
+from merlya.agents.orchestrator_service.fast_path import (
+    FastPathDetector,
+    FastPathExecutor,
+    FastPathType,
+)
 from merlya.agents.orchestrator_service.intent import IntentParser
 from merlya.agents.orchestrator_service.planner import ExecutionPlanner
 from merlya.llm.model_config import ModelConfig
@@ -129,6 +139,20 @@ class Orchestrator(BaseOrchestrator):
         # Collect tools as callables
         self._tools = self._collect_tools()
 
+        # Build tools dictionary for fast path executor
+        self._tools_dict = {
+            getattr(t, '__name__', str(t)): t
+            for t in self._tools if callable(t)
+        }
+
+        # Fast path optimization (bypasses orchestration for simple queries)
+        self._fast_path_detector = FastPathDetector(credentials_manager=self.credentials)
+        self._fast_path_executor = FastPathExecutor(
+            tools=self._tools_dict,
+            credentials_manager=self.credentials,
+        )
+        self._fast_path_enabled = True  # Can be disabled via config
+
         # Client cache for task-specific models (must be before planner creation)
         # Uses OrderedDict for LRU eviction when cache exceeds MAX_CLIENT_CACHE_SIZE
         self._client_cache: OrderedDict[str, "OpenAIChatCompletionClient"] = OrderedDict()
@@ -145,7 +169,7 @@ class Orchestrator(BaseOrchestrator):
         # Initialize agents
         self.planner.init_agents(mode.value, self.knowledge_db)
 
-        logger.info(f"Orchestrator initialized in {mode.value} mode")
+        logger.info(f"✅ Orchestrator initialized in {mode.value} mode (fast_path=enabled)")
 
     # =========================================================================
     # Model Client Configuration (new API)
@@ -580,6 +604,22 @@ class Orchestrator(BaseOrchestrator):
         if dry_run:
             return f"🔍 Dry run: Would process in {self.mode.value} mode"
 
+        # Step 0: Try fast path for simple queries (bypasses LLM orchestration)
+        # This can reduce response time from ~5 minutes to ~30 seconds
+        if self._fast_path_enabled:
+            fast_match = self._fast_path_detector.detect(user_query)
+            if fast_match.path_type != FastPathType.NONE:
+                self.console.print(
+                    f"[dim]⚡ Fast path: {fast_match.path_type.value} "
+                    f"(conf={fast_match.confidence:.0%})[/dim]"
+                )
+                result = await self._fast_path_executor.execute(fast_match)
+                if result is not None:
+                    logger.info(f"⚡ Fast path completed for: {fast_match.path_type.value}")
+                    return result
+                # Fast path failed, fall through to normal orchestration
+                logger.warning("⚠️ Fast path execution failed, using orchestration")
+
         # Step 1: Full classification (priority + intent) - use AI when available
         # Use original_query for triage if provided (avoids exposing resolved credentials)
         system_state = kwargs.get("system_state")
@@ -617,12 +657,23 @@ class Orchestrator(BaseOrchestrator):
         conversation_history = kwargs.get("conversation_history", [])
 
         # Step 4: Execute based on mode (with tool restrictions and intent)
+        # Performance optimization: Downgrade to BASIC mode for simple intents
+        # This avoids multi-agent overhead (2-3 min) for queries that don't need it
+        use_enhanced = self.mode == OrchestratorMode.ENHANCED
+        simple_intents = {"query", "list_hosts", "check_service", "query_systems"}
+
+        if use_enhanced and intent_value in simple_intents:
+            logger.info(
+                f"⬇️ Auto-downgrade to BASIC mode for simple intent: {intent_value}"
+            )
+            use_enhanced = False
+
         try:
             allowed_tools = triage_context.allowed_tools
 
             # Fetch knowledge context if in ENHANCED mode
             knowledge_context = None
-            if self.mode == OrchestratorMode.ENHANCED and HAS_FALKORDB:
+            if use_enhanced and HAS_FALKORDB:
                 try:
                     # Search for relevant knowledge using triage_query to avoid
                     # exposing resolved credentials in search
@@ -630,7 +681,7 @@ class Orchestrator(BaseOrchestrator):
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to fetch knowledge context: {e}")
 
-            if self.mode == OrchestratorMode.ENHANCED:
+            if use_enhanced:
                 result = await self.planner.execute_enhanced(
                     user_query,
                     priority_name,  # Already extracted with defensive access above

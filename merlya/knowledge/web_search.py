@@ -17,11 +17,11 @@ from typing import Dict, List, Optional
 from merlya.utils.logger import logger
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
     HAS_DDGS = True
 except ImportError:
     HAS_DDGS = False
-    logger.warning("duckduckgo_search not installed. Run: pip install duckduckgo_search")
+    logger.warning("⚠️ ddgs not installed. Run: pip install ddgs")
 
 
 @dataclass
@@ -111,7 +111,7 @@ class WebSearchEngine:
         if not HAS_DDGS:
             return SearchResponse(
                 query=query,
-                error="duckduckgo_search not installed",
+                error="ddgs not installed",
             )
 
         max_results = max_results or self.max_results

@@ -195,19 +195,12 @@ class ConfigValidator:
         This is optional - web search tools will be disabled if unavailable.
         """
         try:
-            from duckduckgo_search import DDGS  # noqa: F401
-            return True
-        except ImportError:
-            pass
-
-        # Fallback: check for ddgs alias
-        try:
             from ddgs import DDGS  # noqa: F401
             return True
         except ImportError:
             pass
 
-        console.print("[dim]ℹ️  duckduckgo-search not installed (web search disabled)[/dim]")
+        console.print("[dim]ℹ️  ddgs not installed (web search disabled)[/dim]")
         console.print("[dim]   Install with: pip install 'merlya[knowledge]'[/dim]")
         return False
 

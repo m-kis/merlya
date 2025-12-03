@@ -70,13 +70,36 @@ class IntentParser:
         Full classification using local embeddings first, then LLM fallback.
 
         Priority:
+        0. Check AI classifier cache first (avoids LLM call on repeat queries)
         1. SmartTriageClassifier (local embeddings - fast, no API)
         2. AITriageClassifier (LLM API - only if embeddings unavailable)
         3. Keyword-based fallback
         """
         self._last_query = user_query  # Track for feedback
 
-        # 1. Try SmartTriageClassifier first (local embeddings, no API call)
+        # 0. Check AI classifier cache FIRST (avoids all computation on repeat queries)
+        # This is critical for performance: same query = instant response
+        if self._ai_classifier:
+            cached = self._ai_classifier._get_from_cache(user_query)
+            if cached:
+                logger.debug(f"⚡ Using cached classification for query")
+                priority_result = PriorityResult(
+                    priority=cached.priority,
+                    confidence=0.95,
+                    signals=[f"cached:{cached.intent.value}"],
+                    reasoning=cached.reasoning,
+                    escalation_required=cached.priority.value == 0,
+                )
+                return TriageContext(
+                    priority_result=priority_result,
+                    intent=cached.intent,
+                    intent_confidence=0.95,
+                    intent_signals=["cached"],
+                    allowed_tools=cached.intent.allowed_tools,
+                    query=user_query,
+                )
+
+        # 1. Try SmartTriageClassifier (local embeddings, no API call)
         if self._smart_classifier:
             try:
                 intent, priority_result = self._smart_classifier.classify(user_query)

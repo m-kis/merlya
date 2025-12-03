@@ -114,6 +114,39 @@ AVAILABLE_MODELS: Dict[str, EmbeddingModelInfo] = {
         quality="best",
         description="MPNet - Highest quality legacy model",
     ),
+    # === Multilingual Models (French/English support) ===
+    "paraphrase-multilingual-MiniLM-L12-v2": EmbeddingModelInfo(
+        name="paraphrase-multilingual-MiniLM-L12-v2",
+        size_mb=120,
+        dimensions=384,
+        speed="medium",
+        quality="best",
+        description="Multilingual MiniLM - 50+ languages, excellent for FR/EN",
+    ),
+    "distiluse-base-multilingual-cased-v2": EmbeddingModelInfo(
+        name="distiluse-base-multilingual-cased-v2",
+        size_mb=270,
+        dimensions=512,
+        speed="medium",
+        quality="best",
+        description="DistilUSE multilingual - 50+ languages, semantic search",
+    ),
+    "intfloat/multilingual-e5-small": EmbeddingModelInfo(
+        name="intfloat/multilingual-e5-small",
+        size_mb=120,
+        dimensions=384,
+        speed="fast",
+        quality="best",
+        description="Multilingual E5 - SOTA for 100+ languages, excellent FR/EN",
+    ),
+    "intfloat/multilingual-e5-base": EmbeddingModelInfo(
+        name="intfloat/multilingual-e5-base",
+        size_mb=280,
+        dimensions=768,
+        speed="medium",
+        quality="best",
+        description="Multilingual E5 base - Top MTEB multilingual performer",
+    ),
 }
 
 # Default model - BGE small is the best balance for 2024-2025

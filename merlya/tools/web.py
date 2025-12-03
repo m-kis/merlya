@@ -9,10 +9,7 @@ from merlya.utils.logger import logger
 
 def _do_search(query: str, max_results: int = 5) -> list:
     """Execute DuckDuckGo search in a separate thread (for timeout support)."""
-    try:
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
+    from ddgs import DDGS
 
     with DDGS() as ddgs:
         return list(ddgs.text(query, max_results=max_results))

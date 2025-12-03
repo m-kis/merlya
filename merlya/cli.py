@@ -187,16 +187,12 @@ def _check_optional_services():
 
     # DuckDuckGo Search (Web Search)
     try:
-        from duckduckgo_search import DDGS  # noqa: F401
+        from ddgs import DDGS  # noqa: F401
         services_status.append(("Web Search (DDGS)", True, None))
     except ImportError:
-        try:
-            from ddgs import DDGS  # noqa: F401
-            services_status.append(("Web Search (DDGS)", True, None))
-        except ImportError:
-            services_status.append((
-                "Web Search (DDGS)", False,
-                "pip install 'merlya[knowledge]'"
+        services_status.append((
+            "Web Search (DDGS)", False,
+            "pip install 'merlya[knowledge]'"
             ))
 
     # Sentence Transformers (Smart Triage)
