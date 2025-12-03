@@ -25,10 +25,12 @@ try:
     from merlya.triage.smart_classifier.embedding_cache import (
         HAS_EMBEDDINGS,
         EmbeddingCache,
+        get_embedding_cache,
     )
 except ImportError:
     HAS_EMBEDDINGS = False
     EmbeddingCache = None  # type: ignore
+    get_embedding_cache = None  # type: ignore
 
 try:
     import numpy as np
@@ -166,9 +168,9 @@ class FastPathDetector:
         self._embedding_cache: Optional["EmbeddingCache"] = None
         self._reference_embeddings: Dict[FastPathType, Any] = {}
 
-        if self._use_embeddings and EmbeddingCache is not None:
+        if self._use_embeddings and get_embedding_cache is not None:
             try:
-                self._embedding_cache = EmbeddingCache()
+                self._embedding_cache = get_embedding_cache()
                 self._precompute_reference_embeddings()
                 logger.info("⚡ FastPath: Using semantic detection (embeddings)")
             except Exception as e:

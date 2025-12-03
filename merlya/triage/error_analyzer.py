@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from merlya.utils.logger import logger
 
-from .smart_classifier import HAS_EMBEDDINGS, EmbeddingCache
+from .smart_classifier import EmbeddingCache, HAS_EMBEDDINGS, get_embedding_cache
 
 if HAS_EMBEDDINGS:
     import numpy as np
@@ -63,7 +63,7 @@ class ErrorAnalyzer:
         self._embedding_cache: Optional[EmbeddingCache] = None
 
         if self._use_embeddings:
-            self._embedding_cache = EmbeddingCache()
+            self._embedding_cache = get_embedding_cache()
 
         # Reference patterns for each error type
         self._reference_patterns = self._build_reference_patterns()

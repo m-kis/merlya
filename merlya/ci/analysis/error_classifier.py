@@ -15,13 +15,17 @@ from merlya.utils.logger import logger
 try:
     import numpy as np
 
-    from merlya.triage.smart_classifier.embedding_cache import EmbeddingCache
+    from merlya.triage.smart_classifier.embedding_cache import (
+        EmbeddingCache,
+        get_embedding_cache,
+    )
 
     HAS_EMBEDDINGS = True
 except ImportError:
     HAS_EMBEDDINGS = False
     np = None  # type: ignore
     EmbeddingCache = None  # type: ignore
+    get_embedding_cache = None  # type: ignore
     logger.debug("Embeddings not available for CI error classification")
 
 
@@ -221,8 +225,8 @@ class CIErrorClassifier:
         if not HAS_EMBEDDINGS:
             return None
 
-        if self._embedding_cache is None:
-            self._embedding_cache = EmbeddingCache()
+        if self._embedding_cache is None and get_embedding_cache is not None:
+            self._embedding_cache = get_embedding_cache()
 
         return self._embedding_cache
 

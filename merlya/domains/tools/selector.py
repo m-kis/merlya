@@ -16,10 +16,15 @@ from merlya.utils.logger import logger
 
 # Reuse EmbeddingCache from smart_classifier (DRY principle)
 try:
-    from merlya.triage.smart_classifier import HAS_EMBEDDINGS, EmbeddingCache
+    from merlya.triage.smart_classifier import (
+        HAS_EMBEDDINGS,
+        EmbeddingCache,
+        get_embedding_cache,
+    )
 except ImportError:
     HAS_EMBEDDINGS = False
     EmbeddingCache = None  # type: ignore
+    get_embedding_cache = None  # type: ignore
 
 if HAS_EMBEDDINGS:
     import numpy as np
@@ -70,8 +75,8 @@ class ToolSelector:
         self._use_embeddings = use_embeddings and HAS_EMBEDDINGS
         self._embedding_cache: Optional["EmbeddingCache"] = None
 
-        if self._use_embeddings and HAS_EMBEDDINGS:
-            self._embedding_cache = EmbeddingCache()
+        if self._use_embeddings and HAS_EMBEDDINGS and get_embedding_cache is not None:
+            self._embedding_cache = get_embedding_cache()
             logger.debug("✅ ToolSelector initialized with embeddings")
         else:
             logger.debug("⚠️ ToolSelector using heuristic fallback (no embeddings)")

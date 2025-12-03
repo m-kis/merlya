@@ -8,7 +8,11 @@ from typing import Optional, Tuple
 
 from merlya.utils.logger import logger
 
-from .smart_classifier.embedding_cache import HAS_EMBEDDINGS, EmbeddingCache
+from .smart_classifier.embedding_cache import (
+    EmbeddingCache,
+    HAS_EMBEDDINGS,
+    get_embedding_cache,
+)
 
 # Optional numpy
 try:
@@ -73,7 +77,7 @@ class VariableQueryDetector:
 
         if self._use_embeddings:
             try:
-                self._embedding_cache = EmbeddingCache()
+                self._embedding_cache = get_embedding_cache()
             except Exception as e:
                 logger.warning(f"⚠️ Failed to initialize embeddings for variable detection: {e}")
                 self._use_embeddings = False

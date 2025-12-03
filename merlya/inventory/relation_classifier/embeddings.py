@@ -19,11 +19,13 @@ try:
     from merlya.triage.smart_classifier.embedding_cache import (
         HAS_EMBEDDINGS,
         EmbeddingCache,
+        get_embedding_cache,
     )
 except ImportError:
     HAS_EMBEDDINGS = False
     np = None  # type: ignore
     EmbeddingCache = None  # type: ignore
+    get_embedding_cache = None  # type: ignore
 
 
 class EmbeddingRelationExtractor:
@@ -141,10 +143,10 @@ class EmbeddingRelationExtractor:
     @property
     def cache(self) -> Optional["EmbeddingCache"]:
         """Lazy load embedding cache."""
-        if not HAS_EMBEDDINGS:
+        if not HAS_EMBEDDINGS or get_embedding_cache is None:
             return None
         if self._cache is None:
-            self._cache = EmbeddingCache()
+            self._cache = get_embedding_cache()
         return self._cache
 
     def _get_relation_embeddings(self) -> Dict[str, Any]:

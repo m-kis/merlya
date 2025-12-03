@@ -1,14 +1,22 @@
 """
 Embedding Cache for Smart Triage Classifier.
+
+Provides a singleton EmbeddingCache to avoid loading the model multiple times.
+Use get_embedding_cache() to get the shared instance.
 """
 
 import hashlib
 import os
+import threading
 from typing import Dict, List, Optional
 
 from merlya.utils.logger import logger
 
 from ..embedding_config import get_embedding_config
+
+# Singleton instance and lock
+_embedding_cache_instance: Optional["EmbeddingCache"] = None
+_embedding_cache_lock = threading.Lock()
 
 # Disable tokenizers parallelism to avoid fork warnings
 # This must be set before loading sentence-transformers
@@ -222,3 +230,32 @@ class EmbeddingCache:
         # Sort by original index and return
         cached.sort(key=lambda x: x[0])
         return [emb for _, emb in cached]
+
+
+def get_embedding_cache() -> EmbeddingCache:
+    """
+    Get the singleton EmbeddingCache instance.
+
+    This ensures the embedding model is only loaded once, even when
+    multiple components need embeddings.
+
+    Returns:
+        The shared EmbeddingCache instance
+    """
+    global _embedding_cache_instance
+
+    if _embedding_cache_instance is None:
+        with _embedding_cache_lock:
+            # Double-check after acquiring lock
+            if _embedding_cache_instance is None:
+                _embedding_cache_instance = EmbeddingCache()
+
+    return _embedding_cache_instance
+
+
+def reset_embedding_cache() -> None:
+    """Reset the singleton instance (for testing or model switching)."""
+    global _embedding_cache_instance
+
+    with _embedding_cache_lock:
+        _embedding_cache_instance = None

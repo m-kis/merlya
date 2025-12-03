@@ -8,7 +8,7 @@ from merlya.utils.logger import logger
 
 from ..priority import Intent, Priority, PriorityResult
 from ..signals import SignalDetector
-from .embedding_cache import HAS_EMBEDDINGS, EmbeddingCache
+from .embedding_cache import HAS_EMBEDDINGS, EmbeddingCache, get_embedding_cache
 from .pattern_store import PatternStore
 
 # Optional imports for embeddings
@@ -50,7 +50,7 @@ class SmartTriageClassifier:
         self._use_embeddings = use_embeddings and HAS_EMBEDDINGS
         self._embedding_cache: Optional[EmbeddingCache] = None
         if self._use_embeddings:
-            self._embedding_cache = EmbeddingCache()
+            self._embedding_cache = get_embedding_cache()
 
         # Reference patterns for semantic matching
         self._reference_patterns = self._build_reference_patterns()
