@@ -64,8 +64,12 @@ class HostRegistry:
 
         Call this after modifying the inventory (add/remove hosts)
         to ensure validate_host() sees the new hosts immediately.
+
+        Thread-safe: Uses module-level lock to ensure atomic update.
         """
-        self._last_refresh = None
+        global _registry_lock
+        with _registry_lock:
+            self._last_refresh = None
         logger.info("🔄 HostRegistry cache invalidated")
 
     def load_all_sources(self, force_refresh: bool = False) -> int:
@@ -363,4 +367,5 @@ def get_host_registry(config: Optional[Dict[str, Any]] = None) -> HostRegistry:
 def reset_host_registry() -> None:
     """Reset the global registry (for testing or reconfiguration)."""
     global _registry
-    _registry = None
+    with _registry_lock:
+        _registry = None

@@ -1,10 +1,36 @@
 """
 Host management tools.
 """
-from typing import Annotated, Any
+import re
+from typing import Annotated, Any, Optional, Tuple
 
 from merlya.tools.base import get_tool_context, validate_host
 from merlya.utils.logger import logger
+
+
+def _validate_ssh_username(username: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate SSH username format.
+
+    Valid usernames:
+    - 1-32 characters
+    - Start with letter or underscore
+    - Contain letters, digits, underscores, hyphens
+    - May end with $ (for service accounts)
+
+    Args:
+        username: Username to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not username:
+        return False, "Username cannot be empty"
+    if len(username) > 32:
+        return False, "Username must be 32 characters or less"
+    if not re.match(r'^[a-z_][a-z0-9_-]*[$]?$', username, re.IGNORECASE):
+        return False, "Invalid username format (must start with letter/underscore)"
+    return True, None
 
 
 def get_infrastructure_context() -> str:
@@ -147,19 +173,25 @@ def scan_host(
     ctx = get_tool_context()
     logger.info(f"🖥️ Tool: scan_host {hostname}" + (f" user={user}" if user else ""))
 
-    # If user is explicitly provided, store it in inventory metadata
+    # If user is explicitly provided, validate and store it in inventory metadata
     # so that _get_ssh_credentials() will use it
-    if user and ctx.inventory_repo:
-        try:
-            host_data = ctx.inventory_repo.get_host_by_name(hostname)
-            if host_data:
-                metadata = host_data.get("metadata", {}) or {}
-                if metadata.get("ssh_user") != user:
-                    metadata["ssh_user"] = user
-                    ctx.inventory_repo.update_host_metadata(hostname, metadata)
-                    logger.info(f"🔑 Updated SSH user for {hostname}: {user}")
-        except Exception as e:
-            logger.debug(f"Could not update SSH user in inventory: {e}")
+    if user:
+        # Validate username format
+        is_valid, error = _validate_ssh_username(user)
+        if not is_valid:
+            return f"❌ Invalid SSH username '{user}': {error}"
+
+        if ctx.inventory_repo:
+            try:
+                host_data = ctx.inventory_repo.get_host_by_name(hostname)
+                if host_data:
+                    metadata = host_data.get("metadata", {}) or {}
+                    if metadata.get("ssh_user") != user:
+                        metadata["ssh_user"] = user
+                        ctx.inventory_repo.update_host_metadata(hostname, metadata)
+                        logger.info(f"🔑 Updated SSH user for {hostname}: {user}")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not update SSH user in inventory: {e}")
 
     # Update spinner with contextual info
     status = get_status_manager()
