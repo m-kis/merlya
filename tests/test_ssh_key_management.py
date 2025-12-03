@@ -480,7 +480,8 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
         with patch('merlya.security.ssh_credentials.validate_ssh_key_path') as mock_validate:
             mock_validate.return_value = (True, str(key_path), None)
 
-            with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+            # Mock RSAKey - it's tried first in validate_passphrase_for_key
+            with patch('paramiko.RSAKey.from_private_key_file') as mock_load:
                 # Simulate wrong passphrase
                 mock_load.side_effect = paramiko.ssh_exception.SSHException("Incorrect padding")
 
@@ -510,7 +511,8 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
         with patch('merlya.security.ssh_credentials.validate_ssh_key_path') as mock_validate:
             mock_validate.return_value = (True, str(key_path), None)
 
-            with patch('paramiko.Ed25519Key.from_private_key_file') as mock_load:
+            # Mock RSAKey - it's tried first in validate_passphrase_for_key
+            with patch('paramiko.RSAKey.from_private_key_file') as mock_load:
                 mock_load.side_effect = paramiko.ssh_exception.PasswordRequiredException()
 
                 is_valid, error = validate_passphrase_for_key(str(key_path), "")

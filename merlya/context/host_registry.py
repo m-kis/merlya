@@ -28,6 +28,10 @@ class HostRegistry:
 
     CRITICAL: Only hosts registered here are valid targets for operations.
     This prevents LLM hallucination attacks where fake hostnames are executed.
+
+    IMPORTANT: This class should only be accessed via get_host_registry() singleton.
+    Direct instantiation is discouraged as it bypasses thread-safety guarantees.
+    The singleton pattern ensures consistent cache state across all consumers.
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
