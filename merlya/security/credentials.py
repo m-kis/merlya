@@ -19,7 +19,7 @@ import threading
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from merlya.security.ssh_credentials import SSHCredentialMixin
 from merlya.utils.logger import logger
@@ -113,7 +113,8 @@ class CredentialManager(SSHCredentialMixin):
         self.ssh_dir = Path.home() / ".ssh"
         self.ssh_config = self._parse_ssh_config()
         # Session credentials: {cache_key: (username, password, timestamp)}
-        self.session_credentials: Dict[str, Tuple[str, str, float]] = {}
+        # Keys can be strings or tuples (for collision-safe storage)
+        self.session_credentials: Dict[Union[str, Tuple[Any, ...]], Tuple[str, str, float]] = {}
 
         # Variables with types: {key: (value, VariableType)}
         self._variables: Dict[str, Tuple[str, VariableType]] = {}
