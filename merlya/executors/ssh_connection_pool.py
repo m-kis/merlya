@@ -270,14 +270,49 @@ class SSHConnectionPool:
                 logger.debug(f"{log_prefix('🧹')} Cleaning up stale connection to {key}")
                 self._close_connection(key)
 
+    def reset_circuit_breaker(self, host: Optional[str] = None):
+        """
+        Reset circuit breaker for a specific host or all hosts.
 
-# Global connection pool (singleton)
+        Args:
+            host: Hostname to reset (uses canonical name). If None, resets all.
+        """
+        with self.lock:
+            if host is None:
+                count = len(self.failed_hosts)
+                self.failed_hosts.clear()
+                logger.info(f"{log_prefix('🔄')} Circuit breaker reset for all {count} hosts")
+            else:
+                canonical = self._get_canonical_hostname(host)
+                if canonical in self.failed_hosts:
+                    del self.failed_hosts[canonical]
+                    logger.info(f"{log_prefix('🔄')} Circuit breaker reset for {canonical}")
+                # Also try the original host name in case it was stored before canonical fix
+                if host in self.failed_hosts and host != canonical:
+                    del self.failed_hosts[host]
+                    logger.info(f"{log_prefix('🔄')} Circuit breaker reset for {host} (legacy entry)")
+
+
+# Global connection pool (singleton with thread-safe double-checked locking)
 _connection_pool = None
+_pool_lock = threading.Lock()
 
 
 def get_connection_pool() -> SSHConnectionPool:
-    """Get the global SSH connection pool."""
+    """Get the global SSH connection pool (thread-safe singleton)."""
     global _connection_pool
     if _connection_pool is None:
-        _connection_pool = SSHConnectionPool(max_idle_time=3600)  # 1 hour
+        with _pool_lock:
+            # Double-check after acquiring lock
+            if _connection_pool is None:
+                _connection_pool = SSHConnectionPool(max_idle_time=3600)  # 1 hour
     return _connection_pool
+
+
+def reset_connection_pool() -> None:
+    """Reset the connection pool (for testing)."""
+    global _connection_pool
+    with _pool_lock:
+        if _connection_pool is not None:
+            _connection_pool.close_all()
+            _connection_pool = None

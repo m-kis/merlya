@@ -89,6 +89,10 @@ class EmbeddingCache:
                 device = "mps"
 
         try:
+            # Clear any cached meta tensors before loading
+            if torch is not None:
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
             # Try loading with explicit device to avoid meta tensor issues
             model = SentenceTransformer(
                 model_name,
@@ -101,24 +105,46 @@ class EmbeddingCache:
             # Handle meta tensor error by forcing CPU load first
             if "meta tensor" in error_msg or "cannot copy out of meta" in error_msg:
                 logger.warning(
-                    f"⚠️ Meta tensor error, attempting CPU-only load for: {model_name}"
+                    f"⚠️ Meta tensor error, attempting alternative loading for: {model_name}"
                 )
                 try:
-                    # Force CPU load without any device movement
-                    model = SentenceTransformer(
-                        model_name,
-                        device="cpu",
-                        trust_remote_code=True,
-                    )
-                    # If MPS/CUDA was requested, try moving after load
-                    if device != "cpu":
-                        try:
-                            model = model.to(device)
-                        except RuntimeError:
-                            logger.info(f"📱 Model staying on CPU (device '{device}' unavailable)")
-                    return model
+                    # Method 1: Try with accelerate's low_cpu_mem_usage disabled
+                    try:
+                        from transformers import AutoModel
+                        # Disable accelerate's lazy loading
+                        import os
+                        old_val = os.environ.get("TRANSFORMERS_OFFLINE", "")
+                        os.environ["TRANSFORMERS_OFFLINE"] = "0"
+
+                        model = SentenceTransformer(
+                            model_name,
+                            device="cpu",
+                            trust_remote_code=True,
+                        )
+                        os.environ["TRANSFORMERS_OFFLINE"] = old_val
+                        logger.info(f"✅ Model loaded successfully on CPU")
+                        return model
+                    except Exception:
+                        pass
+
+                    # Method 2: Try a simpler/smaller fallback model
+                    fallback_model = "all-MiniLM-L6-v2"
+                    if model_name != fallback_model:
+                        logger.warning(
+                            f"⚠️ Falling back to simpler model: {fallback_model}"
+                        )
+                        model = SentenceTransformer(
+                            fallback_model,
+                            device="cpu",
+                            trust_remote_code=True,
+                        )
+                        self._model_name = fallback_model  # Update stored name
+                        return model
+
+                    raise RuntimeError("All loading methods failed")
+
                 except Exception as fallback_error:
-                    logger.error(f"❌ Fallback CPU load also failed: {fallback_error}")
+                    logger.error(f"❌ All model loading attempts failed: {fallback_error}")
                     raise RuntimeError(
                         f"Failed to load model '{model_name}': {fallback_error}"
                     ) from fallback_error

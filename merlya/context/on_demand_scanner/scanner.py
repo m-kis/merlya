@@ -323,9 +323,9 @@ class OnDemandScanner:
         if not data["reachable"]:
             return data
 
-        # SSH-based scans
+        # SSH-based scans - pass both hostname (for credentials) and connect_host (for connection)
         if scan_type in ["system", "services", "full"]:
-            ssh_data = await ssh_scan(hostname, scan_type, self.config)
+            ssh_data = await ssh_scan(hostname, scan_type, self.config, connect_host=connect_host)
             data.update(ssh_data)
 
         return data

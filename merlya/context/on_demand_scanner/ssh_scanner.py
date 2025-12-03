@@ -52,14 +52,16 @@ async def ssh_scan(
     hostname: str,
     scan_type: str,
     config: ScanConfig,
+    connect_host: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Perform SSH-based scan.
 
     Args:
-        hostname: Hostname to scan
+        hostname: Hostname for credential lookup (canonical name)
         scan_type: Type of scan (system, services, full)
         config: Scan configuration
+        connect_host: Actual host/IP to connect to (defaults to hostname if not provided)
 
     Returns:
         Scan data from SSH, including:
@@ -68,6 +70,8 @@ async def ssh_scan(
         - error: str (if failed, with actionable message)
         - Various system info depending on scan_type
     """
+    # Use resolved IP for connection, hostname for credentials
+    connect_target = connect_host or hostname
     data: Dict[str, Any] = {}
     client = None
 
@@ -164,10 +168,11 @@ async def ssh_scan(
         agent_available = creds.is_agent_available()
 
         loop = asyncio.get_running_loop()
+        logger.debug(f"🔌 SSH connecting to {connect_target} (credentials from {hostname})")
         await loop.run_in_executor(
             None,
             lambda: client.connect(
-                hostname,
+                connect_target,  # Use resolved IP, not hostname
                 username=user,
                 key_filename=key_path,
                 passphrase=passphrase,
