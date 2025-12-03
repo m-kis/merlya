@@ -4,10 +4,21 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from rich.console import Console
 
 from merlya.agents import autogen_tools, knowledge_tools
-from merlya.triage.behavior import BehaviorProfile, get_behavior
-from merlya.triage.priority import Priority
 from merlya.triage.variable_detector import get_variable_detector
 from merlya.utils.logger import logger
+
+from .prompts import (
+    get_behavior_for_priority,
+    get_engineer_prompt,
+    get_fallback_response,
+    get_intent_guidance,
+    get_priority_guidance,
+)
+from .response_extractor import (
+    collect_tool_outputs,
+    extract_response,
+    generate_synthesis,
+)
 
 if TYPE_CHECKING:
     from autogen_agentchat.base import TaskResult
@@ -17,12 +28,10 @@ try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
     from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
-    from autogen_agentchat.messages import FunctionExecutionResult
     from autogen_agentchat.teams import RoundRobinGroupChat, SelectorGroupChat
     HAS_AUTOGEN = True
 except ImportError:
     HAS_AUTOGEN = False
-    FunctionExecutionResult = None  # type: ignore
 
 class ExecutionPlanner:
     """Handles agent team creation and execution planning."""
@@ -62,7 +71,7 @@ class ExecutionPlanner:
             name="DevSecOps_Engineer",
             model_client=self.client_factory("synthesis"),
             tools=self.tools,  # type: ignore[arg-type]
-            system_message=self._get_engineer_prompt(),
+            system_message=get_engineer_prompt(self.env),
             description="Expert DevSecOps engineer who executes infrastructure tasks using tools.",
         )
 
@@ -141,65 +150,6 @@ Identify patterns across incidents.""",
 Return only the agent name.""",
         )
 
-    def _get_engineer_prompt(self) -> str:
-        """Get system prompt for Engineer - Expert DevSecOps/Linux Engineer.
-
-        Optimized for token efficiency while maintaining capability.
-        """
-        return f"""You are an expert DevSecOps/Linux Engineer. You THINK, ANALYZE, and RECOMMEND solutions—not just execute commands blindly.
-
-TOOLS:
-- HOSTS: list_hosts(), scan_host(hostname), check_permissions(target)
-- EXEC: execute_command(target, command, reason)
-- FILES: read_remote_file(host, path), write_remote_file(host, path, content), tail_logs(host, path, lines, grep)
-- SYSTEM: disk_info(host), memory_info(host), process_list(host), network_connections(host), service_control(host, service, action)
-- CONTAINERS: docker_exec(container, command), kubectl_exec(namespace, pod, command)
-- VARIABLES: get_user_variables(), get_variable_value(name) - access user-defined @variables
-- INTERACTION: ask_user(question) - ONLY for missing critical info, request_elevation(target, command, error_message), save_report(title, content) - save long analyses to /tmp
-
-VARIABLES SYSTEM:
-- Users define variables with `/variables set <key> <value>` (e.g., @Test, @proddb)
-- When asked about a @variable, use get_variable_value(name) to retrieve it
-- Use get_user_variables() to list all defined variables
-- @variables are substituted in queries, so "check @myserver" becomes "check actual-hostname"
-
-WORKFLOW:
-1. Understand the real problem
-2. Gather info (logs, configs, status) - use tools to investigate autonomously
-3. Analyze and explain findings clearly
-4. Execute read-only operations without asking (logs, status, configs, disk info)
-5. For write operations (restart, stop, delete, modify): explain briefly, then proceed
-
-RULES:
-- list_hosts() FIRST before acting on hosts
-- EXPLAIN reasoning, don't just execute
-- On "Permission denied" → use request_elevation()
-- ONLY use ask_user() when you NEED critical information to proceed (hostname, credentials, choice between options)
-- NEVER ask "what do you want to do next?" or present option menus - just complete the task and provide your answer
-- For @variable queries → use get_variable_value() or get_user_variables()
-
-USER CORRECTIONS (CRITICAL):
-- When the user CORRECTS an error (e.g., "no, the right machine is ANSIBLE", "use X instead"):
-  1. Acknowledge briefly ("Got it, using ANSIBLE instead")
-  2. IMMEDIATELY CONTINUE with the corrected information
-  3. DO NOT terminate - the original task is NOT complete
-  4. Apply the correction and resume where you left off
-- Examples of corrections: "wrong host", "not that server", "use X instead", "the correct one is Y"
-- After a correction, treat it as "continue with the corrected value" not "task complete"
-
-RESPONSE FORMAT (Markdown with sections: Summary, Findings, Recommendations)
-- Give DIRECT ANSWERS to questions
-- Include specific data, configs, or results you found
-- For long analyses/documentation, use save_report() to save to /tmp, then show a summary
-
-TERMINATION:
-- ONLY TERMINATE when the ORIGINAL task is FULLY COMPLETE with a clear answer
-- If user provides a correction → CONTINUE working, do NOT terminate
-- If you encounter an error you cannot resolve → explain and TERMINATE
-- If you asked for info and got it → CONTINUE, don't wait for more input
-
-Environment: {self.env}"""
-
     def _build_task_with_context(
         self,
         user_query: str,
@@ -262,71 +212,6 @@ Environment: {self.env}"""
 
         return None
 
-    def _get_behavior_for_priority(self, priority_name: str) -> BehaviorProfile:
-        """Get BehaviorProfile for a priority level."""
-        try:
-            priority = Priority[priority_name]
-            return get_behavior(priority)
-        except (KeyError, ValueError):
-            # Default to P3 behavior (most careful)
-            return get_behavior(Priority.P3)
-
-    def _get_priority_guidance(self, priority_name: str) -> str:
-        """Get priority-specific execution guidance."""
-        behavior = self._get_behavior_for_priority(priority_name)
-
-        if priority_name in ("P0", "P1"):
-            return f"""
-🚨 **PRIORITY: {priority_name} - FAST RESPONSE MODE**
-- Act quickly: gather essential info and respond
-- Auto-confirm read operations
-- Maximum {behavior.max_commands_before_pause} commands before pause
-- Use {behavior.response_format} responses
-- Focus on immediate resolution"""
-        elif priority_name == "P2":
-            return f"""
-⚠️ **PRIORITY: {priority_name} - THOROUGH MODE**
-- Take time to analyze thoroughly
-- Show your reasoning
-- Confirm write operations
-- Maximum {behavior.max_commands_before_pause} commands before pause
-- Provide detailed explanations"""
-        else:  # P3
-            return f"""
-📋 **PRIORITY: {priority_name} - STANDARD MODE**
-- Full analysis with chain-of-thought
-- Execute read operations autonomously (no need to ask)
-- Confirm write/destructive operations only
-- Maximum {behavior.max_commands_before_pause} commands before pause
-- Detailed responses with explanations - give direct answers"""
-
-    def _get_intent_guidance(self, intent: str) -> str:
-        """Get intent-specific guidance to inject into the task."""
-        if intent == "analysis":
-            return """
-🔍 **MODE: ANALYSIS** - Your focus is to INVESTIGATE and ANSWER.
-- Dig deep: check logs, configs, status - USE TOOLS AUTONOMOUSLY
-- EXPLAIN what you find in clear terms with SPECIFIC DATA
-- Execute read-only operations without asking (list, status, logs, configs)
-- For write/modify operations (restart, stop, delete, config changes): explain what you'll do, then proceed
-- ANSWER the user's question directly - don't ask what they want to do next"""
-
-        elif intent == "query":
-            return """
-📋 **MODE: QUERY** - Your focus is to GATHER and PRESENT information.
-- Collect the requested information efficiently using tools
-- Present results clearly with SPECIFIC DATA (configs, values, status)
-- Execute read operations autonomously
-- Give a DIRECT ANSWER - no follow-up questions needed"""
-
-        else:  # action
-            return """
-⚡ **MODE: ACTION** - Your focus is to EXECUTE the requested task.
-- Verify targets, then EXECUTE - be autonomous
-- For read/diagnostic operations: proceed without asking
-- For write/destructive operations: describe briefly then execute
-- Report results clearly - no need to ask what's next"""
-
     async def execute_basic(
         self,
         user_query: str,
@@ -355,7 +240,7 @@ Environment: {self.env}"""
 
         # Get behavior profile based on priority
         priority_name = priority or "P3"
-        behavior = self._get_behavior_for_priority(priority_name)
+        behavior = get_behavior_for_priority(priority_name)
 
         # Determine task type for model selection
         # P0/P1 -> correction (fast)
@@ -372,7 +257,7 @@ Environment: {self.env}"""
             name="DevSecOps_Engineer",
             model_client=self.client_factory(task_type),
             tools=self.tools,
-            system_message=self._get_engineer_prompt(),
+            system_message=get_engineer_prompt(self.env),
             description="Expert DevSecOps engineer who executes infrastructure tasks using tools.",
         )
 
@@ -383,10 +268,10 @@ Environment: {self.env}"""
         task = self._build_task_with_context(user_query, conversation_history, variable_context)
 
         # Add priority-specific guidance (adapts agent behavior)
-        priority_guidance = self._get_priority_guidance(priority_name)
+        priority_guidance = get_priority_guidance(priority_name)
 
         # Add intent-specific guidance
-        intent_guidance = self._get_intent_guidance(intent)
+        intent_guidance = get_intent_guidance(intent)
         task = f"{priority_guidance}\n{intent_guidance}\n\n{task}"
 
         # Add tool restrictions if specified
@@ -446,7 +331,7 @@ Environment: {self.env}"""
         self.console.print("[bold cyan]🤖 Multi-Agent Team Active...[/bold cyan]")
 
         # Get behavior profile based on priority
-        behavior = self._get_behavior_for_priority(priority_name)
+        behavior = get_behavior_for_priority(priority_name)
 
         # Detect variable-related queries
         variable_context = self._detect_variable_query(user_query)
@@ -455,10 +340,10 @@ Environment: {self.env}"""
         base_task = self._build_task_with_context(user_query, conversation_history, variable_context)
 
         # Add priority-specific guidance (adapts agent behavior)
-        priority_guidance = self._get_priority_guidance(priority_name)
+        priority_guidance = get_priority_guidance(priority_name)
 
         # Add intent-specific guidance
-        intent_guidance = self._get_intent_guidance(intent)
+        intent_guidance = get_intent_guidance(intent)
 
         # Build tool restriction text if specified
         tool_restriction = ""
@@ -512,379 +397,19 @@ Work together:
         and ask the LLM to synthesize them.
         """
         # First, try to find an existing synthesis
-        synthesis = self._extract_response(result)
+        synthesis = extract_response(result)
 
         # If we got a real synthesis (not empty or just task completed), return it
         if synthesis and synthesis not in ("", "✅ Task completed."):
             return synthesis
 
         # No synthesis found - collect tool outputs and generate one
-        tool_outputs = self._collect_tool_outputs(result)
+        tool_outputs = collect_tool_outputs(result)
 
         if not tool_outputs:
             # No tool outputs either - provide helpful message based on context
             logger.warning("⚠️ No synthesis and no tool outputs found in response")
-            return self._get_fallback_response(user_query)
+            return get_fallback_response(user_query)
 
         # Ask LLM to synthesize the outputs
-        return await self._generate_synthesis(user_query, tool_outputs)
-
-    def _get_fallback_response(self, user_query: str) -> str:
-        """Generate a helpful fallback response when agent produced no output."""
-        query_lower = user_query.lower()
-
-        # Check for common query types and provide helpful guidance
-        if any(word in query_lower for word in ['list', 'show', 'display']):
-            if 'host' in query_lower or 'server' in query_lower:
-                return """## ℹ️ No Hosts Found
-
-No hosts are configured in your inventory yet.
-
-### Quick Setup:
-1. **Add a host manually:**
-   ```
-   /inventory add-host myserver
-   ```
-
-2. **Import from Ansible inventory:**
-   ```
-   /inventory import ansible /path/to/inventory
-   ```
-
-3. **Configure SSH key (optional):**
-   ```
-   /inventory ssh-key set ~/.ssh/id_ed25519
-   ```
-
-Use `/inventory help` for more options."""
-
-        if 'scan' in query_lower or 'check' in query_lower:
-            return """## ℹ️ Unable to Scan
-
-Could not complete the scan. Possible reasons:
-- No hosts configured (use `/inventory add-host`)
-- SSH key not configured (use `/inventory ssh-key set`)
-- Host unreachable (check network/firewall)
-
-Use `list hosts` to see available hosts."""
-
-        # Generic fallback
-        return """## ℹ️ Task Completed
-
-The task was processed but no specific results were returned.
-
-This can happen when:
-- No hosts are configured yet
-- The requested resource doesn't exist
-- A connection issue occurred
-
-Try:
-- `/inventory` to check your hosts
-- `/help` for available commands"""
-
-    def _collect_tool_outputs(self, result: "TaskResult") -> List[str]:
-        """Collect all tool execution outputs from the conversation.
-
-        Includes:
-        - Tool results starting with SUCCESS/ERROR
-        - Report content from save_report (contains the actual report)
-        """
-        outputs = []
-
-        for msg in result.messages:
-            raw_content = getattr(msg, 'content', '')
-            if not raw_content:
-                continue
-
-            # Extract actual string content from autogen objects
-            content = self._extract_content(raw_content)
-            if not content:
-                continue
-
-            # Collect tool results - multiple patterns
-            # Pattern 1: Execute command format "✅ SUCCESS" / "❌ ERROR"
-            if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
-                # Extract just the output part, not the status prefix
-                if "\nOutput:" in content:
-                    output_part = content.split("\nOutput:", 1)[1].strip()
-                    if output_part and len(output_part) < 2000:  # Limit size
-                        outputs.append(output_part)
-                continue
-
-            # Pattern 2: scan_host and other host tools output (✅ Host, ❌ Host)
-            if content.startswith(("✅ Host", "❌ Host", "❌ BLOCKED", "❌ Scan")):
-                if len(content) < 5000:  # Reasonable size for scan results
-                    outputs.append(content)
-                continue
-
-            # Pattern 3: List/inventory tools (📋)
-            if content.startswith("📋 ") and "\n" in content:
-                if len(content) < 5000:
-                    outputs.append(content)
-                continue
-
-            # Collect save_report outputs (contains the actual report content)
-            # These end with "📄 *Report saved to:" and contain the report content
-            elif "📄 *Report saved to:" in content:
-                # This is a report - extract content before the footer
-                report_parts = content.split("---\n📄 *Report saved to:")
-                if report_parts and report_parts[0].strip():
-                    report_content = report_parts[0].strip()
-                    # Limit size but keep more for reports (they're meant to be displayed)
-                    if len(report_content) < 10000:
-                        outputs.append(report_content)
-                    else:
-                        outputs.append(report_content[:10000] + "\n... (truncated)")
-
-        return outputs
-
-    async def _generate_synthesis(self, user_query: str, tool_outputs: List[str]) -> str:
-        """Generate a synthesis from tool outputs using the LLM.
-
-        If tool_outputs contains a full report (from save_report), return it directly
-        without re-synthesizing to avoid losing content.
-        """
-        # Check if we have a large report - return it directly (it's already formatted)
-        for output in tool_outputs:
-            # Reports from save_report are typically > 500 chars and markdown formatted
-            if len(output) > 500 and (output.startswith("##") or output.startswith("#") or "**" in output[:100]):
-                logger.debug("📄 Returning report content directly (no synthesis needed)")
-                return output
-
-        # Combine outputs (limit total size)
-        combined = "\n---\n".join(tool_outputs[:5])  # Max 5 outputs
-        if len(combined) > 4000:
-            combined = combined[:4000] + "\n... (truncated)"
-
-        synthesis_prompt = f"""Based on the following command outputs, provide a clear, concise answer to the user's question.
-
-User question: {user_query}
-
-Command outputs:
-{combined}
-
-Instructions:
-- Answer the user's question directly
-- Summarize key findings
-- Use markdown formatting
-- Be concise but complete
-- Include any recommendations if relevant
-
-Provide your synthesis now:"""
-
-        try:
-            # Use the model client to generate synthesis
-            from autogen_core import CancellationToken
-
-            response = await self.client_factory("synthesis").create(
-                messages=[{"role": "user", "content": synthesis_prompt}],
-                cancellation_token=CancellationToken(),
-            )
-
-            if response and response.content:
-                return response.content
-        except Exception:
-            # Fallback: return a basic summary
-            return f"## Résumé\n\nCommandes exécutées avec succès.\n\n### Données collectées:\n```\n{combined[:1000]}\n```"
-
-        return "✅ Task completed."
-
-    def _extract_content(self, content: Any) -> str:
-        """
-        Extract string content from autogen message content.
-
-        Handles FunctionExecutionResult, lists, dicts, and strings.
-        """
-        if content is None:
-            return ""
-
-        # Handle FunctionExecutionResult (autogen 0.7+ tool results)
-        if FunctionExecutionResult is not None and isinstance(content, FunctionExecutionResult):
-            return str(content.content) if content.content else ""
-
-        # Handle list of content items
-        if isinstance(content, list):
-            parts = []
-            for item in content:
-                if FunctionExecutionResult is not None and isinstance(item, FunctionExecutionResult):
-                    parts.append(str(item.content) if item.content else "")
-                elif isinstance(item, dict):
-                    parts.append(str(item.get('text', item)))
-                else:
-                    parts.append(str(item))
-            return "\n".join(parts)
-
-        # Handle dict content
-        if isinstance(content, dict):
-            return str(content.get('text', content))
-
-        # Already a string
-        if isinstance(content, str):
-            return content
-
-        # Fallback: convert to string
-        return str(content)
-
-    def _filter_chain_of_thought(self, content: str) -> str:
-        """
-        Filter out chain-of-thought reasoning from agent response.
-
-        The agent sometimes outputs its internal reasoning before the final answer.
-        This includes:
-        - Lines starting with "A:" (agent's internal thoughts)
-        - Internal markers like "Mode:", "Response Format:", "TOOL RESTRICTION:"
-        - Meta-commentary about the task
-
-        We want to extract only the final report/response for the user.
-        """
-        import re
-
-        # If content starts with markdown header, it's likely the final response
-        if content.startswith('#'):
-            return content
-
-        # Detect chain-of-thought patterns
-        cot_markers = [
-            r'^A:\s',  # Agent internal response marker
-            r'Mode:\s*(QUERY|ACTION|STANDARD)',
-            r'Response Format:',
-            r'TOOL RESTRICTION:',
-            r'Task is complete:',
-            r'No more tools needed',
-            r"I've already gathered",
-            r'Key findings:',
-            r'Translated:',
-        ]
-
-        has_cot = any(re.search(pattern, content, re.MULTILINE | re.IGNORECASE)
-                      for pattern in cot_markers)
-
-        if not has_cot:
-            return content
-
-        # Try to extract the final report (usually starts with # heading)
-        # Look for markdown report starting with "# " (heading)
-        report_match = re.search(r'^(#{1,2}\s+.+?)(?=\n\n[A-Z]|$)', content, re.MULTILINE | re.DOTALL)
-        if report_match:
-            # Find the full report section starting from the first heading
-            heading_pos = content.find(report_match.group(0))
-            if heading_pos != -1:
-                return content[heading_pos:].strip()
-
-        # Alternative: split on double newline before heading
-        parts = re.split(r'\n\n(?=#\s)', content)
-        if len(parts) > 1:
-            # Return everything from the first heading onwards
-            for part in parts:
-                if part.startswith('#'):
-                    return part.strip()
-
-        # If no clear heading found, try to find report after CoT section
-        # Look for common report starters
-        report_starters = [
-            r'\n#{1,3}\s+\w+.*Report',  # "# ... Report"
-            r'\n#{1,3}\s+Summary',       # "# Summary"
-            r'\n#{1,3}\s+Findings',      # "# Findings"
-            r'\n#{1,3}\s+Results',       # "# Results"
-        ]
-
-        for pattern in report_starters:
-            match = re.search(pattern, content, re.IGNORECASE)
-            if match:
-                return content[match.start():].strip()
-
-        # Last resort: return content as-is if it's not too long
-        # (long content with CoT markers should be filtered)
-        if len(content) > 2000 and has_cot:
-            logger.warning("⚠️ Long response with CoT detected but no clear report found")
-            # Try to return just the last substantial section
-            sections = content.split('\n\n')
-            # Find sections that look like final content (not meta-commentary)
-            final_sections = []
-            capture = False
-            for section in sections:
-                if section.startswith('#') or capture:
-                    capture = True
-                    final_sections.append(section)
-            if final_sections:
-                return '\n\n'.join(final_sections).strip()
-
-        return content
-
-    def _extract_response(self, result: "TaskResult") -> str:
-        """Extract response from TaskResult.
-
-        Handles multiple message types and ensures we never return empty responses.
-        If no clear synthesis is found, returns None to trigger synthesis generation.
-        """
-        if not result.messages:
-            return "✅ Task completed."
-
-        # Debug: Log all messages to understand structure
-        logger.debug(f"TaskResult has {len(result.messages)} messages")
-        for i, msg in enumerate(result.messages):
-            msg_type = type(msg).__name__
-            raw_content = getattr(msg, 'content', None)
-            content_type = type(raw_content).__name__ if raw_content else 'None'
-            logger.debug(f"  [{i}] {msg_type}: content_type={content_type}")
-
-        # Collect all potential response content (not just last message)
-        candidate_responses = []
-
-        # Get last message from the assistant (not tool results)
-        for msg in reversed(result.messages):
-            # Check for TextMessage or similar final response types
-            msg_type = type(msg).__name__
-
-            # Skip tool-related messages
-            if msg_type in ('ToolCallRequestEvent', 'ToolCallExecutionEvent', 'ToolCallSummaryMessage'):
-                continue
-
-            raw_content = getattr(msg, 'content', '')
-            if not raw_content:
-                continue
-
-            # Extract actual string content from autogen objects
-            content = self._extract_content(raw_content)
-            if not content:
-                continue
-
-            # Skip tool call results (they start with SUCCESS/ERROR or are raw output)
-            if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
-                continue
-
-            # Clean up TERMINATE from response
-            content = content.strip()
-
-            # Remove TERMINATE from end (with possible trailing whitespace/newlines)
-            if content.endswith("TERMINATE"):
-                content = content[:-9].rstrip()
-
-            # Also handle case where TERMINATE is on its own line at the end
-            lines = content.split('\n')
-            while lines and lines[-1].strip() == "TERMINATE":
-                lines.pop()
-            content = '\n'.join(lines).strip()
-
-            # Skip if content is ONLY "TERMINATE" or empty after cleaning
-            if not content or content == "TERMINATE":
-                continue
-
-            # Filter chain-of-thought: extract only the final report/response
-            # Chain-of-thought often starts with "A:" or contains internal markers
-            content = self._filter_chain_of_thought(content)
-            if not content:
-                continue
-
-            # We found a valid response
-            if content:
-                candidate_responses.append(content)
-                # Return first valid response (most recent)
-                return content
-
-        # If we found no valid response content, signal for synthesis
-        # Return None instead of generic message so caller can generate synthesis
-        if not candidate_responses:
-            return ""  # Empty signals need for synthesis
-
-        return "✅ Task completed."
+        return await generate_synthesis(user_query, tool_outputs, self.client_factory)
