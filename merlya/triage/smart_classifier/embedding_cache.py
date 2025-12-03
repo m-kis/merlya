@@ -110,9 +110,7 @@ class EmbeddingCache:
                 try:
                     # Method 1: Try with accelerate's low_cpu_mem_usage disabled
                     try:
-                        from transformers import AutoModel
                         # Disable accelerate's lazy loading
-                        import os
                         old_val = os.environ.get("TRANSFORMERS_OFFLINE", "")
                         os.environ["TRANSFORMERS_OFFLINE"] = "0"
 
@@ -122,7 +120,7 @@ class EmbeddingCache:
                             trust_remote_code=True,
                         )
                         os.environ["TRANSFORMERS_OFFLINE"] = old_val
-                        logger.info(f"✅ Model loaded successfully on CPU")
+                        logger.info("✅ Model loaded successfully on CPU")
                         return model
                     except Exception:
                         pass
