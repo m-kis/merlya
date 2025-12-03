@@ -124,3 +124,17 @@ def mock_llm_router():
     router = MagicMock()
     router.generate.return_value = '{"intent": "action", "priority": "P3", "reasoning": "test"}'
     return router
+
+
+@pytest.fixture(autouse=True)
+def reset_credential_manager():
+    """
+    Reset CredentialManager singleton between tests.
+
+    This ensures each test starts with a fresh credential manager
+    and prevents state leakage between tests.
+    """
+    from merlya.security.credentials import CredentialManager
+    CredentialManager.reset_instance()
+    yield
+    CredentialManager.reset_instance()

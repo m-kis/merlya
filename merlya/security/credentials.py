@@ -33,7 +33,7 @@ class VariableType(Enum):
 
 class CredentialManager(SSHCredentialMixin):
     """
-    Manages credentials and user variables securely.
+    Manages credentials and user variables securely (Singleton).
 
     Features:
     - SSH: ssh-agent, ~/.ssh/config, key files
@@ -55,13 +55,32 @@ class CredentialManager(SSHCredentialMixin):
     - Session credentials TTL: 15 minutes
     - Automatic expiration cleanup on access
     - Keyring uses OS-native encryption
+
+    Note:
+    - This is a Singleton to ensure all components share the same credentials
+    - Use reset_instance() in tests to reset state between test cases
     """
+
+    # Singleton instance
+    _instance: Optional["CredentialManager"] = None
 
     # Storage key for variables in SQLite
     STORAGE_KEY = "user_variables"
 
     # Session credential TTL (15 minutes)
     CREDENTIAL_TTL = 900  # seconds
+
+    def __new__(cls, storage_manager=None):
+        """
+        Singleton pattern - returns existing instance or creates new one.
+
+        Note: If an instance exists but storage_manager is provided,
+        it will update the storage manager (allows late initialization).
+        """
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self, storage_manager=None):
         """
@@ -70,7 +89,17 @@ class CredentialManager(SSHCredentialMixin):
         Args:
             storage_manager: Optional StorageManager for persistence.
                             If None, variables are stored in-memory only.
+
+        Note: Only initializes once due to Singleton pattern.
+              Subsequent calls with storage_manager will update it via set_storage().
         """
+        # Only initialize once
+        if getattr(self, '_initialized', False):
+            # If storage_manager provided on subsequent call, update it
+            if storage_manager is not None and self._storage is None:
+                self.set_storage(storage_manager)
+            return
+
         self.ssh_dir = Path.home() / ".ssh"
         self.ssh_config = self._parse_ssh_config()
         # Session credentials: {cache_key: (username, password, timestamp)}
@@ -87,6 +116,30 @@ class CredentialManager(SSHCredentialMixin):
 
         # Load persisted variables
         self._load_variables()
+
+        # Mark as initialized
+        self._initialized = True
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """
+        Reset the singleton instance (for testing).
+
+        This allows tests to start with a fresh CredentialManager.
+        """
+        cls._instance = None
+
+    @classmethod
+    def get_instance(cls) -> "CredentialManager":
+        """
+        Get the singleton instance, creating if needed.
+
+        Returns:
+            The shared CredentialManager instance
+        """
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
 
     def _load_variables(self):
         """Load persisted variables from storage."""
@@ -567,3 +620,22 @@ class CredentialManager(SSHCredentialMixin):
                 return (match.group(1), match.group(2))
 
         return None
+
+
+def get_credential_manager() -> CredentialManager:
+    """
+    Get the shared CredentialManager singleton instance.
+
+    This is the recommended way to access credentials from any module.
+    Ensures all components share the same in-memory secrets cache.
+
+    Returns:
+        The shared CredentialManager instance
+
+    Example:
+        from merlya.security.credentials import get_credential_manager
+
+        creds = get_credential_manager()
+        passphrase = creds.get_variable("ssh-passphrase-id_ed25519")
+    """
+    return CredentialManager.get_instance()

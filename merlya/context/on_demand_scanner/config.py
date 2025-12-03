@@ -22,9 +22,9 @@ class ScanConfig:
     retry_base_delay: float = 1.0  # seconds
     retry_max_delay: float = 30.0  # seconds
 
-    # Timeouts
-    connect_timeout: float = 10.0  # seconds
-    command_timeout: float = 60.0  # seconds
+    # Timeouts (reduced for faster scanning)
+    connect_timeout: float = 5.0  # seconds (was 10, reduced for faster failure)
+    command_timeout: float = 30.0  # seconds (was 60, reduced for faster response)
 
     # SSH host key policy: "reject", "warning", or "auto_add"
     # "auto_add" should only be used in non-production/testing environments

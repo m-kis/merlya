@@ -303,13 +303,18 @@ class OnDemandScanner:
         }
 
         # Resolve hostname to IP (non-blocking, supports IPv4 and IPv6)
+        # Use timeout to prevent indefinite blocking on slow DNS
+        dns_timeout = min(self.config.connect_timeout, 5.0)
         try:
             loop = asyncio.get_running_loop()
             # getaddrinfo returns list of (family, type, proto, canonname, sockaddr)
             # sockaddr is (ip, port) for IPv4 or (ip, port, flow, scope) for IPv6
-            addrinfo = await loop.run_in_executor(
-                None,
-                lambda: socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            addrinfo = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+                ),
+                timeout=dns_timeout
             )
             if addrinfo:
                 # Extract IP from first result's sockaddr (index 4), IP is always index 0
@@ -321,6 +326,9 @@ class OnDemandScanner:
                 data["dns_resolved"] = True
             else:
                 data["dns_resolved"] = False
+        except asyncio.TimeoutError:
+            logger.debug(f"⏱️ DNS resolution timed out for {hostname}")
+            data["dns_resolved"] = False
         except socket.gaierror:
             data["dns_resolved"] = False
 
@@ -338,16 +346,25 @@ class OnDemandScanner:
         return data
 
     async def _check_connectivity(self, hostname: str, port: int = 22) -> bool:
-        """Check if host is reachable on SSH port (supports IPv4 and IPv6)."""
+        """
+        Check if host is reachable on SSH port (supports IPv4 and IPv6).
+
+        Uses a configurable timeout for both DNS resolution and connection.
+        """
         # Use injected checker if provided (for testing)
         if self._connectivity_checker is not None:
             return self._connectivity_checker(hostname, port)
 
         loop = asyncio.get_running_loop()
+        # Use shorter timeout for connectivity check (DNS + connect should be fast)
+        dns_timeout = min(self.config.connect_timeout, 5.0)
+        connect_timeout = self.config.connect_timeout
 
         def check():
             try:
-                # Use getaddrinfo to support both IPv4 and IPv6
+                # DNS resolution with timeout
+                # Note: socket.getaddrinfo doesn't support timeout directly,
+                # but running in executor + asyncio.wait_for provides timeout
                 addrinfo = socket.getaddrinfo(
                     hostname, port, socket.AF_UNSPEC, socket.SOCK_STREAM
                 )
@@ -355,7 +372,7 @@ class OnDemandScanner:
                 for family, socktype, proto, _, sockaddr in addrinfo:
                     try:
                         with socket.socket(family, socktype, proto) as sock:
-                            sock.settimeout(self.config.connect_timeout)
+                            sock.settimeout(connect_timeout)
                             result = sock.connect_ex(sockaddr)
                             if result == 0:
                                 return True
@@ -365,7 +382,15 @@ class OnDemandScanner:
             except Exception:
                 return False
 
-        return await loop.run_in_executor(None, check)
+        try:
+            # Wrap in timeout to prevent indefinite blocking on DNS
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, check),
+                timeout=dns_timeout + connect_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.debug(f"⏱️ Connectivity check timed out for {hostname}")
+            return False
 
     def _get_cached(self, hostname: str, scan_type: str) -> Optional[Dict]:
         """Get cached scan result if valid."""
