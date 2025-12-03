@@ -585,13 +585,27 @@ Try:
             if not content:
                 continue
 
-            # Collect tool results
+            # Collect tool results - multiple patterns
+            # Pattern 1: Execute command format "✅ SUCCESS" / "❌ ERROR"
             if content.startswith("✅ SUCCESS") or content.startswith("❌ ERROR"):
                 # Extract just the output part, not the status prefix
                 if "\nOutput:" in content:
                     output_part = content.split("\nOutput:", 1)[1].strip()
                     if output_part and len(output_part) < 2000:  # Limit size
                         outputs.append(output_part)
+                continue
+
+            # Pattern 2: scan_host and other host tools output (✅ Host, ❌ Host)
+            if content.startswith(("✅ Host", "❌ Host", "❌ BLOCKED", "❌ Scan")):
+                if len(content) < 5000:  # Reasonable size for scan results
+                    outputs.append(content)
+                continue
+
+            # Pattern 3: List/inventory tools (📋)
+            if content.startswith("📋 ") and "\n" in content:
+                if len(content) < 5000:
+                    outputs.append(content)
+                continue
 
             # Collect save_report outputs (contains the actual report content)
             # These end with "📄 *Report saved to:" and contain the report content
