@@ -709,6 +709,92 @@ Provide your synthesis now:"""
         # Fallback: convert to string
         return str(content)
 
+    def _filter_chain_of_thought(self, content: str) -> str:
+        """
+        Filter out chain-of-thought reasoning from agent response.
+
+        The agent sometimes outputs its internal reasoning before the final answer.
+        This includes:
+        - Lines starting with "A:" (agent's internal thoughts)
+        - Internal markers like "Mode:", "Response Format:", "TOOL RESTRICTION:"
+        - Meta-commentary about the task
+
+        We want to extract only the final report/response for the user.
+        """
+        import re
+
+        # If content starts with markdown header, it's likely the final response
+        if content.startswith('#'):
+            return content
+
+        # Detect chain-of-thought patterns
+        cot_markers = [
+            r'^A:\s',  # Agent internal response marker
+            r'Mode:\s*(QUERY|ACTION|STANDARD)',
+            r'Response Format:',
+            r'TOOL RESTRICTION:',
+            r'Task is complete:',
+            r'No more tools needed',
+            r"I've already gathered",
+            r'Key findings:',
+            r'Translated:',
+        ]
+
+        has_cot = any(re.search(pattern, content, re.MULTILINE | re.IGNORECASE)
+                      for pattern in cot_markers)
+
+        if not has_cot:
+            return content
+
+        # Try to extract the final report (usually starts with # heading)
+        # Look for markdown report starting with "# " (heading)
+        report_match = re.search(r'^(#{1,2}\s+.+?)(?=\n\n[A-Z]|$)', content, re.MULTILINE | re.DOTALL)
+        if report_match:
+            # Find the full report section starting from the first heading
+            heading_pos = content.find(report_match.group(0))
+            if heading_pos != -1:
+                return content[heading_pos:].strip()
+
+        # Alternative: split on double newline before heading
+        parts = re.split(r'\n\n(?=#\s)', content)
+        if len(parts) > 1:
+            # Return everything from the first heading onwards
+            for part in parts:
+                if part.startswith('#'):
+                    return part.strip()
+
+        # If no clear heading found, try to find report after CoT section
+        # Look for common report starters
+        report_starters = [
+            r'\n#{1,3}\s+\w+.*Report',  # "# ... Report"
+            r'\n#{1,3}\s+Summary',       # "# Summary"
+            r'\n#{1,3}\s+Findings',      # "# Findings"
+            r'\n#{1,3}\s+Results',       # "# Results"
+        ]
+
+        for pattern in report_starters:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                return content[match.start():].strip()
+
+        # Last resort: return content as-is if it's not too long
+        # (long content with CoT markers should be filtered)
+        if len(content) > 2000 and has_cot:
+            logger.warning("⚠️ Long response with CoT detected but no clear report found")
+            # Try to return just the last substantial section
+            sections = content.split('\n\n')
+            # Find sections that look like final content (not meta-commentary)
+            final_sections = []
+            capture = False
+            for section in sections:
+                if section.startswith('#') or capture:
+                    capture = True
+                    final_sections.append(section)
+            if final_sections:
+                return '\n\n'.join(final_sections).strip()
+
+        return content
+
     def _extract_response(self, result: "TaskResult") -> str:
         """Extract response from TaskResult.
 
@@ -766,6 +852,12 @@ Provide your synthesis now:"""
 
             # Skip if content is ONLY "TERMINATE" or empty after cleaning
             if not content or content == "TERMINATE":
+                continue
+
+            # Filter chain-of-thought: extract only the final report/response
+            # Chain-of-thought often starts with "A:" or contains internal markers
+            content = self._filter_chain_of_thought(content)
+            if not content:
                 continue
 
             # We found a valid response
