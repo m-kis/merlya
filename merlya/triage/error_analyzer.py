@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from merlya.utils.logger import logger
 
-from .smart_classifier import EmbeddingCache, HAS_EMBEDDINGS, get_embedding_cache
+from .smart_classifier import HAS_EMBEDDINGS, EmbeddingCache, get_embedding_cache
 
 if HAS_EMBEDDINGS:
     import numpy as np

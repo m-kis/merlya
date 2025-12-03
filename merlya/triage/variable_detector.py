@@ -9,8 +9,8 @@ from typing import Optional, Tuple
 from merlya.utils.logger import logger
 
 from .smart_classifier.embedding_cache import (
-    EmbeddingCache,
     HAS_EMBEDDINGS,
+    EmbeddingCache,
     get_embedding_cache,
 )
 
