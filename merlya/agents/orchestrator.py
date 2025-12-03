@@ -16,6 +16,7 @@ Performance Optimizations:
 - Automatic mode downgrade for simple intents
 """
 import os
+import threading
 from collections import OrderedDict
 from enum import Enum
 from typing import Any, Callable, List, Optional
@@ -156,6 +157,8 @@ class Orchestrator(BaseOrchestrator):
         # Client cache for task-specific models (must be before planner creation)
         # Uses OrderedDict for LRU eviction when cache exceeds MAX_CLIENT_CACHE_SIZE
         self._client_cache: OrderedDict[str, "OpenAIChatCompletionClient"] = OrderedDict()
+        # Lock to protect cache access in multi-threaded/async contexts
+        self._cache_lock = threading.RLock()
 
         # Execution Planner
         # Pass client factory instead of single client
@@ -180,7 +183,7 @@ class Orchestrator(BaseOrchestrator):
         Get or create a model client for a specific task.
 
         Uses LRU eviction when cache exceeds MAX_CLIENT_CACHE_SIZE to prevent
-        unbounded memory growth.
+        unbounded memory growth. Thread-safe via RLock.
 
         Args:
             task: Task type (correction, planning, synthesis)
@@ -188,25 +191,31 @@ class Orchestrator(BaseOrchestrator):
         Returns:
             Cached or new OpenAIChatCompletionClient
         """
-        if task in self._client_cache:
-            # Move to end for LRU ordering
-            self._client_cache.move_to_end(task)
-            return self._client_cache[task]
+        with self._cache_lock:
+            if task in self._client_cache:
+                # Move to end for LRU ordering
+                self._client_cache.move_to_end(task)
+                return self._client_cache[task]
 
-        client = self._create_model_client(task)
+            client = self._create_model_client(task)
 
-        # Evict oldest entries if cache is full
-        while len(self._client_cache) >= MAX_CLIENT_CACHE_SIZE:
-            oldest_task, oldest_client = self._client_cache.popitem(last=False)
+            # Collect clients to close outside the lock to avoid blocking
+            clients_to_close = []
+            while len(self._client_cache) >= MAX_CLIENT_CACHE_SIZE:
+                oldest_task, oldest_client = self._client_cache.popitem(last=False)
+                clients_to_close.append((oldest_task, oldest_client))
+
+            self._client_cache[task] = client
+
+        # Close evicted clients outside the lock
+        for evicted_task, evicted_client in clients_to_close:
             try:
-                # Best effort close - don't block on errors
-                if hasattr(oldest_client, '_client') and hasattr(oldest_client._client, 'close'):
-                    oldest_client._client.close()
-                logger.debug(f"Evicted cached client for task: {oldest_task}")
+                if hasattr(evicted_client, '_client') and hasattr(evicted_client._client, 'close'):
+                    evicted_client._client.close()
+                logger.debug(f"Evicted cached client for task: {evicted_task}")
             except Exception as e:
-                logger.debug(f"Error closing evicted client for {oldest_task}: {e}")
+                logger.debug(f"Error closing evicted client for {evicted_task}: {e}")
 
-        self._client_cache[task] = client
         return client
 
     def _create_model_client(self, task: Optional[str] = None) -> "OpenAIChatCompletionClient":
@@ -505,14 +514,72 @@ class Orchestrator(BaseOrchestrator):
         """
         error_str = str(error)
 
+        # Check for insufficient credits (OpenRouter 402)
+        if "402" in error_str or "credits" in error_str.lower():
+            logger.warning("💳 Insufficient API credits")
+            return self._build_credits_error_message(error_str)
+
+        # Check for rate limiting (429)
+        if "429" in error_str or "rate limit" in error_str.lower():
+            logger.warning("⏳ Rate limited by API")
+            return "⏳ **Rate Limited**: Too many requests. Please wait a moment and try again."
+
+        # Check for authentication errors (401)
+        if "401" in error_str or "unauthorized" in error_str.lower() or "invalid api key" in error_str.lower():
+            logger.error("🔑 API authentication failed")
+            return "🔑 **Authentication Error**: Invalid API key. Check your configuration with `/model info`."
+
         # Check for function calling / tool use not supported
         if "No endpoints found that support tool use" in error_str or "404" in error_str:
             logger.error("❌ Model doesn't support function calling: {}", error, exc_info=True)
             return self._build_function_calling_error_message()
 
-        # Generic error fallback
+        # Check for timeout errors
+        if "timeout" in error_str.lower() or "timed out" in error_str.lower():
+            logger.warning("⏱️ API request timed out")
+            return "⏱️ **Timeout**: The API request took too long. Please try again or use a simpler query."
+
+        # Generic error fallback - but keep it clean
         logger.error("❌ Orchestrator failed: {}", error, exc_info=True)
-        return f"❌ Error: {error_str}"
+        # Extract just the main error message, not the full traceback
+        short_error = error_str.split('\n')[0][:200]
+        return f"❌ **Error**: {short_error}"
+
+    def _build_credits_error_message(self, error_str: str) -> str:
+        """
+        Build user-friendly message for insufficient credits.
+
+        Args:
+            error_str: The original error string
+
+        Returns:
+            Formatted error message with solutions
+        """
+        model_config = ModelConfig()
+        current_provider = model_config.get_provider()
+
+        message_parts = [
+            "💳 **Insufficient Credits**",
+            "",
+            "Your API account has run out of credits.",
+            "",
+        ]
+
+        if current_provider == "openrouter":
+            message_parts.extend([
+                "💡 **Solutions**:",
+                "  1. Add credits at https://openrouter.ai/settings/credits",
+                "  2. Switch to a free model: `/model set openrouter google/gemini-2.0-flash-exp:free`",
+                "  3. Switch to Ollama (local, free): `/model provider ollama`",
+            ])
+        else:
+            message_parts.extend([
+                "💡 **Solutions**:",
+                f"  1. Add credits to your {current_provider} account",
+                "  2. Switch to Ollama (local, free): `/model provider ollama`",
+            ])
+
+        return "\n".join(message_parts)
 
     def _build_function_calling_error_message(self) -> str:
         """

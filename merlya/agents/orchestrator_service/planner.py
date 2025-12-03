@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from rich.console import Console
 
 from merlya.agents import autogen_tools, knowledge_tools
+from merlya.triage.jump_host_detector import detect_jump_host
 from merlya.triage.variable_detector import get_variable_detector
 from merlya.utils.logger import logger
 
@@ -212,6 +213,35 @@ Return only the agent name.""",
 
         return None
 
+    def _detect_jump_host(self, user_query: str) -> Optional[str]:
+        """
+        Detect if query specifies a jump host for SSH pivoting.
+
+        Detects patterns like:
+        - "via @bastion"
+        - "à travers @ansible"
+        - "through @jumphost"
+
+        Returns a context string with pivoting instructions if detected.
+        """
+        jump_info = detect_jump_host(user_query)
+
+        if jump_info:
+            logger.info(f"🌐 Jump host detected: {jump_info}")
+            # Build context hint for the LLM
+            target = jump_info.target_host or "the target host"
+            return f"""📌 **SSH PIVOTING DETECTED**
+The user wants to connect to {target} via the jump host '@{jump_info.jump_host}'.
+This means the target is not directly accessible and requires pivoting through '{jump_info.jump_host}'.
+
+**IMPORTANT**: When using execute_command() or scan_host() for this request:
+- Use the `via_host` parameter set to "{jump_info.jump_host}"
+- Example: execute_command(target="{target}", command="...", reason="...", via_host="{jump_info.jump_host}")
+
+This enables SSH agent forwarding and proper tunneling through the jump host."""
+
+        return None
+
     async def execute_basic(
         self,
         user_query: str,
@@ -264,8 +294,17 @@ Return only the agent name.""",
         # Detect variable-related queries
         variable_context = self._detect_variable_query(user_query)
 
+        # Detect jump host for SSH pivoting
+        jump_host_context = self._detect_jump_host(user_query)
+
+        # Combine contexts
+        combined_context = None
+        if variable_context or jump_host_context:
+            parts = [c for c in [variable_context, jump_host_context] if c]
+            combined_context = "\n\n".join(parts)
+
         # Build task with conversation context
-        task = self._build_task_with_context(user_query, conversation_history, variable_context)
+        task = self._build_task_with_context(user_query, conversation_history, combined_context)
 
         # Add priority-specific guidance (adapts agent behavior)
         priority_guidance = get_priority_guidance(priority_name)
@@ -336,8 +375,17 @@ Return only the agent name.""",
         # Detect variable-related queries
         variable_context = self._detect_variable_query(user_query)
 
+        # Detect jump host for SSH pivoting
+        jump_host_context = self._detect_jump_host(user_query)
+
+        # Combine contexts
+        combined_context = None
+        if variable_context or jump_host_context:
+            parts = [c for c in [variable_context, jump_host_context] if c]
+            combined_context = "\n\n".join(parts)
+
         # Build base task with context
-        base_task = self._build_task_with_context(user_query, conversation_history, variable_context)
+        base_task = self._build_task_with_context(user_query, conversation_history, combined_context)
 
         # Add priority-specific guidance (adapts agent behavior)
         priority_guidance = get_priority_guidance(priority_name)

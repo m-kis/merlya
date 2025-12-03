@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import paramiko
 
 from merlya.context.host_resolution import resolve_host
-from merlya.executors.connectivity import ConnectivityPlanner
+from merlya.executors.connectivity import ConnectionStrategy, ConnectivityPlanner
 from merlya.executors.ssh_connection_pool import get_connection_pool
 from merlya.executors.ssh_utils import read_channel_with_timeout
 from merlya.security.credentials import CredentialManager
@@ -26,49 +26,128 @@ class SSHManager:
         self.pool = get_connection_pool() if use_connection_pool else None
         self.connectivity = ConnectivityPlanner()
 
+    def _resolve_jump_host(self, jump_host: str) -> str:
+        """
+        Resolve jump host to its actual hostname/IP.
+
+        Handles:
+        - @variable references (e.g., @ansible -> actual hostname)
+        - Inventory lookups
+        - Direct hostnames/IPs
+        """
+        # Remove @ prefix if present
+        if jump_host.startswith('@'):
+            jump_host = jump_host[1:]
+
+        # Try to resolve from inventory
+        resolved = resolve_host(jump_host)
+        if resolved.ip_address and resolved.ip_address != "unknown":
+            logger.debug(f"Jump host {jump_host} resolved to {resolved.ip_address}")
+            return resolved.connect_address
+
+        return jump_host
+
     def _connect_via_jump_host(
-        self, target_host: str, jump_host: str, user: str, connect_kwargs: dict
+        self, target_host: str, jump_host: str, user: str, connect_kwargs: dict,
+        forward_agent: bool = True
     ) -> paramiko.SSHClient:
         """
-        Establish a connection to target_host via jump_host.
+        Establish a connection to target_host via jump_host with agent forwarding.
+
+        This mimics `ssh -A jump_host` then `ssh target_host` behavior.
+
+        Args:
+            target_host: Final destination host
+            jump_host: Intermediate jump/bastion host
+            user: SSH user for target
+            connect_kwargs: Connection parameters
+            forward_agent: Enable SSH agent forwarding (default: True)
+
+        Returns:
+            SSHClient connected to target (with _jump_client reference for cleanup)
+
+        Raises:
+            paramiko.SSHException: If connection fails
         """
-        logger.info(f"🌐 Initiating jump connection: Local -> {jump_host} -> {target_host}")
+        # Resolve jump host (handles @variable references)
+        resolved_jump = self._resolve_jump_host(jump_host)
+        logger.info(f"Pivoting: Local -> {resolved_jump} -> {target_host}")
 
-        # 1. Connect to Jump Host
-        # We reuse the execute logic recursively, but here we need the raw client
-        # For simplicity, we'll create a direct client to the jump host
-        jump_client = paramiko.SSHClient()
-        jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        jump_client: paramiko.SSHClient | None = None
+        channel = None
 
-        # Get jump host credentials using resolve_ssh_for_host
-        jump_user = self.credentials.get_user_for_host(jump_host) or user
-        jump_key, jump_passphrase, _ = self.credentials.resolve_ssh_for_host(
-            jump_host, prompt_passphrase=True
-        )
+        try:
+            # 1. Connect to Jump Host
+            jump_client = paramiko.SSHClient()
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-        jump_kwargs = connect_kwargs.copy()
-        if jump_key:
-            jump_kwargs["key_filename"] = jump_key
-        if jump_passphrase:
-            jump_kwargs["passphrase"] = jump_passphrase
+            # Get jump host credentials
+            jump_user = self.credentials.get_user_for_host(resolved_jump) or user
+            jump_key, jump_passphrase, _ = self.credentials.resolve_ssh_for_host(
+                resolved_jump, prompt_passphrase=True
+            )
 
-        jump_client.connect(jump_host, username=jump_user, **jump_kwargs)
+            jump_kwargs = connect_kwargs.copy()
+            # Ensure agent is used for jump host
+            jump_kwargs["allow_agent"] = True
+            if jump_key:
+                jump_kwargs["key_filename"] = jump_key
+            if jump_passphrase:
+                jump_kwargs["passphrase"] = jump_passphrase
 
-        # 2. Create Channel
-        transport = jump_client.get_transport()
-        if transport is None:
-            raise paramiko.SSHException("Failed to get transport from jump host")
-        dest_addr = (target_host, 22)
-        local_addr = ('127.0.0.1', 0)  # Source doesn't matter much
-        channel = transport.open_channel("direct-tcpip", dest_addr, local_addr)
+            jump_client.connect(resolved_jump, username=jump_user, **jump_kwargs)
+            logger.debug(f"Connected to jump host: {resolved_jump}")
 
-        # 3. Connect to Target through Channel
-        target_client = paramiko.SSHClient()
-        target_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # 2. Create direct-tcpip channel to target
+            transport = jump_client.get_transport()
+            if transport is None:
+                raise paramiko.SSHException("Failed to get transport from jump host")
 
-        target_client.connect(target_host, username=user, sock=channel, **connect_kwargs)
+            # Enable keepalive to detect broken connections
+            if forward_agent:
+                try:
+                    transport.set_keepalive(30)
+                    logger.debug("SSH keepalive enabled on jump host")
+                except Exception as e:
+                    logger.warning(f"Could not enable keepalive: {e}")
 
-        return target_client
+            dest_addr = (target_host, 22)
+            local_addr = ('127.0.0.1', 0)
+            channel = transport.open_channel("direct-tcpip", dest_addr, local_addr)
+            logger.debug(f"Tunnel established: {resolved_jump} -> {target_host}")
+
+            # 3. Connect to Target through the tunnel
+            target_client = paramiko.SSHClient()
+            target_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            # For target connection, we use the channel as socket
+            target_kwargs = connect_kwargs.copy()
+            target_kwargs["allow_agent"] = True  # Use forwarded agent
+
+            target_client.connect(target_host, username=user, sock=channel, **target_kwargs)
+            logger.debug(f"Connected to target: {target_host} via {resolved_jump}")
+
+            # Store jump client reference to prevent premature closure
+            # and enable proper cleanup when target_client is closed
+            target_client._jump_client = jump_client  # type: ignore
+
+            return target_client
+
+        except Exception as e:
+            # Clean up jump host connection if target connection fails
+            logger.error(f"Jump host connection failed: {e}")
+            if channel is not None:
+                try:
+                    channel.close()
+                except Exception:
+                    pass
+            if jump_client is not None:
+                try:
+                    jump_client.close()
+                    logger.debug(f"Closed jump host connection to {resolved_jump} after failure")
+                except Exception:
+                    pass
+            raise
 
     def execute(
         self,
@@ -78,7 +157,8 @@ class SSHManager:
         key_path: Optional[str] = None,
         passphrase: Optional[str] = None,
         timeout: int = 60,
-        show_spinner: bool = True
+        show_spinner: bool = True,
+        jump_host: Optional[str] = None
     ) -> Tuple[int, str, str]:
         """
         Execute a command on a remote host via SSH using user's credentials.
@@ -91,6 +171,7 @@ class SSHManager:
             passphrase: SSH key passphrase (auto-resolved if not provided)
             timeout: Command timeout in seconds (default: 60)
             show_spinner: Show spinner during SSH operations (default: True)
+            jump_host: Optional jump host to connect through (e.g., bastion server)
 
         Returns: (exit_code, stdout, stderr)
         """
@@ -141,7 +222,12 @@ class SSHManager:
 
         logger.debug(f"📍 Host resolution: {resolved}")
 
-        strategy = self.connectivity.get_connection_strategy(host, target_ip)
+        # If explicit jump_host provided, use it; otherwise auto-detect
+        if jump_host:
+            logger.info(f"🌐 Using explicit jump host: {jump_host}")
+            strategy = ConnectionStrategy(method='jump', jump_host=jump_host)
+        else:
+            strategy = self.connectivity.get_connection_strategy(host, target_ip)
 
         # Use spinner for connection phase if enabled
         def _establish_connection():

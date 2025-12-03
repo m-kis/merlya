@@ -94,7 +94,8 @@ class ActionExecutor:
         confirm: bool = False,
         timeout: int = 60,
         show_spinner: bool = True,
-        max_retries: int = 3
+        max_retries: int = 3,
+        jump_host: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Execute an action on a target with automatic credential handling.
@@ -108,6 +109,7 @@ class ActionExecutor:
             timeout: Command timeout in seconds (default: 60)
             show_spinner: Show spinner during remote execution (default: True)
             max_retries: Maximum number of retries for credential errors (default: 3)
+            jump_host: Optional jump host to connect through (for pivoting)
 
         Returns:
             Dict with success, exit_code, stdout, stderr
@@ -128,7 +130,9 @@ class ActionExecutor:
         if target in ["local", "localhost"]:
             result = self._execute_local(command, timeout=timeout)
         else:
-            result = self._execute_remote(target, command, timeout=timeout, show_spinner=show_spinner)
+            result = self._execute_remote(
+                target, command, timeout=timeout, show_spinner=show_spinner, jump_host=jump_host
+            )
 
         # Check if success
         if result.get("success"):
@@ -158,7 +162,8 @@ class ActionExecutor:
                         result = self._execute_local(command, timeout=timeout)
                     else:
                         result = self._execute_remote(
-                            target, command, timeout=timeout, show_spinner=show_spinner
+                            target, command, timeout=timeout, show_spinner=show_spinner,
+                            jump_host=jump_host
                         )
 
                     if result.get("success"):
@@ -265,13 +270,14 @@ class ActionExecutor:
         host: str,
         command: str,
         timeout: int = 60,
-        show_spinner: bool = True
+        show_spinner: bool = True,
+        jump_host: Optional[str] = None
     ) -> Dict[str, Any]:
         stats = get_stats_manager()
         start_time = time.perf_counter()
 
         exit_code, stdout, stderr = self.ssh_manager.execute(
-            host, command, timeout=timeout, show_spinner=show_spinner
+            host, command, timeout=timeout, show_spinner=show_spinner, jump_host=jump_host
         )
 
         duration_ms = int((time.perf_counter() - start_time) * 1000)

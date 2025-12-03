@@ -2,6 +2,7 @@
 Core REPL logic for Merlya.
 """
 import asyncio
+import atexit
 import contextlib
 import os
 import sys
@@ -199,6 +200,81 @@ def suppress_asyncio_errors():
         # Remove the filters from autogen loggers
         autogen_logger.removeFilter(interrupt_filter)
         autogen_agentchat_logger.removeFilter(interrupt_filter)
+
+
+# Global error suppression patterns (same as FilteredStderr but for excepthook)
+_NOISE_PATTERNS = [
+    "task_done() called too many times",
+    "ValueError('task_done()",
+    "unhandled exception during asyncio.run() shutdown",
+    "Error processing publish message",
+    "_process_publish() done",
+    "_process_send() done",
+    "asyncio.exceptions.CancelledError",
+    "exception=CancelledError",
+    "Task was destroyed but it is pending",
+    "Event loop is closed",
+    "autogen_core._single_threaded_agent_runtime",
+    "KeyboardInterrupt",
+]
+
+_original_excepthook = sys.excepthook
+_error_filter_installed = False
+
+
+def _filtered_excepthook(exc_type, exc_value, exc_tb):
+    """
+    Custom excepthook that suppresses noisy asyncio/AutoGen shutdown errors.
+    These errors occur during Ctrl+C handling and are not actionable.
+    """
+    # Check if this is a noise error we want to suppress
+    error_str = str(exc_value)
+    full_error = f"{exc_type.__name__}: {error_str}"
+
+    # Suppress known noise patterns
+    if any(pattern in full_error for pattern in _NOISE_PATTERNS):
+        return  # Silently ignore
+
+    # For keyboard interrupts, just exit cleanly
+    if exc_type is KeyboardInterrupt:
+        return
+
+    # For other errors, use original handler
+    _original_excepthook(exc_type, exc_value, exc_tb)
+
+
+def install_error_filter():
+    """
+    Install global error filter to suppress noisy asyncio shutdown errors.
+    Call this once at REPL startup.
+    """
+    global _error_filter_installed
+    if _error_filter_installed:
+        return
+
+    # Install custom excepthook
+    sys.excepthook = _filtered_excepthook
+
+    # Also handle unraisable exceptions (Python 3.8+)
+    if hasattr(sys, 'unraisablehook'):
+        original_unraisable = sys.unraisablehook
+
+        def filtered_unraisable(unraisable):
+            error_str = str(unraisable.exc_value) if unraisable.exc_value else ""
+            if any(pattern in error_str for pattern in _NOISE_PATTERNS):
+                return  # Suppress
+            original_unraisable(unraisable)
+
+        sys.unraisablehook = filtered_unraisable
+
+    # Register atexit handler to restore stderr filter during shutdown
+    def cleanup_stderr():
+        """Final cleanup to suppress any remaining asyncio noise."""
+        # Redirect stderr to devnull during final shutdown if there are pending errors
+        pass  # The excepthook handles this
+
+    atexit.register(cleanup_stderr)
+    _error_filter_installed = True
 
 
 class MerlyaREPL:
@@ -451,6 +527,9 @@ class MerlyaREPL:
 
     def start(self):
         """Start the REPL loop."""
+        # Install global error filter to suppress noisy asyncio shutdown messages
+        install_error_filter()
+
         # Check provider readiness before starting
         provider_status = self._check_provider_readiness()
 
@@ -555,6 +634,8 @@ class MerlyaREPL:
                 except Exception as e:
                     query_success = False
                     query_error = str(e)
+                    # Re-raise to be handled by outer exception handler
+                    # which provides clean API error messages
                     raise
                 finally:
                     status_manager.stop()
@@ -599,8 +680,34 @@ class MerlyaREPL:
                 if "CancelledError" in error_str or "cancelled" in error_str.lower():
                     console.print("\n[yellow]⏹ Cancelled[/yellow]")
                     continue
+
+                # Handle API errors with clean messages (no traceback)
+                if "402" in error_str or "credits" in error_str.lower():
+                    console.print("\n[bold yellow]💳 Insufficient Credits[/bold yellow]")
+                    console.print("Your API account has run out of credits.")
+                    console.print("\n[dim]Solutions:[/dim]")
+                    console.print("  • Add credits at https://openrouter.ai/settings/credits")
+                    console.print("  • Use a free model: /model set openrouter google/gemini-2.0-flash-exp:free")
+                    console.print("  • Use local Ollama: /model provider ollama")
+                    continue
+
+                if "429" in error_str or "rate limit" in error_str.lower():
+                    console.print("\n[yellow]⏳ Rate Limited[/yellow] - Please wait a moment and try again.")
+                    continue
+
+                if "401" in error_str or "unauthorized" in error_str.lower():
+                    console.print("\n[red]🔑 Authentication Error[/red] - Check your API key with /model info")
+                    continue
+
+                if "timeout" in error_str.lower():
+                    console.print("\n[yellow]⏱️ Timeout[/yellow] - Request took too long. Try a simpler query.")
+                    continue
+
+                # Generic error - log and show short message
                 logger.error(f"REPL Error: {e}")
-                print_error(f"{e}")
+                # Extract just the first line to avoid traceback in user output
+                short_error = error_str.split('\n')[0][:150]
+                print_error(short_error)
 
         # Clean shutdown of orchestrator to prevent httpx "Event loop is closed" errors
         if hasattr(self, 'orchestrator') and self.orchestrator is not None:

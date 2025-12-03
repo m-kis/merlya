@@ -14,17 +14,25 @@ from merlya.utils.logger import logger
 def execute_command(
     target: Annotated[str, "Target host (hostname, IP, or 'local')"],
     command: Annotated[str, "Shell command to execute"],
-    reason: Annotated[str, "Why this command is needed (for audit trail)"]
+    reason: Annotated[str, "Why this command is needed (for audit trail)"],
+    via_host: Annotated[str, "Jump host to connect through (for pivoting). Use when target is only accessible via another host."] = ""
 ) -> str:
     """
     Execute a shell command on a target host (local or remote via SSH).
 
     IMPORTANT: The target host MUST exist in the inventory. Use list_hosts() first.
 
+    For hosts that are not directly accessible (e.g., behind a bastion/jump host),
+    use the via_host parameter to specify the intermediate host to connect through.
+
+    Example: To connect to 10.0.0.5 via bastion host 'ansible':
+        execute_command(target="10.0.0.5", command="df -h", reason="check disk", via_host="ansible")
+
     Args:
         target: Target host - use 'local' for local machine
         command: Shell command to execute
         reason: Why this command is needed (for audit trail)
+        via_host: Optional jump host to connect through (for hosts behind bastions)
 
     Returns:
         Command output with success/failure status
@@ -32,7 +40,11 @@ def execute_command(
     from merlya.tools.base import get_status_manager
 
     ctx = get_tool_context()
-    logger.info(f"⚡ Tool: execute_command on {target} - {reason}")
+    # Log with pivoting info if applicable
+    if via_host:
+        logger.info(f"⚡ Tool: execute_command on {target} via {via_host} - {reason}")
+    else:
+        logger.info(f"⚡ Tool: execute_command on {target} - {reason}")
 
     # Update spinner with contextual info
     status = get_status_manager()
@@ -99,7 +111,10 @@ def execute_command(
     corrected_command = None
 
     while attempt <= max_retries:
-        result = ctx.executor.execute(target, command, confirm=True)
+        # Pass jump_host if via_host was specified for pivoting
+        result = ctx.executor.execute(
+            target, command, confirm=True, jump_host=via_host if via_host else None
+        )
 
         if result.get('success'):
             output = result['stdout'] or "(no output)"
