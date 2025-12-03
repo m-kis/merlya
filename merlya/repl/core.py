@@ -394,6 +394,25 @@ class MerlyaREPL:
             # Don't fail startup if SSH setup fails
             logger.debug(f"SSH credential setup skipped: {e}")
 
+    def _check_keyring_status(self) -> str:
+        """
+        Check keyring availability for secret storage.
+
+        Returns:
+            Status string for welcome message.
+        """
+        try:
+            from merlya.llm.readiness import check_keyring_status
+
+            status = check_keyring_status()
+            if status["status"] == "available":
+                return f"**Keyring**: ✅ {status['backend']}\n"
+            else:
+                return f"**Keyring**: ⚠️ {status['message']}\n"
+        except Exception as e:
+            logger.debug(f"Keyring status check failed: {e}")
+            return "**Keyring**: ⚠️ Check failed\n"
+
     def _check_provider_readiness(self) -> str:
         """
         Check if the configured LLM provider is ready.
@@ -450,6 +469,10 @@ class MerlyaREPL:
         # Add memory status
         memory_status = "✅ FalkorDB" if self.orchestrator.has_long_term_memory else "💾 SQLite only"
         conv_info += f"**Memory**: {memory_status}\n"
+
+        # Add keyring status
+        keyring_status = self._check_keyring_status()
+        conv_info += keyring_status
 
         show_welcome(self.env, self.session_manager.current_session_id, self.config.language, conv_info)
 

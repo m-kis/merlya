@@ -29,12 +29,13 @@ KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/.]+$')
 # Import keyring with fallback
 try:
     import keyring
-    from keyring.errors import KeyringError, PasswordDeleteError
+    from keyring.errors import KeyringError, NoKeyringError, PasswordDeleteError
 
     HAS_KEYRING = True
 except ImportError:
     HAS_KEYRING = False
     KeyringError = Exception
+    NoKeyringError = Exception
     PasswordDeleteError = Exception
 
 
@@ -112,6 +113,28 @@ class KeyringSecretStore:
     def backend_name(self) -> Optional[str]:
         """Get the keyring backend name."""
         return self._backend_name
+
+    def get_status_message(self) -> str:
+        """
+        Get a status message for readiness checks.
+
+        Returns:
+            Human-readable status message about keyring availability.
+        """
+        if self._available:
+            return f"Keyring available ({self._backend_name})"
+        elif HAS_KEYRING:
+            return (
+                "Keyring installed but no working backend. "
+                "Secrets will be prompted each time. "
+                "Install 'keyrings.alt' for file-based storage on headless servers."
+            )
+        else:
+            return (
+                "Keyring not installed. "
+                "Secrets will be prompted each time. "
+                "Run: pip install keyring keyrings.alt"
+            )
 
     def _full_key(self, key: str) -> str:
         """Build full key with service prefix."""

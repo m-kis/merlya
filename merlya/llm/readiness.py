@@ -253,6 +253,23 @@ def check_provider_readiness(provider: Optional[str] = None) -> ReadinessResult:
     return checker.check(provider)
 
 
+def check_keyring_status() -> Dict[str, str]:
+    """
+    Check keyring availability for secret storage.
+
+    Returns:
+        Dict with 'status' (available/unavailable) and 'message'.
+    """
+    from merlya.security.keyring_store import get_keyring_store
+
+    store = get_keyring_store()
+    return {
+        "status": "available" if store.is_available else "unavailable",
+        "backend": store.backend_name or "none",
+        "message": store.get_status_message(),
+    }
+
+
 def format_readiness_result(result: ReadinessResult) -> str:
     """
     Format readiness result for display.
