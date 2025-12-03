@@ -60,8 +60,12 @@ class EmbeddingCache:
                 "Install with: pip install sentence-transformers numpy"
             )
         if self._model is None:
-            logger.info(f"🔄 Loading embedding model: {self._model_name}")
+            import time
+            logger.info(f"🔄 Loading embedding model: {self._model_name} (this may take a moment...)")
+            start = time.monotonic()
             self._model = self._load_model(self._model_name)
+            duration = time.monotonic() - start
+            logger.info(f"✅ Embedding model loaded in {duration:.1f}s")
         return self._model
 
     def _load_model(self, model_name: str) -> "SentenceTransformer":
