@@ -395,10 +395,47 @@ class SSHCredentialMixin:
         return config
 
     def get_user_for_host(self, host: str) -> str:
-        """Get the SSH user for a host from config, or default to current user."""
+        """
+        Get the SSH user for a host.
+
+        Resolution priority:
+        1. Inventory metadata (ssh_user)
+        2. SSH config (~/.ssh/config User directive)
+        3. Environment variable USER
+        4. Default: 'root'
+
+        Args:
+            host: Hostname to look up
+
+        Returns:
+            SSH username to use
+        """
+        # 1. Check inventory metadata first (highest priority)
+        try:
+            from merlya.memory.persistence.inventory_repository import get_inventory_repository
+            repo = get_inventory_repository()
+            host_data = repo.get_host_by_name(host)
+            if host_data:
+                metadata = host_data.get("metadata", {}) or {}
+                ssh_user = metadata.get("ssh_user")
+                if ssh_user:
+                    logger.debug(f"🔑 SSH user for {host}: {ssh_user} (from inventory)")
+                    return ssh_user
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"Could not check inventory for SSH user: {type(e).__name__}")
+
+        # 2. Check SSH config
         if host in self.ssh_config and 'user' in self.ssh_config[host]:
-            return self.ssh_config[host]['user']
-        return os.getenv('USER', 'root')
+            user = self.ssh_config[host]['user']
+            logger.debug(f"🔑 SSH user for {host}: {user} (from ssh_config)")
+            return user
+
+        # 3. Default to current user
+        default_user = os.getenv('USER', 'root')
+        logger.debug(f"🔑 SSH user for {host}: {default_user} (default)")
+        return default_user
 
     def get_key_for_host(self, host: str) -> Optional[str]:
         """Get the SSH key for a specific host from config."""

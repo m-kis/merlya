@@ -25,7 +25,7 @@ class InventoryManager:
         hostname: str,
         ip_address: Optional[str] = None,
         environment: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         """
         Sync a newly added host with the HostRegistry.
 
@@ -36,7 +36,12 @@ class InventoryManager:
             hostname: Hostname to register
             ip_address: Optional IP address
             environment: Optional environment
+
+        Returns:
+            True if sync succeeded, False otherwise
         """
+        from merlya.utils.logger import logger
+
         try:
             from merlya.context.host_registry import get_host_registry
             registry = get_host_registry()
@@ -45,13 +50,33 @@ class InventoryManager:
                 ip_address=ip_address,
                 environment=environment,
             )
+            # CRITICAL: Invalidate cache so validate_host() sees new host immediately
+            registry.invalidate_cache()
+            logger.info(f"✅ Host '{hostname}' synced to HostRegistry")
+            return True
         except ImportError:
-            # HostRegistry not available - this is fine, host is still in SQLite
+            # HostRegistry not available - warn user
+            logger.warning("⚠️ HostRegistry not available - host validation may be delayed")
+            print_warning("HostRegistry not available - host may not be immediately usable")
+            return False
+        except Exception as e:
+            # Log error visibly - this is important for debugging
+            logger.error(f"❌ Registry sync FAILED for '{hostname}': {type(e).__name__}: {e}")
+            print_warning(f"⚠️ Host added to DB but registry sync failed: {e}")
+            return False
+
+    def _invalidate_host_registry(self) -> None:
+        """Invalidate HostRegistry cache after bulk operations."""
+        from merlya.utils.logger import logger
+
+        try:
+            from merlya.context.host_registry import get_host_registry
+            registry = get_host_registry()
+            registry.invalidate_cache()
+        except ImportError:
             pass
         except Exception as e:
-            # Don't fail the add operation if sync fails - host is still persisted
-            from merlya.utils.logger import logger
-            logger.debug(f"Host '{hostname}' added to DB but registry sync failed: {type(e).__name__}")
+            logger.warning(f"⚠️ Failed to invalidate HostRegistry: {e}")
 
     def handle_remove(self, args: List[str]) -> bool:
         """Handle /inventory remove <source>."""
@@ -79,6 +104,8 @@ class InventoryManager:
 
         if self.repo.delete_source(source_name):
             print_success(f"Removed inventory source: {source_name}")
+            # Invalidate cache so removed hosts are no longer validated
+            self._invalidate_host_registry()
         else:
             print_error("Failed to remove source")
 

@@ -230,4 +230,19 @@ class InventoryImporter:
         print_success(f"Imported {added} hosts from '{source_name}'")
         console.print("[dim]Use @hostname to reference these hosts in prompts[/dim]")
 
+        # CRITICAL: Invalidate HostRegistry cache so new hosts are immediately available
+        self._invalidate_host_registry()
+
         return True
+
+    def _invalidate_host_registry(self) -> None:
+        """Invalidate HostRegistry cache after bulk import."""
+        try:
+            from merlya.context.host_registry import get_host_registry
+            registry = get_host_registry()
+            registry.invalidate_cache()
+            logger.info("✅ HostRegistry cache invalidated after import")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to invalidate HostRegistry: {e}")

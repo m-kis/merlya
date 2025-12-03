@@ -563,6 +563,55 @@ class HostRepositoryMixin:
                 WHERE id = ?
             """, (status, datetime.now().isoformat(), host_id))
 
+    def update_host_metadata(
+        self,
+        hostname: str,
+        metadata: Dict[str, Any],
+        merge: bool = True,
+    ) -> bool:
+        """Update host metadata.
+
+        Args:
+            hostname: Hostname to update.
+            metadata: New metadata dictionary.
+            merge: If True, merge with existing metadata. If False, replace entirely.
+
+        Returns:
+            True if updated, False if host not found.
+        """
+        with self._connection(commit=True) as conn:
+            cursor = conn.cursor()
+
+            # Get current metadata if merging
+            if merge:
+                cursor.execute(
+                    "SELECT metadata FROM hosts_v2 WHERE hostname = ?",
+                    (hostname.lower(),)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return False
+
+                current_metadata = {}
+                if row[0]:
+                    try:
+                        current_metadata = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+                # Merge new metadata into current
+                current_metadata.update(metadata)
+                metadata = current_metadata
+
+            # Update
+            cursor.execute("""
+                UPDATE hosts_v2
+                SET metadata = ?, updated_at = ?
+                WHERE hostname = ?
+            """, (json.dumps(metadata), datetime.now().isoformat(), hostname.lower()))
+
+            return cursor.rowcount > 0
+
     def delete_host(
         self,
         hostname: str,

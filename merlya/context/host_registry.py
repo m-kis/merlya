@@ -58,6 +58,16 @@ class HostRegistry:
         """Check if registry has no hosts."""
         return len(self._hosts) == 0
 
+    def invalidate_cache(self) -> None:
+        """
+        Invalidate the cache to force refresh on next access.
+
+        Call this after modifying the inventory (add/remove hosts)
+        to ensure validate_host() sees the new hosts immediately.
+        """
+        self._last_refresh = None
+        logger.info("🔄 HostRegistry cache invalidated")
+
     def load_all_sources(self, force_refresh: bool = False) -> int:
         """
         Load hosts from all configured sources.
@@ -304,8 +314,9 @@ class HostRegistry:
         }
 
 
-# Singleton instance
+# Singleton instance with thread-safety
 _registry: Optional[HostRegistry] = None
+_registry_lock = __import__('threading').Lock()
 _setup_callback: Optional[Callable] = None
 
 
@@ -321,19 +332,30 @@ def set_inventory_setup_callback(callback: Callable) -> None:
 
 
 def get_host_registry(config: Optional[Dict[str, Any]] = None) -> HostRegistry:
-    """Get the global HostRegistry instance."""
+    """
+    Get the global HostRegistry instance (thread-safe singleton).
+
+    Args:
+        config: Optional configuration dict (only used on first call)
+
+    Returns:
+        The global HostRegistry instance
+    """
     global _registry
 
     if _registry is None:
-        _registry = HostRegistry(config)
-        _registry.load_all_sources()
+        with _registry_lock:
+            # Double-check pattern for thread safety
+            if _registry is None:
+                _registry = HostRegistry(config)
+                _registry.load_all_sources()
 
-        # If no hosts found and we have a setup callback, invoke it
-        if _registry.is_empty() and _setup_callback:
-            logger.info("No hosts found in inventory, triggering setup...")
-            if _setup_callback():
-                # Reload after setup
-                _registry.load_all_sources(force_refresh=True)
+                # If no hosts found and we have a setup callback, invoke it
+                if _registry.is_empty() and _setup_callback:
+                    logger.info("No hosts found in inventory, triggering setup...")
+                    if _setup_callback():
+                        # Reload after setup
+                        _registry.load_all_sources(force_refresh=True)
 
     return _registry
 

@@ -127,7 +127,8 @@ def list_hosts(
 
 
 def scan_host(
-    hostname: Annotated[str, "Hostname or IP address to scan"]
+    hostname: Annotated[str, "Hostname or IP address to scan"],
+    user: Annotated[str, "SSH username to use for connection (optional)"] = ""
 ) -> str:
     """
     Scan a remote host to detect OS, kernel, services.
@@ -136,6 +137,7 @@ def scan_host(
 
     Args:
         hostname: Hostname or IP address
+        user: Optional SSH username (if not provided, uses inventory/ssh config/default)
 
     Returns:
         Scan results
@@ -143,7 +145,21 @@ def scan_host(
     from merlya.tools.base import get_status_manager
 
     ctx = get_tool_context()
-    logger.info(f"🖥️ Tool: scan_host {hostname}")
+    logger.info(f"🖥️ Tool: scan_host {hostname}" + (f" user={user}" if user else ""))
+
+    # If user is explicitly provided, store it in inventory metadata
+    # so that _get_ssh_credentials() will use it
+    if user and ctx.inventory_repo:
+        try:
+            host_data = ctx.inventory_repo.get_host_by_name(hostname)
+            if host_data:
+                metadata = host_data.get("metadata", {}) or {}
+                if metadata.get("ssh_user") != user:
+                    metadata["ssh_user"] = user
+                    ctx.inventory_repo.update_host_metadata(hostname, metadata)
+                    logger.info(f"🔑 Updated SSH user for {hostname}: {user}")
+        except Exception as e:
+            logger.debug(f"Could not update SSH user in inventory: {e}")
 
     # Update spinner with contextual info
     status = get_status_manager()
