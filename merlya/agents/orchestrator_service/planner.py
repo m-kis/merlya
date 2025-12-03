@@ -1,3 +1,4 @@
+import asyncio
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from rich.console import Console
@@ -414,8 +415,15 @@ Environment: {self.env}"""
             termination_condition=termination,
         )
 
-        # Run the team
-        result = await team.run(task=task)
+        # Run the team with timeout to prevent indefinite blocking
+        try:
+            result = await asyncio.wait_for(
+                team.run(task=task),
+                timeout=300.0  # 5 minute timeout for LLM response
+            )
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Agent team execution timed out after 5 minutes")
+            return "❌ **Timeout**: L'exécution a pris trop de temps (>5 minutes). Réessayez avec une requête plus simple."
 
         # Extract or generate synthesis
         return await self._extract_or_synthesize(result, user_query)
@@ -481,10 +489,18 @@ Work together:
 3. DevSecOps_Engineer: Investigate, recommend, then execute if approved
 """
 
-        # Run the team
+        # Run the team with timeout to prevent indefinite blocking
         if self.team is None:
             raise RuntimeError("Team not initialized. Call init_agents() with mode='enhanced' first.")
-        result = await self.team.run(task=task)
+
+        try:
+            result = await asyncio.wait_for(
+                self.team.run(task=task),
+                timeout=300.0  # 5 minute timeout for LLM response
+            )
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Enhanced agent team execution timed out after 5 minutes")
+            return "❌ **Timeout**: L'exécution a pris trop de temps (>5 minutes). L'API LLM ne répond pas."
 
         return await self._extract_or_synthesize(result, user_query)
 
