@@ -385,3 +385,77 @@ class TestCredentialManagerKeyringIntegration:
         # Should now be in session cache
         assert "cached-key" in cm._variables
         assert cm._variables["cached-key"][1] == VariableType.SECRET
+
+
+class TestKeyringStatusMessage:
+    """Tests for get_status_message method."""
+
+    def test_status_message_when_available(self, mock_keyring):
+        """Test status message when keyring is available."""
+        store = KeyringSecretStore()
+        message = store.get_status_message()
+
+        assert "Keyring available" in message
+        assert store.backend_name in message
+
+    def test_status_message_when_no_backend(self):
+        """Test status message when keyring installed but no backend."""
+        with patch("merlya.security.keyring_store.HAS_KEYRING", True):
+            with patch("merlya.security.keyring_store.keyring") as mock:
+                # Simulate NoKeyringError during init
+                from merlya.security.keyring_store import NoKeyringError
+                mock.get_keyring.side_effect = NoKeyringError("No backend")
+
+                store = KeyringSecretStore()
+                message = store.get_status_message()
+
+                assert "no working backend" in message
+                assert "keyrings.alt" in message
+
+    def test_status_message_when_not_installed(self):
+        """Test status message when keyring not installed."""
+        with patch("merlya.security.keyring_store.HAS_KEYRING", False):
+            store = KeyringSecretStore()
+            message = store.get_status_message()
+
+            assert "not installed" in message
+            assert "pip install keyring" in message
+
+
+class TestCheckKeyringStatus:
+    """Tests for check_keyring_status function in readiness module."""
+
+    def test_check_keyring_status_available(self, mock_keyring):
+        """Test check_keyring_status when keyring available."""
+        from merlya.llm.readiness import check_keyring_status
+
+        status = check_keyring_status()
+
+        assert status["status"] == "available"
+        assert status["backend"] is not None
+        assert "available" in status["message"].lower()
+
+    def test_check_keyring_status_unavailable(self):
+        """Test check_keyring_status when keyring unavailable."""
+        with patch("merlya.security.keyring_store.HAS_KEYRING", False):
+            # Reset singleton to pick up the patched value
+            reset_keyring_store()
+
+            from merlya.llm.readiness import check_keyring_status
+
+            status = check_keyring_status()
+
+            assert status["status"] == "unavailable"
+            assert status["backend"] == "none"
+            assert "not installed" in status["message"]
+
+    def test_check_keyring_status_returns_dict(self, mock_keyring):
+        """Test that check_keyring_status returns correct dict structure."""
+        from merlya.llm.readiness import check_keyring_status
+
+        status = check_keyring_status()
+
+        assert isinstance(status, dict)
+        assert "status" in status
+        assert "backend" in status
+        assert "message" in status
