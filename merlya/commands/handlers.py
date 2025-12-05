@@ -551,6 +551,145 @@ async def cmd_language(ctx: SharedContext, args: list[str]) -> CommandResult:
 
 
 # =============================================================================
+# Scan Command
+# =============================================================================
+
+
+@command("scan", "Scan a host for system info and security", "/scan <host> [--full|--security|--system]")
+async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Scan a host for system information and security issues."""
+    if not args:
+        return CommandResult(
+            success=False,
+            message="Usage: `/scan <host> [--full|--security|--system]`\n"
+            "Example: `/scan @myserver` or `/scan @myserver --security`",
+            show_help=True,
+        )
+
+    # Parse arguments
+    host_name = args[0].lstrip("@")
+    scan_type = "full"
+    for arg in args[1:]:
+        if arg == "--security":
+            scan_type = "security"
+        elif arg == "--system":
+            scan_type = "system"
+        elif arg == "--full":
+            scan_type = "full"
+
+    # Resolve host
+    host = await ctx.hosts.get_by_name(host_name)
+    if not host:
+        return CommandResult(
+            success=False,
+            message=f"Host '{host_name}' not found. Use `/hosts add {host_name}` to add it.",
+        )
+
+    ctx.ui.info(f"Scanning {host.name} ({host.hostname})...")
+
+    results: list[str] = [f"**Scan Results for `{host.name}`**\n"]
+
+    # System scan
+    if scan_type in ("full", "system"):
+        from merlya.tools.system import (
+            check_cpu,
+            check_disk_usage,
+            check_memory,
+            get_system_info,
+        )
+
+        ctx.ui.muted("  Gathering system info...")
+        sys_result = await get_system_info(ctx, host.name)
+        if sys_result.success and sys_result.data:
+            results.append("**System Info:**")
+            for key, value in sys_result.data.items():
+                results.append(f"  {key}: `{value}`")
+            results.append("")
+
+        # Memory
+        mem_result = await check_memory(ctx, host.name)
+        if mem_result.success and mem_result.data:
+            data = mem_result.data
+            icon = "⚠️" if data.get("warning") else "✓"
+            results.append(
+                f"{icon} **Memory:** {data.get('use_percent', 0)}% used "
+                f"({data.get('used_mb', 0)}MB / {data.get('total_mb', 0)}MB)"
+            )
+
+        # CPU
+        cpu_result = await check_cpu(ctx, host.name)
+        if cpu_result.success and cpu_result.data:
+            data = cpu_result.data
+            icon = "⚠️" if data.get("warning") else "✓"
+            results.append(
+                f"{icon} **CPU:** {data.get('use_percent', 0)}% "
+                f"(load: {data.get('load_1m', 0)}, {data.get('cpu_count', 0)} cores)"
+            )
+
+        # Disk
+        disk_result = await check_disk_usage(ctx, host.name, "/")
+        if disk_result.success and disk_result.data:
+            data = disk_result.data
+            icon = "⚠️" if data.get("warning") else "✓"
+            results.append(
+                f"{icon} **Disk (/):** {data.get('use_percent', 0)}% used "
+                f"({data.get('used', 'N/A')} / {data.get('size', 'N/A')})"
+            )
+
+        results.append("")
+
+    # Security scan
+    if scan_type in ("full", "security"):
+        from merlya.tools.security import (
+            check_open_ports,
+            check_security_config,
+            check_users,
+        )
+
+        ctx.ui.muted("  Running security checks...")
+
+        # Open ports
+        ports_result = await check_open_ports(ctx, host.name)
+        if ports_result.success and ports_result.data and isinstance(ports_result.data, list):
+            ports = ports_result.data
+            results.append(f"**Open Ports:** {len(ports)} found")
+            for port in ports[:10]:  # Limit display
+                if isinstance(port, dict):
+                    results.append(
+                        f"  - `{port.get('port', '?')}/{port.get('proto', '?')}` "
+                        f"({port.get('process', 'unknown')})"
+                    )
+            if len(ports) > 10:
+                results.append(f"  ... and {len(ports) - 10} more")
+            results.append("")
+
+        # Security config
+        sec_result = await check_security_config(ctx, host.name)
+        if sec_result.success and sec_result.data and isinstance(sec_result.data, dict):
+            issues = sec_result.data.get("issues", [])
+            if issues:
+                results.append(f"⚠️ **Security Issues:** {len(issues)} found")
+                for issue in issues[:5]:
+                    results.append(f"  - {issue}")
+                if len(issues) > 5:
+                    results.append(f"  ... and {len(issues) - 5} more")
+            else:
+                results.append("✓ **Security Config:** No issues found")
+            results.append("")
+
+        # Users
+        users_result = await check_users(ctx, host.name)
+        if users_result.success and users_result.data and isinstance(users_result.data, dict):
+            sudo_users = users_result.data.get("sudo_users", [])
+            shell_users = users_result.data.get("shell_users", [])
+            results.append(
+                f"**Users:** {len(shell_users)} with shell, {len(sudo_users)} with sudo"
+            )
+
+    return CommandResult(success=True, message="\n".join(results))
+
+
+# =============================================================================
 # Health Command
 # =============================================================================
 

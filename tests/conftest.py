@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import AsyncGenerator, Generator
 
 import pytest
 

@@ -6,7 +6,6 @@ import pytest
 
 from merlya.persistence.database import (
     Database,
-    DatabaseError,
     IntegrityError,
     from_json,
     to_json,

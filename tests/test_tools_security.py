@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
-from merlya.tools.files.tools import _validate_path, _validate_mode
-from merlya.tools.system.tools import _validate_service_name, _validate_username
+from merlya.tools.files.tools import _validate_mode, _validate_path
 from merlya.tools.security.tools import _is_safe_ssh_key_path
+from merlya.tools.system.tools import _validate_service_name, _validate_username
 
 
 class TestFileToolsValidation:
@@ -143,7 +141,7 @@ class TestCommandInjectionPrevention:
         for path in malicious_paths:
             # Path validation should allow these (quoting handles safety)
             # The validation only checks for null bytes and length
-            error = _validate_path(path)
+            _validate_path(path)
             # These specific paths should pass validation but be safely quoted
             # when used in commands
 

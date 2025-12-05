@@ -36,7 +36,7 @@ class SetupResult:
 
 
 PROVIDERS = {
-    "1": ("openrouter", "OPENROUTER_API_KEY", "anthropic/claude-3.5-sonnet"),
+    "1": ("openrouter", "OPENROUTER_API_KEY", "x-ai/grok-4.1-fast:free"),
     "2": ("anthropic", "ANTHROPIC_API_KEY", "claude-3-5-sonnet-latest"),
     "3": ("openai", "OPENAI_API_KEY", "gpt-4o"),
     "4": ("ollama", None, "llama3.2"),
@@ -80,15 +80,19 @@ Providers disponibles:
 
     # Check for existing API key
     if env_key:
-        existing_key = os.environ.get(env_key)
+        from merlya.secrets import get_secret, set_secret
+
+        existing_key = os.environ.get(env_key) or get_secret(env_key)
         if existing_key:
-            ui.success(f"API key trouvee dans l'environnement ({env_key})")
+            ui.success(f"API key trouvee ({env_key})")
         else:
             api_key = await ui.prompt_secret(f"Entrez votre {env_key}")
             if api_key:
-                # Set in environment for this session
+                # Save to keyring for persistence
+                set_secret(env_key, api_key)
+                # Also set in environment for this session
                 os.environ[env_key] = api_key
-                ui.success("API key configuree")
+                ui.success("API key configuree et stockee de maniere securisee")
             else:
                 ui.warning("Pas d'API key fournie")
                 return None

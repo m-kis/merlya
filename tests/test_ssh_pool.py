@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -96,14 +97,14 @@ class TestSSHPoolLimits:
     @pytest.mark.asyncio
     async def test_evict_lru_when_full(self) -> None:
         """Test LRU eviction when pool is full."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         from merlya.ssh.pool import SSHConnection
 
         pool = await SSHPool.get_instance(max_connections=2)
 
         # Create mock SSHConnection objects with different last_used times
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old_conn = SSHConnection(
             host="host1",
             connection=MagicMock(),
