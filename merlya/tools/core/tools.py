@@ -154,7 +154,7 @@ async def ssh_execute(
         ssh_pool = await ctx.get_ssh_pool()
 
         if host_entry:
-            stdout, stderr, exit_code = await ssh_pool.execute(
+            result = await ssh_pool.execute(
                 host=host_entry.hostname,
                 command=command,
                 timeout=timeout,
@@ -165,22 +165,22 @@ async def ssh_execute(
             )
         else:
             # Direct hostname
-            stdout, stderr, exit_code = await ssh_pool.execute(
+            result = await ssh_pool.execute(
                 host=host,
                 command=command,
                 timeout=timeout,
             )
 
         return ToolResult(
-            success=exit_code == 0,
+            success=result.exit_code == 0,
             data={
-                "stdout": stdout,
-                "stderr": stderr,
-                "exit_code": exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.exit_code,
                 "host": host,
                 "command": command[:50] + "..." if len(command) > 50 else command,
             },
-            error=stderr if exit_code != 0 else None,
+            error=result.stderr if result.exit_code != 0 else None,
         )
 
     except Exception as e:

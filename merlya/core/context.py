@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from loguru import logger
 
@@ -39,6 +39,10 @@ class SharedContext:
     have access to. It's initialized once at startup and passed
     to agents via dependency injection.
     """
+
+    # Class-level singleton state
+    _instance: ClassVar[SharedContext | None] = None
+    _lock: ClassVar[asyncio.Lock]  # Initialized below
 
     # Core infrastructure
     config: Config
@@ -199,9 +203,8 @@ class SharedContext:
         cls._instance = None
 
 
-# Class-level singleton state (outside dataclass fields)
-SharedContext._instance: SharedContext | None = None
-SharedContext._lock: asyncio.Lock = asyncio.Lock()
+# Initialize the class-level lock
+SharedContext._lock = asyncio.Lock()
 
 
 async def get_context() -> SharedContext:

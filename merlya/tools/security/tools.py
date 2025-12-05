@@ -74,7 +74,7 @@ def _is_safe_ssh_key_path(path: str) -> bool:
 
 
 async def check_open_ports(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     include_listening: bool = True,
     include_established: bool = False,
@@ -94,7 +94,7 @@ async def check_open_ports(
     from merlya.ssh import SSHPool
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
 
         # Build state filter (validated values only)
         states = []
@@ -162,7 +162,7 @@ async def check_open_ports(
 
 
 async def audit_ssh_keys(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -178,7 +178,7 @@ async def audit_ssh_keys(
     from merlya.ssh import SSHPool
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
 
         # Find SSH keys (fixed paths only)
         find_cmd = "find ~/.ssh /etc/ssh -type f \\( -name '*.pub' -o -name 'id_*' \\) 2>/dev/null | head -100"
@@ -248,7 +248,7 @@ async def audit_ssh_keys(
 
 
 async def check_security_config(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -264,7 +264,7 @@ async def check_security_config(
     from merlya.ssh import SSHPool
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
 
         checks: list[dict] = []
         severity = "info"
@@ -356,7 +356,7 @@ async def check_security_config(
 
 
 async def check_users(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -372,7 +372,7 @@ async def check_users(
     from merlya.ssh import SSHPool
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
 
         users: list[dict] = []
         issues: list[str] = []
@@ -435,7 +435,7 @@ async def check_users(
 
 
 async def check_sudo_config(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -451,7 +451,7 @@ async def check_sudo_config(
     from merlya.ssh import SSHPool
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
 
         issues: list[str] = []
         severity = "info"

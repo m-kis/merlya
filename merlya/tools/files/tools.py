@@ -53,7 +53,7 @@ def _validate_mode(mode: str) -> str | None:
 
 
 async def read_file(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
     lines: int | None = None,
@@ -83,7 +83,7 @@ async def read_file(
         return FileResult(success=False, error="Lines must be between 1 and 100000")
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
 
         # Build command with safe quoting
@@ -112,7 +112,7 @@ async def read_file(
 
 
 async def write_file(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
     content: str,
@@ -144,7 +144,7 @@ async def write_file(
         return FileResult(success=False, error=error)
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
 
         # Create backup if requested
@@ -180,7 +180,7 @@ async def write_file(
 
 
 async def list_directory(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
     all_files: bool = False,
@@ -206,7 +206,7 @@ async def list_directory(
         return FileResult(success=False, error=error)
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
 
         # Build ls command
@@ -258,7 +258,7 @@ async def list_directory(
 
 
 async def file_exists(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
 ) -> FileResult:
@@ -280,7 +280,7 @@ async def file_exists(
         return FileResult(success=False, error=error)
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
         result = await ssh_pool.execute(host_name, f"test -e {quoted_path} && echo exists")
 
@@ -293,7 +293,7 @@ async def file_exists(
 
 
 async def file_info(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
 ) -> FileResult:
@@ -315,7 +315,7 @@ async def file_info(
         return FileResult(success=False, error=error)
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
 
         # Use stat command for portable file info (Linux then macOS fallback)
@@ -351,7 +351,7 @@ async def file_info(
 
 
 async def search_files(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
     pattern: str,
@@ -390,7 +390,7 @@ async def search_files(
         return FileResult(success=False, error="max_depth must be between 1 and 100")
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
         quoted_pattern = shlex.quote(pattern)
 
@@ -415,7 +415,7 @@ async def search_files(
 
 
 async def delete_file(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     host_name: str,
     path: str,
     force: bool = False,
@@ -444,7 +444,7 @@ async def delete_file(
         return FileResult(success=False, error=f"Refusing to delete system path: {path}")
 
     try:
-        ssh_pool = SSHPool(ctx)
+        ssh_pool = await SSHPool.get_instance()
         quoted_path = shlex.quote(path)
 
         # Build rm command

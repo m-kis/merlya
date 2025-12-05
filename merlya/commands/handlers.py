@@ -484,7 +484,7 @@ async def cmd_ssh_exec(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     try:
         ssh_pool = await ctx.get_ssh_pool()
-        stdout, stderr, exit_code = await ssh_pool.execute(
+        result = await ssh_pool.execute(
             host=host.hostname,
             command=command,
             port=host.port,
@@ -493,13 +493,13 @@ async def cmd_ssh_exec(ctx: SharedContext, args: list[str]) -> CommandResult:
             jump_host=host.jump_host,
         )
 
-        output = stdout or stderr
-        status = "✓" if exit_code == 0 else "✗"
+        output = result.stdout or result.stderr
+        status = "✓" if result.exit_code == 0 else "✗"
 
         return CommandResult(
-            success=exit_code == 0,
-            message=f"{status} Exit code: {exit_code}\n```\n{output}\n```",
-            data={"stdout": stdout, "stderr": stderr, "exit_code": exit_code},
+            success=result.exit_code == 0,
+            message=f"{status} Exit code: {result.exit_code}\n```\n{output}\n```",
+            data={"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.exit_code},
         )
 
     except Exception as e:

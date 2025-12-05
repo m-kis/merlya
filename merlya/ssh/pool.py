@@ -21,6 +21,15 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class SSHResult:
+    """Result of an SSH command execution."""
+
+    stdout: str
+    stderr: str
+    exit_code: int
+
+
+@dataclass
 class SSHConnection:
     """Wrapper for an SSH connection with timeout management."""
 
@@ -250,7 +259,7 @@ class SSHPool:
         command: str,
         timeout: int = 60,
         **conn_kwargs: object,
-    ) -> tuple[str, str, int]:
+    ) -> SSHResult:
         """
         Execute a command on a host.
 
@@ -261,7 +270,7 @@ class SSHPool:
             **conn_kwargs: Connection options.
 
         Returns:
-            Tuple of (stdout, stderr, exit_code).
+            SSHResult with stdout, stderr, and exit_code.
 
         Raises:
             ValueError: If host or command is empty.
@@ -288,10 +297,18 @@ class SSHPool:
                 f"⚡ Executed command on {host} (length: {len(command)} chars, exit: {result.exit_status})"
             )
 
-            return (
-                result.stdout or "",
-                result.stderr or "",
-                result.exit_status or 0,
+            # Ensure strings (asyncssh may return bytes)
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+
+            return SSHResult(
+                stdout=stdout,
+                stderr=stderr,
+                exit_code=result.exit_status or 0,
             )
 
         except TimeoutError:
