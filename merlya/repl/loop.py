@@ -301,7 +301,15 @@ async def run_repl() -> None:
 
     # Check first run
     if await check_first_run():
-        await run_setup_wizard(ctx.ui)
+        result = await run_setup_wizard(ctx.ui)
+        if result.completed and result.llm_config:
+            # Update config with wizard settings
+            ctx.config.model.provider = result.llm_config.provider
+            ctx.config.model.model = result.llm_config.model
+            ctx.config.model.api_key_env = result.llm_config.api_key_env
+            # Save config to disk
+            ctx.config.save()
+            ctx.ui.success("Configuration saved to ~/.merlya/config.yaml")
 
     # Run health checks
     ctx.ui.info("Running health checks...")
