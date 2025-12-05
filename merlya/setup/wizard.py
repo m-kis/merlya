@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
+    from merlya.core.context import SharedContext
     from merlya.ui.console import ConsoleUI
 
 
@@ -269,33 +270,50 @@ async def import_from_ssh_config(
     return hosts
 
 
-async def run_setup_wizard(ui: ConsoleUI) -> SetupResult:
+async def run_setup_wizard(ui: ConsoleUI, ctx: SharedContext | None = None) -> SetupResult:
     """
     Run the complete setup wizard.
 
     Args:
         ui: Console UI.
+        ctx: Optional shared context for host persistence.
 
     Returns:
         SetupResult with configuration.
     """
     result = SetupResult()
 
+    # Step 0: Language selection
     ui.panel(
         """
-Bienvenue dans Merlya!
+Welcome to Merlya! / Bienvenue dans Merlya!
 
-Cet assistant va vous guider pour configurer:
-  1. Le provider LLM
-  2. L'import des hosts existants
+Select your language / Choisissez votre langue:
+  1. English
+  2. Français
         """,
+        title="Merlya Setup",
+        style="info",
+    )
+
+    lang_choice = await ui.prompt_choice(
+        "Language / Langue",
+        choices=["1", "2"],
+        default="2",
+    )
+    lang = "en" if lang_choice == "1" else "fr"
+    if ctx:
+        ctx.i18n.set_language(lang)
+
+    ui.panel(
+        ctx.t("setup.welcome") if ctx else "Bienvenue dans Merlya!",
         title="Merlya Setup",
         style="info",
     )
 
     # Step 1: LLM Setup
     ui.newline()
-    ui.info("**Etape 1: Configuration LLM**")
+    ui.info(ctx.t("setup.step_llm") if ctx else "**Etape 1: Configuration LLM**")
 
     llm_config = await run_llm_setup(ui)
     if llm_config:
@@ -321,13 +339,29 @@ Cet assistant va vous guider pour configurer:
             default=True,
         )
 
-        if do_import:
+        if do_import and ctx:
+            from merlya.persistence.models import Host
+
             # Import from SSH config if found
             for name, path, _count in sources:
                 if "SSH Config" in name:
-                    hosts = await import_from_ssh_config(path)
-                    result.hosts_imported += len(hosts)
-                    ui.success(f"Importe {len(hosts)} host(s) depuis {name}")
+                    hosts_data = await import_from_ssh_config(path)
+                    for hd in hosts_data:
+                        if hd.get("name") and hd["name"] != "*":
+                            try:
+                                host = Host(
+                                    name=hd["name"],
+                                    hostname=hd.get("hostname", hd["name"]),
+                                    port=int(hd.get("port", 22)),
+                                    username=hd.get("username"),
+                                    private_key=hd.get("private_key"),
+                                    jump_host=hd.get("jump_host"),
+                                )
+                                await ctx.hosts.create(host)
+                                result.hosts_imported += 1
+                            except Exception as e:
+                                logger.debug(f"Failed to import host {hd['name']}: {e}")
+                    ui.success(f"Importe {result.hosts_imported} host(s) depuis {name}")
     else:
         ui.info("Aucune source d'inventaire detectee")
 

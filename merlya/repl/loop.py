@@ -303,7 +303,7 @@ async def run_repl() -> None:
 
     # Check first run
     if await check_first_run():
-        result = await run_setup_wizard(ctx.ui)
+        result = await run_setup_wizard(ctx.ui, ctx)
         if result.completed and result.llm_config:
             # Update config with wizard settings
             ctx.config.model.provider = result.llm_config.provider

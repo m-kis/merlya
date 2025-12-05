@@ -282,9 +282,8 @@ async def cmd_variable_list(ctx: SharedContext, _args: list[str]) -> CommandResu
     lines = [f"**Variables** ({len(variables)})\n"]
     for v in variables:
         env_marker = " (env)" if v.is_env else ""
-        # Mask value for security
-        masked = v.value[:3] + "***" if len(v.value) > 3 else "***"
-        lines.append(f"  `@{v.name}` = `{masked}`{env_marker}")
+        # Show full value for variables (secrets are in a separate store)
+        lines.append(f"  `@{v.name}` = `{v.value}`{env_marker}")
 
     return CommandResult(success=True, message="\n".join(lines))
 
