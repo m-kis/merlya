@@ -172,20 +172,43 @@
   },
 
   "setup": {
-    "title": "Merlya Setup",
+    "title": "⚙️ Merlya Setup",
+    "welcome": "👋 Welcome to Merlya!\n\nThis wizard will guide you through:\n  1. Language selection\n  2. LLM provider setup\n  3. Host import",
+    "language": {
+      "title": "🌐 Language Selection",
+      "prompt": "Select your language",
+      "options": "  1. English\n  2. Français"
+    },
+    "step_llm": "📡 **Step 1: LLM Configuration**",
+    "step_inventory": "🖥️ **Step 2: Inventory Detection**",
     "llm_config": {
-      "title": "LLM Provider Configuration",
+      "title": "📡 LLM Provider Configuration",
+      "providers": "Available providers:\n  1. OpenRouter (recommended - multi-model)\n  2. Anthropic (Claude direct)\n  3. OpenAI (GPT models)\n  4. Ollama (local models)",
       "select_provider": "Select a provider",
       "enter_api_key": "Enter your {key}",
-      "select_model": "Default model"
+      "select_model": "Default model",
+      "api_key_found": "✅ API key found ({key})",
+      "api_key_saved": "✅ API key configured and stored securely",
+      "api_key_missing": "⚠️ No API key provided",
+      "skipped": "⚠️ LLM configuration skipped"
     },
     "inventory": {
-      "title": "Inventory Setup",
-      "detected_sources": "Detected inventory sources",
+      "title": "🖥️ Inventory Setup",
+      "searching": "🔍 Searching for inventory sources...",
+      "detected_sources": "📋 Detected sources:",
+      "source_item": "  {name}: {count} host(s)",
+      "import_prompt": "Import these hosts?",
+      "importing": "📥 Importing {count} host(s) from {name}",
+      "imported": "✅ Imported {count} host(s) from {name}",
+      "no_sources": "ℹ️ No inventory sources detected",
       "enable_sources": "Enable which sources? (comma-separated numbers, or 'all')",
       "add_custom": "Add custom inventory file path? (Enter to skip)",
       "config_saved": "Inventory configuration saved",
       "sources_count": "Sources: {sources}, ~{hosts} hosts"
+    },
+    "complete": {
+      "title": "✅ Setup Complete",
+      "summary": "- LLM Provider: {provider}\n- Hosts imported: {hosts}\n\nUse /help to see available commands."
     }
   },
 

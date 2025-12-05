@@ -79,6 +79,7 @@ class SSHPool:
         timeout: int = DEFAULT_TIMEOUT,
         connect_timeout: int = DEFAULT_CONNECT_TIMEOUT,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
+        auto_add_host_keys: bool = True,
     ) -> None:
         """
         Initialize pool.
@@ -87,18 +88,25 @@ class SSHPool:
             timeout: Connection timeout in seconds.
             connect_timeout: Initial connection timeout.
             max_connections: Maximum number of concurrent connections.
+            auto_add_host_keys: Auto-accept unknown host keys.
         """
         self.timeout = timeout
         self.connect_timeout = connect_timeout
         self.max_connections = max_connections
+        self.auto_add_host_keys = auto_add_host_keys
         self._connections: dict[str, SSHConnection] = {}
         self._connection_locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
         self._mfa_callback: Callable[[str], str] | None = None
+        self._passphrase_callback: Callable[[str], str] | None = None
 
     def set_mfa_callback(self, callback: Callable[[str], str]) -> None:
         """Set callback for MFA prompts."""
         self._mfa_callback = callback
+
+    def set_passphrase_callback(self, callback: Callable[[str], str]) -> None:
+        """Set callback for SSH key passphrase prompts."""
+        self._passphrase_callback = callback
 
     def _get_known_hosts_path(self) -> str | None:
         """Get path to known_hosts file."""
@@ -199,21 +207,44 @@ class SSHPool:
         """Create a new SSH connection."""
         import asyncssh
 
-        # Get known_hosts path
-        known_hosts = self._get_known_hosts_path()
+        # Known hosts handling (None = auto-accept new keys)
+        known_hosts = None if self.auto_add_host_keys else self._get_known_hosts_path()
 
         # Build connection options
         options: dict[str, object] = {
             "host": host,
             "port": port,
             "known_hosts": known_hosts,
+            "agent_forwarding": True,  # Use ssh-agent by default
         }
 
         if username:
             options["username"] = username
 
+        # Handle private key with passphrase support
         if private_key:
-            options["client_keys"] = [private_key]
+            key_path = Path(private_key).expanduser()
+            if key_path.exists():
+                try:
+                    # Try to load key, may prompt for passphrase
+                    passphrase = None
+                    if self._passphrase_callback:
+                        # First try without passphrase
+                        try:
+                            key = asyncssh.read_private_key(str(key_path))
+                        except asyncssh.KeyEncryptionError:
+                            # Key is encrypted, prompt for passphrase
+                            passphrase = self._passphrase_callback(str(key_path))
+                            key = asyncssh.read_private_key(str(key_path), passphrase)
+                    else:
+                        key = asyncssh.read_private_key(str(key_path))
+                    options["client_keys"] = [key]
+                except asyncssh.KeyEncryptionError:
+                    logger.warning(f"⚠️ Key {private_key} requires passphrase - use /ssh config to set callback")
+                    # Fall back to ssh-agent
+                    options["agent_forwarding"] = True
+            else:
+                logger.warning(f"⚠️ Private key not found: {private_key}")
 
         # Handle jump host (tunnel) with proper cleanup
         tunnel: asyncssh.SSHClientConnection | None = None

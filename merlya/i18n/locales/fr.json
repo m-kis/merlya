@@ -172,20 +172,43 @@
   },
 
   "setup": {
-    "title": "Configuration de Merlya",
+    "title": "⚙️ Configuration de Merlya",
+    "welcome": "👋 Bienvenue dans Merlya !\n\nCet assistant va vous guider pour configurer :\n  1. Le choix de la langue\n  2. Le provider LLM\n  3. L'import des hôtes",
+    "language": {
+      "title": "🌐 Choix de la langue",
+      "prompt": "Sélectionnez votre langue",
+      "options": "  1. English\n  2. Français"
+    },
+    "step_llm": "📡 **Étape 1 : Configuration LLM**",
+    "step_inventory": "🖥️ **Étape 2 : Détection des inventaires**",
     "llm_config": {
-      "title": "Configuration du Provider LLM",
+      "title": "📡 Configuration du Provider LLM",
+      "providers": "Providers disponibles :\n  1. OpenRouter (recommandé - multi-modèles)\n  2. Anthropic (Claude direct)\n  3. OpenAI (modèles GPT)\n  4. Ollama (modèles locaux)",
       "select_provider": "Sélectionnez un provider",
       "enter_api_key": "Entrez votre {key}",
-      "select_model": "Modèle par défaut"
+      "select_model": "Modèle par défaut",
+      "api_key_found": "✅ Clé API trouvée ({key})",
+      "api_key_saved": "✅ Clé API configurée et stockée de manière sécurisée",
+      "api_key_missing": "⚠️ Aucune clé API fournie",
+      "skipped": "⚠️ Configuration LLM ignorée"
     },
     "inventory": {
-      "title": "Configuration de l'inventaire",
-      "detected_sources": "Sources d'inventaire détectées",
+      "title": "🖥️ Configuration de l'inventaire",
+      "searching": "🔍 Recherche des sources d'inventaire...",
+      "detected_sources": "📋 Sources détectées :",
+      "source_item": "  {name} : {count} hôte(s)",
+      "import_prompt": "Importer ces hôtes ?",
+      "importing": "📥 Import de {count} hôte(s) depuis {name}",
+      "imported": "✅ {count} hôte(s) importé(s) depuis {name}",
+      "no_sources": "ℹ️ Aucune source d'inventaire détectée",
       "enable_sources": "Activer quelles sources ? (numéros séparés par des virgules, ou 'all')",
       "add_custom": "Ajouter un fichier d'inventaire personnalisé ? (Entrée pour passer)",
       "config_saved": "Configuration de l'inventaire sauvegardée",
       "sources_count": "Sources : {sources}, ~{hosts} hôtes"
+    },
+    "complete": {
+      "title": "✅ Configuration terminée",
+      "summary": "- Provider LLM : {provider}\n- Hôtes importés : {hosts}\n\nUtilisez /help pour voir les commandes disponibles."
     }
   },
 
