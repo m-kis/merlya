@@ -89,7 +89,8 @@ class Database:
 
     async def _init_schema(self) -> None:
         """Initialize database schema."""
-        await self._connection.executescript(
+        conn = self.connection  # Use property that raises if None
+        await conn.executescript(
             """
             -- Hosts table
             CREATE TABLE IF NOT EXISTS hosts (
@@ -150,19 +151,17 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_variables_is_env ON variables(is_env);
             """
         )
-        await self._connection.commit()
+        await conn.commit()
 
         # Check schema version
-        async with self._connection.execute(
-            "SELECT value FROM config WHERE key = 'schema_version'"
-        ) as cursor:
+        async with conn.execute("SELECT value FROM config WHERE key = 'schema_version'") as cursor:
             row = await cursor.fetchone()
             if not row:
-                await self._connection.execute(
+                await conn.execute(
                     "INSERT INTO config (key, value) VALUES (?, ?)",
                     ("schema_version", str(SCHEMA_VERSION)),
                 )
-                await self._connection.commit()
+                await conn.commit()
 
     async def execute(self, query: str, params: tuple[Any, ...] | None = None) -> aiosqlite.Cursor:
         """Execute a query."""

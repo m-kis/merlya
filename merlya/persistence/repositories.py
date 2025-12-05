@@ -147,7 +147,7 @@ class HostRepository:
             self.db.transaction(),
             await self.db.execute("DELETE FROM hosts WHERE id = ?", (host_id,)) as cursor,
         ):
-            deleted = cursor.rowcount > 0
+            deleted = bool(cursor.rowcount and cursor.rowcount > 0)
             if deleted:
                 logger.debug(f"🖥️ Host deleted: {host_id}")
             return deleted
@@ -236,7 +236,7 @@ class VariableRepository:
             self.db.transaction(),
             await self.db.execute("DELETE FROM variables WHERE name = ?", (name,)) as cursor,
         ):
-            deleted = cursor.rowcount > 0
+            deleted = bool(cursor.rowcount and cursor.rowcount > 0)
             if deleted:
                 logger.debug("📋 Variable deleted")
             return deleted
@@ -314,7 +314,7 @@ class ConversationRepository:
             self.db.transaction(),
             await self.db.execute("DELETE FROM conversations WHERE id = ?", (conv_id,)) as cursor,
         ):
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount and cursor.rowcount > 0)
 
     async def search(self, term: str, limit: int = 10) -> list[Conversation]:
         """

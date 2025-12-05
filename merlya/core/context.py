@@ -20,7 +20,7 @@ from merlya.secrets import SecretStore, get_secret_store
 
 if TYPE_CHECKING:
     from merlya.health import StartupHealth
-    from merlya.persistence import (  # noqa: TC004 - circular import prevention
+    from merlya.persistence import (
         Database,
         HostRepository,
         VariableRepository,
@@ -118,7 +118,7 @@ class SharedContext:
 
         Must be called before using the context.
         """
-        from merlya.persistence import get_database
+        from merlya.persistence import HostRepository, VariableRepository, get_database
 
         self._db = await get_database()
         self._host_repo = HostRepository(self._db)

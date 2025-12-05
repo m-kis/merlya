@@ -7,7 +7,13 @@ Interactive console with autocompletion.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from merlya.agent import MerlyaAgent
+    from merlya.core.context import SharedContext
 
 from loguru import logger
 from prompt_toolkit import PromptSession
@@ -15,11 +21,6 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
-
-if TYPE_CHECKING:
-    from merlya.agent import MerlyaAgent
-    from merlya.core.context import SharedContext
-
 
 # Prompt style
 PROMPT_STYLE = Style.from_dict(
@@ -45,7 +46,7 @@ class MerlyaCompleter(Completer):
         self.ctx = ctx
         self._hosts_cache: list[str] = []
         self._variables_cache: list[str] = []
-        self._last_cache_update = 0
+        self._last_cache_update: float = 0.0
 
     async def _update_cache(self) -> None:
         """Update completion cache."""
@@ -66,7 +67,7 @@ class MerlyaCompleter(Completer):
         except Exception as e:
             logger.debug(f"Failed to update completion cache: {e}")
 
-    def get_completions(self, document, _complete_event):
+    def get_completions(self, document: Any, _complete_event: Any) -> Iterable[Completion]:
         """Get completions for current input."""
         text = document.text_before_cursor
         document.get_word_before_cursor()
@@ -136,7 +137,7 @@ class REPL:
         self.running = False
 
         # Setup prompt session
-        history_path = ctx.config.data_dir / "history"
+        history_path = ctx.config.general.data_dir / "history"
         self.session: PromptSession[str] = PromptSession(
             history=FileHistory(str(history_path)),
             auto_suggest=AutoSuggestFromHistory(),

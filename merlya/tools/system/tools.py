@@ -48,7 +48,7 @@ def _validate_service_name(name: str) -> str | None:
     return None
 
 
-def _validate_username(user: str) -> str | None:
+def _validate_username(user: str | None) -> str | None:
     """Validate username. Returns error message or None if valid."""
     if not user:
         return None  # Optional

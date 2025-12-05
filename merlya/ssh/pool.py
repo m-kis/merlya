@@ -10,7 +10,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -258,7 +258,7 @@ class SSHPool:
         host: str,
         command: str,
         timeout: int = 60,
-        **conn_kwargs: object,
+        **conn_kwargs: Any,
     ) -> SSHResult:
         """
         Execute a command on a host.

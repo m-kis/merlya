@@ -147,6 +147,14 @@ class SecretStore:
         """
         return sorted(self._secret_names)
 
+    def list_keys(self) -> list[str]:
+        """Alias for list_names() for API compatibility."""
+        return self.list_names()
+
+    def delete(self, name: str) -> bool:
+        """Alias for remove() for API compatibility."""
+        return self.remove(name)
+
     @classmethod
     def get_instance(cls) -> SecretStore:
         """Get singleton instance."""

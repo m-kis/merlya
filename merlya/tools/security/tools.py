@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import shlex
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -23,7 +23,7 @@ class SecurityResult:
     """Result of a security operation."""
 
     success: bool
-    data: dict | list | str | None = None
+    data: dict[str, Any] | list[Any] | str | None = None
     error: str | None = None
     severity: str = "info"  # info, warning, critical
 
@@ -122,7 +122,7 @@ async def check_open_ports(
             )
 
         # Parse output
-        ports: list[dict] = []
+        ports: list[dict[str, Any]] = []
         for line in result.stdout.strip().split("\n")[1:]:  # Skip header
             if not line:
                 continue
@@ -184,7 +184,7 @@ async def audit_ssh_keys(
         find_cmd = "find ~/.ssh /etc/ssh -type f \\( -name '*.pub' -o -name 'id_*' \\) 2>/dev/null | head -100"
         result = await ssh_pool.execute(host_name, find_cmd)
 
-        keys: list[dict] = []
+        keys: list[dict[str, Any]] = []
         severity = "info"
 
         for key_path in result.stdout.strip().split("\n"):
@@ -196,7 +196,7 @@ async def audit_ssh_keys(
                 logger.warning(f"Skipping suspicious key path: {key_path}")
                 continue
 
-            key_info: dict = {"path": key_path, "issues": []}
+            key_info: dict[str, Any] = {"path": key_path, "issues": []}
             quoted_path = shlex.quote(key_path)
 
             # Check permissions (using quoted path)
@@ -266,7 +266,7 @@ async def check_security_config(
     try:
         ssh_pool = await SSHPool.get_instance()
 
-        checks: list[dict] = []
+        checks: list[dict[str, Any]] = []
         severity = "info"
 
         # Check SSH config (all fixed commands)
@@ -374,7 +374,7 @@ async def check_users(
     try:
         ssh_pool = await SSHPool.get_instance()
 
-        users: list[dict] = []
+        users: list[dict[str, Any]] = []
         issues: list[str] = []
         severity = "info"
 
@@ -396,7 +396,7 @@ async def check_users(
                     except ValueError:
                         continue
 
-                    user_info = {
+                    user_info: dict[str, Any] = {
                         "username": parts[0],
                         "uid": uid,
                         "gid": gid,
@@ -407,7 +407,8 @@ async def check_users(
 
                     # Check for issues
                     if uid == 0 and parts[0] != "root":
-                        user_info["issues"].append("Non-root user with UID 0")
+                        user_issues: list[str] = user_info["issues"]
+                        user_issues.append("Non-root user with UID 0")
                         severity = "critical"
 
                     users.append(user_info)

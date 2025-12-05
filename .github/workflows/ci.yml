@@ -32,7 +32,6 @@ jobs:
   typecheck:
     name: Type Check
     runs-on: self-hosted
-    continue-on-error: true  # Type errors to be fixed in separate PR
     steps:
       - uses: actions/checkout@v4
 

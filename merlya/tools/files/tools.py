@@ -11,7 +11,7 @@ import base64
 import re
 import shlex
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -30,7 +30,7 @@ class FileResult:
     """Result of a file operation."""
 
     success: bool
-    data: str | list[dict] | None = None
+    data: str | list[dict[str, Any]] | list[str] | dict[str, Any] | None = None
     error: str | None = None
 
 

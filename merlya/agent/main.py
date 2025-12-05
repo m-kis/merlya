@@ -7,7 +7,7 @@ PydanticAI-based agent with ReAct loop.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 from pydantic import BaseModel
@@ -75,8 +75,9 @@ def create_agent(
     agent = Agent(
         model,
         deps_type=AgentDependencies,
-        result_type=AgentResponse,
+        output_type=AgentResponse,
         system_prompt=SYSTEM_PROMPT,
+        defer_model_check=True,  # Allow dynamic model names
     )
 
     # Register core tools
@@ -138,7 +139,7 @@ def _register_core_tools(agent: Agent[AgentDependencies, AgentResponse]) -> None
 
         result = await _get_host(ctx.deps.context, name)
         if result.success:
-            return result.data
+            return cast("dict[str, Any]", result.data)
         raise ModelRetry(f"Host not found: {result.error}")
 
     @agent.tool
@@ -190,7 +191,7 @@ def _register_core_tools(agent: Agent[AgentDependencies, AgentResponse]) -> None
 
         result = await _ask_user(ctx.deps.context, question, choices=choices)
         if result.success:
-            return result.data
+            return cast("str", result.data) or ""
         return ""
 
     @agent.tool
@@ -240,7 +241,7 @@ def _register_system_tools(agent: Agent[AgentDependencies, AgentResponse]) -> No
 
         result = await _get_system_info(ctx.deps.context, host)
         if result.success:
-            return result.data
+            return cast("dict[str, Any]", result.data)
         return {"error": result.error}
 
     @agent.tool
@@ -263,7 +264,7 @@ def _register_system_tools(agent: Agent[AgentDependencies, AgentResponse]) -> No
 
         result = await _check_disk_usage(ctx.deps.context, host, path)
         if result.success:
-            return result.data
+            return cast("dict[str, Any]", result.data)
         return {"error": result.error}
 
     @agent.tool
@@ -284,7 +285,7 @@ def _register_system_tools(agent: Agent[AgentDependencies, AgentResponse]) -> No
 
         result = await _check_memory(ctx.deps.context, host)
         if result.success:
-            return result.data
+            return cast("dict[str, Any]", result.data)
         return {"error": result.error}
 
     @agent.tool
@@ -305,7 +306,7 @@ def _register_system_tools(agent: Agent[AgentDependencies, AgentResponse]) -> No
 
         result = await _check_cpu(ctx.deps.context, host)
         if result.success:
-            return result.data
+            return cast("dict[str, Any]", result.data)
         return {"error": result.error}
 
     @agent.tool
@@ -328,7 +329,7 @@ def _register_system_tools(agent: Agent[AgentDependencies, AgentResponse]) -> No
 
         result = await _check_service_status(ctx.deps.context, host, service)
         if result.success:
-            return result.data
+            return cast("dict[str, Any]", result.data)
         return {"error": result.error}
 
     @agent.tool
@@ -361,7 +362,7 @@ def _register_system_tools(agent: Agent[AgentDependencies, AgentResponse]) -> No
             limit=limit,
         )
         if result.success:
-            return result.data
+            return cast("list[dict[str, Any]]", result.data)
         return []
 
 
@@ -644,14 +645,14 @@ class MerlyaAgent:
             result = await self._agent.run(
                 user_input,
                 deps=deps,
-                message_history=self._history,
+                message_history=self._history,  # type: ignore[arg-type]
             )
 
             # Update history
             self._history.append({"role": "user", "content": user_input})
-            self._history.append({"role": "assistant", "content": result.data.message})
+            self._history.append({"role": "assistant", "content": result.output.message})
 
-            return result.data
+            return result.output
 
         except Exception as e:
             logger.error(f"Agent error: {e}")
