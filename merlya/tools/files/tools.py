@@ -53,7 +53,7 @@ def _validate_mode(mode: str) -> str | None:
 
 
 async def read_file(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
     lines: int | None = None,
@@ -108,7 +108,7 @@ async def read_file(
 
 
 async def write_file(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
     content: str,
@@ -176,7 +176,7 @@ async def write_file(
 
 
 async def list_directory(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
     all_files: bool = False,
@@ -254,7 +254,7 @@ async def list_directory(
 
 
 async def file_exists(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
 ) -> FileResult:
@@ -289,7 +289,7 @@ async def file_exists(
 
 
 async def file_info(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
 ) -> FileResult:
@@ -347,7 +347,7 @@ async def file_info(
 
 
 async def search_files(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
     pattern: str,
@@ -411,7 +411,7 @@ async def search_files(
 
 
 async def delete_file(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     path: str,
     force: bool = False,

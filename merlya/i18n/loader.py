@@ -96,7 +96,7 @@ class I18n:
         # Load fallback (English)
         fallback_path = LOCALES_DIR / f"{DEFAULT_LANGUAGE}.json"
         if fallback_path.exists():
-            with open(fallback_path, encoding="utf-8") as f:
+            with fallback_path.open(encoding="utf-8") as f:
                 self._fallback = json.load(f)
 
         # Load current language
@@ -105,7 +105,7 @@ class I18n:
         else:
             lang_path = LOCALES_DIR / f"{self._language}.json"
             if lang_path.exists():
-                with open(lang_path, encoding="utf-8") as f:
+                with lang_path.open(encoding="utf-8") as f:
                     self._translations = json.load(f)
             else:
                 logger.warning(f"Locale file not found: {lang_path}")

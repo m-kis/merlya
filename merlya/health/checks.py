@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import psutil
-from loguru import logger
 
 from merlya.core.types import CheckStatus, HealthCheck
 from merlya.i18n import t
@@ -88,7 +87,7 @@ def check_disk_space(min_mb: int = 500) -> HealthCheck:
     merlya_dir = Path.home() / ".merlya"
     merlya_dir.mkdir(parents=True, exist_ok=True)
 
-    total, used, free = shutil.disk_usage(merlya_dir)
+    _total, _used, free = shutil.disk_usage(merlya_dir)
     free_mb = free // (1024 * 1024)
 
     if free_mb >= min_mb:
@@ -157,7 +156,7 @@ def check_ssh_available() -> HealthCheck:
 
     # Check asyncssh
     try:
-        import asyncssh
+        import asyncssh  # noqa: F401 - import needed for availability check
 
         details["asyncssh"] = True
     except ImportError:
@@ -234,7 +233,7 @@ def check_web_search() -> HealthCheck:
         from duckduckgo_search import DDGS
 
         # Just check if it initializes
-        with DDGS() as ddgs:
+        with DDGS():
             pass
 
         return HealthCheck(

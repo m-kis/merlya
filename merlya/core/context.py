@@ -15,12 +15,16 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from merlya.config import Config, get_config
-from merlya.health import StartupHealth
 from merlya.i18n import I18n, get_i18n
 from merlya.secrets import SecretStore, get_secret_store
 
 if TYPE_CHECKING:
-    from merlya.persistence import Database, HostRepository, VariableRepository
+    from merlya.health import StartupHealth
+    from merlya.persistence import (  # noqa: TC004 - circular import prevention
+        Database,
+        HostRepository,
+        VariableRepository,
+    )
     from merlya.router import IntentRouter
     from merlya.ssh import SSHPool
     from merlya.ui import ConsoleUI
@@ -43,41 +47,41 @@ class SharedContext:
     health: StartupHealth | None = None
 
     # Database (initialized async)
-    _db: "Database | None" = field(default=None, repr=False)
-    _host_repo: "HostRepository | None" = field(default=None, repr=False)
-    _var_repo: "VariableRepository | None" = field(default=None, repr=False)
+    _db: Database | None = field(default=None, repr=False)
+    _host_repo: HostRepository | None = field(default=None, repr=False)
+    _var_repo: VariableRepository | None = field(default=None, repr=False)
 
     # SSH Pool (lazy init)
-    _ssh_pool: "SSHPool | None" = field(default=None, repr=False)
+    _ssh_pool: SSHPool | None = field(default=None, repr=False)
 
     # Intent Router (lazy init)
-    _router: "IntentRouter | None" = field(default=None, repr=False)
+    _router: IntentRouter | None = field(default=None, repr=False)
 
     # Console UI
-    _ui: "ConsoleUI | None" = field(default=None, repr=False)
+    _ui: ConsoleUI | None = field(default=None, repr=False)
 
     @property
-    def db(self) -> "Database":
+    def db(self) -> Database:
         """Get database connection."""
         if self._db is None:
             raise RuntimeError("Database not initialized. Call init_async() first.")
         return self._db
 
     @property
-    def hosts(self) -> "HostRepository":
+    def hosts(self) -> HostRepository:
         """Get host repository."""
         if self._host_repo is None:
             raise RuntimeError("Database not initialized. Call init_async() first.")
         return self._host_repo
 
     @property
-    def variables(self) -> "VariableRepository":
+    def variables(self) -> VariableRepository:
         """Get variable repository."""
         if self._var_repo is None:
             raise RuntimeError("Database not initialized. Call init_async() first.")
         return self._var_repo
 
-    async def get_ssh_pool(self) -> "SSHPool":
+    async def get_ssh_pool(self) -> SSHPool:
         """Get SSH connection pool (async)."""
         if self._ssh_pool is None:
             from merlya.ssh import SSHPool
@@ -89,14 +93,14 @@ class SharedContext:
         return self._ssh_pool
 
     @property
-    def router(self) -> "IntentRouter":
+    def router(self) -> IntentRouter:
         """Get intent router."""
         if self._router is None:
             raise RuntimeError("Router not initialized. Call init_router() first.")
         return self._router
 
     @property
-    def ui(self) -> "ConsoleUI":
+    def ui(self) -> ConsoleUI:
         """Get console UI."""
         if self._ui is None:
             from merlya.ui import ConsoleUI
@@ -146,7 +150,7 @@ class SharedContext:
         return self.i18n.t(key, **kwargs)
 
     @classmethod
-    def get_instance(cls) -> "SharedContext":
+    def get_instance(cls) -> SharedContext:
         """Get singleton instance."""
         if cls._instance is None:
             raise RuntimeError("SharedContext not initialized. Call create() first.")
@@ -157,7 +161,7 @@ class SharedContext:
         cls,
         config: Config | None = None,
         language: str | None = None,
-    ) -> "SharedContext":
+    ) -> SharedContext:
         """
         Create and initialize a SharedContext (thread-safe).
 

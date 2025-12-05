@@ -8,7 +8,6 @@ Linux Secret Service) with in-memory fallback.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from loguru import logger
 
@@ -28,7 +27,7 @@ class SecretStore:
     _memory_store: dict[str, str] = field(default_factory=dict, init=False)
     _secret_names: set[str] = field(default_factory=set, init=False)
 
-    _instance: "SecretStore | None" = field(default=None, init=False, repr=False)
+    _instance: SecretStore | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Check keyring availability."""
@@ -149,7 +148,7 @@ class SecretStore:
         return sorted(self._secret_names)
 
     @classmethod
-    def get_instance(cls) -> "SecretStore":
+    def get_instance(cls) -> SecretStore:
         """Get singleton instance."""
         if cls._instance is None:
             cls._instance = cls()

@@ -6,9 +6,9 @@ Manages slash command registration and dispatch.
 
 from __future__ import annotations
 
-import re
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -41,7 +41,7 @@ class Command:
     usage: str
     handler: CommandHandler
     aliases: list[str] = field(default_factory=list)
-    subcommands: dict[str, "Command"] = field(default_factory=dict)
+    subcommands: dict[str, Command] = field(default_factory=dict)
 
 
 class CommandRegistry:
@@ -157,7 +157,7 @@ class CommandRegistry:
 
     async def execute(
         self,
-        ctx: "SharedContext",
+        ctx: SharedContext,
         input_text: str,
     ) -> CommandResult | None:
         """

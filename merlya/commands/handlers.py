@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @command("help", "Show help for commands", "/help [command]", aliases=["h", "?"])
-async def cmd_help(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_help(_ctx: SharedContext, args: list[str]) -> CommandResult:
     """Show help for commands."""
     registry = get_registry()
 
@@ -68,7 +68,7 @@ async def cmd_help(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @command("exit", "Exit Merlya", "/exit", aliases=["quit", "q"])
-async def cmd_exit(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_exit(_ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Exit Merlya."""
     return CommandResult(
         success=True,
@@ -83,7 +83,7 @@ async def cmd_exit(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @command("new", "Start a new conversation", "/new")
-async def cmd_new(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_new(_ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Start a new conversation."""
     return CommandResult(
         success=True,
@@ -98,7 +98,7 @@ async def cmd_new(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @command("hosts", "Manage hosts inventory", "/hosts <subcommand>")
-async def cmd_hosts(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_hosts(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Manage hosts inventory."""
     if not args:
         return await cmd_hosts_list(ctx, [])
@@ -111,7 +111,7 @@ async def cmd_hosts(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @subcommand("hosts", "list", "List all hosts", "/hosts list [--tag=<tag>]")
-async def cmd_hosts_list(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_hosts_list(ctx: SharedContext, args: list[str]) -> CommandResult:
     """List all hosts."""
     tag = None
     for arg in args:
@@ -131,7 +131,7 @@ async def cmd_hosts_list(ctx: "SharedContext", args: list[str]) -> CommandResult
 
     lines = [f"**Hosts** ({len(hosts)})\n"]
     for h in hosts:
-        status_icon = "" if h.health_status == "healthy" else ""
+        status_icon = "✓" if h.health_status == "healthy" else "✗"
         tags = f" [{', '.join(h.tags)}]" if h.tags else ""
         lines.append(f"  {status_icon} `{h.name}` - {h.hostname}{tags}")
 
@@ -139,7 +139,7 @@ async def cmd_hosts_list(ctx: "SharedContext", args: list[str]) -> CommandResult
 
 
 @subcommand("hosts", "add", "Add a new host", "/hosts add <name>")
-async def cmd_hosts_add(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_hosts_add(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Add a new host."""
     if not args:
         return CommandResult(
@@ -186,7 +186,7 @@ async def cmd_hosts_add(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @subcommand("hosts", "show", "Show host details", "/hosts show <name>")
-async def cmd_hosts_show(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_hosts_show(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Show host details."""
     if not args:
         return CommandResult(success=False, message="Usage: `/hosts show <name>`")
@@ -215,7 +215,7 @@ async def cmd_hosts_show(ctx: "SharedContext", args: list[str]) -> CommandResult
 
 
 @subcommand("hosts", "delete", "Delete a host", "/hosts delete <name>")
-async def cmd_hosts_delete(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_hosts_delete(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Delete a host."""
     if not args:
         return CommandResult(success=False, message="Usage: `/hosts delete <name>`")
@@ -233,7 +233,7 @@ async def cmd_hosts_delete(ctx: "SharedContext", args: list[str]) -> CommandResu
 
 
 @subcommand("hosts", "tag", "Add a tag to a host", "/hosts tag <name> <tag>")
-async def cmd_hosts_tag(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_hosts_tag(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Add a tag to a host."""
     if len(args) < 2:
         return CommandResult(success=False, message="Usage: `/hosts tag <name> <tag>`")
@@ -256,7 +256,7 @@ async def cmd_hosts_tag(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @command("variable", "Manage variables", "/variable <subcommand>", aliases=["var"])
-async def cmd_variable(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_variable(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Manage variables."""
     if not args:
         return await cmd_variable_list(ctx, [])
@@ -269,7 +269,7 @@ async def cmd_variable(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @subcommand("variable", "list", "List all variables", "/variable list")
-async def cmd_variable_list(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_variable_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     """List all variables."""
     variables = await ctx.variables.get_all()
 
@@ -290,7 +290,7 @@ async def cmd_variable_list(ctx: "SharedContext", args: list[str]) -> CommandRes
 
 
 @subcommand("variable", "set", "Set a variable", "/variable set <name> <value>")
-async def cmd_variable_set(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_variable_set(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Set a variable."""
     if len(args) < 2:
         return CommandResult(
@@ -311,7 +311,7 @@ async def cmd_variable_set(ctx: "SharedContext", args: list[str]) -> CommandResu
 
 
 @subcommand("variable", "get", "Get a variable value", "/variable get <name>")
-async def cmd_variable_get(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_variable_get(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Get a variable value."""
     if not args:
         return CommandResult(success=False, message="Usage: `/variable get <name>`")
@@ -331,7 +331,7 @@ async def cmd_variable_get(ctx: "SharedContext", args: list[str]) -> CommandResu
 
 
 @subcommand("variable", "delete", "Delete a variable", "/variable delete <name>")
-async def cmd_variable_delete(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_variable_delete(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Delete a variable."""
     if not args:
         return CommandResult(success=False, message="Usage: `/variable delete <name>`")
@@ -348,7 +348,7 @@ async def cmd_variable_delete(ctx: "SharedContext", args: list[str]) -> CommandR
 
 
 @command("secret", "Manage secrets (securely stored)", "/secret <subcommand>")
-async def cmd_secret(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_secret(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Manage secrets."""
     if not args:
         return await cmd_secret_list(ctx, [])
@@ -361,7 +361,7 @@ async def cmd_secret(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @subcommand("secret", "list", "List all secrets (names only)", "/secret list")
-async def cmd_secret_list(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_secret_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     """List all secrets (names only)."""
     secrets = ctx.secrets.list_keys()
 
@@ -379,7 +379,7 @@ async def cmd_secret_list(ctx: "SharedContext", args: list[str]) -> CommandResul
 
 
 @subcommand("secret", "set", "Set a secret (prompted securely)", "/secret set <name>")
-async def cmd_secret_set(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_secret_set(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Set a secret."""
     if not args:
         return CommandResult(success=False, message="Usage: `/secret set <name>`")
@@ -399,7 +399,7 @@ async def cmd_secret_set(ctx: "SharedContext", args: list[str]) -> CommandResult
 
 
 @subcommand("secret", "delete", "Delete a secret", "/secret delete <name>")
-async def cmd_secret_delete(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_secret_delete(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Delete a secret."""
     if not args:
         return CommandResult(success=False, message="Usage: `/secret delete <name>`")
@@ -414,7 +414,7 @@ async def cmd_secret_delete(ctx: "SharedContext", args: list[str]) -> CommandRes
 
 
 @command("ssh", "SSH connection management", "/ssh <subcommand>")
-async def cmd_ssh(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_ssh(_ctx: SharedContext, args: list[str]) -> CommandResult:
     """SSH connection management."""
     if not args:
         return CommandResult(
@@ -432,7 +432,7 @@ async def cmd_ssh(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @subcommand("ssh", "connect", "Connect to a host", "/ssh connect <host>")
-async def cmd_ssh_connect(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_ssh_connect(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Connect to a host."""
     if not args:
         return CommandResult(success=False, message="Usage: `/ssh connect <host>`")
@@ -445,7 +445,7 @@ async def cmd_ssh_connect(ctx: "SharedContext", args: list[str]) -> CommandResul
 
     try:
         ssh_pool = await ctx.get_ssh_pool()
-        conn = await ssh_pool.get_connection(
+        await ssh_pool.get_connection(
             host=host.hostname,
             port=host.port,
             username=host.username,
@@ -467,7 +467,7 @@ async def cmd_ssh_connect(ctx: "SharedContext", args: list[str]) -> CommandResul
 
 
 @subcommand("ssh", "exec", "Execute command on host", "/ssh exec <host> <command>")
-async def cmd_ssh_exec(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_ssh_exec(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Execute command on a host."""
     if len(args) < 2:
         return CommandResult(
@@ -494,7 +494,7 @@ async def cmd_ssh_exec(ctx: "SharedContext", args: list[str]) -> CommandResult:
         )
 
         output = stdout or stderr
-        status = "" if exit_code == 0 else ""
+        status = "✓" if exit_code == 0 else "✗"
 
         return CommandResult(
             success=exit_code == 0,
@@ -508,7 +508,7 @@ async def cmd_ssh_exec(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @subcommand("ssh", "disconnect", "Disconnect from a host", "/ssh disconnect <host>")
-async def cmd_ssh_disconnect(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_ssh_disconnect(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Disconnect from a host."""
     ssh_pool = await ctx.get_ssh_pool()
 
@@ -527,7 +527,7 @@ async def cmd_ssh_disconnect(ctx: "SharedContext", args: list[str]) -> CommandRe
 
 
 @command("language", "Change interface language", "/language <fr|en>", aliases=["lang"])
-async def cmd_language(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_language(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Change interface language."""
     if not args:
         current = ctx.i18n.language
@@ -556,7 +556,7 @@ async def cmd_language(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
 
 @command("health", "Show system health status", "/health")
-async def cmd_health(ctx: "SharedContext", args: list[str]) -> CommandResult:
+async def cmd_health(_ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Show system health status."""
     from merlya.health import run_startup_checks
 
@@ -564,7 +564,7 @@ async def cmd_health(ctx: "SharedContext", args: list[str]) -> CommandResult:
 
     lines = ["**Health Status**\n"]
     for check in health.checks:
-        icon = "" if check.status.value == "ok" else ""
+        icon = "✓" if check.status.value == "ok" else "✗"
         lines.append(f"  {icon} {check.message}")
 
     if health.capabilities:

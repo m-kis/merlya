@@ -13,10 +13,10 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from loguru import logger
 
 if TYPE_CHECKING:
+    import numpy as np
     from numpy.typing import NDArray
 
 
@@ -263,7 +263,7 @@ class IntentClassifier:
 
     def _classify_mode(self, text: str) -> tuple[AgentMode, float]:
         """Classify the agent mode."""
-        scores: dict[AgentMode, float] = {mode: 0.0 for mode in AgentMode}
+        scores: dict[AgentMode, float] = dict.fromkeys(AgentMode, 0.0)
 
         for mode, patterns in INTENT_PATTERNS.items():
             for pattern in patterns:
@@ -297,9 +297,8 @@ class IntentClassifier:
                 tools.append(tool_category)
 
         # If hosts mentioned, add system tools
-        if entities.get("hosts"):
-            if "system" not in tools:
-                tools.append("system")
+        if entities.get("hosts") and "system" not in tools:
+            tools.append("system")
 
         return tools
 
@@ -331,9 +330,8 @@ class IntentClassifier:
     def _check_delegation(self, text: str) -> str | None:
         """Check if should delegate to specialized agent."""
         for agent, keywords in TOOL_KEYWORDS.items():
-            if agent in ["docker", "kubernetes"]:
-                if any(kw in text for kw in keywords):
-                    return agent
+            if agent in ["docker", "kubernetes"] and any(kw in text for kw in keywords):
+                return agent
         return None
 
 
@@ -377,9 +375,8 @@ class IntentRouter:
         result = self.classifier.classify(user_input)
 
         # Check if delegation is valid
-        if result.delegate_to and available_agents:
-            if result.delegate_to not in available_agents:
-                result.delegate_to = None
+        if result.delegate_to and available_agents and result.delegate_to not in available_agents:
+            result.delegate_to = None
 
         logger.debug(
             f"Routed: mode={result.mode.value}, "

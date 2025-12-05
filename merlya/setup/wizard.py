@@ -43,7 +43,7 @@ PROVIDERS = {
 }
 
 
-async def run_llm_setup(ui: "ConsoleUI") -> LLMConfig | None:
+async def run_llm_setup(ui: ConsoleUI) -> LLMConfig | None:
     """
     Run LLM provider setup wizard.
 
@@ -106,7 +106,7 @@ Providers disponibles:
     )
 
 
-async def detect_inventory_sources(ui: "ConsoleUI") -> list[tuple[str, Path, int]]:
+async def detect_inventory_sources(ui: ConsoleUI) -> list[tuple[str, Path, int]]:
     """
     Detect available inventory sources.
 
@@ -210,7 +210,7 @@ def _count_ansible_hosts(path: Path) -> int:
 
 async def import_from_ssh_config(
     path: Path,
-    ctx: "SharedContext | None" = None,
+    _ctx: SharedContext | None = None,
 ) -> list[dict[str, str]]:
     """
     Parse SSH config and extract hosts.
@@ -265,7 +265,7 @@ async def import_from_ssh_config(
     return hosts
 
 
-async def run_setup_wizard(ui: "ConsoleUI") -> SetupResult:
+async def run_setup_wizard(ui: ConsoleUI) -> SetupResult:
     """
     Run the complete setup wizard.
 
@@ -309,7 +309,7 @@ Cet assistant va vous guider pour configurer:
     if sources:
         ui.newline()
         ui.info("Sources detectees:")
-        for name, path, count in sources:
+        for name, _path, count in sources:
             ui.info(f"  {name}: {count} host(s)")
 
         do_import = await ui.prompt_confirm(
@@ -319,7 +319,7 @@ Cet assistant va vous guider pour configurer:
 
         if do_import:
             # Import from SSH config if found
-            for name, path, count in sources:
+            for name, path, _count in sources:
                 if "SSH Config" in name:
                     hosts = await import_from_ssh_config(path)
                     result.hosts_imported += len(hosts)

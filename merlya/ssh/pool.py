@@ -7,15 +7,16 @@ Manages SSH connections with reuse and timeout.
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from asyncssh import SSHClientConnection
 
 
@@ -25,8 +26,8 @@ class SSHConnection:
 
     host: str
     connection: SSHClientConnection | None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_used: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
     timeout: int = 600
 
     def is_alive(self) -> bool:
@@ -34,14 +35,12 @@ class SSHConnection:
         if self.connection is None:
             return False
         # Use timezone-aware comparison
-        now = datetime.now(timezone.utc)
-        if now - self.last_used > timedelta(seconds=self.timeout):
-            return False
-        return True
+        now = datetime.now(UTC)
+        return not now - self.last_used > timedelta(seconds=self.timeout)
 
     def refresh_timeout(self) -> None:
         """Refresh the timeout."""
-        self.last_used = datetime.now(timezone.utc)
+        self.last_used = datetime.now(UTC)
 
     async def close(self) -> None:
         """Close the connection."""
@@ -63,7 +62,7 @@ class SSHPool:
     DEFAULT_CONNECT_TIMEOUT = 30
     DEFAULT_MAX_CONNECTIONS = 50
 
-    _instance: "SSHPool | None" = None
+    _instance: SSHPool | None = None
     _instance_lock: asyncio.Lock | None = None
 
     def __init__(
@@ -231,7 +230,7 @@ class SSHPool:
                 timeout=self.timeout,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Clean up tunnel on timeout
             if tunnel:
                 tunnel.close()
@@ -295,7 +294,7 @@ class SSHPool:
                 result.exit_status or 0,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"⚠️ Command timeout on {host}")
             raise
 
@@ -329,7 +328,7 @@ class SSHPool:
         timeout: int = DEFAULT_TIMEOUT,
         connect_timeout: int = DEFAULT_CONNECT_TIMEOUT,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
-    ) -> "SSHPool":
+    ) -> SSHPool:
         """Get singleton instance (thread-safe)."""
         if cls._instance_lock is None:
             cls._instance_lock = asyncio.Lock()

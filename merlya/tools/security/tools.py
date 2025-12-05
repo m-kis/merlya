@@ -70,13 +70,11 @@ def _is_safe_ssh_key_path(path: str) -> bool:
         if path.startswith(allowed):
             return True
     # Also allow paths that look like home directories
-    if re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", path):
-        return True
-    return False
+    return bool(re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", path))
 
 
 async def check_open_ports(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     include_listening: bool = True,
     include_established: bool = False,
@@ -162,7 +160,7 @@ async def check_open_ports(
 
 
 async def audit_ssh_keys(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -250,7 +248,7 @@ async def audit_ssh_keys(
 
 
 async def check_security_config(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -347,7 +345,7 @@ async def check_security_config(
 
 
 async def check_users(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -424,7 +422,7 @@ async def check_users(
 
 
 async def check_sudo_config(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """

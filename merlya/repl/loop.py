@@ -6,7 +6,6 @@ Interactive console with autocompletion.
 
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import TYPE_CHECKING
 
@@ -39,7 +38,7 @@ class MerlyaCompleter(Completer):
     - Variable mentions (@variable)
     """
 
-    def __init__(self, ctx: "SharedContext") -> None:
+    def __init__(self, ctx: SharedContext) -> None:
         """Initialize completer."""
         self.ctx = ctx
         self._hosts_cache: list[str] = []
@@ -65,10 +64,10 @@ class MerlyaCompleter(Completer):
         except Exception as e:
             logger.debug(f"Failed to update completion cache: {e}")
 
-    def get_completions(self, document, complete_event):
+    def get_completions(self, document, _complete_event):
         """Get completions for current input."""
         text = document.text_before_cursor
-        word = document.get_word_before_cursor()
+        document.get_word_before_cursor()
 
         # Slash commands
         if text.startswith("/"):
@@ -119,8 +118,8 @@ class REPL:
 
     def __init__(
         self,
-        ctx: "SharedContext",
-        agent: "MerlyaAgent",
+        ctx: SharedContext,
+        agent: MerlyaAgent,
     ) -> None:
         """
         Initialize REPL.

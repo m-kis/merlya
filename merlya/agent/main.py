@@ -48,8 +48,8 @@ Variables are referenced with @variable_name.
 class AgentDependencies:
     """Dependencies injected into the agent."""
 
-    context: "SharedContext"
-    router_result: "RouterResult | None" = None
+    context: SharedContext
+    router_result: RouterResult | None = None
 
 
 class AgentResponse(BaseModel):
@@ -603,7 +603,7 @@ class MerlyaAgent:
 
     def __init__(
         self,
-        context: "SharedContext",
+        context: SharedContext,
         model: str = "anthropic:claude-3-5-sonnet-latest",
     ) -> None:
         """
@@ -621,7 +621,7 @@ class MerlyaAgent:
     async def run(
         self,
         user_input: str,
-        router_result: "RouterResult | None" = None,
+        router_result: RouterResult | None = None,
     ) -> AgentResponse:
         """
         Process user input.

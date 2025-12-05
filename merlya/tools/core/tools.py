@@ -25,7 +25,7 @@ class ToolResult:
 
 
 async def list_hosts(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     tag: str | None = None,
     status: str | None = None,
     limit: int = 50,
@@ -76,7 +76,7 @@ async def list_hosts(
 
 
 async def get_host(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     name: str,
     include_metadata: bool = True,
 ) -> ToolResult:
@@ -129,7 +129,7 @@ async def get_host(
 
 
 async def ssh_execute(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     command: str,
     timeout: int = 60,
@@ -193,7 +193,7 @@ async def ssh_execute(
 
 
 async def ask_user(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     question: str,
     choices: list[str] | None = None,
     default: str | None = None,
@@ -230,7 +230,7 @@ async def ask_user(
 
 
 async def request_confirmation(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     action: str,
     details: str | None = None,
     risk_level: str = "moderate",
@@ -273,7 +273,7 @@ async def request_confirmation(
 
 
 async def get_variable(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     name: str,
 ) -> ToolResult:
     """
@@ -301,7 +301,7 @@ async def get_variable(
 
 
 async def set_variable(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     name: str,
     value: str,
     is_env: bool = False,

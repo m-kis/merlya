@@ -10,10 +10,13 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 from loguru import logger
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 # Default database path
 DEFAULT_DB_PATH = Path.home() / ".merlya" / "merlya.db"
@@ -42,7 +45,7 @@ class Database:
     Thread-safe singleton with asyncio.Lock.
     """
 
-    _instance: "Database | None" = None
+    _instance: Database | None = None
     _lock: asyncio.Lock | None = None
 
     def __init__(self, path: Path | None = None) -> None:
@@ -192,7 +195,7 @@ class Database:
         await self.connection.rollback()
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncIterator["Database"]:
+    async def transaction(self) -> AsyncIterator[Database]:
         """
         Transaction context manager with automatic rollback on error.
 
@@ -209,7 +212,7 @@ class Database:
             raise
 
     @classmethod
-    async def get_instance(cls, path: Path | None = None) -> "Database":
+    async def get_instance(cls, path: Path | None = None) -> Database:
         """Get singleton instance (thread-safe)."""
         if cls._lock is None:
             cls._lock = asyncio.Lock()

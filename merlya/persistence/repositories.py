@@ -13,7 +13,6 @@ from loguru import logger
 
 from merlya.persistence.database import (
     Database,
-    DatabaseError,
     IntegrityError,
     from_json,
     to_json,
@@ -150,14 +149,13 @@ class HostRepository:
 
     async def delete(self, host_id: str) -> bool:
         """Delete a host."""
-        async with self.db.transaction():
-            async with await self.db.execute(
-                "DELETE FROM hosts WHERE id = ?", (host_id,)
-            ) as cursor:
-                deleted = cursor.rowcount > 0
-                if deleted:
-                    logger.debug(f"🖥️ Host deleted: {host_id}")
-                return deleted
+        async with self.db.transaction(), await self.db.execute(
+            "DELETE FROM hosts WHERE id = ?", (host_id,)
+        ) as cursor:
+            deleted = cursor.rowcount > 0
+            if deleted:
+                logger.debug(f"🖥️ Host deleted: {host_id}")
+            return deleted
 
     async def count(self) -> int:
         """Count total hosts."""
@@ -241,14 +239,13 @@ class VariableRepository:
 
     async def delete(self, name: str) -> bool:
         """Delete a variable."""
-        async with self.db.transaction():
-            async with await self.db.execute(
-                "DELETE FROM variables WHERE name = ?", (name,)
-            ) as cursor:
-                deleted = cursor.rowcount > 0
-                if deleted:
-                    logger.debug("📋 Variable deleted")
-                return deleted
+        async with self.db.transaction(), await self.db.execute(
+            "DELETE FROM variables WHERE name = ?", (name,)
+        ) as cursor:
+            deleted = cursor.rowcount > 0
+            if deleted:
+                logger.debug("📋 Variable deleted")
+            return deleted
 
 
 class ConversationRepository:
@@ -319,11 +316,10 @@ class ConversationRepository:
 
     async def delete(self, conv_id: str) -> bool:
         """Delete a conversation."""
-        async with self.db.transaction():
-            async with await self.db.execute(
-                "DELETE FROM conversations WHERE id = ?", (conv_id,)
-            ) as cursor:
-                return cursor.rowcount > 0
+        async with self.db.transaction(), await self.db.execute(
+            "DELETE FROM conversations WHERE id = ?", (conv_id,)
+        ) as cursor:
+            return cursor.rowcount > 0
 
     async def search(self, term: str, limit: int = 10) -> list[Conversation]:
         """

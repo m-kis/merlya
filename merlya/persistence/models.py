@@ -7,7 +7,6 @@ Pydantic models for database entities.
 from __future__ import annotations
 
 import uuid
-from dataclasses import field
 from datetime import datetime
 from typing import Any
 

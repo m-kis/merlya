@@ -60,7 +60,7 @@ def _validate_username(user: str) -> str | None:
 
 
 async def get_system_info(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
 ) -> ToolResult:
     """
@@ -96,7 +96,7 @@ async def get_system_info(
 
 
 async def check_disk_usage(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     path: str = "/",
     threshold: int = 90,
@@ -150,7 +150,7 @@ async def check_disk_usage(
 
 
 async def check_memory(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     threshold: int = 90,
 ) -> ToolResult:
@@ -201,7 +201,7 @@ async def check_memory(
 
 
 async def check_cpu(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     threshold: float = 80.0,
 ) -> ToolResult:
@@ -255,7 +255,7 @@ async def check_cpu(
 
 
 async def list_processes(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     user: str | None = None,
     filter_name: str | None = None,
@@ -328,7 +328,7 @@ async def list_processes(
 
 
 async def check_service_status(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     service: str,
 ) -> ToolResult:
@@ -379,7 +379,7 @@ async def check_service_status(
 
 
 async def analyze_logs(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host: str,
     log_path: str = "/var/log/syslog",
     pattern: str | None = None,

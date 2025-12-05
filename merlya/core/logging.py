@@ -29,7 +29,7 @@ class LogEmoji:
     SUCCESS = "✅"
     ERROR = "❌"
     WARNING = "⚠️"
-    INFO = "ℹ️"
+    INFO = "ℹ️"  # noqa: RUF001 - intentional Unicode info symbol
 
     # Actions
     THINKING = "🧠"

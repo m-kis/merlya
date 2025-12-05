@@ -181,7 +181,7 @@ class HostResolver:
                 ip=ip,
                 source="local",
             )
-        except (socket.gaierror, asyncio.TimeoutError):
+        except (TimeoutError, socket.gaierror):
             pass
 
         # 3. Try DNS (longer timeout)
@@ -197,7 +197,7 @@ class HostResolver:
                 ip=ip,
                 source="dns",
             )
-        except (socket.gaierror, asyncio.TimeoutError):
+        except (TimeoutError, socket.gaierror):
             pass
 
         # 4. Not found

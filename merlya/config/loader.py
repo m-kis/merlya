@@ -85,7 +85,7 @@ def load_config(path: Path | None = None) -> Config:
         return config
 
     try:
-        with open(config_path, encoding="utf-8") as f:
+        with config_path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         config = Config.model_validate(data)
@@ -121,7 +121,7 @@ def save_config(config: Config, path: Path | None = None) -> None:
     yaml_content = "# Merlya Configuration\n# Edit this file to customize settings\n\n"
     yaml_content += yaml.dump(data, default_flow_style=False, sort_keys=False)
 
-    with open(save_path, "w", encoding="utf-8") as f:
+    with save_path.open("w", encoding="utf-8") as f:
         f.write(yaml_content)
 
     logger.debug(f"Config saved to: {save_path}")

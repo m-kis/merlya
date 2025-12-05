@@ -94,7 +94,7 @@ class ConsoleUI:
 
         self.console.print(table)
 
-    def health_status(self, name: str, status: CheckStatus, message: str) -> None:
+    def health_status(self, _name: str, status: CheckStatus, message: str) -> None:
         """Display a health check status."""
         icons = {
             CheckStatus.OK: "[green]✅[/green]",
