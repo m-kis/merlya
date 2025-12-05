@@ -1,0 +1,200 @@
+{
+  "general": {
+    "welcome": "Bienvenue dans Merlya v{version}",
+    "ready": "Prêt",
+    "loading": "Chargement...",
+    "done": "Terminé",
+    "error": "Erreur",
+    "warning": "Attention",
+    "info": "Info",
+    "success": "Succès",
+    "cancel": "Annulé",
+    "confirm": "Confirmer",
+    "yes": "oui",
+    "no": "non",
+    "unknown": "Inconnu"
+  },
+
+  "startup": {
+    "health_checks": "Vérifications",
+    "router_init": "Router : {model} ({dims} dims)",
+    "ready_time": "Prêt en {time}s",
+    "first_run": "Premier démarrage détecté - lancement de l'assistant de configuration"
+  },
+
+  "health": {
+    "ram": {
+      "ok": "RAM : {available}Go disponibles (tier : {tier})",
+      "warning": "RAM : {available}Go disponibles (limité)"
+    },
+    "disk": {
+      "ok": "Disque : {free}Mo libres",
+      "warning": "Disque : {free}Mo libres (limité)",
+      "error": "Disque : {free}Mo libres (insuffisant)"
+    },
+    "llm": {
+      "ok": "{provider} accessible",
+      "warning": "Provider inaccessible : {error} (réessai au premier appel)",
+      "error": "Aucune clé API configurée"
+    },
+    "ssh": {
+      "ok": "SSH disponible (asyncssh + client système)",
+      "warning": "asyncssh OK mais client SSH système absent",
+      "disabled": "asyncssh non installé - outils SSH désactivés"
+    },
+    "keyring": {
+      "ok": "Keyring accessible",
+      "warning": "Keyring indisponible ({error}) - fallback en mémoire"
+    },
+    "web_search": {
+      "ok": "Recherche DuckDuckGo disponible",
+      "warning": "DuckDuckGo indisponible : {error}",
+      "disabled": "duckduckgo-search non installé - recherche web désactivée"
+    }
+  },
+
+  "commands": {
+    "help": {
+      "title": "Commandes disponibles",
+      "usage": "Usage : {command}",
+      "description": "Description : {description}"
+    },
+    "hosts": {
+      "list_title": "Hôtes",
+      "added": "Hôte '{name}' ajouté",
+      "updated": "Hôte '{name}' mis à jour",
+      "deleted": "Hôte '{name}' supprimé",
+      "not_found": "Hôte '{name}' introuvable",
+      "already_exists": "L'hôte '{name}' existe déjà",
+      "tag_added": "Tag '{tag}' ajouté à '{name}'",
+      "tag_removed": "Tag '{tag}' retiré de '{name}'",
+      "scan_started": "Scan de l'hôte '{name}'...",
+      "scan_complete": "Scan terminé pour '{name}'",
+      "import_started": "Import depuis {file}...",
+      "import_complete": "{count} hôtes importés",
+      "import_errors": "{count} lignes n'ont pas pu être importées"
+    },
+    "ssh": {
+      "connecting": "Connexion à {host}...",
+      "connected": "Connecté à {host}",
+      "disconnected": "Déconnecté de {host}",
+      "connection_failed": "Échec de connexion : {error}",
+      "mfa_prompt": "Entrez le code MFA",
+      "passphrase_prompt": "Entrez la passphrase pour la clé {key}",
+      "executing": "Exécution : {command}",
+      "execution_complete": "Commande terminée (code de sortie : {code})"
+    },
+    "variable": {
+      "set": "Variable @{name} définie",
+      "deleted": "Variable @{name} supprimée",
+      "not_found": "Variable @{name} introuvable",
+      "list_title": "Variables"
+    },
+    "secret": {
+      "set": "Secret @{name} stocké de manière sécurisée",
+      "deleted": "Secret @{name} supprimé",
+      "not_found": "Secret @{name} introuvable",
+      "list_title": "Secrets"
+    },
+    "conv": {
+      "list_title": "Conversations",
+      "loaded": "Conversation '{title}' chargée",
+      "saved": "Conversation sauvegardée",
+      "deleted": "Conversation supprimée",
+      "not_found": "Conversation introuvable",
+      "new": "Nouvelle conversation démarrée"
+    },
+    "model": {
+      "current": "Modèle actuel : {provider}/{model}",
+      "changed": "Modèle changé pour {provider}/{model}",
+      "test_ok": "Test du modèle réussi (latence : {latency}ms)",
+      "test_failed": "Échec du test : {error}"
+    },
+    "log": {
+      "level_set": "Niveau de log défini à : {level}",
+      "current_level": "Niveau de log actuel : {level}",
+      "dir": "Répertoire des logs : {dir}",
+      "cleared": "{count} fichier(s) de log supprimé(s)"
+    },
+    "language": {
+      "current": "Langue actuelle : {lang}",
+      "changed": "Langue changée pour : {lang}",
+      "available": "Langues disponibles : {langs}"
+    },
+    "scan": {
+      "started": "Scan des sources locales...",
+      "found": "Trouvé : {source} ({count} hôtes)",
+      "complete": "Scan terminé : {count} hôtes depuis {sources} sources"
+    },
+    "exit": {
+      "goodbye": "Au revoir !"
+    },
+    "new": {
+      "started": "Nouvelle conversation démarrée"
+    }
+  },
+
+  "errors": {
+    "validation": {
+      "required": "'{field}' est requis",
+      "invalid_type": "'{field}' doit être de type {expected}",
+      "out_of_range": "'{field}' doit être entre {min} et {max}",
+      "invalid_format": "'{field}' a un format invalide"
+    },
+    "ssh": {
+      "connection_failed": "Échec de connexion SSH : {error}",
+      "auth_failed": "Échec d'authentification pour {user}@{host}",
+      "timeout": "Timeout de connexion après {timeout}s",
+      "command_failed": "Commande échouée avec le code {code}"
+    },
+    "host": {
+      "not_found": "Hôte '{name}' introuvable",
+      "resolution_failed": "Impossible de résoudre '{name}'",
+      "similar_hosts": "Hôtes similaires : {hosts}"
+    },
+    "config": {
+      "load_failed": "Échec du chargement de la config : {error}",
+      "save_failed": "Échec de la sauvegarde de la config : {error}",
+      "invalid": "Configuration invalide : {error}"
+    },
+    "llm": {
+      "api_error": "Erreur API LLM : {error}",
+      "rate_limit": "Limite de requêtes dépassée, réessai dans {seconds}s",
+      "no_provider": "Aucun provider LLM configuré"
+    }
+  },
+
+  "prompts": {
+    "confirm_action": "Êtes-vous sûr de vouloir {action} ?",
+    "enter_value": "Entrez la valeur pour {field}",
+    "select_option": "Sélectionnez une option",
+    "add_host": "Voulez-vous ajouter '{name}' à l'inventaire ?"
+  },
+
+  "setup": {
+    "title": "Configuration de Merlya",
+    "llm_config": {
+      "title": "Configuration du Provider LLM",
+      "select_provider": "Sélectionnez un provider",
+      "enter_api_key": "Entrez votre {key}",
+      "select_model": "Modèle par défaut"
+    },
+    "inventory": {
+      "title": "Configuration de l'inventaire",
+      "detected_sources": "Sources d'inventaire détectées",
+      "enable_sources": "Activer quelles sources ? (numéros séparés par des virgules, ou 'all')",
+      "add_custom": "Ajouter un fichier d'inventaire personnalisé ? (Entrée pour passer)",
+      "config_saved": "Configuration de l'inventaire sauvegardée",
+      "sources_count": "Sources : {sources}, ~{hosts} hôtes"
+    }
+  },
+
+  "agent": {
+    "thinking": "Réflexion...",
+    "executing_tool": "Exécution : {tool}",
+    "tool_result": "Résultat : {result}",
+    "confirmation_required": "Cette action nécessite une confirmation",
+    "action_cancelled": "Action annulée",
+    "action_approved": "Action approuvée"
+  }
+}

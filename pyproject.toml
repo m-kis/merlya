@@ -1,0 +1,124 @@
+[project]
+name = "merlya"
+version = "0.5.0"
+description = "Merlya - AI-powered infrastructure assistant"
+authors = [
+    { name = "Cedric", email = "cedric@example.com" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["ai", "infrastructure", "ssh", "devops", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    # Agent Framework
+    "pydantic-ai>=0.0.20",
+    "pydantic>=2.10",
+
+    # LLM Providers (via PydanticAI)
+    "openai>=1.0",
+    "anthropic>=0.40",
+    "httpx>=0.27",
+
+    # Intent Router (local embedding)
+    "onnxruntime>=1.19",
+    "tokenizers>=0.20",
+    "huggingface-hub>=0.26",
+
+    # SSH
+    "asyncssh>=2.18",
+
+    # UI Console
+    "rich>=13.9",
+    "prompt-toolkit>=3.0",
+
+    # Logging
+    "loguru>=0.7",
+
+    # Persistence
+    "aiosqlite>=0.20",
+    "keyring>=25.5",
+
+    # Config
+    "pyyaml>=6.0",
+
+    # Utils
+    "psutil>=6.1",
+    "duckduckgo-search>=7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+merlya = "merlya.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["merlya"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "PTH",    # flake8-use-pathlib
+    "RUF",    # Ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["merlya"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = ["B101"]  # Skip assert warnings in tests
