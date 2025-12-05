@@ -228,7 +228,7 @@ def check_keyring() -> HealthCheck:
 def check_web_search() -> HealthCheck:
     """Check DuckDuckGo search availability."""
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
 
         # Just check if it initializes
         with DDGS():
