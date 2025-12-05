@@ -103,6 +103,19 @@ def load_config(path: Path | None = None) -> Config:
         raise
 
 
+def _convert_paths_to_strings(data: dict[str, Any]) -> dict[str, Any]:
+    """Recursively convert Path objects to strings for YAML serialization."""
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, Path):
+            result[key] = str(value)
+        elif isinstance(value, dict):
+            result[key] = _convert_paths_to_strings(value)
+        else:
+            result[key] = value
+    return result
+
+
 def save_config(config: Config, path: Path | None = None) -> None:
     """
     Save configuration to YAML file.
@@ -116,6 +129,9 @@ def save_config(config: Config, path: Path | None = None) -> None:
 
     # Convert to dict, excluding internal fields
     data = config.model_dump(exclude_none=True, exclude_unset=False)
+
+    # Convert Path objects to strings for YAML compatibility
+    data = _convert_paths_to_strings(data)
 
     # Add header comment
     yaml_content = "# Merlya Configuration\n# Edit this file to customize settings\n\n"

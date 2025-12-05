@@ -176,11 +176,13 @@ class REPL:
                 if user_input.startswith("/"):
                     result = await registry.execute(self.ctx, user_input)
                     if result:
-                        if result.data and result.data.get("exit"):
-                            self.running = False
-                            break
-                        if result.data and result.data.get("new_conversation"):
-                            self.agent.clear_history()
+                        # Check for special actions (data must be a dict)
+                        if isinstance(result.data, dict):
+                            if result.data.get("exit"):
+                                self.running = False
+                                break
+                            if result.data.get("new_conversation"):
+                                self.agent.clear_history()
 
                         # Display result
                         if result.success:
