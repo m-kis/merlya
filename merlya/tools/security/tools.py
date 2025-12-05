@@ -137,20 +137,22 @@ async def check_open_ports(
 
                 # Extract process info
                 process_info = parts[-1] if parts else ""
-                pid_match = re.search(r'pid=(\d+)', process_info)
+                pid_match = re.search(r"pid=(\d+)", process_info)
                 pid = int(pid_match.group(1)) if pid_match else None
 
                 proc_match = re.search(r'"([^"]+)"', process_info)
                 process = proc_match.group(1) if proc_match else None
 
-                ports.append({
-                    "port": port,
-                    "protocol": parts[0].lower() if parts else "unknown",
-                    "state": parts[1] if len(parts) > 1 else "unknown",
-                    "address": addr,
-                    "pid": pid,
-                    "process": process,
-                })
+                ports.append(
+                    {
+                        "port": port,
+                        "protocol": parts[0].lower() if parts else "unknown",
+                        "state": parts[1] if len(parts) > 1 else "unknown",
+                        "address": addr,
+                        "pid": pid,
+                        "process": process,
+                    }
+                )
 
         return SecurityResult(success=True, data=ports)
 
@@ -209,9 +211,7 @@ async def audit_ssh_keys(
                     severity = "warning"
 
             # Check key type and encryption (using quoted path)
-            file_result = await ssh_pool.execute(
-                host_name, f"head -1 {quoted_path} 2>/dev/null"
-            )
+            file_result = await ssh_pool.execute(host_name, f"head -1 {quoted_path} 2>/dev/null")
             if file_result.exit_code == 0:
                 header = file_result.stdout.strip()
                 if "ENCRYPTED" in header:
@@ -283,7 +283,10 @@ async def check_security_config(
                     status = "ok"
                     message = ""
 
-                    if key == "PermitRootLogin" and value.lower() not in ("no", "prohibit-password"):
+                    if key == "PermitRootLogin" and value.lower() not in (
+                        "no",
+                        "prohibit-password",
+                    ):
                         status = "warning"
                         message = "Root login should be disabled"
                         severity = "warning"
@@ -296,12 +299,14 @@ async def check_security_config(
                         message = "Empty passwords are allowed!"
                         severity = "critical"
 
-                    checks.append({
-                        "setting": key,
-                        "value": value,
-                        "status": status,
-                        "message": message,
-                    })
+                    checks.append(
+                        {
+                            "setting": key,
+                            "value": value,
+                            "status": status,
+                            "message": message,
+                        }
+                    )
 
         # Check firewall status (fixed commands)
         fw_cmd = "command -v ufw >/dev/null && ufw status | head -1 || command -v firewall-cmd >/dev/null && firewall-cmd --state || iptables -L -n 2>/dev/null | head -3"
@@ -310,28 +315,34 @@ async def check_security_config(
         firewall_status = "unknown"
         if fw_result.stdout and "active" in fw_result.stdout.lower():
             firewall_status = "active"
-        elif fw_result.stdout and ("inactive" in fw_result.stdout.lower() or "not running" in fw_result.stdout.lower()):
+        elif fw_result.stdout and (
+            "inactive" in fw_result.stdout.lower() or "not running" in fw_result.stdout.lower()
+        ):
             firewall_status = "inactive"
             severity = "warning" if severity != "critical" else severity
 
-        checks.append({
-            "setting": "Firewall",
-            "value": firewall_status,
-            "status": "ok" if firewall_status == "active" else "warning",
-            "message": "" if firewall_status == "active" else "Firewall is not active",
-        })
+        checks.append(
+            {
+                "setting": "Firewall",
+                "value": firewall_status,
+                "status": "ok" if firewall_status == "active" else "warning",
+                "message": "" if firewall_status == "active" else "Firewall is not active",
+            }
+        )
 
         # Check for unattended upgrades (Debian/Ubuntu) - fixed command
         auto_update_cmd = "dpkg -l unattended-upgrades 2>/dev/null | grep -q '^ii' && echo 'enabled' || echo 'disabled'"
         auto_result = await ssh_pool.execute(host_name, auto_update_cmd)
 
         auto_update = auto_result.stdout.strip() == "enabled"
-        checks.append({
-            "setting": "Automatic Updates",
-            "value": "enabled" if auto_update else "disabled",
-            "status": "ok" if auto_update else "info",
-            "message": "" if auto_update else "Consider enabling automatic security updates",
-        })
+        checks.append(
+            {
+                "setting": "Automatic Updates",
+                "value": "enabled" if auto_update else "disabled",
+                "status": "ok" if auto_update else "info",
+                "message": "" if auto_update else "Consider enabling automatic security updates",
+            }
+        )
 
         return SecurityResult(
             success=True,
@@ -368,7 +379,9 @@ async def check_users(
         severity = "info"
 
         # Get users with shell access (fixed command)
-        passwd_cmd = "grep -E '(/bin/bash|/bin/sh|/bin/zsh|/usr/bin/bash|/usr/bin/zsh)$' /etc/passwd"
+        passwd_cmd = (
+            "grep -E '(/bin/bash|/bin/sh|/bin/zsh|/usr/bin/bash|/usr/bin/zsh)$' /etc/passwd"
+        )
         result = await ssh_pool.execute(host_name, passwd_cmd)
 
         if result.exit_code == 0:

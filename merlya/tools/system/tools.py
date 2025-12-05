@@ -279,7 +279,9 @@ async def list_processes(
         return ToolResult(success=False, data=[], error=error)
 
     if filter_name and len(filter_name) > _MAX_PATTERN_LENGTH:
-        return ToolResult(success=False, data=[], error=f"Filter too long (max {_MAX_PATTERN_LENGTH} chars)")
+        return ToolResult(
+            success=False, data=[], error=f"Filter too long (max {_MAX_PATTERN_LENGTH} chars)"
+        )
 
     if not (1 <= limit <= 1000):
         return ToolResult(success=False, data=[], error="Limit must be 1-1000")
@@ -310,13 +312,15 @@ async def list_processes(
             parts = line.split(None, 10)
             if len(parts) >= 11:
                 try:
-                    processes.append({
-                        "user": parts[0],
-                        "pid": int(parts[1]),
-                        "cpu": float(parts[2]),
-                        "mem": float(parts[3]),
-                        "command": parts[10][:100],  # Truncate long commands
-                    })
+                    processes.append(
+                        {
+                            "user": parts[0],
+                            "pid": int(parts[1]),
+                            "cpu": float(parts[2]),
+                            "mem": float(parts[3]),
+                            "command": parts[10][:100],  # Truncate long commands
+                        }
+                    )
                 except ValueError:
                     continue
 
@@ -405,7 +409,9 @@ async def analyze_logs(
         return ToolResult(success=False, data={}, error=error)
 
     if pattern and len(pattern) > _MAX_PATTERN_LENGTH:
-        return ToolResult(success=False, data={}, error=f"Pattern too long (max {_MAX_PATTERN_LENGTH} chars)")
+        return ToolResult(
+            success=False, data={}, error=f"Pattern too long (max {_MAX_PATTERN_LENGTH} chars)"
+        )
 
     if level and level.lower() not in _VALID_LOG_LEVEL:
         return ToolResult(

@@ -335,7 +335,7 @@ Cet assistant va vous guider pour configurer:
         f"""
 Setup termine!
 
-- Provider LLM: {result.llm_config.provider if result.llm_config else 'non configure'}
+- Provider LLM: {result.llm_config.provider if result.llm_config else "non configure"}
 - Hosts importes: {result.hosts_imported}
 
 Utilisez /help pour voir les commandes disponibles.

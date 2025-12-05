@@ -28,9 +28,7 @@ class StartupHealth:
     @property
     def can_start(self) -> bool:
         """Check if all critical checks passed."""
-        return not any(
-            c.critical and c.status == CheckStatus.ERROR for c in self.checks
-        )
+        return not any(c.critical and c.status == CheckStatus.ERROR for c in self.checks)
 
     @property
     def has_warnings(self) -> bool:

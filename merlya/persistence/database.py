@@ -164,9 +164,7 @@ class Database:
                 )
                 await self._connection.commit()
 
-    async def execute(
-        self, query: str, params: tuple[Any, ...] | None = None
-    ) -> aiosqlite.Cursor:
+    async def execute(self, query: str, params: tuple[Any, ...] | None = None) -> aiosqlite.Cursor:
         """Execute a query."""
         try:
             return await self.connection.execute(query, params or ())
@@ -175,9 +173,7 @@ class Database:
         except aiosqlite.OperationalError as e:
             raise DatabaseError(f"Database operation failed: {e}") from e
 
-    async def executemany(
-        self, query: str, params: list[tuple[Any, ...]]
-    ) -> aiosqlite.Cursor:
+    async def executemany(self, query: str, params: list[tuple[Any, ...]]) -> aiosqlite.Cursor:
         """Execute a query with multiple parameter sets."""
         try:
             return await self.connection.executemany(query, params)

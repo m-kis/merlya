@@ -116,9 +116,7 @@ class TestHostResolver:
         assert "could not be resolved" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_resolve_suggestions(
-        self, resolver: HostResolver, mock_repo: MagicMock
-    ) -> None:
+    async def test_resolve_suggestions(self, resolver: HostResolver, mock_repo: MagicMock) -> None:
         """Test suggestions are provided on failure."""
         mock_repo.get_all.return_value = [
             Host(name="web-server", hostname="192.168.1.1"),

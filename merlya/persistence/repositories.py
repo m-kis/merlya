@@ -69,25 +69,19 @@ class HostRepository:
 
     async def get_by_id(self, host_id: str) -> Host | None:
         """Get host by ID."""
-        async with await self.db.execute(
-            "SELECT * FROM hosts WHERE id = ?", (host_id,)
-        ) as cursor:
+        async with await self.db.execute("SELECT * FROM hosts WHERE id = ?", (host_id,)) as cursor:
             row = await cursor.fetchone()
             return self._row_to_host(row) if row else None
 
     async def get_by_name(self, name: str) -> Host | None:
         """Get host by name."""
-        async with await self.db.execute(
-            "SELECT * FROM hosts WHERE name = ?", (name,)
-        ) as cursor:
+        async with await self.db.execute("SELECT * FROM hosts WHERE name = ?", (name,)) as cursor:
             row = await cursor.fetchone()
             return self._row_to_host(row) if row else None
 
     async def get_all(self) -> list[Host]:
         """Get all hosts."""
-        async with await self.db.execute(
-            "SELECT * FROM hosts ORDER BY name"
-        ) as cursor:
+        async with await self.db.execute("SELECT * FROM hosts ORDER BY name") as cursor:
             rows = await cursor.fetchall()
             return [self._row_to_host(row) for row in rows]
 
@@ -149,9 +143,10 @@ class HostRepository:
 
     async def delete(self, host_id: str) -> bool:
         """Delete a host."""
-        async with self.db.transaction(), await self.db.execute(
-            "DELETE FROM hosts WHERE id = ?", (host_id,)
-        ) as cursor:
+        async with (
+            self.db.transaction(),
+            await self.db.execute("DELETE FROM hosts WHERE id = ?", (host_id,)) as cursor,
+        ):
             deleted = cursor.rowcount > 0
             if deleted:
                 logger.debug(f"🖥️ Host deleted: {host_id}")
@@ -223,9 +218,7 @@ class VariableRepository:
 
     async def get_all(self) -> list[Variable]:
         """Get all variables."""
-        async with await self.db.execute(
-            "SELECT * FROM variables ORDER BY name"
-        ) as cursor:
+        async with await self.db.execute("SELECT * FROM variables ORDER BY name") as cursor:
             rows = await cursor.fetchall()
             return [
                 Variable(
@@ -239,9 +232,10 @@ class VariableRepository:
 
     async def delete(self, name: str) -> bool:
         """Delete a variable."""
-        async with self.db.transaction(), await self.db.execute(
-            "DELETE FROM variables WHERE name = ?", (name,)
-        ) as cursor:
+        async with (
+            self.db.transaction(),
+            await self.db.execute("DELETE FROM variables WHERE name = ?", (name,)) as cursor,
+        ):
             deleted = cursor.rowcount > 0
             if deleted:
                 logger.debug("📋 Variable deleted")
@@ -316,9 +310,10 @@ class ConversationRepository:
 
     async def delete(self, conv_id: str) -> bool:
         """Delete a conversation."""
-        async with self.db.transaction(), await self.db.execute(
-            "DELETE FROM conversations WHERE id = ?", (conv_id,)
-        ) as cursor:
+        async with (
+            self.db.transaction(),
+            await self.db.execute("DELETE FROM conversations WHERE id = ?", (conv_id,)) as cursor,
+        ):
             return cursor.rowcount > 0
 
     async def search(self, term: str, limit: int = 10) -> list[Conversation]:

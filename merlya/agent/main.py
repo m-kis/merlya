@@ -60,7 +60,9 @@ class AgentResponse(BaseModel):
     suggestions: list[str] = []
 
 
-def create_agent(model: str = "anthropic:claude-3-5-sonnet-latest") -> Agent[AgentDependencies, AgentResponse]:
+def create_agent(
+    model: str = "anthropic:claude-3-5-sonnet-latest",
+) -> Agent[AgentDependencies, AgentResponse]:
     """
     Create the main Merlya agent.
 

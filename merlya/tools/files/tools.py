@@ -88,7 +88,11 @@ async def read_file(
 
         # Build command with safe quoting
         if lines:
-            cmd = f"tail -n {int(lines)} {quoted_path}" if tail else f"head -n {int(lines)} {quoted_path}"
+            cmd = (
+                f"tail -n {int(lines)} {quoted_path}"
+                if tail
+                else f"head -n {int(lines)} {quoted_path}"
+            )
         else:
             cmd = f"cat {quoted_path}"
 

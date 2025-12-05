@@ -28,9 +28,7 @@ class TestHostRepository:
         assert created.hostname == "192.168.1.1"
 
     @pytest.mark.asyncio
-    async def test_create_duplicate_name_raises(
-        self, host_repo: HostRepository
-    ) -> None:
+    async def test_create_duplicate_name_raises(self, host_repo: HostRepository) -> None:
         """Test that duplicate name raises ValueError."""
         host1 = Host(name="duplicate", hostname="192.168.1.1")
         await host_repo.create(host1)

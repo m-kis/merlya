@@ -132,9 +132,7 @@ class HostResolver:
 
         # Validate hostname format
         if not HOSTNAME_PATTERN.match(query):
-            raise InvalidHostQueryError(
-                f"Invalid host query format: '{query}'"
-            )
+            raise InvalidHostQueryError(f"Invalid host query format: '{query}'")
 
         return query
 

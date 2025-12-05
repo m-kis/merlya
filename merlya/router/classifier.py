@@ -286,9 +286,7 @@ class IntentClassifier:
 
         return best_mode, confidence
 
-    def _determine_tools(
-        self, text: str, entities: dict[str, list[str]]
-    ) -> list[str]:
+    def _determine_tools(self, text: str, entities: dict[str, list[str]]) -> list[str]:
         """Determine which tools to activate."""
         tools = ["core"]  # Core tools always active
 
@@ -379,9 +377,7 @@ class IntentRouter:
             result.delegate_to = None
 
         logger.debug(
-            f"Routed: mode={result.mode.value}, "
-            f"tools={result.tools}, "
-            f"delegate={result.delegate_to}"
+            f"Routed: mode={result.mode.value}, tools={result.tools}, delegate={result.delegate_to}"
         )
 
         return result

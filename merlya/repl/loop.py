@@ -22,10 +22,12 @@ if TYPE_CHECKING:
 
 
 # Prompt style
-PROMPT_STYLE = Style.from_dict({
-    "prompt": "#00aa00 bold",
-    "host": "#888888",
-})
+PROMPT_STYLE = Style.from_dict(
+    {
+        "prompt": "#00aa00 bold",
+        "host": "#888888",
+    }
+)
 
 
 class MerlyaCompleter(Completer):
@@ -205,14 +207,10 @@ class REPL:
                 self.ctx.ui.markdown(response.message)
 
                 if response.actions_taken:
-                    self.ctx.ui.muted(
-                        f"\nActions: {', '.join(response.actions_taken)}"
-                    )
+                    self.ctx.ui.muted(f"\nActions: {', '.join(response.actions_taken)}")
 
                 if response.suggestions:
-                    self.ctx.ui.info(
-                        f"\nSuggestions: {', '.join(response.suggestions)}"
-                    )
+                    self.ctx.ui.info(f"\nSuggestions: {', '.join(response.suggestions)}")
 
                 self.ctx.ui.newline()
 

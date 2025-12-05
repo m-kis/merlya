@@ -173,9 +173,7 @@ class SSHPool:
                     await self._evict_lru_connection()
 
             # Create new connection
-            conn = await self._create_connection(
-                host, port, username, private_key, jump_host
-            )
+            conn = await self._create_connection(host, port, username, private_key, jump_host)
             self._connections[key] = conn
 
             logger.info(f"🌐 SSH connected to {host}")
@@ -286,7 +284,9 @@ class SSHPool:
             )
 
             # Security: Never log command content (may contain secrets)
-            logger.debug(f"⚡ Executed command on {host} (length: {len(command)} chars, exit: {result.exit_status})")
+            logger.debug(
+                f"⚡ Executed command on {host} (length: {len(command)} chars, exit: {result.exit_status})"
+            )
 
             return (
                 result.stdout or "",

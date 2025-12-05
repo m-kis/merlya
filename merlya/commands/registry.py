@@ -252,9 +252,11 @@ def command(
         async def cmd_help(ctx, args):
             ...
     """
+
     def decorator(handler: CommandHandler) -> CommandHandler:
         get_registry().register(name, description, usage, handler, aliases)
         return handler
+
     return decorator
 
 
@@ -272,7 +274,9 @@ def subcommand(
         async def cmd_hosts_list(ctx, args):
             ...
     """
+
     def decorator(handler: CommandHandler) -> CommandHandler:
         get_registry().register_subcommand(parent, name, description, usage, handler)
         return handler
+
     return decorator
