@@ -75,7 +75,7 @@ async def test_prompt_private_key_reuses_cached_passphrase(tmp_path: Path) -> No
         read_key.return_value = MagicMock()
         passphrase = await _prompt_private_key(ctx, host)
 
-    read_key.assert_called_once_with(str(key_path), passphrase="cached-pass")
+    read_key.assert_called_once_with(str(key_path), "cached-pass")
     ctx.ui.prompt_secret.assert_not_called()
     assert passphrase == "cached-pass"
     assert host.private_key == str(key_path)

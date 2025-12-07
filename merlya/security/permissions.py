@@ -56,7 +56,7 @@ class PermissionManager:
         async def _run(cmd: str) -> tuple[bool, str]:
             try:
                 result = await self._execute(host, cmd)
-                return result.exit_code == 0, result.stdout.strip()
+                return result.exit_code == 0, result.stdout.strip()  # type: ignore[attr-defined]
             except (TimeoutError, RuntimeError, OSError) as exc:
                 # Only catch specific expected errors, not all exceptions
                 logger.debug(f"Permission probe failed on {host}: {cmd} ({exc})")
@@ -254,7 +254,7 @@ class PermissionManager:
         logger.warning(f"⚠️ Unknown elevation method {method}, running without elevation")
         return command, None
 
-    async def _execute(self, host: str, command: str):
+    async def _execute(self, host: str, command: str) -> object:
         """Execute a probe command using the shared SSH pool."""
         ssh_pool = await self.ctx.get_ssh_pool()
         options = SSHConnectionOptions(connect_timeout=10)

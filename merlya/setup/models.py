@@ -21,4 +21,4 @@ class HostData:
     jump_host: str | None = None
     tags: list[str] = field(default_factory=list)
     source: str | None = None
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict)

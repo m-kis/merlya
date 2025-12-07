@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class SFTPOperations:
     """SFTP operations shared by the SSH pool."""
 
-    async def upload_file(
+    async def upload_file(  # type: ignore[misc]
         self: SSHPool,
         host: str,
         local_path: str | Path,
@@ -53,7 +53,7 @@ class SFTPOperations:
             await sftp.put(str(local), remote_path)
             logger.info(f"📤 Uploaded {local.name} -> {host}:{remote_path}")
 
-    async def download_file(
+    async def download_file(  # type: ignore[misc]
         self: SSHPool,
         host: str,
         remote_path: str,
@@ -85,7 +85,7 @@ class SFTPOperations:
             await sftp.get(remote_path, str(local))
             logger.info(f"📥 Downloaded {host}:{remote_path} -> {local.name}")
 
-    async def list_remote_dir(
+    async def list_remote_dir(  # type: ignore[misc]
         self: SSHPool,
         host: str,
         remote_path: str = ".",
@@ -123,7 +123,7 @@ class SFTPOperations:
 
         return result
 
-    async def read_remote_file(
+    async def read_remote_file(  # type: ignore[misc]
         self: SSHPool,
         host: str,
         remote_path: str,
@@ -148,7 +148,7 @@ class SFTPOperations:
             content = await f.read()
             return content.decode("utf-8") if isinstance(content, bytes) else content
 
-    async def write_remote_file(
+    async def write_remote_file(  # type: ignore[misc]
         self: SSHPool,
         host: str,
         remote_path: str,

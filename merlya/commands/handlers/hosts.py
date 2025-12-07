@@ -11,7 +11,7 @@ import io
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -498,7 +498,7 @@ async def _import_ssh_config(ctx: SharedContext, file_path: Path) -> tuple[int, 
     return imported, errors
 
 
-def _create_host_from_dict(item: dict) -> Host:
+def _create_host_from_dict(item: dict[str, Any]) -> Host:
     """Create Host from dictionary with validated port and tags."""
     # Validate tags
     raw_tags = item.get("tags", [])
@@ -556,7 +556,7 @@ def _detect_export_format(file_path: Path, args: list[str]) -> str:
     return "json"
 
 
-def _host_to_dict(h: Host) -> dict:
+def _host_to_dict(h: Host) -> dict[str, Any]:
     """Convert Host to dictionary for export."""
     item = {"name": h.name, "hostname": h.hostname, "port": h.port}
     if h.username:
@@ -570,7 +570,7 @@ def _host_to_dict(h: Host) -> dict:
     return item
 
 
-def _serialize_hosts(data: list[dict], file_format: str) -> str:
+def _serialize_hosts(data: list[dict[str, Any]], file_format: str) -> str:
     """Serialize hosts data to string."""
     if file_format == "json":
         return json.dumps(data, indent=2)

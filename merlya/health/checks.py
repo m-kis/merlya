@@ -309,7 +309,7 @@ async def _ping_generic(provider: str, model: str, timeout: float) -> float:
     )
 
     # Check response is valid
-    if not result.data:
+    if not getattr(result, "data", None):
         raise ValueError("Empty response from LLM")
 
     return (time.time() - start) * 1000

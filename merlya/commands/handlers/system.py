@@ -266,9 +266,9 @@ async def _scan_system_parallel(
     task_results = await asyncio.gather(*[t[1] for t in task_list], return_exceptions=True)
 
     for (name, _), res in zip(task_list, task_results, strict=False):
-        if isinstance(res, Exception):
+        if isinstance(res, BaseException):
             continue
-        if res.success and res.data:
+        if hasattr(res, "success") and res.success and hasattr(res, "data") and res.data:
             results_dict[name] = res.data
             # Check for warnings
             if isinstance(res.data, dict) and res.data.get("warning"):
@@ -331,10 +331,10 @@ async def _scan_security_parallel(
     task_results = await asyncio.gather(*[t[1] for t in task_list], return_exceptions=True)
 
     for (name, _), res in zip(task_list, task_results, strict=False):
-        if isinstance(res, Exception):
+        if isinstance(res, BaseException):
             continue
-        if res.success:
-            results_dict[name] = res.data
+        if hasattr(res, "success") and res.success:
+            results_dict[name] = getattr(res, "data", None)
             # Count severity
             severity = getattr(res, "severity", "info")
             if severity == "critical":
@@ -384,7 +384,7 @@ async def _calculate_severity_score(ctx: SharedContext, result: ScanResult) -> N
         pass  # Fallback to base scoring if embeddings fail
 
 
-def _scan_to_dict(result: ScanResult, host: Any) -> dict:
+def _scan_to_dict(result: ScanResult, host: Any) -> dict[str, Any]:
     """Convert scan result to dictionary for JSON output."""
     return {
         "host": host.name,
@@ -634,14 +634,14 @@ def _show_log_config(ctx: SharedContext) -> CommandResult:
 
 def _set_log_level(ctx: SharedContext, level_str: str) -> CommandResult:
     """Set logging level."""
-    level = level_str.upper()
-    if level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+    level = level_str.lower()
+    if level not in ("debug", "info", "warning", "error"):
         return CommandResult(
             success=False,
             message="Valid levels: `debug`, `info`, `warning`, `error`",
         )
 
-    ctx.config.logging.file_level = level
+    ctx.config.logging.file_level = level  # type: ignore[assignment]
     ctx.config.save()
 
     from merlya.core.logging import configure_logging

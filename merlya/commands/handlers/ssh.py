@@ -10,7 +10,7 @@ import asyncio
 import concurrent.futures
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import asyncssh
 from loguru import logger
@@ -19,6 +19,8 @@ from merlya.commands.registry import CommandResult, command, subcommand
 from merlya.ssh.pool import SSHConnectionOptions
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from merlya.core.context import SharedContext
 
 
@@ -87,7 +89,7 @@ async def cmd_ssh_connect(ctx: SharedContext, args: list[str]) -> CommandResult:
         return _handle_ssh_error(e, host.private_key, host.hostname)
 
 
-def _create_mfa_callback(ctx: SharedContext):
+def _create_mfa_callback(ctx: SharedContext) -> Callable[[str], str]:
     """Create MFA callback for keyboard-interactive prompts."""
 
     def mfa_callback(prompt: str) -> str:
@@ -104,7 +106,7 @@ def _create_mfa_callback(ctx: SharedContext):
 
 def _install_ssh_callbacks(
     ctx: SharedContext,
-    ssh_pool,
+    ssh_pool: Any,
     host_name: str,
     _key_path: str | None,  # Reserved for future use
     *,
@@ -292,7 +294,7 @@ async def cmd_ssh_config(ctx: SharedContext, args: list[str]) -> CommandResult:
     )
 
 
-async def _prompt_ssh_config(ctx: SharedContext, host):
+async def _prompt_ssh_config(ctx: SharedContext, host: Any) -> Any:
     """Prompt user for SSH configuration values."""
     host.username = await _prompt_username(ctx, host)
     host.port = await _prompt_port(ctx, host)
@@ -305,7 +307,7 @@ async def _prompt_ssh_config(ctx: SharedContext, host):
     return host
 
 
-async def _prompt_username(ctx: SharedContext, host):
+async def _prompt_username(ctx: SharedContext, host: Any) -> str | None:
     """Prompt for SSH username while keeping existing by default."""
     username = await ctx.ui.prompt(
         "SSH username (Enter to keep current)", default=host.username or ""
@@ -313,7 +315,7 @@ async def _prompt_username(ctx: SharedContext, host):
     return username or host.username
 
 
-async def _prompt_port(ctx: SharedContext, host) -> int:
+async def _prompt_port(ctx: SharedContext, host: Any) -> int:
     """Prompt for SSH port with validation."""
     port_str = await ctx.ui.prompt("SSH port", default=str(host.port))
     try:
@@ -323,10 +325,10 @@ async def _prompt_port(ctx: SharedContext, host) -> int:
         ctx.ui.warning("⚠️ Invalid port, keeping current")
     except ValueError:
         ctx.ui.warning("⚠️ Invalid port, keeping current")
-    return host.port
+    return int(host.port)
 
 
-async def _prompt_private_key(ctx: SharedContext, host) -> str | None:
+async def _prompt_private_key(ctx: SharedContext, host: Any) -> str | None:
     """
     Prompt for private key path and request passphrase when needed.
 
@@ -347,8 +349,10 @@ async def _prompt_private_key(ctx: SharedContext, host) -> str | None:
 
     while True:
         try:
-            key_options = {"passphrase": passphrase} if passphrase else {}
-            asyncssh.read_private_key(str(key_path), **key_options)
+            if passphrase:
+                asyncssh.read_private_key(str(key_path), passphrase)
+            else:
+                asyncssh.read_private_key(str(key_path))
             host.private_key = str(key_path)
             if passphrase:
                 ctx.ui.success(f"✅ Key set: {key_path} (passphrase validated)")
@@ -374,7 +378,7 @@ async def _prompt_private_key(ctx: SharedContext, host) -> str | None:
             return None
 
 
-async def _prompt_jump_host(ctx: SharedContext, host):
+async def _prompt_jump_host(ctx: SharedContext, host: Any) -> str | None:
     """Prompt for jump host/bastion details."""
     jump_host = await ctx.ui.prompt(
         "Jump host / bastion (Enter to skip)", default=host.jump_host or ""
@@ -388,14 +392,14 @@ async def _prompt_passphrase(ctx: SharedContext, key_path: Path) -> str | None:
     return secret or None
 
 
-def _get_cached_passphrase(ctx: SharedContext, host_name: str, key_path: Path) -> str | None:
+def _get_cached_passphrase(ctx: SharedContext, host_name: str, key_path: Path | str) -> str | None:
     """Fetch stored passphrase for host or key filename if available."""
-    resolved = str(key_path.expanduser())
+    resolved = str(Path(key_path).expanduser())
     keys = _candidate_passphrase_keys(host_name, resolved, key_path)
     return _lookup_passphrase(ctx, keys)
 
 
-def _store_passphrase(ctx: SharedContext, host, passphrase: str | None) -> None:
+def _store_passphrase(ctx: SharedContext, host: Any, passphrase: str | None) -> None:
     """Persist validated passphrase securely."""
     if passphrase and host.private_key:
         try:
@@ -516,7 +520,7 @@ async def cmd_ssh_test(ctx: SharedContext, args: list[str]) -> CommandResult:
         return CommandResult(success=False, message="\n".join(lines))
 
 
-def _build_test_header(host_name: str, host) -> list[str]:
+def _build_test_header(host_name: str, host: Any) -> list[str]:
     """Build SSH test header lines."""
     return [
         f"**SSH Test for `{host_name}`**",

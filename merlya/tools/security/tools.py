@@ -698,7 +698,7 @@ async def check_pending_updates(
                         updates.append(
                             {
                                 "package": pkg_name,
-                                "security": is_security,
+                                "security": is_security,  # type: ignore[dict-item]
                             }
                         )
 

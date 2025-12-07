@@ -19,13 +19,15 @@ async def cmd_help(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Show help for commands."""
     registry = get_registry()
 
-    def _localize(command_obj, field: str) -> str:
-        key = command_obj.description_key if field == "description" else command_obj.usage_key
+    def _localize(command_obj: object, field: str) -> str:
+        key = getattr(
+            command_obj, "description_key" if field == "description" else "usage_key", None
+        )
         if key:
             translated = ctx.t(key)
             if translated != key:
-                return translated
-        return getattr(command_obj, field)
+                return str(translated)
+        return str(getattr(command_obj, field, ""))
 
     if args:
         cmd = registry.get(args[0])

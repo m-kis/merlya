@@ -203,7 +203,7 @@ async def request_elevation(
             )
 
         permissions = await ctx.get_permissions()
-        elevation = await permissions.prepare_command(host, command)
+        elevation = await permissions.prepare_command(host, command)  # type: ignore[attr-defined]
         return CommandResult(
             success=True,
             message="✅ Elevation prepared",

@@ -342,13 +342,13 @@ class IntentClassifier:
             return None
 
         try:
-            encoding = self._tokenizer.encode(text)
+            encoding = self._tokenizer.encode(text)  # type: ignore[attr-defined]
             input_ids = np.array([encoding.ids], dtype=np.int64)
             attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
             token_type_ids = np.zeros_like(input_ids, dtype=np.int64)
 
             def _infer() -> NDArray[np.float32]:
-                outputs = self._session.run(
+                outputs = self._session.run(  # type: ignore[union-attr]
                     None,
                     {
                         "input_ids": input_ids,
@@ -361,7 +361,7 @@ class IntentClassifier:
                 mask_expanded = attention_mask[:, :, np.newaxis].astype(np.float32)
                 sum_embeddings = np.sum(embeddings * mask_expanded, axis=1)
                 sum_mask = np.clip(mask_expanded.sum(axis=1), a_min=1e-9, a_max=None)
-                return (sum_embeddings / sum_mask)[0]
+                return (sum_embeddings / sum_mask)[0]  # type: ignore[no-any-return]
 
             return await asyncio.to_thread(_infer)
 

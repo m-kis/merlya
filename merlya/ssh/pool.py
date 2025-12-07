@@ -17,7 +17,7 @@ from loguru import logger
 from merlya.ssh.sftp import SFTPOperations
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from asyncssh import SSHClientConnection
 
@@ -358,7 +358,7 @@ class SSHPool(SFTPOperations):
                 name: str,
                 instructions: str,
                 _lang: str,  # Required by interface
-                prompts: list[tuple[str, bool]],
+                prompts: Sequence[tuple[str, bool]],
             ) -> list[str] | None:
                 """Handle keyboard-interactive (MFA/2FA) challenges."""
                 logger.debug(f"🔐 MFA challenge received: {name or 'Authentication'}")
@@ -443,7 +443,7 @@ class SSHPool(SFTPOperations):
 
             return SSHConnection(
                 host=host,
-                connection=conn,
+                connection=conn,  # type: ignore[arg-type]
                 timeout=self.timeout,
             )
 
@@ -670,7 +670,7 @@ class SSHPool(SFTPOperations):
     # MFA/2FA Support
     # =========================================================================
 
-    async def _load_private_key(self, key_path: Path):
+    async def _load_private_key(self, key_path: Path) -> object:
         """Load a private key, invoking passphrase callback on encryption errors."""
         import asyncssh
 

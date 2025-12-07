@@ -9,7 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from merlya.commands.registry import CommandResult, command, subcommand
 
@@ -195,7 +195,7 @@ async def cmd_conv_export(ctx: SharedContext, args: list[str]) -> CommandResult:
     return CommandResult(success=True, message=f"✅ Exported to `{file_path}`")
 
 
-async def _find_conversation(ctx: SharedContext, conv_id: str):
+async def _find_conversation(ctx: SharedContext, conv_id: str) -> Any:
     """Find conversation by ID or partial ID."""
     conv = await ctx.conversations.get_by_id(conv_id)
 
@@ -215,7 +215,7 @@ async def _find_conversation(ctx: SharedContext, conv_id: str):
     return conv
 
 
-def _export_conversation(conv, file_suffix: str) -> str:
+def _export_conversation(conv: Any, file_suffix: str) -> str:
     """Export conversation to string format."""
     if file_suffix == ".json":
         return json.dumps(

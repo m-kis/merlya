@@ -184,7 +184,12 @@ async def cmd_model_test(ctx: SharedContext, _args: list[str]) -> CommandResult:
 
         # Remove duplicates while preserving order
         seen: set[str] = set()
-        candidates = [m for m in candidates if not (m in seen or seen.add(m))]
+        unique_candidates: list[str] = []
+        for m in candidates:
+            if m not in seen:
+                seen.add(m)
+                unique_candidates.append(m)
+        candidates = unique_candidates
 
         errors: list[tuple[str, str]] = []
 

@@ -241,7 +241,7 @@ def count_ansible_hosts(path: Path) -> int:
     return count
 
 
-def _count_yaml_hosts(data: dict | None, depth: int = 0) -> int:
+def _count_yaml_hosts(data: dict[str, Any] | None, depth: int = 0) -> int:
     """Recursively count hosts in YAML inventory."""
     if not isinstance(data, dict) or depth > 10:
         return 0

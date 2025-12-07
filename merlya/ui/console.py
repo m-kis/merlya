@@ -50,7 +50,7 @@ class ConsoleUI:
     def __init__(self, theme: Theme | None = None) -> None:
         """Initialize console."""
         self.console = Console(theme=theme or MERLYA_THEME)
-        self._active_status = None
+        self._active_status: Any = None
 
     def print(self, *args: Any, **kwargs: Any) -> None:
         """Print to console."""

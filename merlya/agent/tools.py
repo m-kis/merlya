@@ -164,7 +164,9 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
                 "values": bundle.values,
                 "stored": bundle.stored,
             }
-        raise ModelRetry(f"Failed to collect credentials: {result.error}")
+        raise ModelRetry(
+            f"Failed to collect credentials: {getattr(result, 'error', result.message)}"
+        )
 
     @agent.tool
     async def request_elevation(
@@ -178,7 +180,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         result = await _request_elevation(ctx.deps.context, command=command, host=host)
         if result.success:
             return cast("dict[str, Any]", result.data or {})
-        raise ModelRetry(f"Failed to request elevation: {result.error}")
+        raise ModelRetry(f"Failed to request elevation: {getattr(result, 'error', result.message)}")
 
     @agent.tool
     async def request_confirmation(

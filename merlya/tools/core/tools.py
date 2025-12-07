@@ -381,13 +381,13 @@ async def request_confirmation(
 async def request_credentials(*args: Any, **kwargs: Any) -> ToolResult:  # pragma: no cover - shim
     from merlya.tools.interaction import request_credentials as _rc
 
-    return await _rc(*args, **kwargs)
+    return await _rc(*args, **kwargs)  # type: ignore[return-value]
 
 
 async def request_elevation(*args: Any, **kwargs: Any) -> ToolResult:  # pragma: no cover - shim
     from merlya.tools.interaction import request_elevation as _re
 
-    return await _re(*args, **kwargs)
+    return await _re(*args, **kwargs)  # type: ignore[return-value]
 
 
 async def get_variable(
