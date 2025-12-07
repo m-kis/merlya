@@ -75,13 +75,16 @@ class HostRepository:
 
     async def get_by_name(self, name: str) -> Host | None:
         """Get host by name."""
-        async with await self.db.execute("SELECT * FROM hosts WHERE name = ?", (name,)) as cursor:
+        async with await self.db.execute(
+            "SELECT * FROM hosts WHERE lower(name) = lower(?)",
+            (name,),
+        ) as cursor:
             row = await cursor.fetchone()
             return self._row_to_host(row) if row else None
 
     async def get_all(self) -> list[Host]:
         """Get all hosts."""
-        async with await self.db.execute("SELECT * FROM hosts ORDER BY name") as cursor:
+        async with await self.db.execute("SELECT * FROM hosts ORDER BY lower(name)") as cursor:
             rows = await cursor.fetchall()
             return [self._row_to_host(row) for row in rows]
 
@@ -157,6 +160,10 @@ class HostRepository:
         async with await self.db.execute("SELECT COUNT(*) FROM hosts") as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
+
+    async def list(self) -> list[Host]:
+        """Alias for get_all() for API compatibility."""
+        return await self.get_all()
 
     def _row_to_host(self, row: Any) -> Host:
         """Convert database row to Host model."""

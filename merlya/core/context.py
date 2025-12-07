@@ -21,6 +21,7 @@ from merlya.secrets import SecretStore, get_secret_store
 if TYPE_CHECKING:
     from merlya.health import StartupHealth
     from merlya.persistence import (
+        ConversationRepository,
         Database,
         HostRepository,
         VariableRepository,
@@ -54,9 +55,11 @@ class SharedContext:
     _db: Database | None = field(default=None, repr=False)
     _host_repo: HostRepository | None = field(default=None, repr=False)
     _var_repo: VariableRepository | None = field(default=None, repr=False)
+    _conv_repo: ConversationRepository | None = field(default=None, repr=False)
 
     # SSH Pool (lazy init)
     _ssh_pool: SSHPool | None = field(default=None, repr=False)
+    _permissions: Any | None = field(default=None, repr=False)
 
     # Intent Router (lazy init)
     _router: IntentRouter | None = field(default=None, repr=False)
@@ -85,6 +88,13 @@ class SharedContext:
             raise RuntimeError("Database not initialized. Call init_async() first.")
         return self._var_repo
 
+    @property
+    def conversations(self) -> ConversationRepository:
+        """Get conversation repository."""
+        if self._conv_repo is None:
+            raise RuntimeError("Database not initialized. Call init_async() first.")
+        return self._conv_repo
+
     async def get_ssh_pool(self) -> SSHPool:
         """Get SSH connection pool (async)."""
         if self._ssh_pool is None:
@@ -103,6 +113,14 @@ class SharedContext:
             raise RuntimeError("Router not initialized. Call init_router() first.")
         return self._router
 
+    async def get_permissions(self):
+        """Get permission manager (lazy)."""
+        if self._permissions is None:
+            from merlya.security import PermissionManager
+
+            self._permissions = PermissionManager(self)
+        return self._permissions
+
     @property
     def ui(self) -> ConsoleUI:
         """Get console UI."""
@@ -118,11 +136,17 @@ class SharedContext:
 
         Must be called before using the context.
         """
-        from merlya.persistence import HostRepository, VariableRepository, get_database
+        from merlya.persistence import (
+            ConversationRepository,
+            HostRepository,
+            VariableRepository,
+            get_database,
+        )
 
         self._db = await get_database()
         self._host_repo = HostRepository(self._db)
         self._var_repo = VariableRepository(self._db)
+        self._conv_repo = ConversationRepository(self._db)
 
         logger.debug("✅ SharedContext async components initialized")
 
@@ -133,8 +157,32 @@ class SharedContext:
         Args:
             tier: Optional model tier (from health checks).
         """
-        # TODO: Implement IntentRouter initialization
-        logger.debug(f"🧠 Router initialization (tier: {tier or 'auto'})")
+        from merlya.router import IntentRouter
+
+        requested_local = self.config.router.type == "local"
+        use_local = requested_local
+
+        # Disable local router if health checks flagged it as unavailable
+        if self.health and requested_local:
+            use_local = bool(self.health.capabilities.get("onnx_router"))
+
+        router = IntentRouter(use_local=use_local)
+
+        # Configure LLM fallback for low-confidence intents
+        if self.config.router.llm_fallback:
+            router.set_llm_fallback(self.config.router.llm_fallback)
+
+        await router.initialize()
+
+        # Persist chosen tier for visibility
+        self.config.router.tier = tier or self.config.router.tier
+
+        if requested_local and not use_local:
+            logger.warning("⚠️ ONNX router unavailable, using LLM fallback for routing")
+        elif router.classifier.model_loaded:
+            logger.info("✅ Intent router initialized with local ONNX model")
+
+        self._router = router
 
     async def close(self) -> None:
         """Close all connections and cleanup."""

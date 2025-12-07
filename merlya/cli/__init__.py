@@ -9,6 +9,11 @@ import sys
 
 from loguru import logger
 
+# Disable tokenizers parallelism warnings in forked processes
+import os  # noqa: E402
+
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 
 def main() -> None:
     """Main entry point for merlya CLI."""

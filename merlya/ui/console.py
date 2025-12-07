@@ -6,26 +6,37 @@ Rich-based console with panels, tables, and markdown.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Any
 
 from prompt_toolkit import PromptSession
+from rich.bar import Bar
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 from rich.theme import Theme
 
 from merlya.core.types import CheckStatus
 
 # Custom theme
+ACCENT_COLOR = "deep_sky_blue1"
 MERLYA_THEME = Theme(
     {
-        "info": "cyan",
-        "warning": "yellow",
-        "error": "red bold",
-        "success": "green",
-        "muted": "dim",
-        "highlight": "magenta",
+        "info": "bold bright_cyan",
+        "warning": "gold3",
+        "error": "bold red",
+        "success": "spring_green3",
+        "muted": "grey58",
+        "highlight": "medium_orchid",
+        "accent": ACCENT_COLOR,
     }
 )
 
@@ -40,6 +51,7 @@ class ConsoleUI:
     def __init__(self, theme: Theme | None = None) -> None:
         """Initialize console."""
         self.console = Console(theme=theme or MERLYA_THEME)
+        self._active_status = None
 
     def print(self, *args: Any, **kwargs: Any) -> None:
         """Print to console."""
@@ -51,7 +63,8 @@ class ConsoleUI:
 
     def panel(self, content: str, title: str | None = None, style: str = "info") -> None:
         """Display a panel."""
-        self.console.print(Panel(content, title=title, border_style=style))
+        border_style = style if style in MERLYA_THEME.styles else "accent"
+        self.console.print(Panel(content, title=title, border_style=border_style, padding=(1, 2)))
 
     def success(self, message: str) -> None:
         """Display success message."""
@@ -84,7 +97,13 @@ class ConsoleUI:
         title: str | None = None,
     ) -> None:
         """Display a table."""
-        table = Table(title=title, show_header=True, header_style="bold")
+        table = Table(
+            title=title,
+            show_header=True,
+            header_style=f"{ACCENT_COLOR} bold",
+            box=None,
+            padding=(0, 1),
+        )
 
         for header in headers:
             table.add_column(header)
@@ -105,20 +124,55 @@ class ConsoleUI:
         icon = icons.get(status, "❓")
         self.console.print(f"  {icon} {message}")
 
+    @contextmanager
+    def spinner(self, message: str, spinner: str = "dots") -> Any:
+        """Show a spinner while executing a task."""
+        status = self.console.status(f"[{ACCENT_COLOR}]{message}[/{ACCENT_COLOR}]", spinner=spinner)
+        self._active_status = status
+        try:
+            with status:
+                yield
+        finally:
+            # Ensure spinner is stopped before any prompt overlays
+            status.stop()
+            self._active_status = None
+
+    def progress(self, transient: bool = True) -> Progress:
+        """
+        Create a styled progress bar.
+
+        Usage:
+            with ui.progress() as progress:
+                task = progress.add_task("Doing work", total=3)
+                progress.advance(task)
+        """
+        return Progress(
+            SpinnerColumn(style=ACCENT_COLOR),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=None, pulse_style=ACCENT_COLOR),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=transient,
+            expand=True,
+        )
+
     async def prompt(self, message: str, default: str = "") -> str:
         """Prompt for input (async-safe)."""
+        self._stop_spinner()
         session: PromptSession[str] = PromptSession()
         result = await session.prompt_async(f"{message}: ", default=default)
         return result.strip()
 
     async def prompt_secret(self, message: str) -> str:
         """Prompt for secret input (hidden, async-safe)."""
+        self._stop_spinner()
         session: PromptSession[str] = PromptSession()
         result = await session.prompt_async(f"{message}: ", is_password=True)
         return result.strip()
 
     async def prompt_confirm(self, message: str, default: bool = False) -> bool:
         """Prompt for yes/no confirmation (async-safe)."""
+        self._stop_spinner()
         suffix = " [Y/n]" if default else " [y/N]"
         session: PromptSession[str] = PromptSession()
         result = await session.prompt_async(f"{message}{suffix}: ")
@@ -136,6 +190,7 @@ class ConsoleUI:
         default: str | None = None,
     ) -> str:
         """Prompt for choice from list (async-safe)."""
+        self._stop_spinner()
         session: PromptSession[str] = PromptSession()
         choices_str = "/".join(choices)
         default_str = f" [{default}]" if default else ""
@@ -158,3 +213,42 @@ class ConsoleUI:
             pass
 
         return result
+
+    def _stop_spinner(self) -> None:
+        """Stop any active spinner before prompting the user."""
+        if self._active_status:
+            try:
+                self._active_status.stop()
+            except Exception:
+                pass
+            self._active_status = None
+
+    def welcome_screen(
+        self,
+        *,
+        title: str,
+        warning_title: str,
+        hero_lines: list[str],
+        warning_lines: list[str],
+    ) -> None:
+        """Render legacy-inspired welcome screen with hero and warning panels."""
+        from rich.align import Align
+        from rich.panel import Panel
+
+        hero_panel = Panel(
+            Align.left("\n".join(hero_lines)),
+            title=title,
+            border_style="accent",
+            padding=(1, 3),
+        )
+
+        warning_panel = Panel(
+            Align.left("\n".join(warning_lines)),
+            title=warning_title,
+            border_style="warning",
+            padding=(1, 3),
+        )
+
+        self.console.print(hero_panel)
+        self.console.print()
+        self.console.print(warning_panel)

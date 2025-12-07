@@ -1,32 +1,25 @@
 """
-Merlya Router - Intent Classifier.
+Merlya Router - Intent Classification and Routing.
 
 Classifies user input to determine agent mode and tools.
-Uses local ONNX embedding model or LLM fallback.
+Uses local ONNX embedding model with LLM fallback for ambiguous cases.
 """
 
 from __future__ import annotations
 
-import asyncio
+import json
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from merlya.router.intent_classifier import AgentMode, IntentClassifier
+
+# Re-export for compatibility
+__all__ = ["AgentMode", "IntentClassifier", "IntentRouter", "RouterResult"]
+
 if TYPE_CHECKING:
-    import numpy as np
-    from numpy.typing import NDArray
-
-
-class AgentMode(str, Enum):
-    """Agent operating mode."""
-
-    DIAGNOSTIC = "diagnostic"
-    REMEDIATION = "remediation"
-    QUERY = "query"
-    CHAT = "chat"
+    pass
 
 
 @dataclass
@@ -38,304 +31,14 @@ class RouterResult:
     entities: dict[str, list[str]] = field(default_factory=dict)
     confidence: float = 0.0
     delegate_to: str | None = None
-
-
-# Intent patterns for classification
-INTENT_PATTERNS: dict[AgentMode, list[str]] = {
-    AgentMode.DIAGNOSTIC: [
-        "check",
-        "status",
-        "monitor",
-        "analyze",
-        "debug",
-        "diagnose",
-        "health",
-        "inspect",
-        "verify",
-        "scan",
-        "look at",
-        "what is",
-        "show me",
-        "list",
-        "find",
-        "search",
-    ],
-    AgentMode.REMEDIATION: [
-        "fix",
-        "repair",
-        "restart",
-        "stop",
-        "start",
-        "deploy",
-        "install",
-        "configure",
-        "update",
-        "upgrade",
-        "rollback",
-        "clean",
-        "remove",
-        "delete",
-        "create",
-        "change",
-        "modify",
-        "set",
-    ],
-    AgentMode.QUERY: [
-        "how",
-        "why",
-        "when",
-        "where",
-        "explain",
-        "describe",
-        "tell me",
-        "what does",
-        "difference between",
-        "compare",
-        "help me understand",
-    ],
-    AgentMode.CHAT: [
-        "hello",
-        "hi",
-        "hey",
-        "thanks",
-        "thank you",
-        "bye",
-        "goodbye",
-        "who are you",
-        "what can you do",
-    ],
-}
-
-# Tool activation keywords
-TOOL_KEYWORDS: dict[str, list[str]] = {
-    "system": [
-        "cpu",
-        "memory",
-        "ram",
-        "disk",
-        "process",
-        "service",
-        "uptime",
-        "load",
-        "system",
-        "os",
-        "kernel",
-    ],
-    "files": [
-        "file",
-        "directory",
-        "folder",
-        "config",
-        "log",
-        "read",
-        "write",
-        "copy",
-        "move",
-        "permission",
-    ],
-    "security": [
-        "security",
-        "port",
-        "firewall",
-        "ssh",
-        "key",
-        "certificate",
-        "ssl",
-        "tls",
-        "audit",
-        "permission",
-    ],
-    "docker": [
-        "docker",
-        "container",
-        "image",
-        "dockerfile",
-        "compose",
-    ],
-    "kubernetes": [
-        "kubernetes",
-        "k8s",
-        "pod",
-        "deployment",
-        "service",
-        "kubectl",
-        "helm",
-    ],
-}
-
-
-class IntentClassifier:
-    """
-    Intent classifier for user input.
-
-    Uses pattern matching for quick classification,
-    with optional ONNX embedding for better accuracy.
-    """
-
-    def __init__(self, use_embeddings: bool = False) -> None:
-        """
-        Initialize classifier.
-
-        Args:
-            use_embeddings: Whether to use ONNX embedding model.
-        """
-        self.use_embeddings = use_embeddings
-        self._session: Any | None = None
-        self._tokenizer: Any | None = None
-        self._embeddings_cache: dict[str, NDArray[np.float32]] = {}
-
-    async def load_model(self, model_path: Path | None = None) -> bool:
-        """
-        Load ONNX embedding model.
-
-        Args:
-            model_path: Path to ONNX model file.
-
-        Returns:
-            True if loaded successfully.
-        """
-        if not self.use_embeddings:
-            return True
-
-        try:
-            import onnxruntime as ort
-            from tokenizers import Tokenizer
-
-            # Default model path
-            if model_path is None:
-                model_path = Path.home() / ".merlya" / "models" / "router.onnx"
-
-            if not model_path.exists():
-                logger.warning(f"Model not found: {model_path}")
-                return False
-
-            # Load in thread to avoid blocking
-            def _load() -> tuple[Any, Any]:
-                sess = ort.InferenceSession(str(model_path))
-                tok_path = model_path.parent / "tokenizer.json"
-                tok = Tokenizer.from_file(str(tok_path)) if tok_path.exists() else None
-                return sess, tok
-
-            self._session, self._tokenizer = await asyncio.to_thread(_load)
-            logger.debug("Embedding model loaded")
-            return True
-
-        except ImportError:
-            logger.warning("onnxruntime not installed, using pattern matching")
-            self.use_embeddings = False
-            return False
-        except Exception as e:
-            logger.error(f"Failed to load embedding model: {e}")
-            self.use_embeddings = False
-            return False
-
-    def classify(self, text: str) -> RouterResult:
-        """
-        Classify user input.
-
-        Args:
-            text: User input text.
-
-        Returns:
-            RouterResult with mode, tools, and entities.
-        """
-        text_lower = text.lower()
-
-        # Extract entities
-        entities = self._extract_entities(text)
-
-        # Classify mode
-        mode, confidence = self._classify_mode(text_lower)
-
-        # Determine active tools
-        tools = self._determine_tools(text_lower, entities)
-
-        # Check for delegation to specialized agent
-        delegate_to = self._check_delegation(text_lower)
-
-        return RouterResult(
-            mode=mode,
-            tools=tools,
-            entities=entities,
-            confidence=confidence,
-            delegate_to=delegate_to,
-        )
-
-    def _classify_mode(self, text: str) -> tuple[AgentMode, float]:
-        """Classify the agent mode."""
-        scores: dict[AgentMode, float] = dict.fromkeys(AgentMode, 0.0)
-
-        for mode, patterns in INTENT_PATTERNS.items():
-            for pattern in patterns:
-                if pattern in text:
-                    scores[mode] += 1.0
-
-        # Normalize scores
-        total = sum(scores.values())
-        if total > 0:
-            for mode in scores:
-                scores[mode] /= total
-
-        # Get best mode
-        best_mode = max(scores, key=lambda m: scores[m])
-        confidence = scores[best_mode]
-
-        # Default to chat if no clear intent
-        if confidence < 0.2:
-            return AgentMode.CHAT, 0.5
-
-        return best_mode, confidence
-
-    def _determine_tools(self, text: str, entities: dict[str, list[str]]) -> list[str]:
-        """Determine which tools to activate."""
-        tools = ["core"]  # Core tools always active
-
-        for tool_category, keywords in TOOL_KEYWORDS.items():
-            if any(kw in text for kw in keywords):
-                tools.append(tool_category)
-
-        # If hosts mentioned, add system tools
-        if entities.get("hosts") and "system" not in tools:
-            tools.append("system")
-
-        return tools
-
-    def _extract_entities(self, text: str) -> dict[str, list[str]]:
-        """Extract entities from text."""
-        entities: dict[str, list[str]] = {
-            "hosts": [],
-            "variables": [],
-            "files": [],
-        }
-
-        # Extract @mentions (hosts or variables)
-        import re
-
-        mentions = re.findall(r"@(\w[\w.-]*)", text)
-        for mention in mentions:
-            # Variables usually have underscores, hosts have dashes
-            if "_" in mention or mention.isupper():
-                entities["variables"].append(mention)
-            else:
-                entities["hosts"].append(mention)
-
-        # Extract file paths
-        paths = re.findall(r"(/[\w/.-]+|\./[\w/.-]+|~/[\w/.-]+)", text)
-        entities["files"] = paths
-
-        return entities
-
-    def _check_delegation(self, text: str) -> str | None:
-        """Check if should delegate to specialized agent."""
-        for agent, keywords in TOOL_KEYWORDS.items():
-            if agent in ["docker", "kubernetes"] and any(kw in text for kw in keywords):
-                return agent
-        return None
+    reasoning: str | None = None  # For LLM fallback explanation
+    credentials_required: bool = False
+    elevation_required: bool = False
 
 
 class IntentRouter:
     """
-    Intent router with local/LLM classification.
+    Intent router with local classification and LLM fallback.
 
     Routes user input to appropriate agent mode and tools.
     """
@@ -345,15 +48,28 @@ class IntentRouter:
         Initialize router.
 
         Args:
-            use_local: Whether to use local classification.
+            use_local: Whether to use local embedding model.
         """
         self.classifier = IntentClassifier(use_embeddings=use_local)
-        self._llm_fallback: Any | None = None
+        self._llm_model: str | None = None
+        self._initialized = False
 
     async def initialize(self) -> None:
-        """Initialize the router."""
-        await self.classifier.load_model()
-        logger.debug("IntentRouter initialized")
+        """Initialize the router (load embedding model)."""
+        if not self._initialized:
+            await self.classifier.load_model()
+            self._initialized = True
+            logger.debug("🧠 IntentRouter initialized")
+
+    def set_llm_fallback(self, model: str) -> None:
+        """
+        Set LLM model for fallback classification.
+
+        Args:
+            model: LLM model string (e.g., "openai:gpt-4o-mini")
+        """
+        self._llm_model = model
+        logger.debug(f"🧠 LLM fallback set: {model}")
 
     async def route(
         self,
@@ -370,18 +86,165 @@ class IntentRouter:
         Returns:
             RouterResult with classification.
         """
-        result = self.classifier.classify(user_input)
+        # Ensure initialized
+        if not self._initialized:
+            await self.initialize()
+
+        # Classify input
+        result = await self._classify(user_input)
+
+        # If confidence is low and we have LLM fallback, use it
+        if (
+            result.confidence < self.classifier.CONFIDENCE_THRESHOLD
+            and self._llm_model
+        ):
+            llm_result = await self._classify_with_llm(user_input)
+            if llm_result:
+                result = llm_result
 
         # Check if delegation is valid
-        if result.delegate_to and available_agents and result.delegate_to not in available_agents:
+        if (
+            result.delegate_to
+            and available_agents
+            and result.delegate_to not in available_agents
+        ):
             result.delegate_to = None
 
         logger.debug(
-            f"Routed: mode={result.mode.value}, tools={result.tools}, delegate={result.delegate_to}"
+            f"🧠 Routed: mode={result.mode.value}, conf={result.confidence:.2f}, "
+            f"tools={result.tools}, delegate={result.delegate_to}"
         )
 
         return result
 
-    def set_llm_fallback(self, llm: Any) -> None:
-        """Set LLM for fallback classification."""
-        self._llm_fallback = llm
+    async def _classify(self, text: str) -> RouterResult:
+        """
+        Classify user input using embeddings or pattern matching.
+
+        Args:
+            text: User input text.
+
+        Returns:
+            RouterResult with mode, tools, and entities.
+        """
+        text_lower = text.lower()
+
+        # Extract entities first
+        entities = self.classifier.extract_entities(text)
+
+        # Try embedding-based classification
+        if self.classifier.model_loaded:
+            mode, confidence = await self.classifier.classify_embeddings(text)
+        else:
+            # Fallback to pattern matching
+            mode, confidence = self.classifier.classify_patterns(text_lower)
+
+        # Determine active tools
+        tools = self.classifier.determine_tools(text_lower, entities)
+
+        # Check for delegation to specialized agent
+        delegate_to = self.classifier.check_delegation(text_lower)
+
+        return RouterResult(
+            mode=mode,
+            tools=tools,
+            entities=entities,
+            confidence=confidence,
+            delegate_to=delegate_to,
+        )
+
+    async def _classify_with_llm(self, user_input: str) -> RouterResult | None:
+        """
+        Use LLM for intent classification when embedding confidence is low.
+
+        Args:
+            user_input: User input text.
+
+        Returns:
+            RouterResult or None if LLM fails.
+        """
+        if not self._llm_model:
+            return None
+
+        try:
+            from pydantic_ai import Agent
+
+            # Create classification prompt
+            system_prompt = """You are an intent classifier for an infrastructure management AI.
+Classify the user's input into one of these modes:
+- diagnostic: Checking status, monitoring, analyzing, listing, viewing
+- remediation: Fixing, changing, deploying, configuring, restarting
+- query: Asking questions, seeking explanations, learning
+- chat: Greetings, thanks, general conversation
+
+Also identify which tool categories are relevant:
+- system: CPU, memory, disk, processes, services
+- files: File operations, configurations, logs
+- security: Ports, firewall, SSH, certificates
+- docker: Container operations
+- kubernetes: K8s operations
+- credentials_required: true/false if auth credentials are needed
+- elevation_required: true/false if admin/root is needed
+
+Respond in JSON format:
+{"mode": "diagnostic|remediation|query|chat", "tools": ["core", "system", ...], "credentials_required": false, "elevation_required": false, "reasoning": "brief explanation"}"""
+
+            agent = Agent(
+                self._llm_model,
+                system_prompt=system_prompt,
+            )
+
+            response = await agent.run(f"Classify this input: {user_input}")
+
+            # Parse JSON response
+            return self._parse_llm_response(response, user_input)
+
+        except Exception as e:
+            logger.warning(f"⚠️ LLM classification failed: {e}")
+            return None
+
+    def _parse_llm_response(
+        self, response: object, user_input: str
+    ) -> RouterResult | None:
+        """Parse LLM classification response."""
+        try:
+            raw = getattr(response, "data", None)
+            if raw is None and hasattr(response, "output"):
+                raw = getattr(response, "output")
+            if raw is None:
+                raw = str(response)
+
+            data = json.loads(str(raw))
+            mode = AgentMode(data.get("mode", "chat"))
+            tools = data.get("tools", ["core"])
+            reasoning = data.get("reasoning")
+            credentials_required = bool(data.get("credentials_required", False))
+            elevation_required = bool(data.get("elevation_required", False))
+
+            # Re-extract entities
+            entities = self.classifier.extract_entities(user_input)
+            delegate_to = self.classifier.check_delegation(user_input.lower())
+
+            return RouterResult(
+                mode=mode,
+                tools=tools,
+                entities=entities,
+                confidence=0.9,  # LLM classifications are generally reliable
+                delegate_to=delegate_to,
+                reasoning=reasoning,
+                credentials_required=credentials_required,
+                elevation_required=elevation_required,
+            )
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"⚠️ Failed to parse LLM response: {e}")
+            return None
+
+    @property
+    def model_loaded(self) -> bool:
+        """Return True if the classifier model is loaded."""
+        return self.classifier.model_loaded
+
+    @property
+    def embedding_dim(self) -> int | None:
+        """Return embedding dimension if available."""
+        return self.classifier.embedding_dim

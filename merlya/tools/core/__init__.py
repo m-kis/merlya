@@ -11,6 +11,8 @@ from merlya.tools.core.tools import (
     get_variable,
     list_hosts,
     request_confirmation,
+    request_credentials,
+    request_elevation,
     set_variable,
     ssh_execute,
 )
@@ -22,6 +24,8 @@ __all__ = [
     "get_variable",
     "list_hosts",
     "request_confirmation",
+    "request_credentials",
+    "request_elevation",
     "set_variable",
     "ssh_execute",
 ]

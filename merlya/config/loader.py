@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from merlya.config.models import (
     GeneralConfig,
@@ -29,6 +29,8 @@ DEFAULT_CONFIG_PATH = Path.home() / ".merlya" / "config.yaml"
 class Config(BaseModel):
     """Complete application configuration."""
 
+    model_config = ConfigDict(extra="ignore")
+
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     model: LLMConfig = Field(default_factory=LLMConfig)
     router: RouterConfig = Field(default_factory=RouterConfig)
@@ -39,11 +41,6 @@ class Config(BaseModel):
     # Internal state
     _path: Path | None = None
     _first_run: bool = False
-
-    class Config:
-        """Pydantic config."""
-
-        extra = "ignore"
 
     @property
     def is_first_run(self) -> bool:

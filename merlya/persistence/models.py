@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # Import directly from types to avoid circular import through core.__init__
 from merlya.core.types import HostStatus
@@ -28,6 +28,8 @@ class OSInfo(BaseModel):
 
 class Host(BaseModel):
     """Host entity."""
+
+    model_config = ConfigDict(use_enum_values=True)
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
@@ -51,11 +53,6 @@ class Host(BaseModel):
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
-
-    class Config:
-        """Pydantic config."""
-
-        use_enum_values = True
 
 
 class Variable(BaseModel):

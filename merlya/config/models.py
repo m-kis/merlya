@@ -26,7 +26,7 @@ class LLMConfig(BaseModel):
     """LLM provider configuration."""
 
     provider: str = Field(default="openrouter", description="LLM provider name")
-    model: str = Field(default="anthropic/claude-3.5-sonnet", description="Model identifier")
+    model: str = Field(default="amazon/nova-2-lite-v1:free", description="Model identifier")
     api_key_env: str | None = Field(default=None, description="Environment variable for API key")
 
 
@@ -38,7 +38,10 @@ class RouterConfig(BaseModel):
     tier: str | None = Field(
         default=None, description="Model tier (performance, balanced, lightweight)"
     )
-    llm_fallback: str = Field(default="openai:gpt-4o-mini", description="LLM fallback for routing")
+    llm_fallback: str = Field(
+        default="openrouter:openrouter/auto",
+        description="LLM fallback for routing",
+    )
 
 
 class SSHConfig(BaseModel):

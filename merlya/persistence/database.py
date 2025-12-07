@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +19,30 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+
+# =============================================================================
+# SQLite datetime adapters for Python 3.12+ compatibility
+# =============================================================================
+
+
+def _adapt_datetime(val: datetime) -> str:
+    """Adapt datetime to ISO format string."""
+    return val.isoformat()
+
+
+def _convert_datetime(val: bytes) -> datetime:
+    """Convert ISO format string to datetime."""
+    try:
+        return datetime.fromisoformat(val.decode())
+    except (ValueError, AttributeError):
+        # Fallback for non-standard formats
+        return datetime.now()
+
+
+# Register adapters globally to suppress deprecation warnings
+sqlite3.register_adapter(datetime, _adapt_datetime)
+sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 
 # Default database path
 DEFAULT_DB_PATH = Path.home() / ".merlya" / "merlya.db"
@@ -62,7 +88,11 @@ class Database:
         """Open database connection and initialize schema."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._connection = await aiosqlite.connect(self.path)
+        # Use detect_types for datetime conversion
+        self._connection = await aiosqlite.connect(
+            self.path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        )
         self._connection.row_factory = aiosqlite.Row
 
         # Enable foreign keys

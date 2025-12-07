@@ -7,9 +7,11 @@ from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncssh
+
 import pytest
 
-from merlya.ssh.pool import SSHPool
+from merlya.ssh.pool import SSHConnectionOptions, SSHPool
 
 
 class TestSSHPoolSingleton:
@@ -143,7 +145,7 @@ class TestSSHPoolPortValidation:
         pool = await SSHPool.get_instance()
 
         with pytest.raises(ValueError, match="Invalid port number"):
-            await pool.get_connection("host", port=0)
+            await pool.get_connection("host", options=SSHConnectionOptions(port=0))
 
     @pytest.mark.asyncio
     async def test_port_validation_invalid_negative(self) -> None:
@@ -151,7 +153,7 @@ class TestSSHPoolPortValidation:
         pool = await SSHPool.get_instance()
 
         with pytest.raises(ValueError, match="Invalid port number"):
-            await pool.get_connection("host", port=-1)
+            await pool.get_connection("host", options=SSHConnectionOptions(port=-1))
 
     @pytest.mark.asyncio
     async def test_port_validation_invalid_too_high(self) -> None:
@@ -159,7 +161,7 @@ class TestSSHPoolPortValidation:
         pool = await SSHPool.get_instance()
 
         with pytest.raises(ValueError, match="Invalid port number"):
-            await pool.get_connection("host", port=65536)
+            await pool.get_connection("host", options=SSHConnectionOptions(port=65536))
 
 
 class TestSSHPoolExecute:
@@ -185,3 +187,37 @@ class TestSSHPoolExecute:
 
         with pytest.raises(ValueError, match="cannot be empty"):
             await pool.execute("", "ls")
+
+
+class TestSSHPoolPassphrase:
+    """Tests for passphrase callback invocation on encrypted key."""
+
+    def setup_method(self) -> None:
+        """Reset singleton before each test."""
+        SSHPool.reset_instance()
+
+    @pytest.mark.asyncio
+    async def test_passphrase_callback_used_on_keyimporterror(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Ensure KeyImportError triggers passphrase callback."""
+        pool = await SSHPool.get_instance()
+        pool._passphrase_callback = lambda _p: "secret-pass"
+
+        key_file = tmp_path / "id_rsa"
+        key_file.write_text("dummy")
+
+        call_order: list[str] = []
+
+        def fake_read_private_key(path: str, passphrase: str | None = None):
+            if passphrase is None:
+                call_order.append("first")
+                raise asyncssh.KeyImportError("Passphrase must be specified to import encrypted private keys")
+            call_order.append("second")
+            return MagicMock()
+
+        monkeypatch.setattr("asyncssh.read_private_key", fake_read_private_key)
+        monkeypatch.setattr(Path, "exists", lambda self: True)
+
+        key = await pool._load_private_key(key_file)
+
+        assert call_order == ["first", "second"]
+        assert key is not None

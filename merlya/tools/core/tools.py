@@ -133,6 +133,8 @@ async def ssh_execute(
     host: str,
     command: str,
     timeout: int = 60,
+    connect_timeout: int | None = None,
+    elevation: dict[str, Any] | None = None,
 ) -> ToolResult:
     """
     Execute a command on a host via SSH.
@@ -142,6 +144,8 @@ async def ssh_execute(
         host: Host name or hostname.
         command: Command to execute.
         timeout: Command timeout in seconds.
+        connect_timeout: Optional connection timeout.
+        elevation: Optional prepared elevation payload (from request_elevation).
 
     Returns:
         ToolResult with command output.
@@ -150,26 +154,98 @@ async def ssh_execute(
         # Resolve host from inventory
         host_entry = await ctx.hosts.get_by_name(host)
 
+        # Apply prepared elevation (brain-driven only)
+        input_data = None
+        elevation_used = None
+        base_command = command
+        elevation_needs_password = False
+
+        # Build SSH connection options from host inventory
+        from merlya.ssh import SSHConnectionOptions
+
+        ssh_opts = SSHConnectionOptions(connect_timeout=connect_timeout)
+
+        # Resolve jump host details from inventory if present
+        if host_entry and host_entry.jump_host:
+            try:
+                jump_entry = await ctx.hosts.get_by_name(host_entry.jump_host)
+            except Exception:  # noqa: PERF203
+                jump_entry = None
+
+            if jump_entry:
+                ssh_opts.jump_host = jump_entry.hostname
+                ssh_opts.jump_port = jump_entry.port
+                ssh_opts.jump_username = jump_entry.username
+                ssh_opts.jump_private_key = jump_entry.private_key
+            else:
+                ssh_opts.jump_host = host_entry.jump_host
+
+        if elevation:
+            command = elevation.get("command", command)
+            base_command = elevation.get("base_command", command)
+            input_data = elevation.get("input")
+            elevation_used = elevation.get("method")
+            elevation_needs_password = bool(elevation.get("needs_password"))
+
         # Get SSH pool
         ssh_pool = await ctx.get_ssh_pool()
+        _ensure_callbacks(ctx, ssh_pool)
 
-        if host_entry:
-            result = await ssh_pool.execute(
-                host=host_entry.hostname,
-                command=command,
-                timeout=timeout,
-                port=host_entry.port,
-                username=host_entry.username,
-                private_key=host_entry.private_key,
-                jump_host=host_entry.jump_host,
-            )
-        else:
-            # Direct hostname
-            result = await ssh_pool.execute(
+        async def _run(cmd: str, inp: str | None) -> Any:
+            if host_entry:
+                opts = SSHConnectionOptions(
+                    port=host_entry.port,
+                    connect_timeout=connect_timeout,
+                )
+                # Copy jump host config if present
+                if ssh_opts.jump_host:
+                    opts.jump_host = ssh_opts.jump_host
+                    opts.jump_port = ssh_opts.jump_port
+                    opts.jump_username = ssh_opts.jump_username
+                    opts.jump_private_key = ssh_opts.jump_private_key
+
+                return await ssh_pool.execute(
+                    host=host_entry.hostname,
+                    command=cmd,
+                    timeout=timeout,
+                    input_data=inp,
+                    username=host_entry.username,
+                    private_key=host_entry.private_key,
+                    options=opts,
+                )
+            return await ssh_pool.execute(
                 host=host,
-                command=command,
+                command=cmd,
                 timeout=timeout,
+                input_data=inp,
+                options=ssh_opts,
             )
+
+        result = await _run(command, input_data)
+
+        # If elevation was password-optional and failed, retry with password
+        if (
+            not result.exit_code == 0
+            and elevation_used
+            and elevation_needs_password
+            and not input_data
+        ):
+            try:
+                permissions = await ctx.get_permissions()
+                password = await ctx.ui.prompt_secret("🔑 Elevation password required")
+                if password:
+                    if elevation_used == "sudo_with_password":
+                        command, input_data = permissions._elevate_command(  # type: ignore[attr-defined]
+                            base_command, {"is_root": False}, "sudo_with_password", password
+                        )
+                    elif elevation_used == "su":
+                        command, input_data = permissions._elevate_command(  # type: ignore[attr-defined]
+                            base_command, {"is_root": False}, "su", password
+                        )
+                    result = await _run(command, input_data)
+                    elevation_used = f"{elevation_used}_retry"
+            except Exception as retry_exc:  # noqa: PERF203
+                logger.debug(f"Elevation retry failed: {retry_exc}")
 
         return ToolResult(
             success=result.exit_code == 0,
@@ -179,6 +255,7 @@ async def ssh_execute(
                 "exit_code": result.exit_code,
                 "host": host,
                 "command": command[:50] + "..." if len(command) > 50 else command,
+                "elevation": elevation_used,
             },
             error=result.stderr if result.exit_code != 0 else None,
         )
@@ -190,6 +267,30 @@ async def ssh_execute(
             data={"host": host, "command": command[:50]},
             error=str(e),
         )
+
+
+def _ensure_callbacks(ctx: "SharedContext", ssh_pool: Any) -> None:
+    """
+    Ensure MFA and passphrase callbacks are set for SSH operations.
+
+    Uses blocking prompts in background threads to avoid event-loop conflicts.
+    """
+    import concurrent.futures
+    import asyncio as _asyncio
+
+    if hasattr(ssh_pool, "has_passphrase_callback") and not ssh_pool.has_passphrase_callback():
+        def passphrase_cb(key_path: str) -> str:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 Passphrase for {key_path}")))
+                return future.result(timeout=60)
+        ssh_pool.set_passphrase_callback(passphrase_cb)
+
+    if hasattr(ssh_pool, "has_mfa_callback") and not ssh_pool.has_mfa_callback():
+        def mfa_cb(prompt: str) -> str:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}")))
+                return future.result(timeout=120)
+        ssh_pool.set_mfa_callback(mfa_cb)
 
 
 async def ask_user(
@@ -270,6 +371,19 @@ async def request_confirmation(
     except Exception as e:
         logger.error(f"Failed to get confirmation: {e}")
         return ToolResult(success=False, data=False, error=str(e))
+
+
+# Placeholder exports for interaction tools (implemented in merlya/tools/interaction.py)
+async def request_credentials(*args: Any, **kwargs: Any) -> ToolResult:  # pragma: no cover - shim
+    from merlya.tools.interaction import request_credentials as _rc
+
+    return await _rc(*args, **kwargs)
+
+
+async def request_elevation(*args: Any, **kwargs: Any) -> ToolResult:  # pragma: no cover - shim
+    from merlya.tools.interaction import request_elevation as _re
+
+    return await _re(*args, **kwargs)
 
 
 async def get_variable(

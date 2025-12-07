@@ -7,13 +7,17 @@ Handles LLM provider setup, inventory scanning, and host import.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from merlya.setup.models import HostData
+
 if TYPE_CHECKING:
+    from typing import Callable
+
     from merlya.core.context import SharedContext
     from merlya.ui.console import ConsoleUI
 
@@ -25,6 +29,7 @@ class LLMConfig:
     provider: str
     model: str
     api_key_env: str | None = None
+    fallback_model: str | None = None
 
 
 @dataclass
@@ -33,43 +38,60 @@ class SetupResult:
 
     llm_config: LLMConfig | None = None
     hosts_imported: int = 0
+    hosts_skipped: int = 0
+    sources_imported: list[str] = field(default_factory=list)
     completed: bool = False
 
 
+@dataclass
+class InventorySource:
+    """Detected inventory source."""
+
+    name: str
+    path: Path
+    source_type: str
+    host_count: int
+
+
+# Provider config: (provider_name, env_key, default_model, fallback_model)
 PROVIDERS = {
-    "1": ("openrouter", "OPENROUTER_API_KEY", "x-ai/grok-4.1-fast:free"),
-    "2": ("anthropic", "ANTHROPIC_API_KEY", "claude-3-5-sonnet-latest"),
-    "3": ("openai", "OPENAI_API_KEY", "gpt-4o"),
-    "4": ("ollama", None, "llama3.2"),
+    "1": (
+        "openrouter",
+        "OPENROUTER_API_KEY",
+        "amazon/nova-2-lite-v1:free",
+        "openrouter:openrouter/auto",
+    ),
+    "2": ("anthropic", "ANTHROPIC_API_KEY", "claude-3-5-sonnet-latest", "anthropic:claude-3-haiku-20240307"),
+    "3": ("openai", "OPENAI_API_KEY", "gpt-4o", "openai:gpt-4o-mini"),
+    "4": ("ollama", None, "llama3.2", "ollama:llama3.2"),
 }
 
 
-async def run_llm_setup(ui: ConsoleUI) -> LLMConfig | None:
+async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMConfig | None:
     """
     Run LLM provider setup wizard.
 
     Args:
         ui: Console UI.
+        ctx: Optional shared context for i18n.
 
     Returns:
         LLMConfig or None if cancelled.
     """
-    ui.panel(
-        """
-Configuration du Provider LLM
+    # Helper for translations - use translation_key to avoid conflict with {key} placeholder
+    def t(translation_key: str, **kwargs: Any) -> str:
+        if ctx:
+            return ctx.i18n.t(translation_key, **kwargs)
+        return translation_key
 
-Providers disponibles:
-  1. OpenRouter (recommande - multi-modeles)
-  2. Anthropic (Claude direct)
-  3. OpenAI (GPT models)
-  4. Ollama (modeles locaux)
-        """,
-        title="Setup",
+    ui.panel(
+        t("setup.llm_config.providers"),
+        title=t("setup.llm_config.title"),
         style="info",
     )
 
     choice = await ui.prompt_choice(
-        "Selectionnez un provider",
+        t("setup.llm_config.select_provider"),
         choices=["1", "2", "3", "4"],
         default="1",
     )
@@ -77,324 +99,308 @@ Providers disponibles:
     if choice not in PROVIDERS:
         choice = "1"
 
-    provider, env_key, default_model = PROVIDERS[choice]
+    provider, env_key, default_model, fallback_model = PROVIDERS[choice]
 
-    # Check for existing API key
     if env_key:
         from merlya.secrets import get_secret, set_secret
 
-        existing_key = os.environ.get(env_key) or get_secret(env_key)
-        if existing_key:
-            ui.success(f"API key trouvee ({env_key})")
+        env_value = os.environ.get(env_key)
+        keyring_value = get_secret(env_key)
+
+        if env_value:
+            ui.success(t("setup.llm_config.api_key_found", api_key=f"{env_key} - env"))
+        elif keyring_value:
+            ui.success(t("setup.llm_config.api_key_found", api_key=f"{env_key} - keyring"))
+            os.environ[env_key] = keyring_value
         else:
-            api_key = await ui.prompt_secret(f"Entrez votre {env_key}")
+            api_key = await ui.prompt_secret(t("setup.llm_config.enter_api_key", api_key=env_key))
             if api_key:
-                # Save to keyring for persistence
                 set_secret(env_key, api_key)
-                # Also set in environment for this session
                 os.environ[env_key] = api_key
-                ui.success("API key configuree et stockee de maniere securisee")
+                ui.success(t("setup.llm_config.api_key_saved"))
             else:
-                ui.warning("Pas d'API key fournie")
+                ui.warning(t("setup.llm_config.api_key_missing"))
                 return None
 
-    # Model selection
-    model = await ui.prompt(
-        "Modele par defaut",
-        default=default_model,
-    )
+    model = await ui.prompt(t("setup.llm_config.select_model"), default=default_model)
 
-    return LLMConfig(
-        provider=provider,
-        model=model,
-        api_key_env=env_key,
-    )
+    return LLMConfig(provider=provider, model=model, api_key_env=env_key, fallback_model=fallback_model)
 
 
-async def detect_inventory_sources(ui: ConsoleUI) -> list[tuple[str, Path, int]]:
-    """
-    Detect available inventory sources.
+async def detect_inventory_sources(ui: ConsoleUI) -> list[InventorySource]:
+    """Detect available inventory sources."""
+    from merlya.setup.parsers.ansible import count_ansible_hosts
+    from merlya.setup.parsers.etc_hosts import count_etc_hosts
+    from merlya.setup.parsers.known_hosts import count_known_hosts
+    from merlya.setup.parsers.ssh_config import count_ssh_hosts
 
-    Args:
-        ui: Console UI.
-
-    Returns:
-        List of (name, path, host_count) tuples.
-    """
-    sources: list[tuple[str, Path, int]] = []
-
-    ui.info("Recherche des sources d'inventaire...")
+    sources: list[InventorySource] = []
 
     # /etc/hosts
     etc_hosts = Path("/etc/hosts")
     if etc_hosts.exists():
-        count = _count_etc_hosts(etc_hosts)
+        count = count_etc_hosts(etc_hosts)
         if count > 0:
-            sources.append(("/etc/hosts", etc_hosts, count))
+            sources.append(InventorySource(
+                name="/etc/hosts", path=etc_hosts, source_type="etc_hosts", host_count=count
+            ))
 
     # SSH config
     ssh_config = Path.home() / ".ssh" / "config"
     if ssh_config.exists():
-        count = _count_ssh_hosts(ssh_config)
+        count = count_ssh_hosts(ssh_config)
         if count > 0:
-            sources.append(("SSH Config", ssh_config, count))
+            sources.append(InventorySource(
+                name="SSH Config", path=ssh_config, source_type="ssh_config", host_count=count
+            ))
 
     # Known hosts
     known_hosts = Path.home() / ".ssh" / "known_hosts"
     if known_hosts.exists():
-        count = _count_known_hosts(known_hosts)
+        count = count_known_hosts(known_hosts)
         if count > 0:
-            sources.append(("Known Hosts", known_hosts, count))
+            sources.append(InventorySource(
+                name="Known Hosts", path=known_hosts, source_type="known_hosts", host_count=count
+            ))
 
     # Ansible inventory
-    ansible_paths = [
-        Path.home() / "inventory",
-        Path.home() / "ansible" / "hosts",
-        Path("/etc/ansible/hosts"),
-        Path.cwd() / "inventory",
-    ]
-    for path in ansible_paths:
+    for path in [Path.home() / "inventory", Path("/etc/ansible/hosts"), Path.cwd() / "inventory"]:
         if path.exists() and path.is_file():
-            count = _count_ansible_hosts(path)
+            count = count_ansible_hosts(path)
             if count > 0:
-                sources.append((f"Ansible ({path.name})", path, count))
+                sources.append(InventorySource(
+                    name=f"Ansible ({path.name})", path=path, source_type="ansible", host_count=count
+                ))
 
     return sources
 
 
-def _count_etc_hosts(path: Path) -> int:
-    """Count hosts in /etc/hosts."""
-    count = 0
-    try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#"):
-                parts = line.split()
-                if len(parts) >= 2 and not parts[1].startswith("localhost"):
-                    count += 1
-    except Exception:
-        pass
-    return count
+async def parse_inventory_source(source: InventorySource) -> list[HostData]:
+    """Parse an inventory source based on its type."""
+    from merlya.setup.parsers import (
+        parse_ansible_inventory,
+        parse_etc_hosts,
+        parse_known_hosts,
+        parse_ssh_config,
+    )
+
+    parsers = {
+        "etc_hosts": parse_etc_hosts,
+        "ssh_config": parse_ssh_config,
+        "known_hosts": parse_known_hosts,
+        "ansible": parse_ansible_inventory,
+    }
+
+    parser = parsers.get(source.source_type)
+    if parser:
+        return await parser(source.path)
+
+    logger.warning(f"⚠️ Unknown source type: {source.source_type}")
+    return []
 
 
-def _count_ssh_hosts(path: Path) -> int:
-    """Count hosts in SSH config."""
-    count = 0
-    try:
-        for line in path.read_text().splitlines():
-            if line.strip().lower().startswith("host "):
-                hosts = line.split()[1:]
-                for h in hosts:
-                    if h != "*" and not h.startswith("!"):
-                        count += 1
-    except Exception:
-        pass
-    return count
+async def merge_host_data(hosts: list[HostData]) -> list[HostData]:
+    """Merge host data from multiple sources."""
+    merged: dict[str, HostData] = {}
+    priority = {"ssh-config": 4, "ansible": 3, "known-hosts": 2, "etc-hosts": 1}
+
+    for host in hosts:
+        name = host.name.lower()
+        tag_priority = max((priority.get(t.split(":")[0], 0) for t in host.tags), default=0)
+
+        if name not in merged:
+            merged[name] = host
+        else:
+            existing = merged[name]
+            existing_priority = max((priority.get(t.split(":")[0], 0) for t in existing.tags), default=0)
+
+            if tag_priority > existing_priority:
+                _merge_fields(host, existing)
+                host.tags = list(set(host.tags + existing.tags))
+                merged[name] = host
+            else:
+                _merge_fields(existing, host)
+                existing.tags = list(set(existing.tags + host.tags))
+
+    return list(merged.values())
 
 
-def _count_known_hosts(path: Path) -> int:
-    """Count hosts in known_hosts."""
-    try:
-        return len(path.read_text().splitlines())
-    except Exception:
-        return 0
+def _merge_fields(target: HostData, source: HostData) -> None:
+    """Merge missing fields from source into target."""
+    if not target.hostname and source.hostname:
+        target.hostname = source.hostname
+    if not target.username and source.username:
+        target.username = source.username
+    if not target.private_key and source.private_key:
+        target.private_key = source.private_key
+    if not target.jump_host and source.jump_host:
+        target.jump_host = source.jump_host
 
 
-def _count_ansible_hosts(path: Path) -> int:
-    """Count hosts in Ansible inventory."""
-    count = 0
-    try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and not line.startswith("["):
-                count += 1
-    except Exception:
-        pass
-    return count
+async def deduplicate_hosts(hosts: list[HostData], existing_names: set[str]) -> tuple[list[HostData], int]:
+    """Deduplicate hosts by name."""
+    seen: dict[str, HostData] = {}
+    duplicates = 0
 
+    for host in hosts:
+        name = host.name.lower()
+        if name in existing_names:
+            duplicates += 1
+            continue
 
-async def import_from_ssh_config(
-    path: Path,
-    _ctx: SharedContext | None = None,
-) -> list[dict[str, str]]:
-    """
-    Parse SSH config and extract hosts.
+        if name not in seen:
+            seen[name] = host
+        else:
+            existing = seen[name]
+            existing_score = sum([
+                bool(existing.hostname), bool(existing.username),
+                bool(existing.private_key), bool(existing.jump_host),
+            ])
+            new_score = sum([
+                bool(host.hostname), bool(host.username),
+                bool(host.private_key), bool(host.jump_host),
+            ])
+            if new_score > existing_score:
+                seen[name] = host
+            duplicates += 1
 
-    Args:
-        path: Path to SSH config.
-        ctx: Optional context for saving.
-
-    Returns:
-        List of parsed host dicts.
-    """
-    hosts: list[dict[str, str]] = []
-    current_host: dict[str, str] = {}
-
-    try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            if line.lower().startswith("host "):
-                if current_host and "name" in current_host:
-                    hosts.append(current_host)
-                current_host = {"name": line.split()[1]}
-            elif "=" in line or " " in line:
-                key, _, value = line.partition("=")
-                if not value:
-                    parts = line.split(None, 1)
-                    if len(parts) == 2:
-                        key, value = parts
-
-                key = key.strip().lower()
-                value = value.strip()
-
-                if key == "hostname":
-                    current_host["hostname"] = value
-                elif key == "port":
-                    current_host["port"] = value
-                elif key == "user":
-                    current_host["username"] = value
-                elif key == "identityfile":
-                    current_host["private_key"] = value
-                elif key == "proxyjump":
-                    current_host["jump_host"] = value
-
-        if current_host and "name" in current_host:
-            hosts.append(current_host)
-
-    except Exception as e:
-        logger.error(f"Failed to parse SSH config: {e}")
-
-    return hosts
+    return list(seen.values()), duplicates
 
 
 async def run_setup_wizard(ui: ConsoleUI, ctx: SharedContext | None = None) -> SetupResult:
-    """
-    Run the complete setup wizard.
-
-    Args:
-        ui: Console UI.
-        ctx: Optional shared context for host persistence.
-
-    Returns:
-        SetupResult with configuration.
-    """
+    """Run the complete setup wizard."""
     result = SetupResult()
 
-    # Step 0: Language selection
-    ui.panel(
-        """
-Welcome to Merlya! / Bienvenue dans Merlya!
+    def t(translation_key: str, **kwargs: Any) -> str:
+        if ctx:
+            return ctx.i18n.t(translation_key, **kwargs)
+        return translation_key
 
-Select your language / Choisissez votre langue:
-  1. English
-  2. Français
-        """,
+    # Language selection
+    ui.panel(
+        "Welcome to Merlya! / Bienvenue dans Merlya!\n\n"
+        "Select your language / Choisissez votre langue:\n"
+        "  1. English\n  2. Français",
         title="Merlya Setup",
         style="info",
     )
 
-    lang_choice = await ui.prompt_choice(
-        "Language / Langue",
-        choices=["1", "2"],
-        default="2",
-    )
+    lang_choice = await ui.prompt_choice("Language / Langue", choices=["1", "2"], default="2")
     lang = "en" if lang_choice == "1" else "fr"
     if ctx:
         ctx.i18n.set_language(lang)
 
-    ui.panel(
-        ctx.t("setup.welcome") if ctx else "Bienvenue dans Merlya!",
-        title="Merlya Setup",
-        style="info",
-    )
+    ui.panel(t("setup.welcome"), title=t("setup.title"), style="info")
 
-    # Step 1: LLM Setup
+    # LLM Setup
     ui.newline()
-    ui.info(ctx.t("setup.step_llm") if ctx else "**Etape 1: Configuration LLM**")
-
-    llm_config = await run_llm_setup(ui)
+    ui.info(t("setup.step_llm"))
+    llm_config = await run_llm_setup(ui, ctx)
     if llm_config:
         result.llm_config = llm_config
         ui.success(f"Provider: {llm_config.provider}, Model: {llm_config.model}")
     else:
-        ui.warning("Configuration LLM ignoree")
+        ui.warning(t("setup.llm_config.skipped"))
 
-    # Step 2: Inventory detection
+    # Inventory import
     ui.newline()
-    ui.info("**Etape 2: Detection des inventaires**")
+    ui.info(t("setup.step_inventory"))
+    ui.info(t("setup.inventory.searching"))
 
     sources = await detect_inventory_sources(ui)
 
     if sources:
         ui.newline()
-        ui.info("Sources detectees:")
-        for name, _path, count in sources:
-            ui.info(f"  {name}: {count} host(s)")
+        ui.info(t("setup.inventory.detected_sources"))
+        total_hosts = sum(s.host_count for s in sources)
+        for source in sources:
+            ui.info(t("setup.inventory.source_item", name=source.name, count=source.host_count))
 
         do_import = await ui.prompt_confirm(
-            "Voulez-vous importer ces hosts?",
-            default=True,
+            t("setup.inventory.import_prompt") + f" ({total_hosts} host(s))", default=True
         )
 
         if do_import and ctx:
-            from merlya.persistence.models import Host
-
-            # Import from SSH config if found
-            for name, path, _count in sources:
-                if "SSH Config" in name:
-                    hosts_data = await import_from_ssh_config(path)
-                    for hd in hosts_data:
-                        if hd.get("name") and hd["name"] != "*":
-                            try:
-                                host = Host(
-                                    name=hd["name"],
-                                    hostname=hd.get("hostname", hd["name"]),
-                                    port=int(hd.get("port", 22)),
-                                    username=hd.get("username"),
-                                    private_key=hd.get("private_key"),
-                                    jump_host=hd.get("jump_host"),
-                                )
-                                await ctx.hosts.create(host)
-                                result.hosts_imported += 1
-                            except Exception as e:
-                                logger.debug(f"Failed to import host {hd['name']}: {e}")
-                    ui.success(f"Importe {result.hosts_imported} host(s) depuis {name}")
+            result = await _import_hosts_from_sources(ui, ctx, sources, result, t)
     else:
-        ui.info("Aucune source d'inventaire detectee")
+        ui.info(t("setup.inventory.no_sources"))
 
-    # Done
     ui.newline()
     result.completed = True
 
+    provider_name = result.llm_config.provider if result.llm_config else "N/A"
     ui.panel(
-        f"""
-Setup termine!
-
-- Provider LLM: {result.llm_config.provider if result.llm_config else "non configure"}
-- Hosts importes: {result.hosts_imported}
-
-Utilisez /help pour voir les commandes disponibles.
-        """,
-        title="Setup Complete",
+        t("setup.complete.summary", provider=provider_name, hosts=result.hosts_imported),
+        title=t("setup.complete.title"),
         style="success",
     )
 
     return result
 
 
-async def check_first_run() -> bool:
-    """
-    Check if this is a first run.
+async def _import_hosts_from_sources(
+    ui: ConsoleUI,
+    ctx: SharedContext,
+    sources: list[InventorySource],
+    result: SetupResult,
+    t: Callable[..., str],
+) -> SetupResult:
+    """Import hosts from detected sources."""
+    from merlya.persistence.models import Host
 
-    Returns:
-        True if first run (no config exists).
-    """
+    ui.newline()
+    all_hosts: list[HostData] = []
+
+    for source in sources:
+        ui.info(t("setup.inventory.importing", count=source.host_count, name=source.name))
+        parsed = await parse_inventory_source(source)
+        all_hosts.extend(parsed)
+        result.sources_imported.append(source.name)
+
+    merged_hosts = await merge_host_data(all_hosts)
+    existing_hosts = await ctx.hosts.list()
+    existing_names = {h.name.lower() for h in existing_hosts}
+    unique_hosts, duplicates = await deduplicate_hosts(merged_hosts, existing_names)
+    result.hosts_skipped = duplicates
+
+    for host_data in unique_hosts:
+        try:
+            host = Host(
+                name=host_data.name,
+                hostname=host_data.hostname or host_data.name,
+                port=host_data.port,
+                username=host_data.username,
+                private_key=host_data.private_key,
+                jump_host=host_data.jump_host,
+                tags=host_data.tags,
+            )
+            await ctx.hosts.create(host)
+            result.hosts_imported += 1
+        except Exception as e:
+            logger.debug(f"⚠️ Failed to import host {host_data.name}: {e}")
+            result.hosts_skipped += 1
+
+    ui.newline()
+    ui.success(t("commands.hosts.import_complete", count=result.hosts_imported))
+    if result.hosts_skipped > 0:
+        ui.info(t("commands.hosts.import_errors", count=result.hosts_skipped))
+
+    return result
+
+
+async def check_first_run() -> bool:
+    """Check if this is a first run."""
     config_path = Path.home() / ".merlya" / "config.yaml"
     return not config_path.exists()
 
 
-if TYPE_CHECKING:
-    from merlya.core.context import SharedContext
+# =============================================================================
+# IMPORT/EXPORT UTILITIES
+# =============================================================================
+
+
+def import_from_ssh_config(path: Path) -> list[dict[str, Any]]:
+    """Import hosts from SSH config file (sync version for commands)."""
+    from merlya.setup.parsers.ssh_config import import_from_ssh_config as _import
+
+    return _import(path)

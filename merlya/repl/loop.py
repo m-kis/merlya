@@ -7,6 +7,8 @@ Interactive console with autocompletion.
 from __future__ import annotations
 
 import re
+import os
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -14,6 +16,7 @@ if TYPE_CHECKING:
 
     from merlya.agent import MerlyaAgent
     from merlya.core.context import SharedContext
+    from merlya.router import IntentRouter
 
 from loguru import logger
 from prompt_toolkit import PromptSession
@@ -135,6 +138,8 @@ class REPL:
         self.agent = agent
         self.completer = MerlyaCompleter(ctx)
         self.running = False
+        self.router: IntentRouter | None = None
+        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Setup prompt session
         history_path = ctx.config.general.data_dir / "history"
@@ -152,6 +157,9 @@ class REPL:
         # Initialize commands
         init_commands()
         registry = get_registry()
+
+        # Router prepared during startup
+        self.router = self.ctx.router
 
         # Welcome message
         self._show_welcome()
@@ -183,6 +191,10 @@ class REPL:
                                 break
                             if result.data.get("new_conversation"):
                                 self.agent.clear_history()
+                            if result.data.get("load_conversation"):
+                                self.agent.load_conversation(result.data["load_conversation"])
+                            if result.data.get("reload_agent"):
+                                self._reload_agent()
 
                         # Display result
                         if result.success:
@@ -192,18 +204,17 @@ class REPL:
                     continue
 
                 # Route and process with agent
-                from merlya.router import IntentRouter
-
-                router = IntentRouter()
-                await router.initialize()
-
-                route_result = await router.route(user_input)
+                if not self.router:
+                    raise RuntimeError("Router not initialized")
+                with self.ctx.ui.spinner(self.ctx.t("ui.spinner.routing")):
+                    route_result = await self.router.route(user_input)
 
                 # Expand @ mentions
                 expanded_input = await self._expand_mentions(user_input)
 
                 # Run agent
-                response = await self.agent.run(expanded_input, route_result)
+                with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
+                    response = await self.agent.run(expanded_input, route_result)
 
                 # Display response
                 self.ctx.ui.newline()
@@ -262,15 +273,59 @@ class REPL:
 
     def _show_welcome(self) -> None:
         """Show welcome message."""
-        self.ctx.ui.panel(
-            f"""
-Merlya v{self._get_version()} - AI Infrastructure Assistant
+        env = os.environ.get("MERLYA_ENV", "dev")
+        provider = f"✅ {self.ctx.config.model.provider} ({self.ctx.config.model.model})"
+        router_mode = (
+            "✅ local"
+            if self.router and getattr(self.router.classifier, "model_loaded", False)
+            else f"🔀 {self.ctx.config.router.llm_fallback or 'pattern'}"
+        )
+        keyring_status = (
+            "✅ Keyring"
+            if getattr(self.ctx.secrets, "is_secure", False)
+            else self.ctx.t("welcome_screen.keyring_fallback")
+        )
 
-Type your request or use /help for commands.
-Use @hostname to reference hosts, @variable for variables.
-            """,
-            title="Welcome",
-            style="info",
+        hero_lines = [
+            self.ctx.t("welcome_screen.subtitle", version=self._get_version()),
+            "",
+            self.ctx.t("welcome_screen.env_session", env=env, session=self.session_id),
+            "",
+            self.ctx.t("welcome_screen.provider", provider=provider),
+            self.ctx.t("welcome_screen.router", router=router_mode),
+            self.ctx.t("welcome_screen.keyring", keyring=keyring_status),
+            "",
+            self.ctx.t("welcome_screen.commands_hint"),
+            "",
+            self.ctx.t("welcome_screen.command_help"),
+            self.ctx.t("welcome_screen.command_conv"),
+            self.ctx.t("welcome_screen.command_new"),
+            self.ctx.t("welcome_screen.command_scan"),
+            self.ctx.t("welcome_screen.command_exit"),
+            "",
+            self.ctx.t("welcome_screen.prompt"),
+        ]
+
+        tips = [
+            self.ctx.t("welcome_screen.tip_specific"),
+            self.ctx.t("welcome_screen.tip_target"),
+            self.ctx.t("welcome_screen.tip_context"),
+        ]
+
+        warning_lines = [
+            self.ctx.t("welcome_screen.warning_header"),
+            "",
+            self.ctx.t("welcome_screen.warning_body"),
+            "",
+            self.ctx.t("welcome_screen.warning_tips_title"),
+            *[f"• {tip}" for tip in tips],
+        ]
+
+        self.ctx.ui.welcome_screen(
+            title=self.ctx.t("welcome_screen.title"),
+            warning_title=self.ctx.t("welcome_screen.warning_title"),
+            hero_lines=hero_lines,
+            warning_lines=warning_lines,
         )
 
     def _get_version(self) -> str:
@@ -281,6 +336,45 @@ Use @hostname to reference hosts, @variable for variables.
             return version("merlya")
         except Exception:
             return "0.5.0"
+
+    def _reload_agent(self) -> None:
+        """Reload agent with current model settings."""
+        from merlya.agent import MerlyaAgent
+
+        model = f"{self.ctx.config.model.provider}:{self.ctx.config.model.model}"
+        self.agent = MerlyaAgent(self.ctx, model=model)
+        self.agent.clear_history()
+
+
+def _load_api_keys_from_keyring(ctx: SharedContext) -> None:
+    """
+    Load API keys from keyring into environment variables.
+
+    This ensures the agent can access API keys stored securely in keyring.
+    """
+    import os
+
+    from merlya.secrets import get_secret
+
+    # Get the configured API key env variable
+    api_key_env = ctx.config.model.api_key_env
+    if not api_key_env:
+        # Fallback to provider-based env var
+        provider = ctx.config.model.provider.upper()
+        api_key_env = f"{provider}_API_KEY"
+
+    # Check if already in environment
+    if os.environ.get(api_key_env):
+        logger.debug(f"🔑 API key already in environment: {api_key_env}")
+        return
+
+    # Try to load from keyring
+    secret_value = get_secret(api_key_env)
+    if secret_value:
+        os.environ[api_key_env] = secret_value
+        logger.debug(f"🔑 Loaded API key from keyring: {api_key_env}")
+    else:
+        logger.warning(f"⚠️ No API key found for {api_key_env}")
 
 
 async def run_repl() -> None:
@@ -309,12 +403,18 @@ async def run_repl() -> None:
             ctx.config.model.provider = result.llm_config.provider
             ctx.config.model.model = result.llm_config.model
             ctx.config.model.api_key_env = result.llm_config.api_key_env
+            # Set router fallback to use same provider
+            if result.llm_config.fallback_model:
+                ctx.config.router.llm_fallback = result.llm_config.fallback_model
             # Save config to disk
             ctx.config.save()
             ctx.ui.success("Configuration saved to ~/.merlya/config.yaml")
 
+    # Load API keys from keyring into environment
+    _load_api_keys_from_keyring(ctx)
+
     # Run health checks
-    ctx.ui.info("Running health checks...")
+    ctx.ui.info(ctx.t("startup.health_checks"))
     health = await run_startup_checks()
 
     for check in health.checks:
@@ -325,6 +425,16 @@ async def run_repl() -> None:
         return
 
     ctx.health = health
+
+    # Initialize intent router using health tier and config
+    await ctx.init_router(health.model_tier)
+    router = ctx.router
+    if router and router.classifier.model_loaded:
+        dims = router.classifier.embedding_dim or "?"
+        ctx.ui.info(ctx.t("startup.router_init", model="local", dims=dims))
+    else:
+        fallback = ctx.config.router.llm_fallback or "pattern matching"
+        ctx.ui.warning(ctx.t("startup.router_fallback", mode=fallback))
 
     # Create agent
     model = f"{ctx.config.model.provider}:{ctx.config.model.model}"

@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 # Remove default handler
 logger.remove()
 
+# Prevent duplicate configuration
+_configured = False
+
 # Default log directory
 DEFAULT_LOG_DIR = Path.home() / ".merlya" / "logs"
 
@@ -59,6 +62,7 @@ def configure_logging(
     max_size: str = "10 MB",
     retention: str = "7 days",
     colorize: bool = True,
+    force: bool = False,
 ) -> Logger:
     """
     Configure logging for Merlya.
@@ -71,10 +75,18 @@ def configure_logging(
         max_size: Max size before rotation.
         retention: How long to keep old logs.
         colorize: Enable console colors.
+        force: Force reconfiguration even if already configured.
 
     Returns:
         Configured logger instance.
     """
+    global _configured
+    if _configured and not force:
+        return logger
+
+    # Reset handlers when forcing reconfigure
+    logger.remove()
+
     # Ensure log directory exists
     log_path = log_dir or DEFAULT_LOG_DIR
     log_path.mkdir(parents=True, exist_ok=True)
@@ -99,6 +111,7 @@ def configure_logging(
         enqueue=True,  # Thread-safe
     )
 
+    _configured = True
     return logger
 
 
@@ -161,7 +174,3 @@ def log_security(message: str) -> None:
 def log_critical(message: str) -> None:
     """Log critical alert."""
     logger.critical(f"{LogEmoji.CRITICAL} {message}")
-
-
-# Initialize with defaults on import
-configure_logging()

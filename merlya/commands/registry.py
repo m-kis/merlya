@@ -42,6 +42,8 @@ class Command:
     handler: CommandHandler
     aliases: list[str] = field(default_factory=list)
     subcommands: dict[str, Command] = field(default_factory=dict)
+    description_key: str | None = None
+    usage_key: str | None = None
 
 
 class CommandRegistry:
@@ -83,6 +85,8 @@ class CommandRegistry:
             usage=usage,
             handler=handler,
             aliases=aliases or [],
+            description_key=f"commands_meta.{name}.description",
+            usage_key=f"commands_meta.{name}.usage",
         )
         self._commands[name] = cmd
 
@@ -90,7 +94,7 @@ class CommandRegistry:
         for alias in cmd.aliases:
             self._aliases[alias] = name
 
-        logger.debug(f"Registered command: /{name}")
+        logger.debug(f"📋 Registered command: /{name}")
         return cmd
 
     def register_subcommand(
@@ -119,9 +123,11 @@ class CommandRegistry:
             description=description,
             usage=usage,
             handler=handler,
+            description_key=f"commands_meta.{parent}.{name}.description",
+            usage_key=f"commands_meta.{parent}.{name}.usage",
         )
         self._commands[parent].subcommands[name] = subcmd
-        logger.debug(f"Registered subcommand: /{parent} {name}")
+        logger.debug(f"📋 Registered subcommand: /{parent} {name}")
 
     def get(self, name: str) -> Command | None:
         """Get a command by name or alias."""
@@ -193,7 +199,7 @@ class CommandRegistry:
         try:
             return await cmd.handler(ctx, args)
         except Exception as e:
-            logger.error(f"Command error: {e}")
+            logger.error(f"❌ Command error: {e}")
             return CommandResult(
                 success=False,
                 message=f"Error executing /{cmd_name}: {e}",
@@ -236,6 +242,12 @@ def get_registry() -> CommandRegistry:
     if _registry is None:
         _registry = CommandRegistry()
     return _registry
+
+
+def reset_registry() -> None:
+    """Reset the global registry (for tests)."""
+    global _registry
+    _registry = None
 
 
 def command(

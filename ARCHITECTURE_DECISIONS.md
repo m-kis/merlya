@@ -2083,8 +2083,31 @@ keywords:
 | 11 | Inventaire | `/hosts` = inventaire simplifié, enrichissement auto |
 | 12 | Persistence | SQLite + Keyring + config.yaml |
 | 13 | Agents | Spécialisés (Docker, K8s, CI/CD...) avec socle partagé |
+| 14 | Credentials & Elevation | Brain-driven, tools interactifs, PermissionManager assisté |
 
 ---
+
+## 14. Gestion des Credentials et Élévation (brain-driven)
+
+**Décision** : la collecte de credentials (tokens, mots de passe, passphrases, JSON, paires user/mdp) et l'élévation de privilèges est pilotée par le brain (router/agent), pas par heuristique silencieuse côté exécution.
+
+**Principes** :
+- Le router/LLM détecte `credentials_required` et `elevation_required` (erreurs auth/permission, instructions explicites). Le classif local ONNX reste minimal ; en cas d'ambiguïté, fallback LLM tranche.
+- Tools interactifs :
+  - `request_credentials(service, host?, fields?, format?)` : collecte sécurisée (prompts secrets), support multi-format (token, password, passphrase, JSON, clé), option de stockage keyring (ou session-only), renvoie un bundle structuré.
+  - `request_elevation(command, host?)` : demande explicite, s'appuie sur PermissionManager pour choisir sudo/su/doas et gère le mot de passe si requis.
+- PermissionManager détecte sudo/doas/su et applique le préfixe uniquement sur instruction du brain/tool (plus d'automatisme heuristique côté ssh_execute).
+- Sécurité : aucun log de secret, stockage via keyring (fallback mémoire), prompts masqués, consentement pour le stockage.
+
+**Implémentation** :
+- Router : enrichir RouterResult avec des signaux `credentials_required`/`elevation_required` issus du fallback LLM.
+- Tools : ajouter `request_credentials` (multi-type) et réviser `request_elevation` pour utiliser PermissionManager et l'UI sécurisée.
+- Agent : sur signal ou erreur auth/permission, appel des tools puis retry de la commande avec secrets/élévation.
+- SSH/exec : PermissionManager n'applique l'élévation que sur demande (prefix/sudo -S/su/doas + stdin sécurisé).
+
+**Tests** : couvrir demande credentials (avec/sans stockage) et élévation (sudo nopasswd, sudo avec mot de passe, su/doas), vérifier absence de secrets dans les logs, et propagation des signaux du router.
+
+**Date** : 2025-12-06
 
 ## Prochaines étapes
 

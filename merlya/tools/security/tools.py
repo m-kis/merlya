@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
+DEFAULT_TIMEOUT = 20
+
+
 @dataclass
 class SecurityResult:
     """Result of a security operation."""
@@ -73,8 +76,37 @@ def _is_safe_ssh_key_path(path: str) -> bool:
     return bool(re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", path))
 
 
+async def _execute_command(
+    ctx: "SharedContext",
+    host_name: str,
+    command: str,
+    timeout: int = 60,
+    connect_timeout: int | None = None,
+):
+    """Execute a command on a host using shared SSH pool and inventory resolution."""
+    host_entry = await ctx.hosts.get_by_name(host_name)
+    ssh_pool = await ctx.get_ssh_pool()
+
+    kwargs: dict[str, Any] = {"timeout": timeout}
+    kwargs["connect_timeout"] = connect_timeout or 15
+    target = host_name
+
+    if host_entry:
+        target = host_entry.hostname
+        kwargs.update(
+            {
+                "port": host_entry.port,
+                "username": host_entry.username,
+                "private_key": host_entry.private_key,
+                "jump_host": host_entry.jump_host,
+            }
+        )
+
+    return await ssh_pool.execute(host=target, command=command, **kwargs)
+
+
 async def check_open_ports(
-    _ctx: SharedContext,
+    ctx: SharedContext,
     host_name: str,
     include_listening: bool = True,
     include_established: bool = False,
@@ -91,11 +123,7 @@ async def check_open_ports(
     Returns:
         SecurityResult with port information.
     """
-    from merlya.ssh import SSHPool
-
     try:
-        ssh_pool = await SSHPool.get_instance()
-
         # Build state filter (validated values only)
         states = []
         if include_listening:
@@ -104,16 +132,16 @@ async def check_open_ports(
             states.append("established")
 
         # ss state filter uses fixed keywords only (no user input)
-        state_filter = " or ".join(f"state {s}" for s in states) if states else ""
+        state_filter = " ".join(f"state {s}" for s in states) if states else ""
 
-        # ss command for modern Linux (all fixed strings)
-        ss_cmd = f"ss -tulnp {state_filter} 2>/dev/null"
-        result = await ssh_pool.execute(host_name, ss_cmd)
+        # ss command for modern Linux (all fixed strings, numeric, headerless)
+        ss_cmd = f"ss -tulnHp {state_filter} 2>/dev/null".strip()
+        result = await _execute_command(ctx, host_name, ss_cmd, timeout=DEFAULT_TIMEOUT)
 
         if result.exit_code != 0:
             # Fallback to netstat (fixed command)
-            netstat_cmd = "netstat -tulnp 2>/dev/null || netstat -an"
-            result = await ssh_pool.execute(host_name, netstat_cmd)
+            netstat_cmd = "netstat -tuln 2>/dev/null || netstat -an"
+            result = await _execute_command(ctx, host_name, netstat_cmd, timeout=DEFAULT_TIMEOUT)
 
         if result.exit_code != 0:
             return SecurityResult(
@@ -121,38 +149,95 @@ async def check_open_ports(
                 error="Failed to check ports: ss and netstat not available",
             )
 
-        # Parse output
+        # Parse output (ss -H or netstat)
         ports: list[dict[str, Any]] = []
-        for line in result.stdout.strip().split("\n")[1:]:  # Skip header
-            if not line:
+        ss_pattern = re.compile(
+            r"^(?P<proto>\S+)\s+(?P<state>\S+)\s+\S+\s+\S+\s+(?P<local>\S+)\s+(?P<peer>\S+)\s*(?P<proc>.*)"
+        )
+
+        def _extract_port(address: str) -> int | str | None:
+            if ":" in address:
+                label = address.rsplit(":", 1)[-1]
+            else:
+                label = address
+            label = label.strip("[]")
+            if not label or label == "*":
+                return None
+            try:
+                return int(label)
+            except (TypeError, ValueError):
+                return label
+
+        def _extract_process(proc_str: str) -> tuple[int | None, str | None]:
+            pid = None
+            process = None
+            pid_match = re.search(r"pid=(\d+)", proc_str)
+            if pid_match:
+                pid = int(pid_match.group(1))
+            quoted = re.search(r'"([^"]+)"', proc_str)
+            if quoted:
+                process = quoted.group(1)
+            else:
+                slash_match = re.search(r"(\d+)/([^\s]+)", proc_str)
+                if slash_match:
+                    pid = pid or int(slash_match.group(1))
+                    process = slash_match.group(2)
+            return pid, process
+
+        def _add_port_entry(
+            port_value: int | str,
+            protocol: str,
+            state: str,
+            address: str,
+            pid: int | None,
+            process: str | None,
+        ) -> None:
+            service = (
+                port_value if isinstance(port_value, str) and not port_value.isdigit() else None
+            )
+            ports.append(
+                {
+                    "port": port_value,
+                    "protocol": protocol,
+                    "state": state.lower() if isinstance(state, str) else "unknown",
+                    "address": address,
+                    "service": service,
+                    "pid": pid,
+                    "process": process,
+                }
+            )
+
+        for line in result.stdout.strip().splitlines():
+            if (
+                not line
+                or line.startswith(("Netid", "Proto", "Active", "Recv-Q"))
+                or "Local Address" in line
+                or "Local" in line and "Foreign" in line
+            ):
                 continue
 
-            # Parse ss output
+            match = ss_pattern.match(line)
+            if match:
+                proto = match.group("proto").split("/")[0].lower()
+                state = match.group("state")
+                local_addr = match.group("local")
+                port_value = _extract_port(local_addr)
+                if port_value is None:
+                    continue
+                pid, process = _extract_process(match.group("proc") or "")
+                _add_port_entry(port_value, proto, state, local_addr, pid, process)
+                continue
+
             parts = line.split()
-            if len(parts) >= 5:
-                # Extract port from address
-                addr = parts[4] if len(parts) > 4 else ""
-                port_match = re.search(r":(\d+)$", addr)
-                port = int(port_match.group(1)) if port_match else 0
-
-                # Extract process info
-                process_info = parts[-1] if parts else ""
-                pid_match = re.search(r"pid=(\d+)", process_info)
-                pid = int(pid_match.group(1)) if pid_match else None
-
-                proc_match = re.search(r'"([^"]+)"', process_info)
-                process = proc_match.group(1) if proc_match else None
-
-                ports.append(
-                    {
-                        "port": port,
-                        "protocol": parts[0].lower() if parts else "unknown",
-                        "state": parts[1] if len(parts) > 1 else "unknown",
-                        "address": addr,
-                        "pid": pid,
-                        "process": process,
-                    }
-                )
+            if len(parts) >= 4:
+                proto = parts[0].lower()
+                local_addr = parts[3]
+                state = parts[5] if len(parts) > 5 else (parts[1] if len(parts) > 1 else "unknown")
+                port_value = _extract_port(local_addr)
+                if port_value is None:
+                    continue
+                pid, process = _extract_process(" ".join(parts[6:]) if len(parts) > 6 else "")
+                _add_port_entry(port_value, proto, state, local_addr, pid, process)
 
         return SecurityResult(success=True, data=ports)
 
@@ -162,7 +247,7 @@ async def check_open_ports(
 
 
 async def audit_ssh_keys(
-    _ctx: SharedContext,
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -175,14 +260,10 @@ async def audit_ssh_keys(
     Returns:
         SecurityResult with SSH key audit.
     """
-    from merlya.ssh import SSHPool
-
     try:
-        ssh_pool = await SSHPool.get_instance()
-
         # Find SSH keys (fixed paths only)
         find_cmd = "find ~/.ssh /etc/ssh -type f \\( -name '*.pub' -o -name 'id_*' \\) 2>/dev/null | head -100"
-        result = await ssh_pool.execute(host_name, find_cmd)
+        result = await _execute_command(ctx, host_name, find_cmd, timeout=DEFAULT_TIMEOUT)
 
         keys: list[dict[str, Any]] = []
         severity = "info"
@@ -200,8 +281,8 @@ async def audit_ssh_keys(
             quoted_path = shlex.quote(key_path)
 
             # Check permissions (using quoted path)
-            stat_result = await ssh_pool.execute(
-                host_name, f"stat -c '%a' {quoted_path} 2>/dev/null"
+            stat_result = await _execute_command(
+                ctx, host_name, f"stat -c '%a' {quoted_path} 2>/dev/null", timeout=DEFAULT_TIMEOUT
             )
             if stat_result.exit_code == 0:
                 perms = stat_result.stdout.strip()
@@ -211,7 +292,9 @@ async def audit_ssh_keys(
                     severity = "warning"
 
             # Check key type and encryption (using quoted path)
-            file_result = await ssh_pool.execute(host_name, f"head -1 {quoted_path} 2>/dev/null")
+            file_result = await _execute_command(
+                ctx, host_name, f"head -1 {quoted_path} 2>/dev/null", timeout=DEFAULT_TIMEOUT
+            )
             if file_result.exit_code == 0:
                 header = file_result.stdout.strip()
                 if "ENCRYPTED" in header:
@@ -248,7 +331,7 @@ async def audit_ssh_keys(
 
 
 async def check_security_config(
-    _ctx: SharedContext,
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -261,17 +344,13 @@ async def check_security_config(
     Returns:
         SecurityResult with security config audit.
     """
-    from merlya.ssh import SSHPool
-
     try:
-        ssh_pool = await SSHPool.get_instance()
-
         checks: list[dict[str, Any]] = []
         severity = "info"
 
         # Check SSH config (all fixed commands)
         ssh_config_cmd = "grep -E '^(PermitRootLogin|PasswordAuthentication|PubkeyAuthentication|PermitEmptyPasswords)' /etc/ssh/sshd_config 2>/dev/null"
-        ssh_result = await ssh_pool.execute(host_name, ssh_config_cmd)
+        ssh_result = await _execute_command(ctx, host_name, ssh_config_cmd, timeout=DEFAULT_TIMEOUT)
 
         if ssh_result.exit_code == 0:
             for line in ssh_result.stdout.strip().split("\n"):
@@ -310,7 +389,7 @@ async def check_security_config(
 
         # Check firewall status (fixed commands)
         fw_cmd = "command -v ufw >/dev/null && ufw status | head -1 || command -v firewall-cmd >/dev/null && firewall-cmd --state || iptables -L -n 2>/dev/null | head -3"
-        fw_result = await ssh_pool.execute(host_name, fw_cmd)
+        fw_result = await _execute_command(ctx, host_name, fw_cmd, timeout=DEFAULT_TIMEOUT)
 
         firewall_status = "unknown"
         if fw_result.stdout and "active" in fw_result.stdout.lower():
@@ -332,7 +411,7 @@ async def check_security_config(
 
         # Check for unattended upgrades (Debian/Ubuntu) - fixed command
         auto_update_cmd = "dpkg -l unattended-upgrades 2>/dev/null | grep -q '^ii' && echo 'enabled' || echo 'disabled'"
-        auto_result = await ssh_pool.execute(host_name, auto_update_cmd)
+        auto_result = await _execute_command(ctx, host_name, auto_update_cmd, timeout=DEFAULT_TIMEOUT)
 
         auto_update = auto_result.stdout.strip() == "enabled"
         checks.append(
@@ -356,7 +435,7 @@ async def check_security_config(
 
 
 async def check_users(
-    _ctx: SharedContext,
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -369,11 +448,7 @@ async def check_users(
     Returns:
         SecurityResult with user audit.
     """
-    from merlya.ssh import SSHPool
-
     try:
-        ssh_pool = await SSHPool.get_instance()
-
         users: list[dict[str, Any]] = []
         issues: list[str] = []
         severity = "info"
@@ -382,7 +457,7 @@ async def check_users(
         passwd_cmd = (
             "grep -E '(/bin/bash|/bin/sh|/bin/zsh|/usr/bin/bash|/usr/bin/zsh)$' /etc/passwd"
         )
-        result = await ssh_pool.execute(host_name, passwd_cmd)
+        result = await _execute_command(ctx, host_name, passwd_cmd, timeout=DEFAULT_TIMEOUT)
 
         if result.exit_code == 0:
             for line in result.stdout.strip().split("\n"):
@@ -415,7 +490,7 @@ async def check_users(
 
         # Check for users with empty passwords (fixed command, requires sudo)
         shadow_cmd = "sudo cat /etc/shadow 2>/dev/null | grep -E '^[^:]+::'"
-        shadow_result = await ssh_pool.execute(host_name, shadow_cmd)
+        shadow_result = await _execute_command(ctx, host_name, shadow_cmd, timeout=DEFAULT_TIMEOUT)
 
         if shadow_result.exit_code == 0 and shadow_result.stdout.strip():
             for line in shadow_result.stdout.strip().split("\n"):
@@ -436,7 +511,7 @@ async def check_users(
 
 
 async def check_sudo_config(
-    _ctx: SharedContext,
+    ctx: SharedContext,
     host_name: str,
 ) -> SecurityResult:
     """
@@ -449,17 +524,13 @@ async def check_sudo_config(
     Returns:
         SecurityResult with sudo audit.
     """
-    from merlya.ssh import SSHPool
-
     try:
-        ssh_pool = await SSHPool.get_instance()
-
         issues: list[str] = []
         severity = "info"
 
         # Check for NOPASSWD entries (fixed command)
         sudo_cmd = "sudo cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | grep -v '^#' | grep -v '^$' | grep NOPASSWD"
-        result = await ssh_pool.execute(host_name, sudo_cmd)
+        result = await _execute_command(ctx, host_name, sudo_cmd, timeout=DEFAULT_TIMEOUT)
 
         nopasswd_entries = []
         if result.exit_code == 0 and result.stdout.strip():
@@ -472,7 +543,7 @@ async def check_sudo_config(
 
         # Check for dangerous sudo permissions (fixed command)
         dangerous_cmd = "sudo cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | grep -v '^#' | grep -v '^$' | grep -E 'ALL.*ALL.*ALL'"
-        dangerous_result = await ssh_pool.execute(host_name, dangerous_cmd)
+        dangerous_result = await _execute_command(ctx, host_name, dangerous_cmd, timeout=DEFAULT_TIMEOUT)
 
         dangerous_entries = []
         if dangerous_result.exit_code == 0 and dangerous_result.stdout.strip():

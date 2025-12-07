@@ -14,10 +14,41 @@
     "no": "non",
     "unknown": "Inconnu"
   },
+  "ui": {
+    "spinner": {
+      "routing": "🧠 Analyse de la requête...",
+      "agent": "⚡ Exécution du plan..."
+    }
+  },
+
+  "welcome_screen": {
+    "title": "Bienvenue",
+    "warning_title": "⚠️  Avertissement",
+    "subtitle": "🚀 Merlya v{version} - Mode Interactif",
+    "env_session": "Environnement: {env}    Session: {session}",
+    "provider": "Provider: {provider}",
+    "router": "Router: {router}",
+    "keyring": "Keyring: {keyring}",
+    "keyring_fallback": "⚠️ Keyring indisponible (mémoire)",
+    "commands_hint": "Posez vos questions naturellement ou utilisez les commandes slash :",
+    "command_help": "  • /help - Afficher les commandes",
+    "command_conv": "  • /conversations - Lister les conversations",
+    "command_new": "  • /new [title] - Nouvelle conversation",
+    "command_scan": "  • /scan - Scanner l'infrastructure",
+    "command_exit": "  • /exit - Quitter",
+    "prompt": "Commencez par me poser n'importe quelle question sur votre infrastructure !",
+    "tip_specific": "Soyez précis dans vos requêtes",
+    "tip_target": "Précisez le serveur cible (nom ou IP) si possible",
+    "tip_context": "Ajoutez du contexte (service, erreur, etc.)",
+    "warning_header": "⚠️  LOGICIEL EXPÉRIMENTAL",
+    "warning_body": "Cet outil est en développement. À utiliser pour debug/test uniquement, pas en production.",
+    "warning_tips_title": "Conseils pour de meilleurs résultats :"
+  },
 
   "startup": {
     "health_checks": "Vérifications",
     "router_init": "Router : {model} ({dims} dims)",
+    "router_fallback": "Router en fallback : {mode}",
     "ready_time": "Prêt en {time}s",
     "first_run": "Premier démarrage détecté - lancement de l'assistant de configuration"
   },
@@ -57,7 +88,11 @@
     "help": {
       "title": "Commandes disponibles",
       "usage": "Usage : {command}",
-      "description": "Description : {description}"
+      "description": "Description : {description}",
+      "command_header": "Commande",
+      "description_header": "Description",
+      "unknown": "Commande inconnue : {name}",
+      "usage_hint": "Utilisez `/help <commande>` pour le détail"
     },
     "hosts": {
       "list_title": "Hôtes",
@@ -88,13 +123,15 @@
       "set": "Variable @{name} définie",
       "deleted": "Variable @{name} supprimée",
       "not_found": "Variable @{name} introuvable",
-      "list_title": "Variables"
+      "list_title": "Variables",
+      "empty": "Aucune variable définie. Utilisez `/variable set <name> <value>` pour en ajouter."
     },
     "secret": {
       "set": "Secret @{name} stocké de manière sécurisée",
       "deleted": "Secret @{name} supprimé",
       "not_found": "Secret @{name} introuvable",
-      "list_title": "Secrets"
+      "list_title": "Secrets",
+      "empty": "Aucun secret stocké. Utilisez `/secret set <name>` pour en ajouter."
     },
     "conv": {
       "list_title": "Conversations",
@@ -131,6 +168,61 @@
     },
     "new": {
       "started": "Nouvelle conversation démarrée"
+    }
+  },
+
+  "commands_meta": {
+    "help": {
+      "description": "Afficher l'aide des commandes",
+      "usage": "/help [commande]"
+    },
+    "exit": {
+      "description": "Quitter Merlya",
+      "usage": "/exit"
+    },
+    "new": {
+      "description": "Démarrer une nouvelle conversation",
+      "usage": "/new"
+    },
+    "language": {
+      "description": "Changer la langue de l'interface",
+      "usage": "/language <fr|en>"
+    },
+    "conv": {
+      "description": "Gérer l'historique des conversations",
+      "usage": "/conv <sous-commande>"
+    },
+    "hosts": {
+      "description": "Gérer l'inventaire des hôtes",
+      "usage": "/hosts <sous-commande>"
+    },
+    "ssh": {
+      "description": "Gestion des connexions SSH",
+      "usage": "/ssh <sous-commande>"
+    },
+    "model": {
+      "description": "Gérer le provider LLM et le router",
+      "usage": "/model <sous-commande>"
+    },
+    "scan": {
+      "description": "Scanner un hôte (infos système et sécurité)",
+      "usage": "/scan <hote> [--full|--security|--system]"
+    },
+    "health": {
+      "description": "Afficher l'état de santé du système",
+      "usage": "/health"
+    },
+    "log": {
+      "description": "Configurer les logs",
+      "usage": "/log <sous-commande>"
+    },
+    "variable": {
+      "description": "Gérer les variables",
+      "usage": "/variable <sous-commande>"
+    },
+    "secret": {
+      "description": "Gérer les secrets (stockage sécurisé)",
+      "usage": "/secret <sous-commande>"
     }
   },
 
@@ -185,9 +277,9 @@
       "title": "📡 Configuration du Provider LLM",
       "providers": "Providers disponibles :\n  1. OpenRouter (recommandé - multi-modèles)\n  2. Anthropic (Claude direct)\n  3. OpenAI (modèles GPT)\n  4. Ollama (modèles locaux)",
       "select_provider": "Sélectionnez un provider",
-      "enter_api_key": "Entrez votre {key}",
+      "enter_api_key": "Entrez votre {api_key}",
       "select_model": "Modèle par défaut",
-      "api_key_found": "✅ Clé API trouvée ({key})",
+      "api_key_found": "✅ Clé API trouvée ({api_key})",
       "api_key_saved": "✅ Clé API configurée et stockée de manière sécurisée",
       "api_key_missing": "⚠️ Aucune clé API fournie",
       "skipped": "⚠️ Configuration LLM ignorée"
