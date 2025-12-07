@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from merlya.commands.registry import CommandResult, command, subcommand
+from merlya.ssh.pool import SSHConnectionOptions
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -64,15 +65,16 @@ async def cmd_ssh_connect(ctx: SharedContext, args: list[str]) -> CommandResult:
     try:
         ssh_pool = await ctx.get_ssh_pool()
         _install_ssh_callbacks(ctx, ssh_pool, host.name, host.private_key, force=True)
+
+        options = SSHConnectionOptions(
+            port=host.port,
+            jump_host=host.jump_host,
+        )
         await ssh_pool.get_connection(
             host=host.hostname,
-            port=host.port,
             username=host.username,
             private_key=host.private_key,
-            jump_host=host.jump_host,
-            jump_port=None,
-            jump_username=None,
-            jump_private_key=None,
+            options=options,
         )
 
         jump_info = f" via `{host.jump_host}`" if host.jump_host else ""
@@ -123,27 +125,49 @@ def _install_ssh_callbacks(
         def passphrase_cb(path: str) -> str:
             resolved = str(Path(path).expanduser())
             secrets_keys = _candidate_passphrase_keys(host_name, resolved, path)
+            logger.debug(f"🔐 Looking up passphrase for keys: {secrets_keys}")
             secret = _lookup_passphrase(ctx, secrets_keys)
             if secret:
+                logger.debug(f"🔐 Found cached passphrase for {path}")
                 return secret
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 Passphrase for {path}")))
-                pw = future.result(timeout=60)
-            if pw:
-                try:
-                    for key in secrets_keys:
-                        ctx.secrets.set(key, pw)
-                except Exception as exc:  # noqa: PERF203
-                    logger.debug(f"Failed to cache passphrase: {exc}")
-            return pw
+            logger.debug(f"🔐 No cached passphrase found, prompting user for {path}")
+            try:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 Passphrase for {path}"))
+                    )
+                    pw = future.result(timeout=60)
+                if pw:
+                    try:
+                        for key in secrets_keys:
+                            ctx.secrets.set(key, pw)
+                        logger.debug("🔐 Passphrase cached successfully")
+                    except Exception as exc:
+                        logger.debug(f"Failed to cache passphrase: {exc}")
+                return pw or ""
+            except Exception as exc:
+                logger.error(f"❌ Passphrase callback error: {exc}")
+                return ""
 
         ssh_pool.set_passphrase_callback(passphrase_cb)
 
     if hasattr(ssh_pool, "has_mfa_callback") and (force or not ssh_pool.has_mfa_callback()):
         def mfa_cb(prompt: str) -> str:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}")))
-                return future.result(timeout=120)
+            logger.debug(f"🔐 MFA callback invoked with prompt: {prompt}")
+            try:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}"))
+                    )
+                    response = future.result(timeout=120)
+                    logger.debug("🔐 MFA response received")
+                    return response or ""
+            except concurrent.futures.TimeoutError:
+                logger.error("❌ MFA prompt timed out")
+                return ""
+            except Exception as exc:
+                logger.error(f"❌ MFA callback error: {exc}")
+                return ""
 
         ssh_pool.set_mfa_callback(mfa_cb)
 
@@ -196,13 +220,16 @@ async def cmd_ssh_exec(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     try:
         ssh_pool = await ctx.get_ssh_pool()
+        options = SSHConnectionOptions(
+            port=host.port,
+            jump_host=host.jump_host,
+        )
         result = await ssh_pool.execute(
             host=host.hostname,
             command=command_str,
-            port=host.port,
             username=host.username,
             private_key=host.private_key,
-            jump_host=host.jump_host,
+            options=options,
         )
 
         output = result.stdout or result.stderr
@@ -432,15 +459,15 @@ async def cmd_ssh_test(ctx: SharedContext, args: list[str]) -> CommandResult:
         ssh_pool = await ctx.get_ssh_pool()
         _install_ssh_callbacks(ctx, ssh_pool, host.name, host.private_key)
 
+        options = SSHConnectionOptions(
+            port=host.port,
+            jump_host=host.jump_host,
+        )
         await ssh_pool.get_connection(
             host=host.hostname,
-            port=host.port,
             username=host.username,
             private_key=host.private_key,
-            jump_host=host.jump_host,
-            jump_port=None,
-            jump_username=None,
-            jump_private_key=None,
+            options=options,
         )
 
         connect_time = time.time() - start
@@ -448,8 +475,8 @@ async def cmd_ssh_test(ctx: SharedContext, args: list[str]) -> CommandResult:
         result = await ssh_pool.execute(
             host=host.hostname,
             command="echo 'SSH OK' && uname -a",
-            port=host.port,
             username=host.username,
+            options=options,
         )
 
         total_time = time.time() - start

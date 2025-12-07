@@ -61,6 +61,7 @@ class SharedContext:
     # SSH Pool (lazy init)
     _ssh_pool: SSHPool | None = field(default=None, repr=False)
     _permissions: PermissionManager | None = field(default=None, repr=False)
+    _auth_manager: object | None = field(default=None, repr=False)  # SSHAuthManager
 
     # Intent Router (lazy init)
     _router: IntentRouter | None = field(default=None, repr=False)
@@ -105,7 +106,29 @@ class SharedContext:
                 timeout=self.config.ssh.pool_timeout,
                 connect_timeout=self.config.ssh.connect_timeout,
             )
+
+            # Configure auth manager if available
+            auth_manager = await self.get_auth_manager()
+            if auth_manager:
+                self._ssh_pool.set_auth_manager(auth_manager)
+
         return self._ssh_pool
+
+    async def get_auth_manager(self) -> object | None:
+        """Get SSH authentication manager (lazy)."""
+        if self._auth_manager is None:
+            try:
+                from merlya.ssh.auth import SSHAuthManager
+
+                self._auth_manager = SSHAuthManager(
+                    secrets=self.secrets,
+                    ui=self.ui,
+                )
+                logger.debug("SSH auth manager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize SSH auth manager: {e}")
+                return None
+        return self._auth_manager
 
     @property
     def router(self) -> IntentRouter:

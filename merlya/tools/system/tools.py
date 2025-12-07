@@ -457,3 +457,152 @@ async def analyze_logs(
             "count": len(log_lines),
         },
     )
+
+
+async def check_all_disks(
+    ctx: SharedContext,
+    host: str,
+    threshold: int = 90,
+) -> ToolResult:
+    """
+    Check disk usage on all mounted filesystems.
+
+    Args:
+        ctx: Shared context.
+        host: Host name.
+        threshold: Warning threshold percentage.
+
+    Returns:
+        ToolResult with disk usage info for all mounts.
+    """
+    if not (0 <= threshold <= 100):
+        return ToolResult(success=False, data=[], error="Threshold must be 0-100")
+
+    # Fixed command - exclude tmpfs, devtmpfs, etc.
+    cmd = "df -h --exclude-type=tmpfs --exclude-type=devtmpfs --exclude-type=squashfs 2>/dev/null || df -h"
+    result = await ssh_execute(ctx, host, cmd, timeout=15)
+
+    if not result.success:
+        return result
+
+    disks: list[dict[str, Any]] = []
+    warnings = 0
+
+    try:
+        output = result.data.get("stdout", "").strip()
+        lines = output.split("\n")
+
+        for line in lines[1:]:  # Skip header
+            parts = line.split()
+            if len(parts) >= 5:
+                try:
+                    use_percent = int(parts[4].rstrip("%"))
+                    disk_info = {
+                        "filesystem": parts[0],
+                        "size": parts[1],
+                        "used": parts[2],
+                        "available": parts[3],
+                        "use_percent": use_percent,
+                        "mount": parts[5] if len(parts) > 5 else "unknown",
+                        "warning": use_percent >= threshold,
+                    }
+                    disks.append(disk_info)
+                    if disk_info["warning"]:
+                        warnings += 1
+                except ValueError:
+                    continue
+
+        return ToolResult(
+            success=True,
+            data={
+                "disks": disks,
+                "total_count": len(disks),
+                "warnings": warnings,
+            },
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to parse disk output: {e}")
+        return ToolResult(success=False, data=[], error="Failed to parse disk usage")
+
+
+async def check_docker(
+    ctx: SharedContext,
+    host: str,
+) -> ToolResult:
+    """
+    Check Docker status and containers.
+
+    Args:
+        ctx: Shared context.
+        host: Host name.
+
+    Returns:
+        ToolResult with Docker info.
+    """
+    # Check if Docker is available and get container info
+    cmd = """
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "DOCKER:not-installed"
+        exit 0
+    fi
+
+    # Check if Docker daemon is running
+    if ! docker info >/dev/null 2>&1; then
+        echo "DOCKER:not-running"
+        exit 0
+    fi
+
+    echo "DOCKER:running"
+    echo "CONTAINERS:"
+    docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' 2>/dev/null | head -20
+    echo "IMAGES:"
+    docker images --format '{{.Repository}}:{{.Tag}}|{{.Size}}' 2>/dev/null | head -10
+    """
+
+    result = await ssh_execute(ctx, host, cmd.strip(), timeout=20)
+
+    docker_status = "unknown"
+    containers: list[dict[str, str]] = []
+    images: list[dict[str, str]] = []
+    section = None
+
+    if result.data and result.data.get("stdout"):
+        for line in result.data["stdout"].strip().split("\n"):
+            if line.startswith("DOCKER:"):
+                docker_status = line.split(":", 1)[1]
+            elif line == "CONTAINERS:":
+                section = "containers"
+            elif line == "IMAGES:":
+                section = "images"
+            elif section == "containers" and "|" in line:
+                parts = line.split("|")
+                if len(parts) >= 3:
+                    containers.append({
+                        "name": parts[0],
+                        "status": parts[1],
+                        "image": parts[2],
+                    })
+            elif section == "images" and "|" in line:
+                parts = line.split("|")
+                if len(parts) >= 2:
+                    images.append({
+                        "name": parts[0],
+                        "size": parts[1],
+                    })
+
+    # Count running vs stopped containers
+    running = sum(1 for c in containers if "Up" in c.get("status", ""))
+    stopped = len(containers) - running
+
+    return ToolResult(
+        success=True,
+        data={
+            "status": docker_status,
+            "containers": containers,
+            "images": images,
+            "running_count": running,
+            "stopped_count": stopped,
+            "total_containers": len(containers),
+        },
+    )

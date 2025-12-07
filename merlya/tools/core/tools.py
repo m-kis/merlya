@@ -212,6 +212,7 @@ async def ssh_execute(
                     username=host_entry.username,
                     private_key=host_entry.private_key,
                     options=opts,
+                    host_name=host,  # Pass inventory name for credential lookup
                 )
             return await ssh_pool.execute(
                 host=host,
@@ -219,6 +220,7 @@ async def ssh_execute(
                 timeout=timeout,
                 input_data=inp,
                 options=ssh_opts,
+                host_name=host,  # Pass inventory name for credential lookup
             )
 
         result = await _run(command, input_data)

@@ -173,7 +173,7 @@ class REPL:
 
                 # Get input
                 user_input = await self.session.prompt_async(
-                    [("class:prompt", "merlya"), ("class:host", " > ")],
+                    [("class:prompt", "Merlya"), ("class:host", " > ")],
                 )
 
                 user_input = user_input.strip()

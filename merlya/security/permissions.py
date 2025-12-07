@@ -12,6 +12,8 @@ from typing import Any
 
 from loguru import logger
 
+from merlya.ssh.pool import SSHConnectionOptions
+
 
 @dataclass
 class ElevationResult:
@@ -240,4 +242,5 @@ class PermissionManager:
     async def _execute(self, host: str, command: str):
         """Execute a probe command using the shared SSH pool."""
         ssh_pool = await self.ctx.get_ssh_pool()
-        return await ssh_pool.execute(host=host, command=command, timeout=10, connect_timeout=10)
+        options = SSHConnectionOptions(connect_timeout=10)
+        return await ssh_pool.execute(host=host, command=command, timeout=10, options=options)
