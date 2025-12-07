@@ -68,7 +68,7 @@ def _validate_file_path(file_path: Path) -> tuple[bool, str]:
         )
 
         if not is_allowed:
-            return False, f"Access denied: Path must be within home directory, /etc, or /tmp"
+            return False, "Access denied: Path must be within home directory, /etc, or /tmp"
 
         # Check for suspicious patterns
         path_str = str(file_path)

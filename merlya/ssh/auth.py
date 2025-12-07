@@ -11,16 +11,19 @@ Provides intelligent SSH authentication handling:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from merlya.secrets.store import SecretStore
     from merlya.ui.console import ConsoleUI
 
@@ -132,12 +135,7 @@ def key_in_agent(key_path: str | Path, agent_keys: list[AgentKeyInfo]) -> bool:
     key_name = key_path.name
     key_str = str(key_path)
 
-    for key in agent_keys:
-        # Check if the key comment contains the path or filename
-        if key_name in key.comment or key_str in key.comment:
-            return True
-
-    return False
+    return any(key_name in key.comment or key_str in key.comment for key in agent_keys)
 
 
 class ManagedSSHAgent:
@@ -267,7 +265,7 @@ class ManagedSSHAgent:
                 f.write(f'printf "%s" "{passphrase}"\n')
                 askpass_script = f.name
 
-            os.chmod(askpass_script, 0o700)
+            Path(askpass_script).chmod(0o700)
 
             # Setup environment for SSH_ASKPASS
             env = os.environ.copy()
@@ -298,10 +296,8 @@ class ManagedSSHAgent:
         finally:
             # Clean up askpass script
             if askpass_script:
-                try:
+                with contextlib.suppress(Exception):
                     Path(askpass_script).unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     async def cleanup(self) -> None:
         """Stop the managed agent if we started it."""

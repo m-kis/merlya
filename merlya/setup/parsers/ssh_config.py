@@ -28,7 +28,6 @@ async def parse_ssh_config(path: Path) -> list[HostData]:
     Returns:
         List of HostData objects.
     """
-    from merlya.setup.models import HostData
 
     hosts: list[HostData] = []
     current_host: dict[str, Any] = {}

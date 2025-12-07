@@ -6,12 +6,13 @@ Provides SFTP operations reused by the SSH pool.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from merlya.ssh.pool import SSHPool
 
 
@@ -19,7 +20,7 @@ class SFTPOperations:
     """SFTP operations shared by the SSH pool."""
 
     async def upload_file(
-        self: "SSHPool",
+        self: SSHPool,
         host: str,
         local_path: str | Path,
         remote_path: str,
@@ -53,7 +54,7 @@ class SFTPOperations:
             logger.info(f"📤 Uploaded {local.name} -> {host}:{remote_path}")
 
     async def download_file(
-        self: "SSHPool",
+        self: SSHPool,
         host: str,
         remote_path: str,
         local_path: str | Path,
@@ -85,7 +86,7 @@ class SFTPOperations:
             logger.info(f"📥 Downloaded {host}:{remote_path} -> {local.name}")
 
     async def list_remote_dir(
-        self: "SSHPool",
+        self: SSHPool,
         host: str,
         remote_path: str = ".",
         **conn_kwargs: Any,
@@ -119,7 +120,7 @@ class SFTPOperations:
         return result
 
     async def read_remote_file(
-        self: "SSHPool",
+        self: SSHPool,
         host: str,
         remote_path: str,
         **conn_kwargs: Any,
@@ -139,13 +140,12 @@ class SFTPOperations:
         if conn.connection is None:
             raise RuntimeError(f"Connection to {host} is closed")
 
-        async with conn.connection.start_sftp_client() as sftp:
-            async with sftp.open(remote_path, "r") as f:
-                content = await f.read()
-                return content.decode("utf-8") if isinstance(content, bytes) else content
+        async with conn.connection.start_sftp_client() as sftp, sftp.open(remote_path, "r") as f:
+            content = await f.read()
+            return content.decode("utf-8") if isinstance(content, bytes) else content
 
     async def write_remote_file(
-        self: "SSHPool",
+        self: SSHPool,
         host: str,
         remote_path: str,
         content: str,

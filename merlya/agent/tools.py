@@ -31,7 +31,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def list_hosts(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         tag: str | None = None,
         limit: int = 20,
     ) -> dict[str, Any]:
@@ -55,7 +55,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def get_host(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         name: str,
     ) -> dict[str, Any]:
         """
@@ -77,7 +77,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def ssh_execute(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         command: str,
         timeout: int = 60,
@@ -116,7 +116,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def ask_user(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         question: str,
         choices: list[str] | None = None,
     ) -> str:
@@ -140,7 +140,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def request_credentials(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         service: str,
         host: str | None = None,
         fields: list[str] | None = None,
@@ -168,7 +168,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def request_elevation(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         command: str,
         host: str | None = None,
     ) -> dict[str, Any]:
@@ -182,7 +182,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def request_confirmation(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         action: str,
         risk_level: str = "moderate",
     ) -> bool:
@@ -212,7 +212,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def get_system_info(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """
@@ -234,7 +234,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_disk_usage(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         path: str = "/",
     ) -> dict[str, Any]:
@@ -258,7 +258,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_memory(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """
@@ -280,7 +280,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_cpu(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """
@@ -302,7 +302,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_service_status(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         service: str,
     ) -> dict[str, Any]:
@@ -326,7 +326,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def list_processes(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         user: str | None = None,
         filter_name: str | None = None,
@@ -364,7 +364,7 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def read_file(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         path: str,
         lines: int | None = None,
@@ -392,7 +392,7 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def write_file(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         path: str,
         content: str,
@@ -420,7 +420,7 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def list_directory(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         path: str,
         all_files: bool = False,
@@ -450,7 +450,7 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def search_files(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         path: str,
         pattern: str,
@@ -486,7 +486,7 @@ def _register_security_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_open_ports(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
         include_established: bool = False,
     ) -> dict[str, Any]:
@@ -512,7 +512,7 @@ def _register_security_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def audit_ssh_keys(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """
@@ -534,7 +534,7 @@ def _register_security_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_security_config(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """
@@ -556,7 +556,7 @@ def _register_security_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_users(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """
@@ -578,7 +578,7 @@ def _register_security_tools(agent: Agent[Any, Any]) -> None:
 
     @agent.tool
     async def check_sudo_config(
-        ctx: RunContext["AgentDependencies"],
+        ctx: RunContext[AgentDependencies],
         host: str,
     ) -> dict[str, Any]:
         """

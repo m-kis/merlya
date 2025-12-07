@@ -5,12 +5,12 @@ Main entry point for the Merlya application.
 """
 
 import asyncio
+
+# Disable tokenizers parallelism warnings in forked processes
+import os
 import sys
 
 from loguru import logger
-
-# Disable tokenizers parallelism warnings in forked processes
-import os  # noqa: E402
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 

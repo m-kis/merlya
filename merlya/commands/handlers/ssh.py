@@ -9,10 +9,10 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import time
-import asyncssh
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import asyncssh
 from loguru import logger
 
 from merlya.commands.registry import CommandResult, command, subcommand
@@ -106,7 +106,7 @@ def _install_ssh_callbacks(
     ctx: SharedContext,
     ssh_pool,
     host_name: str,
-    key_path: str | None,
+    _key_path: str | None,  # Reserved for future use
     *,
     force: bool = False,
 ) -> None:
@@ -363,7 +363,7 @@ async def _prompt_private_key(ctx: SharedContext, host) -> str | None:
                 continue
             ctx.ui.error(f"❌ Invalid key: {exc}")
             return None
-        except Exception as exc:  # noqa: PERF203
+        except Exception as exc:
             ctx.ui.error(f"❌ Invalid key: {exc}")
             return None
 
@@ -398,7 +398,7 @@ def _store_passphrase(ctx: SharedContext, host, passphrase: str | None) -> None:
             ):
                 ctx.secrets.set(key, passphrase)
             ctx.ui.success("✅ Passphrase stored securely")
-        except Exception as exc:  # noqa: PERF203
+        except Exception as exc:
             logger.debug(f"Failed to store passphrase: {exc}")
 
 
@@ -432,7 +432,7 @@ def _lookup_passphrase(ctx: SharedContext, keys: list[str]) -> str | None:
             value = keyring.get_password("merlya", key)
             if value:
                 return value
-    except Exception as exc:  # noqa: PERF203
+    except Exception as exc:
         logger.debug(f"Keyring lookup failed: {exc}")
 
     return None
@@ -483,7 +483,7 @@ async def cmd_ssh_test(ctx: SharedContext, args: list[str]) -> CommandResult:
 
         if result.exit_code == 0:
             lines.extend([
-                f"**Result:** ✅ Success",
+                "**Result:** ✅ Success",
                 f"  - Connect time: `{connect_time:.2f}s`",
                 f"  - Total time: `{total_time:.2f}s`",
                 f"  - Remote OS: `{result.stdout.strip().split(chr(10))[-1]}`",
@@ -491,7 +491,7 @@ async def cmd_ssh_test(ctx: SharedContext, args: list[str]) -> CommandResult:
             return CommandResult(success=True, message="\n".join(lines))
         else:
             lines.extend([
-                f"**Result:** ⚠️ Connected but command failed",
+                "**Result:** ⚠️ Connected but command failed",
                 f"  - Exit code: `{result.exit_code}`",
                 f"  - Error: `{result.stderr}`",
             ])

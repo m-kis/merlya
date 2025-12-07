@@ -202,7 +202,7 @@ async def cmd_model_test(ctx: SharedContext, _args: list[str]) -> CommandResult:
                     # Support both legacy result.data and newer attributes
                     raw_data = getattr(result, "data", None)
                     if raw_data is None and hasattr(result, "output"):
-                        raw_data = getattr(result, "output")
+                        raw_data = result.output
                     response_text = str(raw_data)
 
                     if "ok" in response_text.lower():
@@ -219,7 +219,7 @@ async def cmd_model_test(ctx: SharedContext, _args: list[str]) -> CommandResult:
                         )
 
                     errors.append((model_path, f"Unexpected response: {response_text}"))
-                except Exception as e:  # noqa: PERF203
+                except Exception as e:
                     errors.append((model_path, str(e)))
 
         # If we reach here, all attempts failed

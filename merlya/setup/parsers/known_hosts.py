@@ -7,7 +7,6 @@ Parses ~/.ssh/known_hosts file format.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -15,6 +14,8 @@ from loguru import logger
 from merlya.setup.parsers.utils import SKIP_HOSTNAMES, is_valid_ip, safe_parse_port
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from merlya.setup.models import HostData
 
 

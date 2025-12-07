@@ -6,6 +6,7 @@ Implements /conv command with subcommands: list, show, load, delete, rename, sea
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,10 +36,8 @@ async def cmd_conv_list(ctx: SharedContext, args: list[str]) -> CommandResult:
     limit = 10
     for arg in args:
         if arg.startswith("--limit="):
-            try:
+            with contextlib.suppress(ValueError):
                 limit = int(arg[8:])
-            except ValueError:
-                pass
 
     conversations = await ctx.conversations.get_recent(limit=limit)
 

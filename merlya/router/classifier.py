@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -18,8 +17,6 @@ from merlya.router.intent_classifier import AgentMode, IntentClassifier
 # Re-export for compatibility
 __all__ = ["AgentMode", "IntentClassifier", "IntentRouter", "RouterResult"]
 
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass
@@ -210,7 +207,7 @@ Respond in JSON format:
         try:
             raw = getattr(response, "data", None)
             if raw is None and hasattr(response, "output"):
-                raw = getattr(response, "output")
+                raw = response.output
             if raw is None:
                 raw = str(response)
 

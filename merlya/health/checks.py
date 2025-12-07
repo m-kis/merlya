@@ -146,7 +146,7 @@ async def check_llm_provider(api_key: str | None = None, timeout: float = 10.0) 
 
     # Perform real connectivity test
     try:
-        start_time = time.time()
+        time.time()
 
         # Provider-specific connectivity checks
         if provider == "openai":
@@ -174,7 +174,7 @@ async def check_llm_provider(api_key: str | None = None, timeout: float = 10.0) 
             },
         )
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return HealthCheck(
             name="llm_provider",
             status=CheckStatus.WARNING,
@@ -321,7 +321,7 @@ def check_ssh_available() -> HealthCheck:
 
     # Check asyncssh
     try:
-        import asyncssh  # noqa: F401 - import needed for availability check
+        import asyncssh
 
         details["asyncssh"] = True
         details["asyncssh_version"] = asyncssh.__version__
@@ -523,9 +523,10 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     # LLM provider (with real ping unless skipped)
     if skip_llm_ping:
         # Quick check - just verify API key exists
+        import os
+
         from merlya.config import get_config
         from merlya.secrets import get_secret
-        import os
 
         config = get_config()
         key_env = config.model.api_key_env or f"{config.model.provider.upper()}_API_KEY"

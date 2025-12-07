@@ -9,10 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from merlya.commands.registry import CommandResult, command, subcommand
+from merlya.commands.registry import CommandResult, command
 from merlya.ssh.pool import SSHConnectionOptions
 
 if TYPE_CHECKING:
@@ -247,7 +246,7 @@ async def _scan_system_parallel(
     task_list = list(tasks.items())
     task_results = await asyncio.gather(*[t[1] for t in task_list], return_exceptions=True)
 
-    for (name, _), res in zip(task_list, task_results):
+    for (name, _), res in zip(task_list, task_results, strict=False):
         if isinstance(res, Exception):
             continue
         if res.success and res.data:
@@ -310,7 +309,7 @@ async def _scan_security_parallel(
     task_list = list(tasks.items())
     task_results = await asyncio.gather(*[t[1] for t in task_list], return_exceptions=True)
 
-    for (name, _), res in zip(task_list, task_results):
+    for (name, _), res in zip(task_list, task_results, strict=False):
         if isinstance(res, Exception):
             continue
         if res.success:
@@ -490,7 +489,7 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
             logins = sec_data["failed_logins"]
             total = logins.get("total_attempts", 0)
             if total > 0:
-                icon = "🔴" if total > 50 else ("⚠️" if total > 20 else "ℹ️")
+                icon = "🔴" if total > 50 else ("⚠️" if total > 20 else "ℹ️")  # noqa: RUF001
                 lines.append(f"{icon} **Failed Logins (24h):** {total}")
                 top_ips = logins.get("top_ips", [])[:3]
                 if top_ips:
@@ -506,7 +505,7 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
             total = updates.get("total_updates", 0)
             security = updates.get("security_updates", 0)
             if total > 0:
-                icon = "🔴" if security > 5 else ("⚠️" if total > 10 else "ℹ️")
+                icon = "🔴" if security > 5 else ("⚠️" if total > 10 else "ℹ️")  # noqa: RUF001
                 lines.append(f"{icon} **Updates:** {total} pending ({security} security)")
             else:
                 lines.append("✅ **Updates:** system up to date")
@@ -530,7 +529,7 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
             users = sec_data["users"]
             shell_users = users.get("users", [])
             issues = users.get("issues", [])
-            icon = "⚠️" if issues else "ℹ️"
+            icon = "⚠️" if issues else "ℹ️"  # noqa: RUF001
             lines.append(f"{icon} **Users:** {len(shell_users)} with shell access")
             if issues:
                 for issue in issues[:3]:
@@ -544,9 +543,7 @@ def _progress_bar(percent: int | float, width: int = 10) -> str:
     """Create a simple progress bar."""
     filled = int(percent / 100 * width)
     empty = width - filled
-    if percent >= 90:
-        return "█" * filled + "░" * empty
-    elif percent >= 70:
+    if percent >= 90 or percent >= 70:
         return "█" * filled + "░" * empty
     else:
         return "█" * filled + "░" * empty

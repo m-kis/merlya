@@ -6,11 +6,10 @@ Rich-based console with panels, tables, and markdown.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any
 
 from prompt_toolkit import PromptSession
-from rich.bar import Bar
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -217,10 +216,8 @@ class ConsoleUI:
     def _stop_spinner(self) -> None:
         """Stop any active spinner before prompting the user."""
         if self._active_status:
-            try:
+            with suppress(Exception):
                 self._active_status.stop()
-            except Exception:
-                pass
             self._active_status = None
 
     def welcome_screen(

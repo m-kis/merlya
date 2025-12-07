@@ -4,17 +4,17 @@ Interaction tools for credentials and elevation (brain-driven).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import getpass
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from merlya.persistence.models import Host
 from merlya.commands.registry import CommandResult
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+    from merlya.persistence.models import Host
 
 
 @dataclass
@@ -28,7 +28,7 @@ class CredentialBundle:
 
 
 async def request_credentials(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     service: str,
     host: str | None = None,
     fields: list[str] | None = None,
@@ -68,7 +68,7 @@ async def request_credentials(
                 if not host_entry:
                     alt = await ctx.hosts.get_by_name(host.lower())
                     host_entry = host_entry or alt
-            except Exception as exc:  # noqa: PERF203
+            except Exception as exc:
                 logger.debug(f"Could not resolve host '{host}' for credentials prefill: {exc}")
 
         if fields is None:
@@ -121,7 +121,7 @@ async def request_credentials(
                 elif host and ssh_pool.has_connection(host):
                     bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
                     return CommandResult(success=True, message="✅ Credentials resolved (active connection)", data=bundle)
-            except Exception as exc:  # noqa: PERF203
+            except Exception as exc:
                 logger.debug(f"Could not check SSH connection cache: {exc}")
 
         if not missing_fields:
@@ -165,12 +165,12 @@ async def request_credentials(
         bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
         return CommandResult(success=True, message="✅ Credentials captured", data=bundle)
 
-    except Exception as e:  # noqa: PERF203
+    except Exception as e:
         logger.error(f"Failed to request credentials: {e}")
         return CommandResult(success=False, message=f"❌ Failed to request credentials: {e}")
 
 
-async def request_elevation(ctx: "SharedContext", command: str, host: str | None = None) -> CommandResult:
+async def request_elevation(ctx: SharedContext, command: str, host: str | None = None) -> CommandResult:
     """
     Request privilege elevation via PermissionManager (brain-driven).
     """
@@ -195,6 +195,6 @@ async def request_elevation(ctx: "SharedContext", command: str, host: str | None
                 "base_command": elevation.base_command or command,
             },
         )
-    except Exception as e:  # noqa: PERF203
+    except Exception as e:
         logger.error(f"Failed to request elevation: {e}")
         return CommandResult(success=False, message=f"❌ Failed to request elevation: {e}")

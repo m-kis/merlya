@@ -79,7 +79,7 @@ def _is_safe_ssh_key_path(path: str) -> bool:
 
 
 async def _execute_command(
-    ctx: "SharedContext",
+    ctx: SharedContext,
     host_name: str,
     command: str,
     timeout: int = 60,
@@ -166,10 +166,7 @@ async def check_open_ports(
         )
 
         def _extract_port(address: str) -> int | str | None:
-            if ":" in address:
-                label = address.rsplit(":", 1)[-1]
-            else:
-                label = address
+            label = address.rsplit(":", 1)[-1] if ":" in address else address
             label = label.strip("[]")
             if not label or label == "*":
                 return None
@@ -222,7 +219,7 @@ async def check_open_ports(
                 not line
                 or line.startswith(("Netid", "Proto", "Active", "Recv-Q"))
                 or "Local Address" in line
-                or "Local" in line and "Foreign" in line
+                or ("Local" in line and "Foreign" in line)
             ):
                 continue
 
@@ -754,7 +751,7 @@ async def check_critical_services(
             return SecurityResult(success=False, error="No valid service names provided")
 
         # Build command to check all services
-        service_checks = " ".join(
+        " ".join(
             f"systemctl is-active {shlex.quote(s)} 2>/dev/null || echo inactive"
             for s in safe_services
         )

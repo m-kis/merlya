@@ -169,7 +169,7 @@ async def ssh_execute(
         if host_entry and host_entry.jump_host:
             try:
                 jump_entry = await ctx.hosts.get_by_name(host_entry.jump_host)
-            except Exception:  # noqa: PERF203
+            except Exception:
                 jump_entry = None
 
             if jump_entry:
@@ -227,7 +227,7 @@ async def ssh_execute(
 
         # If elevation was password-optional and failed, retry with password
         if (
-            not result.exit_code == 0
+            result.exit_code != 0
             and elevation_used
             and elevation_needs_password
             and not input_data
@@ -246,7 +246,7 @@ async def ssh_execute(
                         )
                     result = await _run(command, input_data)
                     elevation_used = f"{elevation_used}_retry"
-            except Exception as retry_exc:  # noqa: PERF203
+            except Exception as retry_exc:
                 # Don't log exception details to avoid leaking password in command/input
                 logger.debug(f"🔒 Elevation retry failed: {type(retry_exc).__name__}")
 
@@ -272,14 +272,14 @@ async def ssh_execute(
         )
 
 
-def _ensure_callbacks(ctx: "SharedContext", ssh_pool: Any) -> None:
+def _ensure_callbacks(ctx: SharedContext, ssh_pool: Any) -> None:
     """
     Ensure MFA and passphrase callbacks are set for SSH operations.
 
     Uses blocking prompts in background threads to avoid event-loop conflicts.
     """
-    import concurrent.futures
     import asyncio as _asyncio
+    import concurrent.futures
 
     if hasattr(ssh_pool, "has_passphrase_callback") and not ssh_pool.has_passphrase_callback():
         def passphrase_cb(key_path: str) -> str:

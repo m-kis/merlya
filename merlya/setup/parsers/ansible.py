@@ -7,7 +7,6 @@ Parses Ansible inventory files (INI and YAML formats).
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -15,6 +14,8 @@ from loguru import logger
 from merlya.setup.parsers.utils import safe_parse_port
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from merlya.setup.models import HostData
 
 
@@ -65,7 +66,6 @@ async def parse_ansible_inventory(path: Path) -> list[HostData]:
     Returns:
         List of HostData objects.
     """
-    from merlya.setup.models import HostData
 
     hosts: list[HostData] = []
 
@@ -86,7 +86,6 @@ async def parse_ansible_inventory(path: Path) -> list[HostData]:
 
 async def _parse_ansible_ini(content: str) -> list[HostData]:
     """Parse Ansible INI format inventory."""
-    from merlya.setup.models import HostData
 
     hosts: list[HostData] = []
     current_group: str | None = "ungrouped"
@@ -99,11 +98,8 @@ async def _parse_ansible_ini(content: str) -> list[HostData]:
         # Group header
         if line.startswith("[") and line.endswith("]"):
             group = line[1:-1]
-            if ":" not in group:
-                current_group = group
-            else:
-                # Skip :vars and :children sections
-                current_group = None
+            # Skip :vars and :children sections
+            current_group = group if ":" not in group else None
             continue
 
         # Skip if in :vars or :children section
@@ -166,9 +162,8 @@ def _parse_ini_host_line(line: str, current_group: str | None) -> list[HostData]
     return hosts
 
 
-async def _parse_ansible_yaml(path: Path, content: str) -> list[HostData]:
+async def _parse_ansible_yaml(_path: Path, content: str) -> list[HostData]:
     """Parse Ansible YAML format inventory."""
-    from merlya.setup.models import HostData
 
     hosts: list[HostData] = []
 

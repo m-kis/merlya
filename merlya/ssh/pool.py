@@ -10,9 +10,10 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
 from merlya.ssh.sftp import SFTPOperations
 
 if TYPE_CHECKING:
@@ -72,7 +73,7 @@ class SSHConnection:
             self.connection.close()
             try:
                 await asyncio.wait_for(self.connection.wait_closed(), timeout=10.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("⚠️ Connection close timeout after 10s")
             self.connection = None
 
@@ -358,7 +359,7 @@ class SSHPool(SFTPOperations):
                 self,
                 name: str,
                 instructions: str,
-                lang: str,
+                _lang: str,  # Required by interface
                 prompts: list[tuple[str, bool]],
             ) -> list[str] | None:
                 """Handle keyboard-interactive (MFA/2FA) challenges."""
@@ -454,7 +455,7 @@ class SSHPool(SFTPOperations):
                 try:
                     tunnel.close()  # type: ignore[attr-defined]
                     await asyncio.wait_for(tunnel.wait_closed(), timeout=10.0)  # type: ignore[attr-defined]
-                except (asyncio.TimeoutError, Exception) as cleanup_exc:
+                except (TimeoutError, Exception) as cleanup_exc:
                     logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
 
             error_msg = "SSH connection timeout" if isinstance(e, TimeoutError) else f"SSH connection failed: {e}"
@@ -466,7 +467,7 @@ class SSHPool(SFTPOperations):
                 try:
                     tunnel.close()  # type: ignore[attr-defined]
                     await asyncio.wait_for(tunnel.wait_closed(), timeout=10.0)  # type: ignore[attr-defined]
-                except (asyncio.TimeoutError, Exception) as cleanup_exc:
+                except (TimeoutError, Exception) as cleanup_exc:
                     logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
 
             logger.error(f"❌ Unexpected error creating connection to {host}")
@@ -486,10 +487,11 @@ class SSHPool(SFTPOperations):
                 continue
             user_part, rest = key.split("@", 1)
             host_part, port_part = rest.split(":", 1)
-            if host_part == host or conn.host == host:
-                if port is None or int(port_part) == port:
-                    if username is None or user_part == (username or "default"):
-                        return True
+            host_matches = host_part == host or conn.host == host
+            port_matches = port is None or int(port_part) == port
+            user_matches = username is None or user_part == (username or "default")
+            if host_matches and port_matches and user_matches:
+                return True
         return False
 
     async def execute(
@@ -626,8 +628,9 @@ class SSHPool(SFTPOperations):
         Returns:
             Tuple of (success, message).
         """
-        import asyncssh
         from pathlib import Path as PathlibPath
+
+        import asyncssh
 
         path = PathlibPath(key_path).expanduser()
 
@@ -680,7 +683,9 @@ class SSHPool(SFTPOperations):
                         key = asyncssh.read_private_key(str(key_path), passphrase)
                         logger.debug(f"Encrypted key loaded: {key_path}")
                         return key
-                    raise asyncssh.KeyEncryptionError("Passphrase required but not provided")
+                    raise asyncssh.KeyEncryptionError(
+                        "Passphrase required but not provided"
+                    ) from None
             else:
                 return asyncssh.read_private_key(str(key_path))
         except asyncssh.KeyImportError as exc:

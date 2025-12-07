@@ -6,7 +6,6 @@ Parses /etc/hosts file format.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -14,6 +13,8 @@ from loguru import logger
 from merlya.setup.parsers.utils import SKIP_HOSTNAMES, is_valid_ip
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from merlya.setup.models import HostData
 
 

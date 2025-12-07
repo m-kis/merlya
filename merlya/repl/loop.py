@@ -6,8 +6,8 @@ Interactive console with autocompletion.
 
 from __future__ import annotations
 
-import re
 import os
+import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 

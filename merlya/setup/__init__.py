@@ -33,17 +33,17 @@ __all__ = [
     "SetupResult",
     # Core functions
     "check_first_run",
+    # Utilities
+    "deduplicate_hosts",
     "detect_inventory_sources",
-    "run_llm_setup",
-    "run_setup_wizard",
     # Parsing functions
     "import_from_ssh_config",
+    "merge_host_data",
     "parse_ansible_inventory",
     "parse_etc_hosts",
     "parse_inventory_source",
     "parse_known_hosts",
     "parse_ssh_config",
-    # Utilities
-    "deduplicate_hosts",
-    "merge_host_data",
+    "run_llm_setup",
+    "run_setup_wizard",
 ]

@@ -7,7 +7,6 @@ ONNX-based semantic classifier for user intent.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -149,8 +148,8 @@ class IntentClassifier:
             return True
 
         try:
-            import onnxruntime as ort
-            from tokenizers import Tokenizer
+            import onnxruntime as ort  # noqa: F401 - check availability
+            from tokenizers import Tokenizer  # noqa: F401 - check availability
 
             model_path = model_path or Path.home() / ".merlya" / "models" / "router.onnx"
             tokenizer_path = model_path.parent / "tokenizer.json"
@@ -204,7 +203,7 @@ class IntentClassifier:
                 logger.warning(f"⚠️ ONNX model not found: {model_path}")
             elif not tokenizer_path.exists():
                 logger.warning(f"⚠️ Tokenizer not found: {tokenizer_path}")
-            logger.info("ℹ️ Using pattern matching for intent classification")
+            logger.info("ℹ️ Using pattern matching for intent classification")  # noqa: RUF001
             IntentClassifier._onnx_warning_shown = True
         self.use_embeddings = False
         return False
@@ -378,9 +377,8 @@ class IntentClassifier:
     def check_delegation(self, text: str) -> str | None:
         """Check if should delegate to specialized agent."""
         for agent, keywords in TOOL_KEYWORDS.items():
-            if agent in ["docker", "kubernetes"]:
-                if any(kw in text for kw in keywords):
-                    return agent
+            if agent in ["docker", "kubernetes"] and any(kw in text for kw in keywords):
+                return agent
         return None
 
     def _cosine_similarity(

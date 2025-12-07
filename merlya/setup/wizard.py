@@ -13,12 +13,11 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from merlya.setup.models import HostData
-
 if TYPE_CHECKING:
-    from typing import Callable
+    from collections.abc import Callable
 
     from merlya.core.context import SharedContext
+    from merlya.setup.models import HostData
     from merlya.ui.console import ConsoleUI
 
 
@@ -127,7 +126,7 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
     return LLMConfig(provider=provider, model=model, api_key_env=env_key, fallback_model=fallback_model)
 
 
-async def detect_inventory_sources(ui: ConsoleUI) -> list[InventorySource]:
+async def detect_inventory_sources(_ui: ConsoleUI) -> list[InventorySource]:
     """Detect available inventory sources."""
     from merlya.setup.parsers.ansible import count_ansible_hosts
     from merlya.setup.parsers.etc_hosts import count_etc_hosts

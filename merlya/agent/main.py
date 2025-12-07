@@ -187,7 +187,7 @@ class MerlyaAgent:
         self._active_conversation = None
         logger.debug("Conversation history cleared")
 
-    async def _create_conversation(self, title_seed: str | None = None) -> "Conversation":
+    async def _create_conversation(self, title_seed: str | None = None) -> Conversation:
         """Create and persist a new conversation with optional title."""
         from merlya.persistence.models import Conversation
 
@@ -215,7 +215,7 @@ class MerlyaAgent:
         except Exception as e:
             logger.debug(f"Failed to persist conversation history: {e}")
 
-    def load_conversation(self, conv: "Conversation") -> None:
+    def load_conversation(self, conv: Conversation) -> None:
         """Load an existing conversation into the agent history."""
         self._active_conversation = conv
         self._history = list(conv.messages or [])
