@@ -32,9 +32,7 @@ dependencies = [
     "anthropic>=0.75",
     "httpx>=0.28",
 
-    # Intent Router (local embedding)
-    "onnxruntime>=1.19",
-    "tokenizers>=0.20",
+    # Intent Router (model download)
     "huggingface-hub>=0.26",
 
     # SSH
@@ -60,6 +58,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Local intent routing with ONNX (not available on Python 3.14+)
+router = [
+    "onnxruntime>=1.19",
+    "tokenizers>=0.20",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -67,6 +70,10 @@ dev = [
     "mypy>=1.13",
     "ruff>=0.8",
     "types-PyYAML>=6.0",
+]
+# All optional features
+all = [
+    "merlya[router]",
 ]
 
 [project.scripts]
