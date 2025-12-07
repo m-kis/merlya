@@ -177,6 +177,7 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_hosts_name ON hosts(name);
             CREATE INDEX IF NOT EXISTS idx_hosts_health ON hosts(health_status);
             CREATE INDEX IF NOT EXISTS idx_hosts_last_seen ON hosts(last_seen DESC);
+            CREATE INDEX IF NOT EXISTS idx_scan_cache_expires ON scan_cache(expires_at);
             CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_variables_is_env ON variables(is_env);
             """

@@ -245,7 +245,8 @@ async def ssh_execute(
                     result = await _run(command, input_data)
                     elevation_used = f"{elevation_used}_retry"
             except Exception as retry_exc:  # noqa: PERF203
-                logger.debug(f"Elevation retry failed: {retry_exc}")
+                # Don't log exception details to avoid leaking password in command/input
+                logger.debug(f"🔒 Elevation retry failed: {type(retry_exc).__name__}")
 
         return ToolResult(
             success=result.exit_code == 0,

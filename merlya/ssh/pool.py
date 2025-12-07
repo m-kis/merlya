@@ -66,9 +66,14 @@ class SSHConnection:
 
     async def close(self) -> None:
         """Close the connection."""
+        import asyncio
+
         if self.connection:
             self.connection.close()
-            await self.connection.wait_closed()
+            try:
+                await asyncio.wait_for(self.connection.wait_closed(), timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Connection close timeout after 10s")
             self.connection = None
 
 
@@ -370,13 +375,27 @@ class SSHPool(SFTPOperations):
             )
 
         except (TimeoutError, asyncssh.Error) as e:
-            # Clean up tunnel on error
+            # Clean up tunnel on connection error
             if tunnel:
-                tunnel.close()  # type: ignore[attr-defined]
-                await tunnel.wait_closed()  # type: ignore[attr-defined]
+                try:
+                    tunnel.close()  # type: ignore[attr-defined]
+                    await asyncio.wait_for(tunnel.wait_closed(), timeout=10.0)  # type: ignore[attr-defined]
+                except (asyncio.TimeoutError, Exception) as cleanup_exc:
+                    logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
 
             error_msg = "SSH connection timeout" if isinstance(e, TimeoutError) else f"SSH connection failed: {e}"
             logger.error(f"❌ {error_msg} to {host}")
+            raise
+        except Exception:
+            # Clean up tunnel on any unexpected error
+            if tunnel:
+                try:
+                    tunnel.close()  # type: ignore[attr-defined]
+                    await asyncio.wait_for(tunnel.wait_closed(), timeout=10.0)  # type: ignore[attr-defined]
+                except (asyncio.TimeoutError, Exception) as cleanup_exc:
+                    logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
+
+            logger.error(f"❌ Unexpected error creating connection to {host}")
             raise
 
     def has_connection(self, host: str, port: int | None = None, username: str | None = None) -> bool:
@@ -580,20 +599,15 @@ class SSHPool(SFTPOperations):
                 except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError):
                     passphrase = self._passphrase_callback(str(key_path))
                     if passphrase:
-                        logger.debug(f"🔒 Using stored passphrase for key {key_path}")
+                        logger.debug(f"🔐 Using passphrase for encrypted key {key_path}")
                         return asyncssh.read_private_key(str(key_path), passphrase)
-                    raise asyncssh.KeyEncryptionError("Passphrase required")
+                    raise asyncssh.KeyEncryptionError("Passphrase required but not provided")
             else:
-                try:
-                    return asyncssh.read_private_key(str(key_path))
-                except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError):
-                    passphrase = self._passphrase_callback(str(key_path))
-                    if not passphrase:
-                        raise asyncssh.KeyEncryptionError("Passphrase required")
-                    return asyncssh.read_private_key(str(key_path), passphrase)
+                # No callback configured - just try to load without passphrase
+                return asyncssh.read_private_key(str(key_path))
         except asyncssh.KeyImportError as exc:
             logger.warning(f"⚠️ Key import failed for {key_path}: {exc}")
             raise
         except asyncssh.KeyEncryptionError as exc:
-            logger.warning(f"⚠️ Key {key_path} requires passphrase: {exc}")
+            logger.warning(f"⚠️ Key {key_path} is encrypted but no passphrase callback configured")
             raise

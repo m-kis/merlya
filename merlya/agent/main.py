@@ -170,10 +170,13 @@ class MerlyaAgent:
 
         except Exception as e:
             logger.error(f"Agent error: {e}")
-            # Persist the history with the user prompt even on failure
+            # Add error response to history to maintain conversation consistency
+            error_message = f"An error occurred: {e}"
+            self._history.append({"role": "assistant", "content": error_message})
+            # Persist the complete conversation history including error
             await self._persist_history()
             return AgentResponse(
-                message=f"An error occurred: {e}",
+                message=error_message,
                 actions_taken=[],
                 suggestions=["Try rephrasing your request"],
             )
