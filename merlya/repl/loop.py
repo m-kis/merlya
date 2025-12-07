@@ -343,7 +343,7 @@ class REPL:
 
             return version("merlya")
         except Exception:
-            return "0.5.1"
+            return "0.5.2"
 
     def _reload_agent(self) -> None:
         """Reload agent with current model settings."""

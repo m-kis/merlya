@@ -1,6 +1,6 @@
 [project]
 name = "merlya"
-version = "0.5.1"
+version = "0.5.2"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
     { name = "Cedric", email = "cedric@example.com" }
@@ -32,8 +32,9 @@ dependencies = [
     "anthropic>=0.75",
     "httpx>=0.28",
 
-    # Intent Router (model download)
+    # Intent Router
     "huggingface-hub>=0.26",
+    "numpy>=1.26",
 
     # SSH
     "asyncssh>=2.21",
