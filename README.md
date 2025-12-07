@@ -35,6 +35,14 @@ ruff check merlya/
 mypy merlya/
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+
+## Issues & Feedback
+
+Report bugs and request features on [GitHub Issues](https://github.com/m-kis/merlya/issues).
+
 ## License
 
-MIT
+[MIT](LICENSE)

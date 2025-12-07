@@ -310,6 +310,8 @@ class REPL:
             self.ctx.t("welcome_screen.command_exit"),
             "",
             self.ctx.t("welcome_screen.prompt"),
+            "",
+            self.ctx.t("welcome_screen.feedback"),
         ]
 
         tips = [
@@ -341,7 +343,7 @@ class REPL:
 
             return version("merlya")
         except Exception:
-            return "0.5.0"
+            return "0.5.1"
 
     def _reload_agent(self) -> None:
         """Reload agent with current model settings."""

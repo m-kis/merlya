@@ -37,6 +37,7 @@
     "command_scan": "  • /scan - Scanner l'infrastructure",
     "command_exit": "  • /exit - Quitter",
     "prompt": "Commencez par me poser n'importe quelle question sur votre infrastructure !",
+    "feedback": "📝 Feedback : https://github.com/m-kis/merlya/issues",
     "tip_specific": "Soyez précis dans vos requêtes",
     "tip_target": "Précisez le serveur cible (nom ou IP) si possible",
     "tip_context": "Ajoutez du contexte (service, erreur, etc.)",

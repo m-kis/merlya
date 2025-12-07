@@ -123,6 +123,17 @@ class TestValidateFilePath:
         assert is_valid is False
 
 
+class TestEtcHostsValidation:
+    """Tests for /etc/hosts path validation (handles macOS symlinks)."""
+
+    def test_etc_hosts_allowed(self) -> None:
+        """Test /etc/hosts is allowed (handles /etc -> /private/etc symlink on macOS)."""
+        etc_hosts = Path("/etc/hosts")
+        if etc_hosts.exists():
+            is_valid, msg = _validate_file_path(etc_hosts)
+            assert is_valid is True, f"Expected /etc/hosts to be allowed, got: {msg}"
+
+
 class TestCheckFileSize:
     """Tests for file size validation."""
 

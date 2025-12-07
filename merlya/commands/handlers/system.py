@@ -28,6 +28,7 @@ class ScanOptions:
     include_docker: bool = True
     include_updates: bool = True
     include_logins: bool = True
+    show_all: bool = False  # Show all ports/users (no truncation)
 
 
 # Limit concurrent SSH channels to avoid MaxSessions limit (default 10 in OpenSSH)
@@ -66,6 +67,8 @@ def _parse_scan_options(args: list[str]) -> ScanOptions:
             opts.include_docker = False
         elif arg == "--no-updates":
             opts.include_updates = False
+        elif arg == "--show-all":
+            opts.show_all = True
 
     return opts
 
@@ -82,6 +85,7 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
       --system     System checks only
       --json       Output as JSON
       --all-disks  Check all mounted filesystems
+      --show-all   Show all ports and users (no truncation)
       --no-docker  Skip Docker checks
       --no-updates Skip pending updates check
     """
@@ -160,7 +164,7 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     return CommandResult(
         success=True,
-        message=_format_scan_output(scan_result, host),
+        message=_format_scan_output(scan_result, host, opts),
         data=scan_result,
     )
 
@@ -397,9 +401,10 @@ def _scan_to_dict(result: ScanResult, host: Any) -> dict[str, Any]:
     }
 
 
-def _format_scan_output(result: ScanResult, host: Any) -> str:
+def _format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None = None) -> str:
     """Format scan result for display."""
     lines: list[str] = []
+    show_all = opts.show_all if opts else False
 
     # Header with severity
     severity_icon = (
@@ -485,13 +490,14 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
         lines.append("### 🔒 Security")
         lines.append("")
 
-        # Ports
+        # Ports - show 10 by default, all with --show-all
         if "ports" in sec_data and isinstance(sec_data["ports"], list):
             ports = sec_data["ports"]
             lines.append(f"**Open Ports:** {len(ports)}")
             if ports:
+                max_ports = len(ports) if show_all else 10
                 port_list = []
-                for p in ports[:8]:
+                for p in ports[:max_ports]:
                     port_val = p.get("port", "?")
                     proto = p.get("protocol", "?")
                     process = p.get("process") or p.get("service") or ""
@@ -500,8 +506,8 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
                     else:
                         port_list.append(f"`{port_val}/{proto}`")
                 lines.append("  " + " · ".join(port_list))
-                if len(ports) > 8:
-                    lines.append(f"  *... and {len(ports) - 8} more*")
+                if not show_all and len(ports) > 10:
+                    lines.append(f"  *... and {len(ports) - 10} more (use --show-all)*")
             lines.append("")
 
         # SSH config
@@ -556,13 +562,22 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
                 lines.append("✅ **Services:** all critical services active")
             lines.append("")
 
-        # Users
+        # Users - show names and highlight issues
         if "users" in sec_data and isinstance(sec_data["users"], dict):
             users = sec_data["users"]
             shell_users = users.get("users", [])
             issues = users.get("issues", [])
             icon = "⚠️" if issues else "ℹ️"  # noqa: RUF001
             lines.append(f"{icon} **Users:** {len(shell_users)} with shell access")
+
+            # Show user names (max 8 by default, all with --show-all)
+            if shell_users:
+                max_users = len(shell_users) if show_all else 8
+                user_names = [u.get("username", u) if isinstance(u, dict) else str(u) for u in shell_users[:max_users]]
+                lines.append(f"   `{', '.join(user_names)}`")
+                if not show_all and len(shell_users) > 8:
+                    lines.append(f"   *... and {len(shell_users) - 8} more (use --show-all)*")
+
             if issues:
                 for issue in issues[:3]:
                     lines.append(f"   ⚠️ {issue}")
