@@ -226,12 +226,7 @@ async def ssh_execute(
         result = await _run(command, input_data)
 
         # If elevation was password-optional and failed, retry with password
-        if (
-            result.exit_code != 0
-            and elevation_used
-            and elevation_needs_password
-            and not input_data
-        ):
+        if result.exit_code != 0 and elevation_used and elevation_needs_password and not input_data:
             try:
                 permissions = await ctx.get_permissions()
                 password = await ctx.ui.prompt_secret("🔑 Elevation password required")
@@ -282,17 +277,23 @@ def _ensure_callbacks(ctx: SharedContext, ssh_pool: Any) -> None:
     import concurrent.futures
 
     if hasattr(ssh_pool, "has_passphrase_callback") and not ssh_pool.has_passphrase_callback():
+
         def passphrase_cb(key_path: str) -> str:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 Passphrase for {key_path}")))
+                future = executor.submit(
+                    lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 Passphrase for {key_path}"))
+                )
                 return future.result(timeout=60)
+
         ssh_pool.set_passphrase_callback(passphrase_cb)
 
     if hasattr(ssh_pool, "has_mfa_callback") and not ssh_pool.has_mfa_callback():
+
         def mfa_cb(prompt: str) -> str:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}")))
                 return future.result(timeout=120)
+
         ssh_pool.set_mfa_callback(mfa_cb)
 
 

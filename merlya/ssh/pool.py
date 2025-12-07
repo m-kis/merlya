@@ -296,9 +296,7 @@ class SSHPool(SFTPOperations):
 
         return options
 
-    async def _setup_jump_tunnel(
-        self, opts: SSHConnectionOptions
-    ) -> object | None:
+    async def _setup_jump_tunnel(self, opts: SSHConnectionOptions) -> object | None:
         """Setup jump host tunnel if configured."""
         import asyncssh
 
@@ -405,7 +403,9 @@ class SSHPool(SFTPOperations):
 
             # Only retry with agent if we had explicit keys and it looks like a key issue
             if "client_keys" in connect_opts:
-                logger.warning(f"⚠️ Permission denied with provided key for {host}, retrying with agent")
+                logger.warning(
+                    f"⚠️ Permission denied with provided key for {host}, retrying with agent"
+                )
                 retry_opts = {k: v for k, v in connect_opts.items() if k != "client_keys"}
                 return await asyncio.wait_for(
                     asyncssh.connect(**retry_opts, client_factory=client_factory),
@@ -439,9 +439,7 @@ class SSHPool(SFTPOperations):
 
             # Connect with retry
             timeout_val = opts.connect_timeout or self.connect_timeout
-            conn = await self._connect_with_options(
-                host, options, client_factory, timeout_val
-            )
+            conn = await self._connect_with_options(host, options, client_factory, timeout_val)
 
             return SSHConnection(
                 host=host,
@@ -458,7 +456,11 @@ class SSHPool(SFTPOperations):
                 except (TimeoutError, Exception) as cleanup_exc:
                     logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
 
-            error_msg = "SSH connection timeout" if isinstance(e, TimeoutError) else f"SSH connection failed: {e}"
+            error_msg = (
+                "SSH connection timeout"
+                if isinstance(e, TimeoutError)
+                else f"SSH connection failed: {e}"
+            )
             logger.error(f"❌ {error_msg} to {host}")
             raise
         except Exception:
@@ -473,7 +475,9 @@ class SSHPool(SFTPOperations):
             logger.error(f"❌ Unexpected error creating connection to {host}")
             raise
 
-    def has_connection(self, host: str, port: int | None = None, username: str | None = None) -> bool:
+    def has_connection(
+        self, host: str, port: int | None = None, username: str | None = None
+    ) -> bool:
         """
         Check if an active connection exists for the target.
 

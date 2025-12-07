@@ -147,12 +147,14 @@ class MerlyaAgent:
             )
 
             augmented_input = user_input
-            if router_result and (router_result.credentials_required or router_result.elevation_required):
+            if router_result and (
+                router_result.credentials_required or router_result.elevation_required
+            ):
                 flag_note = (
                     f"[router_flags credentials_required={router_result.credentials_required} "
                     f"elevation_required={router_result.elevation_required}]"
                 )
-                    # Without interfering with user text, prepend a short note
+                # Without interfering with user text, prepend a short note
                 augmented_input = f"{flag_note}\n{user_input}"
 
             result = await self._agent.run(

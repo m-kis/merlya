@@ -109,13 +109,17 @@ class SFTPOperations:
         result = []
         async with conn.connection.start_sftp_client() as sftp:
             async for entry in sftp.scandir(remote_path):
-                result.append({
-                    "name": entry.filename,
-                    "size": entry.attrs.size,
-                    "is_dir": entry.attrs.type == 2,  # SSH_FILEXFER_TYPE_DIRECTORY
-                    "permissions": oct(entry.attrs.permissions) if entry.attrs.permissions else None,
-                    "mtime": entry.attrs.mtime,
-                })
+                result.append(
+                    {
+                        "name": entry.filename,
+                        "size": entry.attrs.size,
+                        "is_dir": entry.attrs.type == 2,  # SSH_FILEXFER_TYPE_DIRECTORY
+                        "permissions": oct(entry.attrs.permissions)
+                        if entry.attrs.permissions
+                        else None,
+                        "mtime": entry.attrs.mtime,
+                    }
+                )
 
         return result
 

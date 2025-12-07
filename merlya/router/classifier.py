@@ -18,7 +18,6 @@ from merlya.router.intent_classifier import AgentMode, IntentClassifier
 __all__ = ["AgentMode", "IntentClassifier", "IntentRouter", "RouterResult"]
 
 
-
 @dataclass
 class RouterResult:
     """Result of intent classification."""
@@ -91,20 +90,13 @@ class IntentRouter:
         result = await self._classify(user_input)
 
         # If confidence is low and we have LLM fallback, use it
-        if (
-            result.confidence < self.classifier.CONFIDENCE_THRESHOLD
-            and self._llm_model
-        ):
+        if result.confidence < self.classifier.CONFIDENCE_THRESHOLD and self._llm_model:
             llm_result = await self._classify_with_llm(user_input)
             if llm_result:
                 result = llm_result
 
         # Check if delegation is valid
-        if (
-            result.delegate_to
-            and available_agents
-            and result.delegate_to not in available_agents
-        ):
+        if result.delegate_to and available_agents and result.delegate_to not in available_agents:
             result.delegate_to = None
 
         logger.debug(
@@ -200,9 +192,7 @@ Respond in JSON format:
             logger.warning(f"⚠️ LLM classification failed: {e}")
             return None
 
-    def _parse_llm_response(
-        self, response: object, user_input: str
-    ) -> RouterResult | None:
+    def _parse_llm_response(self, response: object, user_input: str) -> RouterResult | None:
         """Parse LLM classification response."""
         try:
             raw = getattr(response, "data", None)

@@ -89,16 +89,16 @@ async def cmd_ssh_connect(ctx: SharedContext, args: list[str]) -> CommandResult:
 
 def _create_mfa_callback(ctx: SharedContext):
     """Create MFA callback for keyboard-interactive prompts."""
+
     def mfa_callback(prompt: str) -> str:
         try:
             asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    lambda: asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}"))
-                )
+                future = executor.submit(lambda: asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}")))
                 return future.result(timeout=120)
         except RuntimeError:
             return asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}"))
+
     return mfa_callback
 
 
@@ -122,6 +122,7 @@ def _install_ssh_callbacks(
         should_set_passphrase = force or not ssh_pool.has_passphrase_callback()
 
     if should_set_passphrase:
+
         def passphrase_cb(path: str) -> str:
             resolved = str(Path(path).expanduser())
             secrets_keys = _candidate_passphrase_keys(host_name, resolved, path)
@@ -152,6 +153,7 @@ def _install_ssh_callbacks(
         ssh_pool.set_passphrase_callback(passphrase_cb)
 
     if hasattr(ssh_pool, "has_mfa_callback") and (force or not ssh_pool.has_mfa_callback()):
+
         def mfa_cb(prompt: str) -> str:
             logger.debug(f"🔐 MFA callback invoked with prompt: {prompt}")
             try:
@@ -305,7 +307,9 @@ async def _prompt_ssh_config(ctx: SharedContext, host):
 
 async def _prompt_username(ctx: SharedContext, host):
     """Prompt for SSH username while keeping existing by default."""
-    username = await ctx.ui.prompt("SSH username (Enter to keep current)", default=host.username or "")
+    username = await ctx.ui.prompt(
+        "SSH username (Enter to keep current)", default=host.username or ""
+    )
     return username or host.username
 
 
@@ -328,7 +332,9 @@ async def _prompt_private_key(ctx: SharedContext, host) -> str | None:
 
     Returns validated passphrase (if any) for secure storage.
     """
-    private_key = await ctx.ui.prompt("Private key path (Enter to skip)", default=host.private_key or "")
+    private_key = await ctx.ui.prompt(
+        "Private key path (Enter to skip)", default=host.private_key or ""
+    )
     if not private_key:
         return None
 
@@ -370,7 +376,9 @@ async def _prompt_private_key(ctx: SharedContext, host) -> str | None:
 
 async def _prompt_jump_host(ctx: SharedContext, host):
     """Prompt for jump host/bastion details."""
-    jump_host = await ctx.ui.prompt("Jump host / bastion (Enter to skip)", default=host.jump_host or "")
+    jump_host = await ctx.ui.prompt(
+        "Jump host / bastion (Enter to skip)", default=host.jump_host or ""
+    )
     return jump_host or host.jump_host
 
 
@@ -402,7 +410,9 @@ def _store_passphrase(ctx: SharedContext, host, passphrase: str | None) -> None:
             logger.debug(f"Failed to store passphrase: {exc}")
 
 
-def _candidate_passphrase_keys(host_name: str, resolved_path: str, original_path: str | Path) -> list[str]:
+def _candidate_passphrase_keys(
+    host_name: str, resolved_path: str, original_path: str | Path
+) -> list[str]:
     """Build candidate key names for passphrase lookup."""
     name = Path(original_path).name
     return [
@@ -482,19 +492,23 @@ async def cmd_ssh_test(ctx: SharedContext, args: list[str]) -> CommandResult:
         total_time = time.time() - start
 
         if result.exit_code == 0:
-            lines.extend([
-                "**Result:** ✅ Success",
-                f"  - Connect time: `{connect_time:.2f}s`",
-                f"  - Total time: `{total_time:.2f}s`",
-                f"  - Remote OS: `{result.stdout.strip().split(chr(10))[-1]}`",
-            ])
+            lines.extend(
+                [
+                    "**Result:** ✅ Success",
+                    f"  - Connect time: `{connect_time:.2f}s`",
+                    f"  - Total time: `{total_time:.2f}s`",
+                    f"  - Remote OS: `{result.stdout.strip().split(chr(10))[-1]}`",
+                ]
+            )
             return CommandResult(success=True, message="\n".join(lines))
         else:
-            lines.extend([
-                "**Result:** ⚠️ Connected but command failed",
-                f"  - Exit code: `{result.exit_code}`",
-                f"  - Error: `{result.stderr}`",
-            ])
+            lines.extend(
+                [
+                    "**Result:** ⚠️ Connected but command failed",
+                    f"  - Exit code: `{result.exit_code}`",
+                    f"  - Error: `{result.stderr}`",
+                ]
+            )
             return CommandResult(success=False, message="\n".join(lines))
 
     except Exception as e:
@@ -529,7 +543,9 @@ def _build_error_troubleshooting(error_msg: str, hostname: str) -> list[str]:
     if "Passphrase" in error_msg or "encrypted" in error_msg.lower():
         lines.append("  - Your key is encrypted. Add it to ssh-agent: `ssh-add ~/.ssh/id_rsa`")
     elif "Host key" in error_msg or "trusted" in error_msg.lower():
-        lines.append(f"  - Host key not trusted. Run: `ssh-keyscan {hostname} >> ~/.ssh/known_hosts`")
+        lines.append(
+            f"  - Host key not trusted. Run: `ssh-keyscan {hostname} >> ~/.ssh/known_hosts`"
+        )
     elif "Connection refused" in error_msg:
         lines.append("  - SSH port may be blocked or service not running")
     elif "timeout" in error_msg.lower():

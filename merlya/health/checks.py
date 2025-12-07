@@ -532,12 +532,18 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
         key_env = config.model.api_key_env or f"{config.model.provider.upper()}_API_KEY"
         has_key = bool(os.getenv(key_env) or get_secret(key_env))
 
-        health.checks.append(HealthCheck(
-            name="llm_provider",
-            status=CheckStatus.OK if has_key or config.model.provider == "ollama" else CheckStatus.ERROR,
-            message=f"✅ {config.model.provider} (ping skipped)" if has_key else "❌ No API key",
-            critical=not has_key and config.model.provider != "ollama",
-        ))
+        health.checks.append(
+            HealthCheck(
+                name="llm_provider",
+                status=CheckStatus.OK
+                if has_key or config.model.provider == "ollama"
+                else CheckStatus.ERROR,
+                message=f"✅ {config.model.provider} (ping skipped)"
+                if has_key
+                else "❌ No API key",
+                critical=not has_key and config.model.provider != "ollama",
+            )
+        )
     else:
         health.checks.append(await check_llm_provider())
 
@@ -561,6 +567,8 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     health.checks.append(onnx_check)
     health.capabilities["onnx_router"] = onnx_check.status == CheckStatus.OK
 
-    logger.debug(f"✅ Health checks complete: {len(health.checks)} checks, can_start={health.can_start}")
+    logger.debug(
+        f"✅ Health checks complete: {len(health.checks)} checks, can_start={health.can_start}"
+    )
 
     return health

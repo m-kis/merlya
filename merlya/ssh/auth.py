@@ -388,9 +388,7 @@ class SSHAuthManager:
 
         return options
 
-    async def _prepare_key_auth(
-        self, key_path: str, host_id: str, options: SSHAuthOptions
-    ) -> None:
+    async def _prepare_key_auth(self, key_path: str, host_id: str, options: SSHAuthOptions) -> None:
         """Prepare key-based authentication."""
         key_path_obj = Path(key_path).expanduser()
 
@@ -493,9 +491,7 @@ class SSHAuthManager:
         user_display = f"{username}@" if username else ""
         self.ui.info(f"No authentication configured for {user_display}{hostname}")
 
-        response = await self.ui.prompt(
-            "Authentication method? [key/password]", default="key"
-        )
+        response = await self.ui.prompt("Authentication method? [key/password]", default="key")
 
         return "password" if response.lower().startswith("p") else "key"
 

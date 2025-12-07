@@ -96,7 +96,10 @@ class PermissionManager:
         if ok and su_path:
             capabilities["has_su"] = True
             # Prefer su over sudo_with_password to avoid prompting before trying su
-            if not capabilities["elevation_method"] or capabilities["elevation_method"] == "sudo_with_password":
+            if (
+                not capabilities["elevation_method"]
+                or capabilities["elevation_method"] == "sudo_with_password"
+            ):
                 capabilities["elevation_method"] = "su"
 
         if capabilities["is_root"]:
@@ -152,11 +155,17 @@ class PermissionManager:
                 return True
 
         for path in root_paths:
-            if path in command and any(op in command for op in [">", ">>", "tee", "mv", "cp", "rm", "mkdir", "touch", "chmod", "chown"]):
+            if path in command and any(
+                op in command
+                for op in [">", ">>", "tee", "mv", "cp", "rm", "mkdir", "touch", "chmod", "chown"]
+            ):
                 return True
 
         for p in protected_reads:
-            if p in command and any(cmd_lower.startswith(f"{r} ") or f" {r} " in cmd_lower for r in ["cat", "tail", "head", "grep", "awk", "sed"]):
+            if p in command and any(
+                cmd_lower.startswith(f"{r} ") or f" {r} " in cmd_lower
+                for r in ["cat", "tail", "head", "grep", "awk", "sed"]
+            ):
                 return True
 
         return False
@@ -193,7 +202,13 @@ class PermissionManager:
             default=False,
         )
         if not confirm:
-            return ElevationResult(command=command, input_data=None, method=None, note="user_declined", base_command=command)
+            return ElevationResult(
+                command=command,
+                input_data=None,
+                method=None,
+                note="user_declined",
+                base_command=command,
+            )
 
         password: str | None = None
         needs_password = method in ("sudo_with_password", "su")

@@ -49,7 +49,8 @@ async def request_credentials(
     try:
         # Validate service name to prevent path traversal or malicious names
         import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', service):
+
+        if not re.match(r"^[a-zA-Z0-9_-]+$", service):
             return CommandResult(
                 success=False,
                 message=f"Invalid service name: {service}. Only alphanumeric, underscore, and hyphen allowed.",
@@ -115,12 +116,26 @@ async def request_credentials(
             try:
                 ssh_pool = await ctx.get_ssh_pool()
                 if host_entry:
-                    if ssh_pool.has_connection(host_entry.hostname, port=host_entry.port, username=values.get("username")):
-                        bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
-                        return CommandResult(success=True, message="✅ Credentials resolved (active connection)", data=bundle)
+                    if ssh_pool.has_connection(
+                        host_entry.hostname, port=host_entry.port, username=values.get("username")
+                    ):
+                        bundle = CredentialBundle(
+                            service=service, host=host, values=values, stored=stored
+                        )
+                        return CommandResult(
+                            success=True,
+                            message="✅ Credentials resolved (active connection)",
+                            data=bundle,
+                        )
                 elif host and ssh_pool.has_connection(host):
-                    bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
-                    return CommandResult(success=True, message="✅ Credentials resolved (active connection)", data=bundle)
+                    bundle = CredentialBundle(
+                        service=service, host=host, values=values, stored=stored
+                    )
+                    return CommandResult(
+                        success=True,
+                        message="✅ Credentials resolved (active connection)",
+                        data=bundle,
+                    )
             except Exception as exc:
                 logger.debug(f"Could not check SSH connection cache: {exc}")
 
@@ -140,7 +155,9 @@ async def request_credentials(
                 )
 
             # If password is missing but not explicitly requested, skip prompting
-            missing_fields = [f for f in missing_fields if f != "password" or prompt_password_for_ssh]
+            missing_fields = [
+                f for f in missing_fields if f != "password" or prompt_password_for_ssh
+            ]
             if not missing_fields:
                 bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
                 return CommandResult(success=True, message="✅ Credentials resolved", data=bundle)
@@ -155,7 +172,9 @@ async def request_credentials(
             values[field] = secret
 
         if allow_store:
-            save = await ctx.ui.prompt_confirm("Store these credentials securely for reuse?", default=False)
+            save = await ctx.ui.prompt_confirm(
+                "Store these credentials securely for reuse?", default=False
+            )
             if save:
                 for name, val in values.items():
                     secret_store.set(f"{key_prefix}:{name}", val)
@@ -170,7 +189,9 @@ async def request_credentials(
         return CommandResult(success=False, message=f"❌ Failed to request credentials: {e}")
 
 
-async def request_elevation(ctx: SharedContext, command: str, host: str | None = None) -> CommandResult:
+async def request_elevation(
+    ctx: SharedContext, command: str, host: str | None = None
+) -> CommandResult:
     """
     Request privilege elevation via PermissionManager (brain-driven).
     """

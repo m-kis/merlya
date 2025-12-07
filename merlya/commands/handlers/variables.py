@@ -47,7 +47,11 @@ async def cmd_variable_list(ctx: SharedContext, _args: list[str]) -> CommandResu
     ctx.ui.table(
         headers=["Name", "Value", "Type"],
         rows=[
-            [f"@{v.name}", v.value[:50] + "..." if len(v.value) > 50 else v.value, "env" if v.is_env else "var"]
+            [
+                f"@{v.name}",
+                v.value[:50] + "..." if len(v.value) > 50 else v.value,
+                "env" if v.is_env else "var",
+            ]
             for v in variables
         ],
         title=f"📝 {ctx.t('commands.variable.list_title')} ({len(variables)})",

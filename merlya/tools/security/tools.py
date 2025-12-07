@@ -418,7 +418,9 @@ async def check_security_config(
 
         # Check for unattended upgrades (Debian/Ubuntu) - fixed command
         auto_update_cmd = "dpkg -l unattended-upgrades 2>/dev/null | grep -q '^ii' && echo 'enabled' || echo 'disabled'"
-        auto_result = await _execute_command(ctx, host_name, auto_update_cmd, timeout=DEFAULT_TIMEOUT)
+        auto_result = await _execute_command(
+            ctx, host_name, auto_update_cmd, timeout=DEFAULT_TIMEOUT
+        )
 
         auto_update = auto_result.stdout.strip() == "enabled"
         checks.append(
@@ -550,7 +552,9 @@ async def check_sudo_config(
 
         # Check for dangerous sudo permissions (fixed command)
         dangerous_cmd = "sudo cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | grep -v '^#' | grep -v '^$' | grep -E 'ALL.*ALL.*ALL'"
-        dangerous_result = await _execute_command(ctx, host_name, dangerous_cmd, timeout=DEFAULT_TIMEOUT)
+        dangerous_result = await _execute_command(
+            ctx, host_name, dangerous_cmd, timeout=DEFAULT_TIMEOUT
+        )
 
         dangerous_entries = []
         if dangerous_result.exit_code == 0 and dangerous_result.stdout.strip():
@@ -691,10 +695,12 @@ async def check_pending_updates(
                     if parts:
                         pkg_name = parts[0].split("/")[0]  # Remove arch/repo info
                         is_security = "security" in line.lower()
-                        updates.append({
-                            "package": pkg_name,
-                            "security": is_security,
-                        })
+                        updates.append(
+                            {
+                                "package": pkg_name,
+                                "security": is_security,
+                            }
+                        )
 
         # Security updates count
         security_updates = [u for u in updates if u.get("security")]
@@ -742,10 +748,9 @@ async def check_critical_services(
         services_to_check = services or default_services
 
         # Validate service names (alphanumeric, dash, underscore, dot only)
-        safe_services = [
-            s for s in services_to_check
-            if re.match(r"^[a-zA-Z0-9_.-]+$", s)
-        ][:20]  # Limit to 20 services
+        safe_services = [s for s in services_to_check if re.match(r"^[a-zA-Z0-9_.-]+$", s)][
+            :20
+        ]  # Limit to 20 services
 
         if not safe_services:
             return SecurityResult(success=False, error="No valid service names provided")
@@ -778,11 +783,13 @@ async def check_critical_services(
                     if len(parts) == 2:
                         svc_name, status = parts
                         is_active = status.strip() == "active"
-                        service_status.append({
-                            "service": svc_name.strip(),
-                            "status": status.strip(),
-                            "active": is_active,
-                        })
+                        service_status.append(
+                            {
+                                "service": svc_name.strip(),
+                                "status": status.strip(),
+                                "active": is_active,
+                            }
+                        )
                         if not is_active and status.strip() != "not-found":
                             inactive_count += 1
 

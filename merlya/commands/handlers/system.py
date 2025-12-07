@@ -185,19 +185,37 @@ async def _scan_quick(ctx: SharedContext, host: Any, result: ScanResult) -> None
         result.sections["memory"] = mem_result.data
         if mem_result.data.get("warning"):
             result.warning_count += 1
-            result.issues.append({"type": "memory", "severity": "warning", "message": f"Memory usage high: {mem_result.data.get('use_percent')}%"})
+            result.issues.append(
+                {
+                    "type": "memory",
+                    "severity": "warning",
+                    "message": f"Memory usage high: {mem_result.data.get('use_percent')}%",
+                }
+            )
 
     if cpu_result.success and cpu_result.data:
         result.sections["cpu"] = cpu_result.data
         if cpu_result.data.get("warning"):
             result.warning_count += 1
-            result.issues.append({"type": "cpu", "severity": "warning", "message": f"CPU load high: {cpu_result.data.get('use_percent')}%"})
+            result.issues.append(
+                {
+                    "type": "cpu",
+                    "severity": "warning",
+                    "message": f"CPU load high: {cpu_result.data.get('use_percent')}%",
+                }
+            )
 
     if disk_result.success and disk_result.data:
         result.sections["disk"] = disk_result.data
         if disk_result.data.get("warning"):
             result.warning_count += 1
-            result.issues.append({"type": "disk", "severity": "warning", "message": f"Disk usage high: {disk_result.data.get('use_percent')}%"})
+            result.issues.append(
+                {
+                    "type": "disk",
+                    "severity": "warning",
+                    "message": f"Disk usage high: {disk_result.data.get('use_percent')}%",
+                }
+            )
 
     if ports_result.success and ports_result.data:
         result.sections["ports"] = ports_result.data
@@ -236,6 +254,7 @@ async def _scan_system_parallel(
         tasks["disks"] = run_with_sem(check_all_disks(ctx, host.name))
     else:
         from merlya.tools.system import check_disk_usage
+
         tasks["disk"] = run_with_sem(check_disk_usage(ctx, host.name, "/"))
 
     if opts.include_docker:
@@ -254,11 +273,13 @@ async def _scan_system_parallel(
             # Check for warnings
             if isinstance(res.data, dict) and res.data.get("warning"):
                 result.warning_count += 1
-                result.issues.append({
-                    "type": name,
-                    "severity": "warning",
-                    "message": f"{name.title()} threshold exceeded",
-                })
+                result.issues.append(
+                    {
+                        "type": name,
+                        "severity": "warning",
+                        "message": f"{name.title()} threshold exceeded",
+                    }
+                )
 
     result.sections["system"] = results_dict
 
@@ -337,8 +358,7 @@ async def _calculate_severity_score(ctx: SharedContext, result: ScanResult) -> N
         if hasattr(ctx, "_router") and ctx._router and ctx._router.model_loaded:
             # Use embeddings to analyze issue severity
             issue_texts = [
-                issue.get("message", str(issue.get("data", "")))[:200]
-                for issue in result.issues
+                issue.get("message", str(issue.get("data", "")))[:200] for issue in result.issues
             ]
             if issue_texts:
                 # Get embeddings for issues and compare to critical patterns
@@ -382,10 +402,14 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
     lines: list[str] = []
 
     # Header with severity
-    severity_icon = "🔴" if result.critical_count > 0 else ("🟡" if result.warning_count > 0 else "🟢")
+    severity_icon = (
+        "🔴" if result.critical_count > 0 else ("🟡" if result.warning_count > 0 else "🟢")
+    )
     lines.append(f"## {severity_icon} Scan: `{host.name}` ({host.hostname})")
     lines.append("")
-    lines.append(f"**Score:** {result.severity_score}/100 | **Critical:** {result.critical_count} | **Warnings:** {result.warning_count}")
+    lines.append(
+        f"**Score:** {result.severity_score}/100 | **Critical:** {result.critical_count} | **Warnings:** {result.warning_count}"
+    )
     lines.append("")
 
     # System section
@@ -412,21 +436,27 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
             icon = "⚠️" if m.get("warning") else "✅"
             pct = m.get("use_percent", 0)
             bar = _progress_bar(pct)
-            lines.append(f"- {icon} **Memory:** {bar} {pct}% ({m.get('used_mb', 0)}MB / {m.get('total_mb', 0)}MB)")
+            lines.append(
+                f"- {icon} **Memory:** {bar} {pct}% ({m.get('used_mb', 0)}MB / {m.get('total_mb', 0)}MB)"
+            )
 
         if "cpu" in sys_data:
             c = sys_data["cpu"]
             icon = "⚠️" if c.get("warning") else "✅"
             pct = c.get("use_percent", 0)
             bar = _progress_bar(pct)
-            lines.append(f"- {icon} **CPU:** {bar} {pct}% (cores: {c.get('cpu_count', 0)}, load: {c.get('load_1m', 0)})")
+            lines.append(
+                f"- {icon} **CPU:** {bar} {pct}% (cores: {c.get('cpu_count', 0)}, load: {c.get('load_1m', 0)})"
+            )
 
         if "disk" in sys_data:
             d = sys_data["disk"]
             icon = "⚠️" if d.get("warning") else "✅"
             pct = d.get("use_percent", 0)
             bar = _progress_bar(pct)
-            lines.append(f"- {icon} **Disk (/):** {bar} {pct}% ({d.get('used', 'N/A')} / {d.get('size', 'N/A')})")
+            lines.append(
+                f"- {icon} **Disk (/):** {bar} {pct}% ({d.get('used', 'N/A')} / {d.get('size', 'N/A')})"
+            )
 
         if "disks" in sys_data:
             disks_data = sys_data["disks"]
@@ -439,7 +469,9 @@ def _format_scan_output(result: ScanResult, host: Any) -> str:
         if "docker" in sys_data:
             docker = sys_data["docker"]
             if docker.get("status") == "running":
-                lines.append(f"- 🐳 **Docker:** {docker.get('running_count', 0)} running, {docker.get('stopped_count', 0)} stopped")
+                lines.append(
+                    f"- 🐳 **Docker:** {docker.get('running_count', 0)} running, {docker.get('stopped_count', 0)} stopped"
+                )
             elif docker.get("status") == "not-installed":
                 lines.append("- ◻️ **Docker:** not installed")
             else:

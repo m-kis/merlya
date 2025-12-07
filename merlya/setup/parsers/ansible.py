@@ -36,10 +36,7 @@ def _expand_ansible_range(pattern: str) -> list[str]:
         match = re.match(r"(.*)\[([a-z]):([a-z])\](.*)", pattern, re.IGNORECASE)
         if match:
             prefix, start, end, suffix = match.groups()
-            return [
-                f"{prefix}{chr(c)}{suffix}"
-                for c in range(ord(start), ord(end) + 1)
-            ]
+            return [f"{prefix}{chr(c)}{suffix}" for c in range(ord(start), ord(end) + 1)]
         return [pattern]
 
     prefix, start, end, step, suffix = match.groups()
@@ -50,10 +47,7 @@ def _expand_ansible_range(pattern: str) -> list[str]:
     start_num = int(start)
     end_num = int(end)
 
-    return [
-        f"{prefix}{str(i).zfill(width)}{suffix}"
-        for i in range(start_num, end_num + 1, step)
-    ]
+    return [f"{prefix}{str(i).zfill(width)}{suffix}" for i in range(start_num, end_num + 1, step)]
 
 
 async def parse_ansible_inventory(path: Path) -> list[HostData]:
@@ -150,14 +144,16 @@ def _parse_ini_host_line(line: str, current_group: str | None) -> list[HostData]
     expanded_names = _expand_ansible_range(host_pattern)
 
     for name in expanded_names:
-        hosts.append(HostData(
-            name=name,
-            hostname=hostname or name,
-            port=port,
-            username=username,
-            tags=tags.copy(),
-            source="ansible-inventory",
-        ))
+        hosts.append(
+            HostData(
+                name=name,
+                hostname=hostname or name,
+                port=port,
+                username=username,
+                tags=tags.copy(),
+                source="ansible-inventory",
+            )
+        )
 
     return hosts
 

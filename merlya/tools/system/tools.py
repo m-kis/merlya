@@ -578,18 +578,22 @@ async def check_docker(
             elif section == "containers" and "|" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    containers.append({
-                        "name": parts[0],
-                        "status": parts[1],
-                        "image": parts[2],
-                    })
+                    containers.append(
+                        {
+                            "name": parts[0],
+                            "status": parts[1],
+                            "image": parts[2],
+                        }
+                    )
             elif section == "images" and "|" in line:
                 parts = line.split("|")
                 if len(parts) >= 2:
-                    images.append({
-                        "name": parts[0],
-                        "size": parts[1],
-                    })
+                    images.append(
+                        {
+                            "name": parts[0],
+                            "size": parts[1],
+                        }
+                    )
 
     # Count running vs stopped containers
     running = sum(1 for c in containers if "Up" in c.get("status", ""))

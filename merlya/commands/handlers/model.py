@@ -229,8 +229,9 @@ async def cmd_model_test(ctx: SharedContext, _args: list[str]) -> CommandResult:
 
         return CommandResult(
             success=False,
-            message="❌ LLM connection failed\n" + "\n".join(error_lines) +
-            "\n\nCheck your API key with `/secret list` and provider with `/model show`",
+            message="❌ LLM connection failed\n"
+            + "\n".join(error_lines)
+            + "\n\nCheck your API key with `/secret list` and provider with `/model show`",
         )
 
     except Exception as e:

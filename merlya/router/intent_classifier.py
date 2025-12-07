@@ -70,46 +70,138 @@ INTENT_EMBEDDINGS: dict[AgentMode, list[str]] = {
 # Intent patterns for pattern-based classification (fallback)
 INTENT_PATTERNS: dict[AgentMode, list[str]] = {
     AgentMode.DIAGNOSTIC: [
-        "check", "status", "monitor", "analyze", "debug", "diagnose",
-        "health", "inspect", "verify", "scan", "look at", "what is",
-        "show me", "list", "find", "search", "view", "display",
+        "check",
+        "status",
+        "monitor",
+        "analyze",
+        "debug",
+        "diagnose",
+        "health",
+        "inspect",
+        "verify",
+        "scan",
+        "look at",
+        "what is",
+        "show me",
+        "list",
+        "find",
+        "search",
+        "view",
+        "display",
     ],
     AgentMode.REMEDIATION: [
-        "fix", "repair", "restart", "stop", "start", "deploy", "install",
-        "configure", "update", "upgrade", "rollback", "clean", "remove",
-        "delete", "create", "change", "modify", "set", "enable", "disable",
+        "fix",
+        "repair",
+        "restart",
+        "stop",
+        "start",
+        "deploy",
+        "install",
+        "configure",
+        "update",
+        "upgrade",
+        "rollback",
+        "clean",
+        "remove",
+        "delete",
+        "create",
+        "change",
+        "modify",
+        "set",
+        "enable",
+        "disable",
     ],
     AgentMode.QUERY: [
-        "how", "why", "when", "where", "explain", "describe", "tell me",
-        "what does", "difference between", "compare", "help me understand",
-        "what is the best", "should i",
+        "how",
+        "why",
+        "when",
+        "where",
+        "explain",
+        "describe",
+        "tell me",
+        "what does",
+        "difference between",
+        "compare",
+        "help me understand",
+        "what is the best",
+        "should i",
     ],
     AgentMode.CHAT: [
-        "hello", "hi", "hey", "thanks", "thank you", "bye", "goodbye",
-        "who are you", "what can you do", "help",
+        "hello",
+        "hi",
+        "hey",
+        "thanks",
+        "thank you",
+        "bye",
+        "goodbye",
+        "who are you",
+        "what can you do",
+        "help",
     ],
 }
 
 # Tool activation keywords
 TOOL_KEYWORDS: dict[str, list[str]] = {
     "system": [
-        "cpu", "memory", "ram", "disk", "process", "service",
-        "uptime", "load", "system", "os", "kernel", "performance",
+        "cpu",
+        "memory",
+        "ram",
+        "disk",
+        "process",
+        "service",
+        "uptime",
+        "load",
+        "system",
+        "os",
+        "kernel",
+        "performance",
     ],
     "files": [
-        "file", "directory", "folder", "config", "log", "read", "write",
-        "copy", "move", "permission", "path", "content",
+        "file",
+        "directory",
+        "folder",
+        "config",
+        "log",
+        "read",
+        "write",
+        "copy",
+        "move",
+        "permission",
+        "path",
+        "content",
     ],
     "security": [
-        "security", "port", "firewall", "ssh", "key", "certificate",
-        "ssl", "tls", "audit", "permission", "vulnerability", "password",
+        "security",
+        "port",
+        "firewall",
+        "ssh",
+        "key",
+        "certificate",
+        "ssl",
+        "tls",
+        "audit",
+        "permission",
+        "vulnerability",
+        "password",
     ],
     "docker": [
-        "docker", "container", "image", "dockerfile", "compose", "registry",
+        "docker",
+        "container",
+        "image",
+        "dockerfile",
+        "compose",
+        "registry",
     ],
     "kubernetes": [
-        "kubernetes", "k8s", "pod", "deployment", "service", "kubectl",
-        "helm", "namespace", "ingress",
+        "kubernetes",
+        "k8s",
+        "pod",
+        "deployment",
+        "service",
+        "kubectl",
+        "helm",
+        "namespace",
+        "ingress",
     ],
 }
 
@@ -181,9 +273,7 @@ class IntentClassifier:
             self.use_embeddings = False
             return False
 
-    def _load_onnx_and_tokenizer(
-        self, model_path: Path, tokenizer_path: Path
-    ) -> tuple[Any, Any]:
+    def _load_onnx_and_tokenizer(self, model_path: Path, tokenizer_path: Path) -> tuple[Any, Any]:
         """Load ONNX session and tokenizer (runs in thread)."""
         import onnxruntime as ort
         from tokenizers import Tokenizer
@@ -194,9 +284,7 @@ class IntentClassifier:
         tok = Tokenizer.from_file(str(tokenizer_path))
         return sess, tok
 
-    def _disable_embeddings(
-        self, model_path: Path, tokenizer_path: Path
-    ) -> bool:
+    def _disable_embeddings(self, model_path: Path, tokenizer_path: Path) -> bool:
         """Disable embeddings and log warning."""
         if not IntentClassifier._onnx_warning_shown:
             if not model_path.exists():
@@ -208,9 +296,7 @@ class IntentClassifier:
         self.use_embeddings = False
         return False
 
-    async def _download_model(
-        self, model_path: Path, tokenizer_path: Path
-    ) -> None:
+    async def _download_model(self, model_path: Path, tokenizer_path: Path) -> None:
         """Download default ONNX embedding model."""
         try:
             target_dir = model_path.parent
@@ -302,9 +388,7 @@ class IntentClassifier:
         # Normalize to 0-1 range (cosine sim is -1 to 1)
         confidence = (confidence + 1) / 2
 
-        logger.debug(
-            f"🧠 Embedding classification: {best_mode.value} ({confidence:.2f})"
-        )
+        logger.debug(f"🧠 Embedding classification: {best_mode.value} ({confidence:.2f})")
 
         return best_mode, confidence
 
@@ -333,9 +417,7 @@ class IntentClassifier:
 
         return best_mode, confidence
 
-    def determine_tools(
-        self, text: str, entities: dict[str, list[str]]
-    ) -> list[str]:
+    def determine_tools(self, text: str, entities: dict[str, list[str]]) -> list[str]:
         """Determine which tools to activate."""
         tools = ["core"]  # Core tools always active
 
@@ -381,9 +463,7 @@ class IntentClassifier:
                 return agent
         return None
 
-    def _cosine_similarity(
-        self, a: NDArray[np.float32], b: NDArray[np.float32]
-    ) -> float:
+    def _cosine_similarity(self, a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
         """Compute cosine similarity between two vectors."""
         dot = np.dot(a, b)
         norm_a = np.linalg.norm(a)

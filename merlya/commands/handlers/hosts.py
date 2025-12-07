@@ -47,7 +47,10 @@ def _validate_tag(tag: str) -> tuple[bool, str]:
     if not tag:
         return False, "Tag cannot be empty"
     if not TAG_PATTERN.match(tag):
-        return False, f"Invalid tag format: '{tag}'. Use only letters, numbers, hyphens, underscores, and colons (max 50 chars)"
+        return (
+            False,
+            f"Invalid tag format: '{tag}'. Use only letters, numbers, hyphens, underscores, and colons (max 50 chars)",
+        )
     return True, ""
 
 
@@ -63,8 +66,7 @@ def _validate_file_path(file_path: Path) -> tuple[bool, str]:
 
         # Ensure path doesn't escape allowed directories
         is_allowed = any(
-            resolved == allowed or allowed in resolved.parents
-            for allowed in ALLOWED_IMPORT_DIRS
+            resolved == allowed or allowed in resolved.parents for allowed in ALLOWED_IMPORT_DIRS
         )
 
         if not is_allowed:
@@ -325,7 +327,7 @@ async def cmd_hosts_import(ctx: SharedContext, args: list[str]) -> CommandResult
             success=False,
             message="Usage: `/hosts import <file> [--format=json|yaml|csv|ssh]`\n\n"
             "Supported formats:\n"
-            "  - `json`: `[{\"name\": \"host1\", \"hostname\": \"1.2.3.4\", ...}]`\n"
+            '  - `json`: `[{"name": "host1", "hostname": "1.2.3.4", ...}]`\n'
             "  - `yaml`: Same structure as JSON\n"
             "  - `csv`: `name,hostname,port,username,tags`\n"
             "  - `ssh`: SSH config format (~/.ssh/config)",
@@ -578,9 +580,7 @@ def _serialize_hosts(data: list[dict], file_format: str) -> str:
         return yaml.dump(data, default_flow_style=False)
     elif file_format == "csv":
         output = io.StringIO()
-        writer = csv.DictWriter(
-            output, fieldnames=["name", "hostname", "port", "username", "tags"]
-        )
+        writer = csv.DictWriter(output, fieldnames=["name", "hostname", "port", "username", "tags"])
         writer.writeheader()
         for item in data:
             item["tags"] = ",".join(item.get("tags", []))

@@ -60,7 +60,12 @@ PROVIDERS = {
         "amazon/nova-2-lite-v1:free",
         "openrouter:openrouter/auto",
     ),
-    "2": ("anthropic", "ANTHROPIC_API_KEY", "claude-3-5-sonnet-latest", "anthropic:claude-3-haiku-20240307"),
+    "2": (
+        "anthropic",
+        "ANTHROPIC_API_KEY",
+        "claude-3-5-sonnet-latest",
+        "anthropic:claude-3-haiku-20240307",
+    ),
     "3": ("openai", "OPENAI_API_KEY", "gpt-4o", "openai:gpt-4o-mini"),
     "4": ("ollama", None, "llama3.2", "ollama:llama3.2"),
 }
@@ -77,6 +82,7 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
     Returns:
         LLMConfig or None if cancelled.
     """
+
     # Helper for translations - use translation_key to avoid conflict with {key} placeholder
     def t(translation_key: str, **kwargs: Any) -> str:
         if ctx:
@@ -123,7 +129,9 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
 
     model = await ui.prompt(t("setup.llm_config.select_model"), default=default_model)
 
-    return LLMConfig(provider=provider, model=model, api_key_env=env_key, fallback_model=fallback_model)
+    return LLMConfig(
+        provider=provider, model=model, api_key_env=env_key, fallback_model=fallback_model
+    )
 
 
 async def detect_inventory_sources(_ui: ConsoleUI) -> list[InventorySource]:
@@ -140,36 +148,50 @@ async def detect_inventory_sources(_ui: ConsoleUI) -> list[InventorySource]:
     if etc_hosts.exists():
         count = count_etc_hosts(etc_hosts)
         if count > 0:
-            sources.append(InventorySource(
-                name="/etc/hosts", path=etc_hosts, source_type="etc_hosts", host_count=count
-            ))
+            sources.append(
+                InventorySource(
+                    name="/etc/hosts", path=etc_hosts, source_type="etc_hosts", host_count=count
+                )
+            )
 
     # SSH config
     ssh_config = Path.home() / ".ssh" / "config"
     if ssh_config.exists():
         count = count_ssh_hosts(ssh_config)
         if count > 0:
-            sources.append(InventorySource(
-                name="SSH Config", path=ssh_config, source_type="ssh_config", host_count=count
-            ))
+            sources.append(
+                InventorySource(
+                    name="SSH Config", path=ssh_config, source_type="ssh_config", host_count=count
+                )
+            )
 
     # Known hosts
     known_hosts = Path.home() / ".ssh" / "known_hosts"
     if known_hosts.exists():
         count = count_known_hosts(known_hosts)
         if count > 0:
-            sources.append(InventorySource(
-                name="Known Hosts", path=known_hosts, source_type="known_hosts", host_count=count
-            ))
+            sources.append(
+                InventorySource(
+                    name="Known Hosts",
+                    path=known_hosts,
+                    source_type="known_hosts",
+                    host_count=count,
+                )
+            )
 
     # Ansible inventory
     for path in [Path.home() / "inventory", Path("/etc/ansible/hosts"), Path.cwd() / "inventory"]:
         if path.exists() and path.is_file():
             count = count_ansible_hosts(path)
             if count > 0:
-                sources.append(InventorySource(
-                    name=f"Ansible ({path.name})", path=path, source_type="ansible", host_count=count
-                ))
+                sources.append(
+                    InventorySource(
+                        name=f"Ansible ({path.name})",
+                        path=path,
+                        source_type="ansible",
+                        host_count=count,
+                    )
+                )
 
     return sources
 
@@ -211,7 +233,9 @@ async def merge_host_data(hosts: list[HostData]) -> list[HostData]:
             merged[name] = host
         else:
             existing = merged[name]
-            existing_priority = max((priority.get(t.split(":")[0], 0) for t in existing.tags), default=0)
+            existing_priority = max(
+                (priority.get(t.split(":")[0], 0) for t in existing.tags), default=0
+            )
 
             if tag_priority > existing_priority:
                 _merge_fields(host, existing)
@@ -236,7 +260,9 @@ def _merge_fields(target: HostData, source: HostData) -> None:
         target.jump_host = source.jump_host
 
 
-async def deduplicate_hosts(hosts: list[HostData], existing_names: set[str]) -> tuple[list[HostData], int]:
+async def deduplicate_hosts(
+    hosts: list[HostData], existing_names: set[str]
+) -> tuple[list[HostData], int]:
     """Deduplicate hosts by name."""
     seen: dict[str, HostData] = {}
     duplicates = 0
@@ -251,14 +277,22 @@ async def deduplicate_hosts(hosts: list[HostData], existing_names: set[str]) -> 
             seen[name] = host
         else:
             existing = seen[name]
-            existing_score = sum([
-                bool(existing.hostname), bool(existing.username),
-                bool(existing.private_key), bool(existing.jump_host),
-            ])
-            new_score = sum([
-                bool(host.hostname), bool(host.username),
-                bool(host.private_key), bool(host.jump_host),
-            ])
+            existing_score = sum(
+                [
+                    bool(existing.hostname),
+                    bool(existing.username),
+                    bool(existing.private_key),
+                    bool(existing.jump_host),
+                ]
+            )
+            new_score = sum(
+                [
+                    bool(host.hostname),
+                    bool(host.username),
+                    bool(host.private_key),
+                    bool(host.jump_host),
+                ]
+            )
             if new_score > existing_score:
                 seen[name] = host
             duplicates += 1
