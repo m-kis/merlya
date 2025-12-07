@@ -82,7 +82,7 @@ async def _execute_command(
     command: str,
     timeout: int = 60,
     connect_timeout: int | None = None,
-):
+) -> "SSHResult":
     """Execute a command on a host using shared SSH pool and inventory resolution."""
     host_entry = await ctx.hosts.get_by_name(host_name)
     ssh_pool = await ctx.get_ssh_pool()

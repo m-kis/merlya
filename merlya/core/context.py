@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         VariableRepository,
     )
     from merlya.router import IntentRouter
+    from merlya.security import PermissionManager
     from merlya.ssh import SSHPool
     from merlya.ui import ConsoleUI
 
@@ -59,7 +60,7 @@ class SharedContext:
 
     # SSH Pool (lazy init)
     _ssh_pool: SSHPool | None = field(default=None, repr=False)
-    _permissions: Any | None = field(default=None, repr=False)
+    _permissions: PermissionManager | None = field(default=None, repr=False)
 
     # Intent Router (lazy init)
     _router: IntentRouter | None = field(default=None, repr=False)

@@ -137,8 +137,8 @@ class IntentClassifier:
             use_embeddings: Whether to use ONNX embedding model.
         """
         self.use_embeddings = use_embeddings
-        self._session: Any | None = None
-        self._tokenizer: Any | None = None
+        self._session: object | None = None  # onnxruntime.InferenceSession
+        self._tokenizer: object | None = None  # transformers.AutoTokenizer
         self._model_loaded = False
         self._intent_vectors: dict[AgentMode, NDArray[np.float32]] = {}
         self._embedding_dim: int | None = None

@@ -180,6 +180,12 @@ class REPL:
                 if not user_input:
                     continue
 
+                # Limit input length to prevent excessive API costs / OOM
+                MAX_INPUT_LENGTH = 10000
+                if len(user_input) > MAX_INPUT_LENGTH:
+                    self.ctx.ui.error(f"Input too long (max {MAX_INPUT_LENGTH} chars)")
+                    continue
+
                 # Check for slash command
                 if user_input.startswith("/"):
                     result = await registry.execute(self.ctx, user_input)

@@ -55,7 +55,8 @@ class PermissionManager:
             try:
                 result = await self._execute(host, cmd)
                 return result.exit_code == 0, result.stdout.strip()
-            except Exception as exc:  # noqa: PERF203
+            except (TimeoutError, RuntimeError, OSError) as exc:
+                # Only catch specific expected errors, not all exceptions
                 logger.debug(f"Permission probe failed on {host}: {cmd} ({exc})")
                 return False, ""
 

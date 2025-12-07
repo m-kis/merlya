@@ -47,6 +47,14 @@ async def request_credentials(
         allow_store: Whether to offer storage in keyring.
     """
     try:
+        # Validate service name to prevent path traversal or malicious names
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', service):
+            return CommandResult(
+                success=False,
+                message=f"Invalid service name: {service}. Only alphanumeric, underscore, and hyphen allowed.",
+            )
+
         service_lower = service.lower()
         key_based_ssh = False
         prompt_password_for_ssh = format_hint in {"password", "password_required"}
@@ -89,10 +97,15 @@ async def request_credentials(
         secret_store = ctx.secrets
         key_prefix = f"{service}:{host}" if host else service
         for field in fields:
-            secret_val = secret_store.get(f"{key_prefix}:{field}")
-            if secret_val is not None:
-                values[field] = secret_val
-                stored = True
+            try:
+                secret_val = secret_store.get(f"{key_prefix}:{field}")
+                if secret_val is not None:
+                    values[field] = secret_val
+                    stored = True
+            except Exception as keyring_err:
+                # Keyring backend might fail - log but continue with manual prompt
+                logger.debug(f"Keyring retrieval failed for {field}: {keyring_err}")
+                continue
 
         # Only prompt for missing fields
         missing_fields = [f for f in fields if f not in values]
