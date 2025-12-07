@@ -573,7 +573,10 @@ def _format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None 
             # Show user names (max 8 by default, all with --show-all)
             if shell_users:
                 max_users = len(shell_users) if show_all else 8
-                user_names = [u.get("username", u) if isinstance(u, dict) else str(u) for u in shell_users[:max_users]]
+                user_names = [
+                    u.get("username", u) if isinstance(u, dict) else str(u)
+                    for u in shell_users[:max_users]
+                ]
                 lines.append(f"   `{', '.join(user_names)}`")
                 if not show_all and len(shell_users) > 8:
                     lines.append(f"   *... and {len(shell_users) - 8} more (use --show-all)*")

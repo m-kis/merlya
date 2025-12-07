@@ -65,7 +65,9 @@ def _validate_file_path(file_path: Path) -> tuple[bool, str]:
         resolved = file_path.resolve()
 
         # Ensure path is under allowed directories (handles symlinks like /etc -> /private/etc)
-        is_allowed = any(resolved.is_relative_to(allowed.resolve()) for allowed in ALLOWED_IMPORT_DIRS)
+        is_allowed = any(
+            resolved.is_relative_to(allowed.resolve()) for allowed in ALLOWED_IMPORT_DIRS
+        )
 
         if not is_allowed:
             return False, "Access denied: Path must be within home directory, /etc, or /tmp"
