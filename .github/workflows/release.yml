@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target repository'
+        required: true
+        default: 'testpypi'
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+# Prevent concurrent releases to avoid publishing conflicts
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Verify version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PACKAGE_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+          echo "✅ Version verified: $PACKAGE_VERSION"
+
+      - name: Build package
+        run: |
+          python -m build
+          echo "📦 Built packages:"
+          ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  github-release:
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 10
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            ${{ contains(github.ref, 'alpha') && '--prerelease' || '' }} \
+            ${{ contains(github.ref, 'beta') && '--prerelease' || '' }} \
+            dist/*
+
+  publish-testpypi:
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/merlya
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # Uses trusted publishing (OIDC)
+          # Configure at: https://test.pypi.org/manage/account/publishing/
+
+  publish-pypi:
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 10
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'pypi')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/merlya
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing (OIDC) - no token needed
+        # Configure at: https://pypi.org/manage/account/publishing/

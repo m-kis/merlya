@@ -319,16 +319,17 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
 
 @subcommand("hosts", "import", "Import hosts from file", "/hosts import <file> [--format=<format>]")
 async def cmd_hosts_import(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Import hosts from a file (JSON, YAML, CSV, SSH config)."""
+    """Import hosts from a file (JSON, YAML, CSV, SSH config, /etc/hosts)."""
     if not args:
         return CommandResult(
             success=False,
-            message="Usage: `/hosts import <file> [--format=json|yaml|csv|ssh]`\n\n"
+            message="Usage: `/hosts import <file> [--format=json|yaml|csv|ssh|etc_hosts]`\n\n"
             "Supported formats:\n"
             '  - `json`: `[{"name": "host1", "hostname": "1.2.3.4", ...}]`\n'
             "  - `yaml`: Same structure as JSON\n"
             "  - `csv`: `name,hostname,port,username,tags`\n"
-            "  - `ssh`: SSH config format (~/.ssh/config)",
+            "  - `ssh`: SSH config format (~/.ssh/config)\n"
+            "  - `etc_hosts`: /etc/hosts format (auto-detected)",
         )
 
     file_path = Path(args[0]).expanduser()
@@ -368,6 +369,10 @@ def _detect_format(file_path: Path, args: list[str]) -> str:
         if arg.startswith("--format="):
             return arg[9:].lower()
 
+    # Special case: /etc/hosts file
+    if file_path.name == "hosts" and str(file_path).startswith("/etc"):
+        return "etc_hosts"
+
     ext = file_path.suffix.lower()
     if ext in (".yml", ".yaml"):
         return "yaml"
@@ -397,6 +402,8 @@ async def _import_hosts(
             imported, errors = await _import_csv(ctx, content)
         elif file_format == "ssh":
             imported, errors = await _import_ssh_config(ctx, file_path)
+        elif file_format == "etc_hosts":
+            imported, errors = await _import_etc_hosts(ctx, content)
     except Exception as e:
         logger.error(f"❌ Import failed: {e}")
         errors.append(str(e))
@@ -492,6 +499,61 @@ async def _import_ssh_config(ctx: SharedContext, file_path: Path) -> tuple[int, 
             imported += 1
         except Exception as e:
             errors.append(f"{item.get('name', '?')}: {e}")
+
+    return imported, errors
+
+
+async def _import_etc_hosts(ctx: SharedContext, content: str) -> tuple[int, list[str]]:
+    """
+    Import from /etc/hosts format.
+
+    Format: IP_ADDRESS HOSTNAME [ALIASES...]
+    Lines starting with # are comments.
+    """
+    imported = 0
+    errors: list[str] = []
+
+    for line_num, line in enumerate(content.splitlines(), 1):
+        line = line.strip()
+
+        # Skip empty lines and comments
+        if not line or line.startswith("#"):
+            continue
+
+        # Parse: IP HOSTNAME [ALIASES...]
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+
+        ip_addr = parts[0]
+        hostname = parts[1]
+
+        # Skip localhost entries
+        if hostname in ("localhost", "localhost.localdomain", "broadcasthost"):
+            continue
+        if ip_addr in ("127.0.0.1", "::1", "255.255.255.255", "fe80::1%lo0"):
+            continue
+
+        # Use first hostname as name, IP as hostname
+        try:
+            # Sanitize name (replace dots with dashes for valid host names)
+            name = hostname.replace(".", "-")
+
+            # Check if already exists
+            existing = await ctx.hosts.get_by_name(name)
+            if existing:
+                continue
+
+            host = Host(
+                name=name,
+                hostname=ip_addr,  # The IP is the actual hostname to connect to
+                port=DEFAULT_SSH_PORT,
+                tags=["etc-hosts"],
+            )
+            await ctx.hosts.create(host)
+            imported += 1
+        except Exception as e:
+            errors.append(f"Line {line_num} ({hostname}): {e}")
 
     return imported, errors
 
