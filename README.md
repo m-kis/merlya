@@ -1,6 +1,18 @@
-# Merlya
+<p align="center">
+  <img src="assets/logo.png" alt="Merlya Logo" width="120">
+</p>
 
-AI-powered infrastructure assistant.
+<h1 align="center">Merlya</h1>
+
+<p align="center">
+  <strong>AI-powered infrastructure assistant</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/merlya/"><img src="https://img.shields.io/pypi/v/merlya?color=%2340C4E0" alt="PyPI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
+  <a href="https://github.com/m-kis/merlya/actions"><img src="https://img.shields.io/github/actions/workflow/status/m-kis/merlya/ci.yml?branch=main" alt="CI"></a>
+</p>
 
 ## Features
 

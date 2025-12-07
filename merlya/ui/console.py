@@ -25,14 +25,14 @@ from rich.theme import Theme
 
 from merlya.core.types import CheckStatus
 
-# Custom theme
-ACCENT_COLOR = "deep_sky_blue1"
+# Merlya brand color: #40C4E0 (sky blue)
+ACCENT_COLOR = "sky_blue2"
 MERLYA_THEME = Theme(
     {
-        "info": "bold bright_cyan",
+        "info": "bold sky_blue2",
         "warning": "gold3",
         "error": "bold red",
-        "success": "spring_green3",
+        "success": "sky_blue2",  # Use brand blue instead of green
         "muted": "grey58",
         "highlight": "medium_orchid",
         "accent": ACCENT_COLOR,
@@ -115,7 +115,7 @@ class ConsoleUI:
     def health_status(self, _name: str, status: CheckStatus, message: str) -> None:
         """Display a health check status."""
         icons = {
-            CheckStatus.OK: "[green]✅[/green]",
+            CheckStatus.OK: "[sky_blue2]✅[/sky_blue2]",
             CheckStatus.WARNING: "[yellow]⚠️[/yellow]",
             CheckStatus.ERROR: "[red]❌[/red]",
             CheckStatus.DISABLED: "[dim]⊘[/dim]",
