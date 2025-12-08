@@ -423,8 +423,16 @@ def check_keyring() -> HealthCheck:
         )
 
 
-def check_web_search() -> HealthCheck:
-    """Check DuckDuckGo search availability."""
+async def check_web_search(timeout: float = 10.0) -> HealthCheck:
+    """
+    Check DuckDuckGo search availability with real connectivity test.
+
+    Args:
+        timeout: Timeout for the connectivity test.
+
+    Returns:
+        HealthCheck result.
+    """
     try:
         from ddgs import DDGS
     except ImportError:
@@ -436,20 +444,59 @@ def check_web_search() -> HealthCheck:
         )
 
     try:
-        # Just check if it initializes without performing a query
-        with DDGS():
-            pass
+        start = time.time()
 
-        return HealthCheck(
-            name="web_search",
-            status=CheckStatus.OK,
-            message=t("health.web_search.ok"),
+        # Perform a real search query to verify connectivity
+        def _do_search() -> list[dict[str, Any]]:
+            with DDGS() as ddgs:
+                # Simple query that should always return results
+                return list(ddgs.text("test", max_results=1))
+
+        # Run in thread pool with timeout to avoid blocking
+        results = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(None, _do_search),
+            timeout=timeout,
         )
-    except Exception as e:
+
+        latency = (time.time() - start) * 1000
+
+        if results:
+            return HealthCheck(
+                name="web_search",
+                status=CheckStatus.OK,
+                message=t("health.web_search.ok") + f" ({latency:.0f}ms)",
+                details={"latency_ms": latency, "results_count": len(results)},
+            )
+        else:
+            return HealthCheck(
+                name="web_search",
+                status=CheckStatus.WARNING,
+                message=t("health.web_search.warning", error="no results"),
+                details={"latency_ms": latency, "results_count": 0},
+            )
+
+    except TimeoutError:
         return HealthCheck(
             name="web_search",
             status=CheckStatus.WARNING,
-            message=t("health.web_search.warning", error=str(e)),
+            message=t("health.web_search.warning", error=f"timeout ({timeout}s)"),
+            details={"error": "timeout"},
+        )
+    except Exception as e:
+        error_msg = str(e)
+        # Check for rate limiting
+        if "429" in error_msg or "rate" in error_msg.lower():
+            return HealthCheck(
+                name="web_search",
+                status=CheckStatus.WARNING,
+                message=t("health.web_search.warning", error="rate limited"),
+                details={"error": "rate_limited"},
+            )
+        return HealthCheck(
+            name="web_search",
+            status=CheckStatus.WARNING,
+            message=t("health.web_search.warning", error=error_msg[:50]),
+            details={"error": error_msg},
         )
 
 
@@ -568,8 +615,8 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     health.checks.append(keyring_check)
     health.capabilities["keyring"] = keyring_check.status == CheckStatus.OK
 
-    # Web search
-    ws_check = check_web_search()
+    # Web search (with real connectivity test)
+    ws_check = await check_web_search()
     health.checks.append(ws_check)
     health.capabilities["web_search"] = ws_check.status == CheckStatus.OK
 
