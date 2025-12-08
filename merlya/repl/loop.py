@@ -9,7 +9,8 @@ from __future__ import annotations
 import os
 import re
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable
 
 from merlya.config.constants import COMPLETION_CACHE_TTL_SECONDS
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
     from merlya.agent import MerlyaAgent
     from merlya.core.context import SharedContext
+    from merlya.config.models import RouterConfig
     from merlya.router import IntentRouter
 
 from loguru import logger
@@ -34,6 +36,99 @@ PROMPT_STYLE = Style.from_dict(
         "host": "#888888",
     }
 )
+
+
+@dataclass
+class WelcomeStatus:
+    """Structured data for the welcome screen."""
+
+    version: str
+    env: str
+    session_id: str
+    provider_label: str
+    model_label: str
+    router_label: str
+    keyring_label: str
+
+
+def format_model_labels(agent_model: str | None, provider: str, model: str) -> tuple[str, str]:
+    """
+    Format provider and model labels for the welcome screen.
+
+    Uses the agent model when available, otherwise falls back to config values.
+    """
+    model_value = agent_model or f"{provider}:{model}"
+    if ":" in model_value:
+        provider_name, model_name = model_value.split(":", 1)
+    else:
+        provider_name, model_name = provider, model_value
+
+    provider_label = f"✅ {provider_name} ({model_name})"
+    model_label = f"✅ {provider_name}:{model_name}"
+    return provider_label, model_label
+
+
+def format_router_label(router: IntentRouter | None, router_config: RouterConfig) -> str:
+    """Describe the router mode for the welcome screen."""
+    fallback = router_config.llm_fallback or "pattern"
+    classifier = getattr(router, "classifier", None)
+
+    if classifier and getattr(classifier, "model_loaded", False):
+        model_id = getattr(classifier, "model_id", None)
+        if model_id:
+            return f"✅ local ({model_id})"
+        return "✅ local"
+
+    if router_config.type == "llm":
+        return f"🔀 {fallback}"
+
+    return f"⚠️ local unavailable (fallback {fallback})"
+
+
+def build_welcome_lines(
+    translate: Callable[..., str],
+    status: WelcomeStatus,
+) -> tuple[list[str], list[str]]:
+    """Assemble hero and warning lines for the welcome screen."""
+    hero_lines = [
+        translate("welcome_screen.subtitle", version=status.version),
+        "",
+        translate("welcome_screen.env_session", env=status.env, session=status.session_id),
+        "",
+        translate("welcome_screen.provider", provider=status.provider_label),
+        translate("welcome_screen.model", model=status.model_label),
+        translate("welcome_screen.router", router=status.router_label),
+        translate("welcome_screen.keyring", keyring=status.keyring_label),
+        "",
+        translate("welcome_screen.commands_hint"),
+        "",
+        translate("welcome_screen.command_help"),
+        translate("welcome_screen.command_conv"),
+        translate("welcome_screen.command_new"),
+        translate("welcome_screen.command_scan"),
+        translate("welcome_screen.command_exit"),
+        "",
+        translate("welcome_screen.prompt"),
+        "",
+        translate("welcome_screen.feedback"),
+    ]
+
+    tips = [
+        translate("welcome_screen.tip_specific"),
+        translate("welcome_screen.tip_target"),
+        translate("welcome_screen.tip_context"),
+    ]
+
+    warning_lines = [
+        translate("welcome_screen.warning_header"),
+        "",
+        translate("welcome_screen.warning_body"),
+        "",
+        translate("welcome_screen.warning_tips_title"),
+        *[f"• {tip}" for tip in tips],
+    ]
+
+    return hero_lines, warning_lines
 
 
 class MerlyaCompleter(Completer):
@@ -282,54 +377,29 @@ class REPL:
     def _show_welcome(self) -> None:
         """Show welcome message."""
         env = os.environ.get("MERLYA_ENV", "dev")
-        provider = f"✅ {self.ctx.config.model.provider} ({self.ctx.config.model.model})"
-        router_mode = (
-            "✅ local"
-            if self.router and getattr(self.router.classifier, "model_loaded", False)
-            else f"🔀 {self.ctx.config.router.llm_fallback or 'pattern'}"
+        provider_label, model_label = format_model_labels(
+            getattr(self.agent, "model", None),
+            self.ctx.config.model.provider,
+            self.ctx.config.model.model,
         )
+        router_label = format_router_label(self.router, self.ctx.config.router)
         keyring_status = (
             "✅ Keyring"
             if getattr(self.ctx.secrets, "is_secure", False)
             else self.ctx.t("welcome_screen.keyring_fallback")
         )
 
-        hero_lines = [
-            self.ctx.t("welcome_screen.subtitle", version=self._get_version()),
-            "",
-            self.ctx.t("welcome_screen.env_session", env=env, session=self.session_id),
-            "",
-            self.ctx.t("welcome_screen.provider", provider=provider),
-            self.ctx.t("welcome_screen.router", router=router_mode),
-            self.ctx.t("welcome_screen.keyring", keyring=keyring_status),
-            "",
-            self.ctx.t("welcome_screen.commands_hint"),
-            "",
-            self.ctx.t("welcome_screen.command_help"),
-            self.ctx.t("welcome_screen.command_conv"),
-            self.ctx.t("welcome_screen.command_new"),
-            self.ctx.t("welcome_screen.command_scan"),
-            self.ctx.t("welcome_screen.command_exit"),
-            "",
-            self.ctx.t("welcome_screen.prompt"),
-            "",
-            self.ctx.t("welcome_screen.feedback"),
-        ]
+        status = WelcomeStatus(
+            version=self._get_version(),
+            env=env,
+            session_id=self.session_id,
+            provider_label=provider_label,
+            model_label=model_label,
+            router_label=router_label,
+            keyring_label=keyring_status,
+        )
 
-        tips = [
-            self.ctx.t("welcome_screen.tip_specific"),
-            self.ctx.t("welcome_screen.tip_target"),
-            self.ctx.t("welcome_screen.tip_context"),
-        ]
-
-        warning_lines = [
-            self.ctx.t("welcome_screen.warning_header"),
-            "",
-            self.ctx.t("welcome_screen.warning_body"),
-            "",
-            self.ctx.t("welcome_screen.warning_tips_title"),
-            *[f"• {tip}" for tip in tips],
-        ]
+        hero_lines, warning_lines = build_welcome_lines(self.ctx.t, status)
 
         self.ctx.ui.welcome_screen(
             title=self.ctx.t("welcome_screen.title"),
@@ -345,7 +415,7 @@ class REPL:
 
             return version("merlya")
         except Exception:
-            return "0.5.2"
+            return "0.5.3"
 
     def _reload_agent(self) -> None:
         """Reload agent with current model settings."""

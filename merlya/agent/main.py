@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter
 
 from merlya.agent.tools import register_all_tools
 from merlya.config.constants import TITLE_MAX_LENGTH
@@ -50,6 +50,78 @@ Available context:
 
 When a host is mentioned with @hostname, resolve it from the inventory first.
 Variables are referenced with @variable_name.
+
+## Jump Hosts / Bastions
+
+When the user asks to access a remote host "via" or "through" another host (bastion/jump host),
+use the `via` parameter of `ssh_execute` to tunnel the connection.
+
+Examples of user requests that require the `via` parameter:
+- "Check disk usage on db-server via bastion"
+- "Analyse this machine 51.68.25.89 via @ansible"
+- "Execute 'uptime' on web-01 through the jump host"
+
+For these requests, use: ssh_execute(host="target_host", command="...", via="bastion_host")
+
+The `via` parameter:
+- Can be a host name from inventory (e.g., "ansible", "bastion") or an IP/hostname
+- Creates an SSH tunnel through the jump host to reach the target
+- Takes priority over any jump_host configured in the host's inventory entry
+
+IMPORTANT: When the user says "via @hostname" or "through @hostname", ALWAYS use the via parameter.
+Do NOT try to connect directly to hosts that require a jump host - this will timeout.
+
+## Coherence Verification (CRITICAL)
+
+Before providing ANY analysis, you MUST verify the coherence of your findings.
+This applies to ALL types of data: numerical, temporal, status, counts, etc.
+
+### Core principle: CROSS-CHECK EVERYTHING
+
+Before concluding, ask yourself:
+1. "Do the numbers add up?"
+2. "Does my conclusion match ALL the evidence?"
+3. "Have I accounted for the full picture?"
+
+### Mandatory verification patterns:
+
+1. **Quantitative coherence** (numbers, sizes, counts, durations):
+   - Sum of parts ≈ total (within reasonable margin)
+   - If you find a gap > 10%, investigate before concluding
+   - Don't claim "X is the cause" if X only explains a fraction of the observed effect
+
+2. **Logical coherence** (cause-effect, status, states):
+   - Symptoms must match the diagnosis
+   - If service is "running" but "not responding", investigate the contradiction
+   - Root cause must explain ALL observed symptoms, not just some
+
+3. **Temporal coherence** (times, sequences, logs):
+   - Events must follow logical order
+   - If issue started at T1, the cause must precede T1
+   - Correlate timestamps across different sources
+
+4. **Completeness check**:
+   - "Have I explored all relevant locations/sources?"
+   - "Could there be data I'm missing?" (hidden files, other partitions, filtered logs)
+   - If analysis is partial, explicitly state what's missing
+
+### Red flags to catch:
+
+- Claiming "biggest/main cause" without verifying it explains the majority
+- Drawing conclusions from a single data point
+- Ignoring contradictory evidence
+- Assuming completeness without verification
+
+### When findings are incomplete:
+
+⚠️ Always state: "Current analysis accounts for X of Y" or "Analysis based on partial data"
+- Suggest additional commands/checks to fill gaps
+- Do NOT present partial findings as complete conclusions
+
+### Self-check before responding:
+
+"Does my conclusion logically follow from ALL the data I collected?"
+"Would my analysis survive scrutiny if someone checked my math/logic?"
 """
 
 
@@ -116,7 +188,7 @@ class MerlyaAgent:
         self.context = context
         self.model = model
         self._agent = create_agent(model)
-        self._history: list[dict[str, str]] = []
+        self._message_history: list[ModelMessage] = []
         self._active_conversation: Conversation | None = None
 
     async def run(
@@ -139,9 +211,6 @@ class MerlyaAgent:
             if self._active_conversation is None:
                 self._active_conversation = await self._create_conversation(user_input)
 
-            # Append user message to history before invoking the LLM
-            self._history.append({"role": "user", "content": user_input})
-
             deps = AgentDependencies(
                 context=self.context,
                 router_result=router_result,
@@ -158,14 +227,17 @@ class MerlyaAgent:
                 # Without interfering with user text, prepend a short note
                 augmented_input = f"{flag_note}\n{user_input}"
 
+            # Pass message_history only if we have previous messages
+            # This includes tool calls, tool results, and assistant responses
             result = await self._agent.run(
                 augmented_input,
                 deps=deps,
-                message_history=self._history,  # type: ignore[arg-type]
+                message_history=self._message_history if self._message_history else None,
             )
 
-            # Update history
-            self._history.append({"role": "assistant", "content": result.output.message})
+            # Update history with ALL messages including tool calls
+            # This is critical for conversation continuity
+            self._message_history = result.all_messages()
 
             await self._persist_history()
 
@@ -173,20 +245,17 @@ class MerlyaAgent:
 
         except Exception as e:
             logger.error(f"Agent error: {e}")
-            # Add error response to history to maintain conversation consistency
-            error_message = f"An error occurred: {e}"
-            self._history.append({"role": "assistant", "content": error_message})
-            # Persist the complete conversation history including error
+            # Don't modify history on error - keep the valid state
             await self._persist_history()
             return AgentResponse(
-                message=error_message,
+                message=f"An error occurred: {e}",
                 actions_taken=[],
                 suggestions=["Try rephrasing your request"],
             )
 
     def clear_history(self) -> None:
         """Clear conversation history."""
-        self._history.clear()
+        self._message_history.clear()
         self._active_conversation = None
         logger.debug("Conversation history cleared")
 
@@ -207,10 +276,15 @@ class MerlyaAgent:
         if not self._active_conversation:
             return
 
-        self._active_conversation.messages = [msg.copy() for msg in self._history]
+        # Serialize ModelMessage objects to JSON-compatible format
+        # This preserves tool calls and all message metadata
+        self._active_conversation.messages = ModelMessagesTypeAdapter.dump_python(
+            self._message_history, mode="json"
+        )
+
         if not self._active_conversation.title:
             self._active_conversation.title = self._derive_title(
-                next((m["content"] for m in self._history if m.get("role") == "user"), "")
+                self._extract_first_user_message()
             )
 
         try:
@@ -221,8 +295,37 @@ class MerlyaAgent:
     def load_conversation(self, conv: Conversation) -> None:
         """Load an existing conversation into the agent history."""
         self._active_conversation = conv
-        self._history = list(conv.messages or [])
-        logger.debug(f"Loaded conversation {conv.id[:8]}")
+
+        # Deserialize JSON messages back to ModelMessage objects
+        if conv.messages:
+            try:
+                self._message_history = ModelMessagesTypeAdapter.validate_python(
+                    conv.messages
+                )
+            except Exception as e:
+                logger.warning(f"Failed to deserialize conversation history: {e}")
+                self._message_history = []
+        else:
+            self._message_history = []
+
+        logger.debug(f"Loaded conversation {conv.id[:8]} with {len(self._message_history)} messages")
+
+    def _extract_first_user_message(self) -> str | None:
+        """Extract text content from the first user message."""
+        from pydantic_ai import ModelRequest, UserPromptPart
+
+        for msg in self._message_history:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, UserPromptPart) and part.content:
+                        # Handle both string and list content
+                        if isinstance(part.content, str):
+                            return part.content
+                        # For list content, find the first text
+                        for item in part.content:
+                            if isinstance(item, str):
+                                return item
+        return None
 
     def _derive_title(self, seed: str | None) -> str:
         """Generate a short title from the first user message."""

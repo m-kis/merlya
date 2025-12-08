@@ -136,6 +136,7 @@ async def ssh_execute(
     timeout: int = 60,
     connect_timeout: int | None = None,
     elevation: dict[str, Any] | None = None,
+    via: str | None = None,
 ) -> ToolResult:
     """
     Execute a command on a host via SSH.
@@ -147,6 +148,9 @@ async def ssh_execute(
         timeout: Command timeout in seconds.
         connect_timeout: Optional connection timeout.
         elevation: Optional prepared elevation payload (from request_elevation).
+        via: Optional jump host/bastion to use for this connection.
+             Can be a host name from inventory or IP/hostname.
+             Takes priority over any jump_host configured in the host entry.
 
     Returns:
         ToolResult with command output.
@@ -177,10 +181,12 @@ async def ssh_execute(
 
         ssh_opts = SSHConnectionOptions(connect_timeout=connect_timeout)
 
-        # Resolve jump host details from inventory if present
-        if host_entry and host_entry.jump_host:
+        # Resolve jump host - 'via' parameter takes priority over inventory config
+        jump_host_name = via or (host_entry.jump_host if host_entry else None)
+
+        if jump_host_name:
             try:
-                jump_entry = await ctx.hosts.get_by_name(host_entry.jump_host)
+                jump_entry = await ctx.hosts.get_by_name(jump_host_name)
             except Exception:
                 jump_entry = None
 
@@ -189,8 +195,11 @@ async def ssh_execute(
                 ssh_opts.jump_port = jump_entry.port
                 ssh_opts.jump_username = jump_entry.username
                 ssh_opts.jump_private_key = jump_entry.private_key
+                logger.debug(f"🔗 Using jump host '{jump_host_name}' ({jump_entry.hostname})")
             else:
-                ssh_opts.jump_host = host_entry.jump_host
+                # Use jump_host_name directly as hostname if not in inventory
+                ssh_opts.jump_host = jump_host_name
+                logger.debug(f"🔗 Using jump host '{jump_host_name}' (direct)")
 
         if elevation:
             command = elevation.get("command", command)
@@ -266,6 +275,7 @@ async def ssh_execute(
                 "host": host,
                 "command": command[:50] + "..." if len(command) > 50 else command,
                 "elevation": elevation_used,
+                "via": jump_host_name,
             },
             error=result.stderr if result.exit_code != 0 else None,
         )

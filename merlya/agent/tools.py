@@ -82,19 +82,28 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         command: str,
         timeout: int = 60,
         elevation: dict[str, Any] | None = None,
+        via: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a command on a host via SSH.
 
         Args:
             ctx: Run context.
-            host: Host name or hostname.
+            host: Host name or hostname (target machine).
             command: Command to execute.
             timeout: Command timeout in seconds.
             elevation: Optional elevation payload (from request_elevation).
+            via: Optional jump host/bastion to reach the target.
+                 Use this when the target is not directly accessible.
+                 Can be a host name from inventory (e.g., "ansible", "bastion")
+                 or an IP/hostname. The connection will tunnel through this host.
 
         Returns:
             Command output with stdout, stderr, and exit_code.
+
+        Example:
+            To execute on a remote host via a bastion:
+            ssh_execute(host="db-server", command="df -h", via="bastion")
         """
         from merlya.tools.core import ssh_execute as _ssh_execute
 
@@ -105,13 +114,17 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
                 "then pass the returned payload to ssh_execute via the 'elevation' argument."
             )
 
-        logger.info(f"Executing on {host}: {command[:50]}...")
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, elevation=elevation)
+        via_info = f" via {via}" if via else ""
+        logger.info(f"Executing on {host}{via_info}: {command[:50]}...")
+        result = await _ssh_execute(
+            ctx.deps.context, host, command, timeout, elevation=elevation, via=via
+        )
         return {
             "success": result.success,
             "stdout": result.data.get("stdout", "") if result.data else "",
             "stderr": result.data.get("stderr", "") if result.data else "",
             "exit_code": result.data.get("exit_code", -1) if result.data else -1,
+            "via": result.data.get("via") if result.data else None,
         }
 
     @agent.tool

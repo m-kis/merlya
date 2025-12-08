@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Merlya Logo" width="120">
+  <img src="https://raw.githubusercontent.com/m-kis/merlya/main/assets/logo.png" alt="Merlya Logo" width="120">
 </p>
 
 <h1 align="center">Merlya</h1>

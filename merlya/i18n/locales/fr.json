@@ -27,6 +27,7 @@
     "subtitle": "🚀 Merlya v{version} - Mode Interactif",
     "env_session": "Environnement: {env}    Session: {session}",
     "provider": "Provider: {provider}",
+    "model": "Modèle: {model}",
     "router": "Router: {router}",
     "keyring": "Keyring: {keyring}",
     "keyring_fallback": "⚠️ Keyring indisponible (mémoire)",
