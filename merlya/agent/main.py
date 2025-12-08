@@ -195,6 +195,7 @@ class MerlyaAgent:
         self,
         user_input: str,
         router_result: RouterResult | None = None,
+        timeout: float = 120.0,
     ) -> AgentResponse:
         """
         Process user input.
@@ -202,10 +203,13 @@ class MerlyaAgent:
         Args:
             user_input: User message.
             router_result: Optional routing result.
+            timeout: Maximum time to wait for LLM response (default 120s).
 
         Returns:
             Agent response.
         """
+        import asyncio
+
         try:
             # Create conversation lazily on first user message
             if self._active_conversation is None:
@@ -236,11 +240,24 @@ class MerlyaAgent:
 
             # Pass message_history only if we have previous messages
             # This includes tool calls, tool results, and assistant responses
-            result = await self._agent.run(
-                augmented_input,
-                deps=deps,
-                message_history=self._message_history if self._message_history else None,
-            )
+            # Wrap with timeout to prevent infinite hangs on LLM provider issues
+            try:
+                result = await asyncio.wait_for(
+                    self._agent.run(
+                        augmented_input,
+                        deps=deps,
+                        message_history=self._message_history if self._message_history else None,
+                    ),
+                    timeout=timeout,
+                )
+            except TimeoutError:
+                logger.warning(f"⏱️ LLM request timed out after {timeout}s")
+                await self._persist_history()
+                return AgentResponse(
+                    message=f"Request timed out after {timeout}s. The LLM provider may be slow or unresponsive.",
+                    actions_taken=[],
+                    suggestions=["Try again", "Check your internet connection"],
+                )
 
             # Update history with ALL messages including tool calls
             # This is critical for conversation continuity
@@ -249,6 +266,12 @@ class MerlyaAgent:
             await self._persist_history()
 
             return result.output
+
+        except asyncio.CancelledError:
+            # Task was cancelled (e.g., by Ctrl+C)
+            logger.debug("Agent task cancelled")
+            await self._persist_history()
+            raise
 
         except Exception as e:
             logger.error(f"Agent error: {e}")

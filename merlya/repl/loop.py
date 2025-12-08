@@ -6,6 +6,7 @@ Interactive console with autocompletion.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from dataclasses import dataclass
@@ -316,8 +317,14 @@ class REPL:
                 expanded_input = await self._expand_mentions(user_input)
 
                 # Run agent
-                with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
-                    response = await self.agent.run(expanded_input, route_result)
+                try:
+                    with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
+                        response = await self.agent.run(expanded_input, route_result)
+                except asyncio.CancelledError:
+                    # Handle Ctrl+C during agent execution
+                    self.ctx.ui.newline()
+                    self.ctx.ui.warning("Request cancelled")
+                    continue
 
                 # Display response
                 self.ctx.ui.newline()
