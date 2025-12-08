@@ -441,8 +441,6 @@ def _load_api_keys_from_keyring(ctx: SharedContext) -> None:
     """
     import os
 
-    from merlya.secrets import get_secret
-
     # Get the configured API key env variable
     api_key_env = ctx.config.model.api_key_env
     if not api_key_env:
@@ -450,12 +448,18 @@ def _load_api_keys_from_keyring(ctx: SharedContext) -> None:
         provider = ctx.config.model.provider.upper()
         api_key_env = f"{provider}_API_KEY"
 
+    # Ollama does not require an API key; skip quietly
+    if ctx.config.model.provider == "ollama":
+        return
+
     # Check if already in environment
     if os.environ.get(api_key_env):
         logger.debug(f"🔑 API key already in environment: {api_key_env}")
         return
 
     # Try to load from keyring
+    from merlya.secrets import get_secret
+
     secret_value = get_secret(api_key_env)
     if secret_value:
         os.environ[api_key_env] = secret_value

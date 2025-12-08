@@ -6,11 +6,15 @@ Implements /model command with subcommands: show, provider, model, test, router.
 
 from __future__ import annotations
 
+import asyncio
+import os
+import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from merlya.commands.registry import CommandResult, command, subcommand
+from merlya.config.provider_env import ensure_provider_env
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -51,13 +55,6 @@ async def cmd_model_show(ctx: SharedContext, _args: list[str]) -> CommandResult:
     ]
 
     return CommandResult(success=True, message="\n".join(lines))
-
-
-import asyncio
-import os
-import shutil
-
-from merlya.config.provider_env import ensure_provider_env
 
 
 @subcommand("model", "provider", "Change LLM provider", "/model provider <name>")
@@ -369,7 +366,7 @@ async def _ensure_ollama_model(ctx: SharedContext, model: str) -> CommandResult 
 
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         return CommandResult(
             success=False,

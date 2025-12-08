@@ -60,6 +60,7 @@ def mock_context() -> MagicMock:
     ctx.config.model.provider = "openrouter"
     ctx.config.model.model = "x-ai/grok-4.1-fast:free"
     ctx.config.model.api_key_env = "OPENROUTER_API_KEY"
+    ctx.config.model.base_url = None
     ctx.config.router = MagicMock()
     ctx.config.router.type = "local"
     ctx.config.router.tier = None

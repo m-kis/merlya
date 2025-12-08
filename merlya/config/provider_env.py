@@ -7,10 +7,12 @@ Ensures provider-specific environment variables are set (e.g., Ollama base URL).
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from merlya.config import Config
+if TYPE_CHECKING:
+    from merlya.config import Config
 
 
 def ensure_provider_env(config: Config) -> None:
