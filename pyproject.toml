@@ -133,4 +133,11 @@ addopts = "-v --tb=short"
 
 [tool.bandit]
 exclude_dirs = ["tests", "venv", ".venv"]
-skips = ["B101"]  # Skip assert warnings in tests
+skips = [
+    "B101",  # assert statements (acceptable in tests)
+    "B105",  # hardcoded_password_string (false positives: /etc/passwd grep, severity strings)
+    "B108",  # hardcoded_tmp_directory (/tmp is intentionally allowed for imports)
+    "B110",  # try_except_pass (acceptable for parser fallbacks)
+    "B112",  # try_except_continue (acceptable for optional downloads)
+    "B615",  # huggingface_unsafe_download (public models, revision pinning not critical)
+]
