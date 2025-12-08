@@ -7,6 +7,7 @@ ONNX-based semantic classifier for user intent.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -243,8 +244,8 @@ class IntentClassifier:
         self._model_loaded = False
         self._intent_vectors: dict[AgentMode, NDArray[np.float32]] = {}
         self._embedding_dim: int | None = None
-        self._embedding_cache: dict[str, NDArray[np.float32]] = {}
-        self._cache_order: list[str] = []  # LRU order tracking
+        # LRU cache using OrderedDict for O(1) operations
+        self._embedding_cache: OrderedDict[str, NDArray[np.float32]] = OrderedDict()
 
     async def load_model(self, model_path: Path | None = None) -> bool:
         """Load ONNX embedding model."""
@@ -397,11 +398,9 @@ class IntentClassifier:
         if not self._session or not self._tokenizer:
             return None
 
-        # Check cache first
+        # Check cache first (O(1) with OrderedDict)
         if text in self._embedding_cache:
-            # Move to end (most recently used)
-            self._cache_order.remove(text)
-            self._cache_order.append(text)
+            self._embedding_cache.move_to_end(text)  # O(1) LRU update
             return self._embedding_cache[text]
 
         try:
@@ -410,32 +409,34 @@ class IntentClassifier:
             attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
             token_type_ids = np.zeros_like(input_ids, dtype=np.int64)
 
+            # Build inputs dynamically based on model signature
+            model_inputs = {i.name for i in self._session.get_inputs()}  # type: ignore[attr-defined]
+            run_inputs: dict[str, NDArray[np.int64]] = {"input_ids": input_ids}
+            if "attention_mask" in model_inputs:
+                run_inputs["attention_mask"] = attention_mask
+            if "token_type_ids" in model_inputs:
+                run_inputs["token_type_ids"] = token_type_ids
+
             def _infer() -> NDArray[np.float32]:
                 outputs = self._session.run(  # type: ignore[union-attr]
                     None,
-                    {
-                        "input_ids": input_ids,
-                        "attention_mask": attention_mask,
-                        "token_type_ids": token_type_ids,
-                    },
+                    run_inputs,
                 )
                 # Mean pooling over sequence
                 embeddings = outputs[0]
-                mask_expanded = attention_mask[:, :, np.newaxis].astype(np.float32)
+                mask = run_inputs.get("attention_mask", attention_mask)
+                mask_expanded = mask[:, :, np.newaxis].astype(np.float32)
                 sum_embeddings = np.sum(embeddings * mask_expanded, axis=1)
                 sum_mask = np.clip(mask_expanded.sum(axis=1), a_min=1e-9, a_max=None)
                 return (sum_embeddings / sum_mask)[0]  # type: ignore[no-any-return]
 
             result = await asyncio.to_thread(_infer)
 
-            # Store in cache with LRU eviction
+            # Store in cache with LRU eviction (O(1) with OrderedDict)
             if len(self._embedding_cache) >= self.EMBEDDING_CACHE_MAX_SIZE:
-                oldest = self._cache_order.pop(0)
-                del self._embedding_cache[oldest]
+                self._embedding_cache.popitem(last=False)  # Remove oldest
 
             self._embedding_cache[text] = result
-            self._cache_order.append(text)
-
             return result
 
         except Exception as e:

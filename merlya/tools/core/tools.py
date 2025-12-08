@@ -6,6 +6,7 @@ Includes: list_hosts, get_host, ssh_execute, ask_user, request_confirmation.
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -155,11 +156,15 @@ async def ssh_execute(
         host_entry = await ctx.hosts.get_by_name(host)
 
         if not host_entry:
-            return ToolResult(
-                success=False,
-                error=f"Host '{host}' not found in inventory. Use /hosts add {host} first.",
-                data={"host": host, "command": command[:50]},
-            )
+            # Allow direct IP usage without inventory
+            if _is_ip(host):
+                logger.debug(f"Using direct IP (no inventory) for SSH: {host}")
+            else:
+                return ToolResult(
+                    success=False,
+                    error=f"Host '{host}' not found in inventory. Use /hosts add {host} first.",
+                    data={"host": host, "command": command[:50]},
+                )
 
         # Apply prepared elevation (brain-driven only)
         input_data = None
@@ -272,6 +277,15 @@ async def ssh_execute(
             data={"host": host, "command": command[:50]},
             error=str(e),
         )
+
+
+def _is_ip(value: str) -> bool:
+    """Return True if value is a valid IPv4/IPv6 address."""
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
 
 
 def _ensure_callbacks(ctx: SharedContext, ssh_pool: Any) -> None:
