@@ -220,7 +220,15 @@ class IntentClassifier:
     # Class-level flag to prevent duplicate warnings
     _onnx_warning_shown: bool = False
 
-    def __init__(self, use_embeddings: bool = True) -> None:
+    # Embedding cache settings
+    EMBEDDING_CACHE_MAX_SIZE = 1000
+
+    def __init__(
+        self,
+        use_embeddings: bool = True,
+        model_id: str | None = None,
+        tier: str | None = None,
+    ) -> None:
         """
         Initialize classifier.
 
@@ -228,11 +236,15 @@ class IntentClassifier:
             use_embeddings: Whether to use ONNX embedding model.
         """
         self.use_embeddings = use_embeddings
+        self._model_id = model_id
+        self._tier = tier
         self._session: object | None = None  # onnxruntime.InferenceSession
         self._tokenizer: object | None = None  # transformers.AutoTokenizer
         self._model_loaded = False
         self._intent_vectors: dict[AgentMode, NDArray[np.float32]] = {}
         self._embedding_dim: int | None = None
+        self._embedding_cache: dict[str, NDArray[np.float32]] = {}
+        self._cache_order: list[str] = []  # LRU order tracking
 
     async def load_model(self, model_path: Path | None = None) -> bool:
         """Load ONNX embedding model."""
@@ -243,11 +255,15 @@ class IntentClassifier:
             import onnxruntime as ort  # noqa: F401 - check availability
             from tokenizers import Tokenizer  # noqa: F401 - check availability
 
-            model_path = model_path or Path.home() / ".merlya" / "models" / "router.onnx"
+            selected_model = self._select_model_id(self._model_id, self._tier)
+            model_path = model_path or self._resolve_model_path(selected_model)
             tokenizer_path = model_path.parent / "tokenizer.json"
+            data_path = model_path.with_name(f"{model_path.name}_data")
 
-            if not model_path.exists():
-                await self._download_model(model_path, tokenizer_path)
+            if not model_path.exists() or not tokenizer_path.exists():
+                await self._download_model(selected_model, model_path, tokenizer_path)
+            elif not data_path.exists():
+                await self._download_external_data(selected_model, model_path)
 
             if not model_path.exists() or not tokenizer_path.exists():
                 return self._disable_embeddings(model_path, tokenizer_path)
@@ -261,7 +277,8 @@ class IntentClassifier:
             await self._precompute_intent_vectors()
 
             self._model_loaded = True
-            logger.info(f"✅ ONNX embedding model loaded: {model_path.name}")
+            self._model_id = selected_model
+            logger.info(f"✅ ONNX embedding model loaded: {selected_model}")
             return True
 
         except ImportError as e:
@@ -296,28 +313,67 @@ class IntentClassifier:
         self.use_embeddings = False
         return False
 
-    async def _download_model(self, model_path: Path, tokenizer_path: Path) -> None:
-        """Download default ONNX embedding model."""
+    async def _download_model(
+        self,
+        model_id: str,
+        model_path: Path,
+        tokenizer_path: Path,
+    ) -> None:
+        """Download ONNX embedding model and tokenizer (plus external data if present)."""
         try:
             target_dir = model_path.parent
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            logger.info("🔽 Downloading default ONNX router model (MiniLM)...")
-            onnx_src = hf_hub_download(
-                repo_id="Xenova/all-MiniLM-L6-v2",
-                filename="onnx/model.onnx",
-            )
-            tokenizer_src = hf_hub_download(
-                repo_id="Xenova/all-MiniLM-L6-v2",
-                filename="tokenizer.json",
-            )
+            logger.info(f"🔽 Downloading router model: {model_id}...")
+            onnx_src = hf_hub_download(repo_id=model_id, filename="onnx/model.onnx")
+            tokenizer_src = hf_hub_download(repo_id=model_id, filename="tokenizer.json")
 
             # Copy to Merlya model directory
             model_path.write_bytes(Path(onnx_src).read_bytes())
             tokenizer_path.write_bytes(Path(tokenizer_src).read_bytes())
+
+            await self._download_external_data(model_id, model_path)
+
             logger.info(f"✅ Downloaded ONNX model to {model_path}")
         except Exception as e:
             logger.warning(f"⚠️ Could not download ONNX model: {e}")
+
+    async def _download_external_data(self, model_id: str, model_path: Path) -> None:
+        """Download external data sidecar if the model uses one."""
+        data_candidates = ["onnx/model.onnx_data", "onnx/model.onnx.data"]
+        for candidate in data_candidates:
+            try:
+                data_src = hf_hub_download(repo_id=model_id, filename=candidate)
+                data_dest = model_path.with_name(f"{model_path.name}_data")
+                Path(data_dest).write_bytes(Path(data_src).read_bytes())
+                logger.info(f"✅ Downloaded ONNX external data to {data_dest}")
+                return
+            except Exception:
+                continue
+        logger.debug("No external ONNX data sidecar found for {}", model_id)
+
+    def _select_model_id(self, model_id: str | None, tier: str | None) -> str:
+        """Select embedding model based on tier."""
+        if model_id:
+            return model_id
+
+        tier_normalized = (tier or "").lower()
+        if tier_normalized == "performance":
+            return "Xenova/bge-m3"
+        if tier_normalized == "balanced":
+            return "Xenova/gte-multilingual-base"
+        # lightweight / fallback
+        return "Xenova/all-MiniLM-L6-v2"
+
+    def _resolve_model_path(self, model_id: str) -> Path:
+        """Resolve model path based on model id."""
+        slug = model_id.replace("/", "__").replace(":", "__")
+        return Path.home() / ".merlya" / "models" / slug / "model.onnx"
+
+    @property
+    def model_id(self) -> str | None:
+        """Return the current model id."""
+        return self._model_id
 
     async def _precompute_intent_vectors(self) -> None:
         """Pre-compute average embeddings for each intent category."""
@@ -337,9 +393,16 @@ class IntentClassifier:
         logger.debug(f"🧠 Pre-computed {len(self._intent_vectors)} intent vectors")
 
     async def _get_embedding(self, text: str) -> NDArray[np.float32] | None:
-        """Get embedding vector for text using ONNX model."""
+        """Get embedding vector for text using ONNX model with LRU caching."""
         if not self._session or not self._tokenizer:
             return None
+
+        # Check cache first
+        if text in self._embedding_cache:
+            # Move to end (most recently used)
+            self._cache_order.remove(text)
+            self._cache_order.append(text)
+            return self._embedding_cache[text]
 
         try:
             encoding = self._tokenizer.encode(text)  # type: ignore[attr-defined]
@@ -363,7 +426,17 @@ class IntentClassifier:
                 sum_mask = np.clip(mask_expanded.sum(axis=1), a_min=1e-9, a_max=None)
                 return (sum_embeddings / sum_mask)[0]  # type: ignore[no-any-return]
 
-            return await asyncio.to_thread(_infer)
+            result = await asyncio.to_thread(_infer)
+
+            # Store in cache with LRU eviction
+            if len(self._embedding_cache) >= self.EMBEDDING_CACHE_MAX_SIZE:
+                oldest = self._cache_order.pop(0)
+                del self._embedding_cache[oldest]
+
+            self._embedding_cache[text] = result
+            self._cache_order.append(text)
+
+            return result
 
         except Exception as e:
             logger.debug(f"Embedding error: {e}")

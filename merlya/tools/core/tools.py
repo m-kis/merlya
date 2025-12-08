@@ -154,6 +154,13 @@ async def ssh_execute(
         # Resolve host from inventory
         host_entry = await ctx.hosts.get_by_name(host)
 
+        if not host_entry:
+            return ToolResult(
+                success=False,
+                error=f"Host '{host}' not found in inventory. Use /hosts add {host} first.",
+                data={"host": host, "command": command[:50]},
+            )
+
         # Apply prepared elevation (brain-driven only)
         input_data = None
         elevation_used = None

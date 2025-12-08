@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncssh
 import pytest
 
 from merlya.commands.handlers.ssh import (
+    _candidate_passphrase_keys,
+    _lookup_passphrase,
     _prompt_private_key,
     _prompt_ssh_config,
     cmd_ssh_connect,
-    _lookup_passphrase,
-    _candidate_passphrase_keys,
 )
 from merlya.persistence.models import Host
 
@@ -50,7 +50,7 @@ async def test_prompt_ssh_config_requests_passphrase_on_encrypted_key(tmp_path: 
     ctx.ui.prompt_secret.assert_called_once_with(f"🔐 Passphrase for {key_path}")
     ctx.secrets.set.assert_any_call(f"ssh:passphrase:{host.name}", "pass123")
     ctx.secrets.set.assert_any_call(f"ssh:passphrase:{key_path.name}", "pass123")
-    ctx.secrets.set.assert_any_call(f"ssh:passphrase:{str(key_path)}", "pass123")
+    ctx.secrets.set.assert_any_call(f"ssh:passphrase:{key_path!s}", "pass123")
 
 
 @pytest.mark.asyncio
@@ -146,7 +146,6 @@ def test_lookup_passphrase_falls_back_to_keyring(monkeypatch: pytest.MonkeyPatch
 
     keyring_stub = SimpleNamespace(get_password=fake_get_password)
     monkeypatch.setitem(sys.modules, "keyring", keyring_stub)
-    import keyring  # type: ignore  # noqa: PLC0415
 
     ctx = SimpleNamespace(secrets=DummySecrets())
     keys = _candidate_passphrase_keys("host", str(tmp_path / "id_ed25519"), tmp_path / "id_ed25519")

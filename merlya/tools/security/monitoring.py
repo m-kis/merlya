@@ -7,7 +7,6 @@ Monitor failed logins, pending updates, and critical services on remote hosts.
 from __future__ import annotations
 
 import re
-import shlex
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger

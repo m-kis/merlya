@@ -9,6 +9,7 @@ variables, secrets, UI, and configuration.
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -190,11 +191,24 @@ class SharedContext:
         if self.health and requested_local:
             use_local = bool(self.health.capabilities.get("onnx_router"))
 
-        router = IntentRouter(use_local=use_local)
+        router_model_env = os.getenv("MERLYA_ROUTER_MODEL")
+        router_model_id = router_model_env or self.config.router.model
+
+        router = IntentRouter(
+            use_local=use_local,
+            model_id=router_model_id,
+            tier=tier,
+        )
 
         # Configure LLM fallback for low-confidence intents
-        if self.config.router.llm_fallback:
-            router.set_llm_fallback(self.config.router.llm_fallback)
+        fallback_override = os.getenv("MERLYA_ROUTER_FALLBACK")
+        if fallback_override and ":" not in fallback_override:
+            fallback_override = f"{self.config.model.provider}:{fallback_override}"
+
+        fallback_value = fallback_override or self.config.router.llm_fallback
+        if fallback_value:
+            self.config.router.llm_fallback = fallback_value
+            router.set_llm_fallback(fallback_value)
 
         await router.initialize()
 
@@ -205,6 +219,9 @@ class SharedContext:
             logger.warning("⚠️ ONNX router unavailable, using LLM fallback for routing")
         elif router.classifier.model_loaded:
             logger.info("✅ Intent router initialized with local ONNX model")
+            # Persist selected model id for diagnostics
+            if router.classifier.model_id:
+                self.config.router.model = router.classifier.model_id
 
         self._router = router
 

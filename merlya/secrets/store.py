@@ -31,11 +31,16 @@ class SecretStore:
 
     def __post_init__(self) -> None:
         """Check keyring availability."""
-        self._keyring_available = self._check_keyring()
+        available, reason = self._check_keyring()
+        self._keyring_available = available
         if not self._keyring_available:
-            logger.warning("⚠️ Keyring unavailable - using in-memory storage (secrets lost on exit)")
+            reason_suffix = f" ({reason})" if reason else ""
+            logger.warning(
+                "⚠️ Keyring unavailable - using in-memory storage (secrets lost on exit){}",
+                reason_suffix,
+            )
 
-    def _check_keyring(self) -> bool:
+    def _check_keyring(self) -> tuple[bool, str | None]:
         """Check if keyring is available and working."""
         try:
             import keyring
@@ -48,14 +53,14 @@ class SecretStore:
             result = keyring.get_password(SERVICE_NAME, test_key)
             keyring.delete_password(SERVICE_NAME, test_key)
 
-            return result == test_value
+            return result == test_value, None
 
         except ImportError:
             logger.debug("keyring module not installed")
-            return False
+            return False, "keyring module not installed"
         except Exception as e:
             logger.debug(f"Keyring test failed: {e}")
-            return False
+            return False, str(e)
 
     @property
     def is_secure(self) -> bool:

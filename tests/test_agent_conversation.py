@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from merlya.agent import MerlyaAgent, AgentResponse
+import pytest
+
+from merlya.agent import AgentResponse, MerlyaAgent
 from merlya.persistence.models import Conversation
 
 

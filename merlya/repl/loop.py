@@ -11,6 +11,8 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from merlya.config.constants import COMPLETION_CACHE_TTL_SECONDS
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -56,7 +58,7 @@ class MerlyaCompleter(Completer):
         import time
 
         now = time.time()
-        if now - self._last_cache_update < 30:  # Cache for 30 seconds
+        if now - self._last_cache_update < COMPLETION_CACHE_TTL_SECONDS:
             return
 
         try:

@@ -39,14 +39,23 @@ class IntentRouter:
     Routes user input to appropriate agent mode and tools.
     """
 
-    def __init__(self, use_local: bool = True) -> None:
+    def __init__(
+        self,
+        use_local: bool = True,
+        model_id: str | None = None,
+        tier: str | None = None,
+    ) -> None:
         """
         Initialize router.
 
         Args:
             use_local: Whether to use local embedding model.
         """
-        self.classifier = IntentClassifier(use_embeddings=use_local)
+        self.classifier = IntentClassifier(
+            use_embeddings=use_local,
+            model_id=model_id,
+            tier=tier,
+        )
         self._llm_model: str | None = None
         self._initialized = False
 

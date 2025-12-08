@@ -1,9 +1,10 @@
-import pytest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from merlya.persistence.models import Host
 from merlya.tools.interaction import request_credentials
-from pathlib import Path
 
 
 class _StubUI:

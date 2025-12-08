@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncssh
-
 import pytest
 
 from merlya.ssh.pool import SSHConnectionOptions, SSHPool

@@ -7,6 +7,7 @@ Checks system capabilities at startup with real connectivity tests.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from loguru import logger
 
 from merlya.core.types import CheckStatus, HealthCheck
 from merlya.i18n import t
+from merlya.router.intent_classifier import IntentClassifier
 
 
 @dataclass
@@ -451,49 +453,58 @@ def check_web_search() -> HealthCheck:
         )
 
 
-def check_onnx_model() -> HealthCheck:
-    """Check if ONNX embedding model is available."""
-    model_path = Path.home() / ".merlya" / "models" / "router.onnx"
-    tokenizer_path = Path.home() / ".merlya" / "models" / "tokenizer.json"
+def check_onnx_model(tier: str | None = None) -> HealthCheck:
+    """Check if ONNX embedding model is available or downloadable."""
+    from merlya.config import get_config
 
-    if not model_path.exists():
+    override = os.getenv("MERLYA_ROUTER_MODEL")
+    config = get_config()
+    cfg_model = getattr(config, "router", None)
+    model_id = override or (cfg_model.model if cfg_model else None)
+
+    # Use classifier helpers to resolve paths consistently
+    selector = IntentClassifier(use_embeddings=False, model_id=model_id, tier=tier)
+    selected_id = selector._select_model_id(model_id, tier)
+    model_path = selector._resolve_model_path(selected_id)
+    tokenizer_path = model_path.parent / "tokenizer.json"
+
+    try:
+        import onnxruntime  # noqa: F401
+        from tokenizers import Tokenizer  # noqa: F401
+    except ImportError as e:
         return HealthCheck(
             name="onnx_model",
             status=CheckStatus.DISABLED,
-            message="⚠️ ONNX model not found (using pattern matching)",
-            details={"path": str(model_path), "exists": False},
+            message="⚠️ ONNX runtime not installed (router will use pattern matching)",
+            details={"error": str(e), "can_download": False},
         )
 
+    missing: list[str] = []
+    if not model_path.exists():
+        missing.append(str(model_path))
     if not tokenizer_path.exists():
+        missing.append(str(tokenizer_path))
+
+    if missing:
         return HealthCheck(
             name="onnx_model",
             status=CheckStatus.WARNING,
-            message="⚠️ Tokenizer not found",
-            details={"model_exists": True, "tokenizer_exists": False},
+            message="⚠️ ONNX assets missing - will download automatically on first use",
+            details={"missing": missing, "can_download": True},
         )
 
-    # Check onnxruntime is available
-    try:
-        import onnxruntime  # noqa: F401
-    except ImportError:
-        return HealthCheck(
-            name="onnx_model",
-            status=CheckStatus.WARNING,
-            message="⚠️ onnxruntime not installed",
-            details={"model_exists": True, "onnxruntime": False},
-        )
-
-    # Get model size
     size_mb = model_path.stat().st_size / (1024 * 1024)
 
     return HealthCheck(
         name="onnx_model",
         status=CheckStatus.OK,
-        message=f"✅ ONNX model loaded ({size_mb:.1f}MB)",
+        message=f"✅ ONNX model available ({size_mb:.1f}MB)",
         details={
-            "path": str(model_path),
+            "model_path": str(model_path),
+            "tokenizer_path": str(tokenizer_path),
             "size_mb": size_mb,
             "exists": True,
+            "can_download": False,
         },
     )
 
@@ -563,9 +574,13 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     health.capabilities["web_search"] = ws_check.status == CheckStatus.OK
 
     # ONNX model
-    onnx_check = check_onnx_model()
+    onnx_check = check_onnx_model(tier=tier)
     health.checks.append(onnx_check)
-    health.capabilities["onnx_router"] = onnx_check.status == CheckStatus.OK
+    details = onnx_check.details or {}
+    can_use_onnx = onnx_check.status == CheckStatus.OK or (
+        onnx_check.status == CheckStatus.WARNING and details.get("can_download", False)
+    )
+    health.capabilities["onnx_router"] = can_use_onnx
 
     logger.debug(
         f"✅ Health checks complete: {len(health.checks)} checks, can_start={health.can_start}"

@@ -279,6 +279,7 @@
       "select_provider": "Select a provider",
       "enter_api_key": "Enter your {api_key}",
       "select_model": "Default model",
+      "select_fallback": "Router fallback model (Enter to keep default; prefix with provider if needed)",
       "api_key_found": "✅ API key found ({api_key})",
       "api_key_saved": "✅ API key configured and stored securely",
       "api_key_missing": "⚠️ No API key provided",

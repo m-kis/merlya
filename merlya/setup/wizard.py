@@ -58,7 +58,7 @@ PROVIDERS = {
         "openrouter",
         "OPENROUTER_API_KEY",
         "amazon/nova-2-lite-v1:free",
-        "openrouter:openrouter/auto",
+        "openrouter:google/gemini-2.0-flash-lite-001",
     ),
     "2": (
         "anthropic",
@@ -129,8 +129,20 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
 
     model = await ui.prompt(t("setup.llm_config.select_model"), default=default_model)
 
+    fallback = fallback_model
+    if fallback_model:
+        fallback_input = await ui.prompt(
+            t("setup.llm_config.select_fallback"), default=fallback_model
+        )
+        fallback_input = (fallback_input or "").strip()
+        if fallback_input:
+            fallback = fallback_input
+        if fallback and ":" not in fallback:
+            # Normalize to provider-prefixed syntax when the user omits it
+            fallback = f"{provider}:{fallback}"
+
     return LLMConfig(
-        provider=provider, model=model, api_key_env=env_key, fallback_model=fallback_model
+        provider=provider, model=model, api_key_env=env_key, fallback_model=fallback
     )
 
 

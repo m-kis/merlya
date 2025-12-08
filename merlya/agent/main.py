@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from merlya.agent.tools import register_all_tools
+from merlya.config.constants import TITLE_MAX_LENGTH
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -228,4 +229,4 @@ class MerlyaAgent:
         if not seed:
             return "Conversation"
         text = seed.strip().splitlines()[0]
-        return (text[:60] + "...") if len(text) > 60 else text
+        return (text[:TITLE_MAX_LENGTH] + "...") if len(text) > TITLE_MAX_LENGTH else text

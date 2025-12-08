@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from merlya.commands.handlers.hosts_io import (
     MAX_FILE_SIZE_BYTES,

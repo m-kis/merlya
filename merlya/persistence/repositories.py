@@ -11,6 +11,7 @@ from typing import Any
 
 from loguru import logger
 
+from merlya.config.constants import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from merlya.persistence.database import (
     Database,
     IntegrityError,
@@ -284,10 +285,10 @@ class ConversationRepository:
             row = await cursor.fetchone()
             return self._row_to_conversation(row) if row else None
 
-    async def get_recent(self, limit: int = 10) -> list[Conversation]:
+    async def get_recent(self, limit: int = DEFAULT_LIST_LIMIT) -> list[Conversation]:
         """Get recent conversations."""
         # Validate limit
-        limit = max(1, min(limit, 100))
+        limit = max(1, min(limit, MAX_LIST_LIMIT))
         async with await self.db.execute(
             "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ?",
             (limit,),
@@ -323,7 +324,7 @@ class ConversationRepository:
         ):
             return bool(cursor.rowcount and cursor.rowcount > 0)
 
-    async def search(self, term: str, limit: int = 10) -> list[Conversation]:
+    async def search(self, term: str, limit: int = DEFAULT_LIST_LIMIT) -> list[Conversation]:
         """
         Search conversations by content.
 
@@ -333,7 +334,7 @@ class ConversationRepository:
         if not term or len(term) > 200:
             return []
 
-        limit = max(1, min(limit, 100))
+        limit = max(1, min(limit, MAX_LIST_LIMIT))
 
         # Escape LIKE special characters (backslash first, then % and _)
         escaped_term = term.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")

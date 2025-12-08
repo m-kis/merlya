@@ -122,7 +122,7 @@ def format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None =
     return "\n".join(lines)
 
 
-def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all: bool) -> None:
+def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all: bool) -> None:  # noqa: ARG001
     """Format system section of scan output."""
     lines.append("### 🖥️ System")
     lines.append("")

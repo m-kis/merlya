@@ -39,7 +39,7 @@ class RouterConfig(BaseModel):
         default=None, description="Model tier (performance, balanced, lightweight)"
     )
     llm_fallback: str = Field(
-        default="openrouter:openrouter/auto",
+        default="openrouter:google/gemini-2.0-flash-lite-001",
         description="LLM fallback for routing",
     )
 

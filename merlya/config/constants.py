@@ -22,3 +22,15 @@ MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 # Security
 DEFAULT_SECURITY_SCAN_TIMEOUT = 20
+
+# Cache
+COMPLETION_CACHE_TTL_SECONDS = 30  # Time-to-live for completion cache
+
+# UI/Display
+TITLE_MAX_LENGTH = 60  # Max characters for conversation title
+DEFAULT_LIST_LIMIT = 10  # Default limit for list operations
+MAX_LIST_LIMIT = 100  # Maximum allowed list limit
+
+# SSH Pool
+SSH_POOL_TIMEOUT_SECONDS = 600  # 10 minutes idle timeout
+SSH_POOL_MAX_CONNECTIONS = 50  # Maximum connections in pool

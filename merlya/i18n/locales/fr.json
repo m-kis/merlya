@@ -280,6 +280,7 @@
       "select_provider": "Sélectionnez un provider",
       "enter_api_key": "Entrez votre {api_key}",
       "select_model": "Modèle par défaut",
+      "select_fallback": "Modèle de secours pour le router (Entrée pour garder le défaut, préfixez avec le provider si besoin)",
       "api_key_found": "✅ Clé API trouvée ({api_key})",
       "api_key_saved": "✅ Clé API configurée et stockée de manière sécurisée",
       "api_key_missing": "⚠️ Aucune clé API fournie",

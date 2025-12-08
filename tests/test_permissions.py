@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from merlya.security import PermissionManager
 
@@ -12,20 +13,20 @@ class _StubUI:
         self.secrets = secrets or []
         self.secret_calls: list[str] = []
 
-    async def prompt_confirm(self, message: str, default: bool = False) -> bool:  # noqa: D401
+    async def prompt_confirm(self, message: str, default: bool = False) -> bool:
         return self.confirm
 
-    async def prompt_secret(self, message: str) -> str:  # noqa: D401
+    async def prompt_secret(self, message: str) -> str:
         self.secret_calls.append(message)
         return self.secrets.pop(0) if self.secrets else ""
 
-    def info(self, *_: object, **__: object) -> None:  # noqa: D401
+    def info(self, *_: object, **__: object) -> None:
         return None
 
-    def muted(self, *_: object, **__: object) -> None:  # noqa: D401
+    def muted(self, *_: object, **__: object) -> None:
         return None
 
-    def success(self, *_: object, **__: object) -> None:  # noqa: D401
+    def success(self, *_: object, **__: object) -> None:
         return None
 
 

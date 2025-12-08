@@ -8,7 +8,6 @@ import pytest
 
 from merlya.router.classifier import (
     AgentMode,
-    IntentClassifier,
     IntentRouter,
     RouterResult,
 )
