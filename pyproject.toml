@@ -3,7 +3,7 @@ name = "merlya"
 version = "0.5.6"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
-    { name = "Cedric", email = "cedric@example.com" }
+    { name = "Cedric", email = "infra@merlya.fr" }
 ]
 readme = "README.md"
 license = { text = "MIT" }
