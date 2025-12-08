@@ -6,6 +6,7 @@ PydanticAI-based agent with ReAct loop.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -208,8 +209,6 @@ class MerlyaAgent:
         Returns:
             Agent response.
         """
-        import asyncio
-
         try:
             # Create conversation lazily on first user message
             if self._active_conversation is None:
