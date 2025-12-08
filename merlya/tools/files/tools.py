@@ -462,3 +462,127 @@ async def delete_file(
     except Exception as e:
         logger.error(f"Failed to delete file on {host_name}: {e}")
         return FileResult(success=False, error=str(e))
+
+
+def _format_size(size: int) -> str:
+    """Format file size in human-readable format."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024:
+            return f"{size:.1f} {unit}" if size >= 10 else f"{size} {unit}"
+        size //= 1024
+    return f"{size:.1f} TB"
+
+
+async def upload_file(
+    ctx: SharedContext,
+    host_name: str,
+    local_path: str,
+    remote_path: str,
+) -> FileResult:
+    """
+    Upload a local file to a remote host via SFTP.
+
+    Args:
+        ctx: Shared context.
+        host_name: Target host name.
+        local_path: Local file path.
+        remote_path: Remote destination path.
+
+    Returns:
+        FileResult with transfer status.
+    """
+    from pathlib import Path
+
+    # Validate paths
+    if error := _validate_path(local_path):
+        return FileResult(success=False, error=f"Local path: {error}")
+    if error := _validate_path(remote_path):
+        return FileResult(success=False, error=f"Remote path: {error}")
+
+    local = Path(local_path).expanduser()
+    if not local.exists():
+        return FileResult(success=False, error=f"Local file not found: {local_path}")
+
+    if not local.is_file():
+        return FileResult(success=False, error=f"Not a file: {local_path}")
+
+    try:
+        ssh_pool = await ctx.get_ssh_pool()
+        await ssh_pool.upload_file(host_name, local, remote_path)
+
+        # Get file size for reporting
+        size = local.stat().st_size
+        size_str = _format_size(size)
+
+        return FileResult(
+            success=True,
+            data={
+                "local": str(local),
+                "remote": f"{host_name}:{remote_path}",
+                "size": size,
+                "message": f"Transfer complete ({size_str})",
+            },
+        )
+
+    except FileNotFoundError as e:
+        return FileResult(success=False, error=str(e))
+    except Exception as e:
+        logger.error(f"Upload failed to {host_name}: {e}")
+        return FileResult(success=False, error=str(e))
+
+
+async def download_file(
+    ctx: SharedContext,
+    host_name: str,
+    remote_path: str,
+    local_path: str | None = None,
+) -> FileResult:
+    """
+    Download a file from a remote host via SFTP.
+
+    Args:
+        ctx: Shared context.
+        host_name: Source host name.
+        remote_path: Remote file path.
+        local_path: Local destination path (default: current directory with remote filename).
+
+    Returns:
+        FileResult with transfer status.
+    """
+    from pathlib import Path
+
+    # Validate remote path
+    if error := _validate_path(remote_path):
+        return FileResult(success=False, error=f"Remote path: {error}")
+
+    # Default local path: current directory with remote filename
+    if local_path is None:
+        remote_name = Path(remote_path).name
+        local_path = f"./{remote_name}"
+
+    if error := _validate_path(local_path):
+        return FileResult(success=False, error=f"Local path: {error}")
+
+    local = Path(local_path).expanduser()
+
+    try:
+        ssh_pool = await ctx.get_ssh_pool()
+        await ssh_pool.download_file(host_name, remote_path, local)
+
+        # Get file size for reporting
+        size = local.stat().st_size
+        size_str = _format_size(size)
+
+        return FileResult(
+            success=True,
+            data={
+                "remote": f"{host_name}:{remote_path}",
+                "local": str(local.absolute()),
+                "size": size,
+                "message": f"Saved to: {local} ({size_str})",
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Download failed from {host_name}: {e}")
+        return FileResult(success=False, error=str(e))

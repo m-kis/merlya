@@ -47,10 +47,17 @@ class ConsoleUI:
     Provides rich formatting for output.
     """
 
-    def __init__(self, theme: Theme | None = None) -> None:
+    def __init__(
+        self,
+        theme: Theme | None = None,
+        auto_confirm: bool = False,
+        quiet: bool = False,
+    ) -> None:
         """Initialize console."""
-        self.console = Console(theme=theme or MERLYA_THEME)
+        self.console = Console(theme=theme or MERLYA_THEME, quiet=quiet)
         self._active_status: Any = None
+        self.auto_confirm = auto_confirm
+        self.quiet = quiet
 
     def print(self, *args: Any, **kwargs: Any) -> None:
         """Print to console."""
@@ -171,6 +178,11 @@ class ConsoleUI:
 
     async def prompt_confirm(self, message: str, default: bool = False) -> bool:
         """Prompt for yes/no confirmation (async-safe)."""
+        if self.auto_confirm:
+            if not self.quiet:
+                self.console.print(f"[muted]{message} [auto-confirmed][/muted]")
+            return True
+
         self._stop_spinner()
         suffix = " [Y/n]" if default else " [y/N]"
         session: PromptSession[str] = PromptSession()

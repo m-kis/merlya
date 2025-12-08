@@ -70,6 +70,11 @@ class SharedContext:
     # Console UI
     _ui: ConsoleUI | None = field(default=None, repr=False)
 
+    # Non-interactive mode flags
+    auto_confirm: bool = field(default=False)
+    quiet: bool = field(default=False)
+    output_format: str = field(default="text")
+
     @property
     def db(self) -> Database:
         """Get database connection."""
@@ -152,7 +157,10 @@ class SharedContext:
         if self._ui is None:
             from merlya.ui import ConsoleUI
 
-            self._ui = ConsoleUI()
+            self._ui = ConsoleUI(
+                auto_confirm=self.auto_confirm,
+                quiet=self.quiet,
+            )
         return self._ui
 
     async def init_async(self) -> None:
