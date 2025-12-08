@@ -4,28 +4,350 @@ Merlya CLI - Command line interface.
 Main entry point for the Merlya application.
 """
 
-import asyncio
+from __future__ import annotations
 
-# Disable tokenizers parallelism warnings in forked processes
+import argparse
+import asyncio
 import os
 import sys
 
 from loguru import logger
 
+# Disable tokenizers parallelism warnings in forked processes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+__version__ = "0.1.0"
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create the CLI argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="merlya",
+        description="AI-powered infrastructure management CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  merlya                                    Interactive REPL mode
+  merlya run "Check disk space"             Execute single command
+  merlya run --file tasks.yml               Execute from file
+  merlya run --yes "Restart nginx"          Skip confirmations
+  merlya config set llm.provider openai     Set configuration
+        """,
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # run subcommand
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Execute commands in non-interactive mode",
+        description="Execute infrastructure tasks without interactive prompts",
+    )
+    run_parser.add_argument(
+        "task",
+        nargs="?",
+        help="Task/command to execute",
+    )
+    run_parser.add_argument(
+        "-f",
+        "--file",
+        metavar="FILE",
+        help="Load tasks from YAML or text file",
+    )
+    run_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompts (auto-confirm)",
+    )
+    run_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    run_parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Show only results, minimal output",
+    )
+
+    # config subcommand
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Manage configuration",
+        description="View or modify Merlya configuration",
+    )
+    config_subparsers = config_parser.add_subparsers(dest="config_action")
+
+    # config set
+    config_set_parser = config_subparsers.add_parser(
+        "set",
+        help="Set a configuration value",
+    )
+    config_set_parser.add_argument(
+        "key",
+        help="Configuration key (e.g., llm.provider, logging.level)",
+    )
+    config_set_parser.add_argument(
+        "value",
+        help="Value to set",
+    )
+
+    # config get
+    config_get_parser = config_subparsers.add_parser(
+        "get",
+        help="Get a configuration value",
+    )
+    config_get_parser.add_argument(
+        "key",
+        help="Configuration key to retrieve",
+    )
+
+    # config show
+    config_subparsers.add_parser(
+        "show",
+        help="Show all configuration",
+    )
+
+    return parser
+
+
+def run_repl_mode(verbose: bool = False) -> None:
+    """Run interactive REPL mode."""
+    from merlya.core.logging import configure_logging
+    from merlya.repl import run_repl
+
+    configure_logging(console_level="DEBUG" if verbose else "INFO")
+
+    try:
+        asyncio.run(run_repl())
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        sys.exit(0)
+
+
+def run_batch_mode(args: argparse.Namespace) -> None:
+    """Run non-interactive batch mode."""
+    from merlya.cli.run import run_from_file, run_single
+    from merlya.core.logging import configure_logging
+
+    verbose = getattr(args, "verbose", False)
+    configure_logging(console_level="DEBUG" if verbose else "INFO")
+
+    if args.file:
+        exit_code = asyncio.run(
+            run_from_file(
+                args.file,
+                auto_confirm=args.yes,
+                quiet=args.quiet,
+                output_format=args.format,
+                verbose=verbose,
+            )
+        )
+    elif args.task:
+        exit_code = asyncio.run(
+            run_single(
+                args.task,
+                auto_confirm=args.yes,
+                quiet=args.quiet,
+                output_format=args.format,
+                verbose=verbose,
+            )
+        )
+    else:
+        print("Error: Either a task or --file is required", file=sys.stderr)
+        sys.exit(1)
+
+    sys.exit(exit_code)
+
+
+def run_config_command(args: argparse.Namespace) -> None:
+    """Handle config subcommand."""
+    from merlya.config import get_config
+
+    config = get_config()
+
+    if args.config_action == "set":
+        _config_set(config, args.key, args.value)
+    elif args.config_action == "get":
+        _config_get(config, args.key)
+    elif args.config_action == "show":
+        _config_show(config)
+    else:
+        print("Usage: merlya config {set,get,show}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _config_set(config: object, key: str, value: str) -> None:
+    """Set a configuration value."""
+    from merlya.config import Config
+
+    if not isinstance(config, Config):
+        print("Error: Invalid config", file=sys.stderr)
+        sys.exit(1)
+
+    parts = key.split(".")
+    if len(parts) != 2:
+        print(f"Error: Invalid key format '{key}'. Use section.key", file=sys.stderr)
+        sys.exit(1)
+
+    section, attr = parts
+
+    # Map section names to config attributes
+    section_map = {
+        "llm": "model",
+        "model": "model",
+        "logging": "general",
+        "general": "general",
+        "ssh": "ssh",
+        "router": "router",
+    }
+
+    section_name = section_map.get(section)
+    if not section_name or not hasattr(config, section_name):
+        print(f"Error: Unknown section '{section}'", file=sys.stderr)
+        sys.exit(1)
+
+    section_obj = getattr(config, section_name)
+
+    # Handle special keys
+    attr_map = {
+        "provider": "provider",
+        "api_key": "api_key_env",
+        "api_key_env": "api_key_env",
+        "model": "model",
+        "level": "log_level",
+        "log_level": "log_level",
+        "language": "language",
+    }
+
+    attr_name = attr_map.get(attr, attr)
+
+    if not hasattr(section_obj, attr_name):
+        print(f"Error: Unknown key '{attr}' in section '{section}'", file=sys.stderr)
+        sys.exit(1)
+
+    # Normalize log_level to lowercase
+    if attr_name == "log_level":
+        value = value.lower()
+
+    setattr(section_obj, attr_name, value)
+    config.save()
+    print(f"Set {key} = {value}")
+
+
+def _config_get(config: object, key: str) -> None:
+    """Get a configuration value."""
+    from merlya.config import Config
+
+    if not isinstance(config, Config):
+        print("Error: Invalid config", file=sys.stderr)
+        sys.exit(1)
+
+    parts = key.split(".")
+    if len(parts) != 2:
+        print(f"Error: Invalid key format '{key}'. Use section.key", file=sys.stderr)
+        sys.exit(1)
+
+    section, attr = parts
+    section_map = {
+        "llm": "model",
+        "model": "model",
+        "logging": "general",
+        "general": "general",
+        "ssh": "ssh",
+        "router": "router",
+    }
+
+    section_name = section_map.get(section)
+    if not section_name or not hasattr(config, section_name):
+        print(f"Error: Unknown section '{section}'", file=sys.stderr)
+        sys.exit(1)
+
+    section_obj = getattr(config, section_name)
+
+    attr_map = {
+        "provider": "provider",
+        "api_key": "api_key_env",
+        "api_key_env": "api_key_env",
+        "model": "model",
+        "level": "log_level",
+        "log_level": "log_level",
+        "language": "language",
+    }
+
+    attr_name = attr_map.get(attr, attr)
+
+    if not hasattr(section_obj, attr_name):
+        print(f"Error: Unknown key '{attr}'", file=sys.stderr)
+        sys.exit(1)
+
+    value = getattr(section_obj, attr_name)
+    print(value)
+
+
+def _config_show(config: object) -> None:
+    """Show all configuration."""
+    import yaml
+
+    from merlya.config import Config
+
+    if not isinstance(config, Config):
+        print("Error: Invalid config", file=sys.stderr)
+        sys.exit(1)
+
+    # Convert to dict for display
+    config_dict = {
+        "general": {
+            "language": config.general.language,
+            "log_level": config.general.log_level,
+        },
+        "model": {
+            "provider": config.model.provider,
+            "model": config.model.model,
+            "api_key_env": config.model.api_key_env,
+        },
+        "router": {
+            "type": config.router.type,
+            "model": config.router.model,
+        },
+        "ssh": {
+            "connect_timeout": config.ssh.connect_timeout,
+            "pool_timeout": config.ssh.pool_timeout,
+        },
+    }
+
+    print(yaml.dump(config_dict, default_flow_style=False))
 
 
 def main() -> None:
     """Main entry point for merlya CLI."""
-    from merlya.core.logging import configure_logging
-
-    # Configure logging
-    configure_logging()
+    parser = create_parser()
+    args = parser.parse_args()
 
     try:
-        from merlya.repl import run_repl
-
-        asyncio.run(run_repl())
+        if args.command == "run":
+            run_batch_mode(args)
+        elif args.command == "config":
+            run_config_command(args)
+        else:
+            # Default: interactive REPL mode
+            run_repl_mode(verbose=args.verbose if hasattr(args, "verbose") else False)
 
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
