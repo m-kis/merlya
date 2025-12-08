@@ -165,7 +165,7 @@ jobs:
     name: Slack Notification
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [test, build, publish-pypi]
+    needs: [build, github-release, publish-pypi]
     if: always() && startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Send Slack notification
