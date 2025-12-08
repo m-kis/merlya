@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
-from merlya.persistence.database import Database
 from merlya.persistence.models import Host
 from merlya.persistence.repositories import HostRepository, VariableRepository
+
+if TYPE_CHECKING:
+    from merlya.persistence.database import Database
 
 
 class TestHostRepository:

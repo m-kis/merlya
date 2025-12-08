@@ -206,7 +206,7 @@ class TestSSHPoolPassphrase:
 
         call_order: list[str] = []
 
-        def fake_read_private_key(path: str, passphrase: str | None = None):
+        def fake_read_private_key(_path: str, passphrase: str | None = None):
             if passphrase is None:
                 call_order.append("first")
                 raise asyncssh.KeyImportError("Passphrase must be specified to import encrypted private keys")
@@ -214,7 +214,7 @@ class TestSSHPoolPassphrase:
             return MagicMock()
 
         monkeypatch.setattr("asyncssh.read_private_key", fake_read_private_key)
-        monkeypatch.setattr(Path, "exists", lambda self: True)
+        monkeypatch.setattr(Path, "exists", lambda _self: True)
 
         key = await pool._load_private_key(key_file)
 

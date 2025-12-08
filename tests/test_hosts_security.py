@@ -73,11 +73,11 @@ class TestValidateTag:
 
     def test_tag_with_special_chars_rejected(self) -> None:
         """Test tag with special characters is rejected."""
-        is_valid, msg = validate_tag("web server")
+        is_valid, _ = validate_tag("web server")
         assert is_valid is False
-        is_valid, msg = validate_tag("web@server")
+        is_valid, _ = validate_tag("web@server")
         assert is_valid is False
-        is_valid, msg = validate_tag("web/server")
+        is_valid, _ = validate_tag("web/server")
         assert is_valid is False
 
     def test_tag_max_length(self) -> None:
@@ -102,9 +102,9 @@ class TestValidateFilePath:
             is_valid, _ = validate_file_path(test_file)
             assert is_valid is True
 
-    def test_path_traversal_blocked(self, tmp_path: Path) -> None:
+    def test_path_traversal_blocked(self) -> None:
         """Test path traversal attempts are blocked."""
-        is_valid, msg = validate_file_path(Path("/../../etc/passwd"))
+        _, msg = validate_file_path(Path("/../../etc/passwd"))
         # Should be blocked either by traversal pattern or not in allowed dirs
         # depending on resolution
         assert "denied" in msg.lower() or "invalid" in msg.lower()
@@ -117,7 +117,7 @@ class TestValidateFilePath:
 
     def test_sys_paths_blocked(self) -> None:
         """Test /sys paths are blocked."""
-        is_valid, msg = validate_file_path(Path("/sys/kernel/hostname"))
+        is_valid, _ = validate_file_path(Path("/sys/kernel/hostname"))
         assert is_valid is False
 
 

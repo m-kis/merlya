@@ -27,7 +27,32 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
+  # Gate: tests must pass before any release
+  test:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          pip install -e ".[dev]"
+
+      - name: Run Ruff linter
+        run: ruff check merlya/ tests/
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
   build:
+    needs: test
     runs-on: self-hosted
     timeout-minutes: 10
     steps:

@@ -8,18 +8,18 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 from merlya.config.constants import COMPLETION_CACHE_TTL_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from merlya.agent import MerlyaAgent
-    from merlya.core.context import SharedContext
     from merlya.config.models import RouterConfig
+    from merlya.core.context import SharedContext
     from merlya.router import IntentRouter
 
 from loguru import logger
@@ -415,7 +415,7 @@ class REPL:
 
             return version("merlya")
         except Exception:
-            return "0.5.3"
+            return "0.5.4"
 
     def _reload_agent(self) -> None:
         """Reload agent with current model settings."""

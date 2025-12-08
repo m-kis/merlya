@@ -214,7 +214,7 @@ class TestRunStartupChecks:
             mock_onnx.return_value = HealthCheck(name="onnx", status=CheckStatus.OK, message="OK")
             mock_web.return_value = HealthCheck(name="web", status=CheckStatus.OK, message="OK")
 
-            async def mock_llm_coro(*args, **kwargs):
+            async def mock_llm_coro(*_args, **_kwargs):
                 return HealthCheck(name="llm", status=CheckStatus.OK, message="OK")
             mock_llm.side_effect = mock_llm_coro
 
