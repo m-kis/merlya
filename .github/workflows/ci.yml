@@ -1,9 +1,9 @@
 name: CI
 
+# TODO: Switch back to ubuntu-latest when billing is resolved
 # This workflow is safe for external PRs (forks):
 # - No secrets are used
 # - Permissions are read-only
-# - Runs on GitHub-hosted runners only
 
 on:
   pull_request:
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +45,7 @@ jobs:
 
   typecheck:
     name: Type Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: lint
     continue-on-error: true  # Temporarily soft-fail until the codebase is fully strict
     steps:
@@ -67,7 +67,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: lint
     strategy:
       fail-fast: false
@@ -99,7 +99,7 @@ jobs:
 
   security:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +125,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [lint, typecheck, test, security]
     steps:
       - uses: actions/checkout@v4
