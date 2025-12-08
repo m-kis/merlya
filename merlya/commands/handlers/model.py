@@ -53,6 +53,13 @@ async def cmd_model_show(ctx: SharedContext, _args: list[str]) -> CommandResult:
     return CommandResult(success=True, message="\n".join(lines))
 
 
+import asyncio
+import os
+import shutil
+
+from merlya.config.provider_env import ensure_provider_env
+
+
 @subcommand("model", "provider", "Change LLM provider", "/model provider <name>")
 async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Change the LLM provider."""
@@ -109,11 +116,15 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
     if provider in router_fallbacks:
         ctx.config.router.llm_fallback = router_fallbacks[provider]
     ctx.config.model.api_key_env = api_key_env or ""
+    ctx.config.model.base_url = ctx.config.model.base_url or None
     ctx.config.save()
+
+    if provider == "ollama":
+        ensure_provider_env(ctx.config)
 
     return CommandResult(
         success=True,
-        message=f"✅ Provider changed to `{provider}`",
+        message=ctx.t("commands.model.provider_changed", provider=provider),
         data={"reload_agent": True},
     )
 
@@ -139,9 +150,15 @@ async def cmd_model_model(ctx: SharedContext, args: list[str]) -> CommandResult:
     ctx.config.model.model = model
     ctx.config.save()
 
+    if ctx.config.model.provider == "ollama":
+        ensure_provider_env(ctx.config)
+        pull_result = await _ensure_ollama_model(ctx, model)
+        if pull_result and not pull_result.success:
+            return pull_result
+
     return CommandResult(
         success=True,
-        message=f"✅ Model changed to `{model}`",
+        message=ctx.t("commands.model.model_changed", model=model),
         data={"reload_agent": True},
     )
 
@@ -314,3 +331,68 @@ def _set_llm_router(ctx: SharedContext, args: list[str]) -> CommandResult:
     ctx.config.router.llm_fallback = llm_model
     ctx.config.save()
     return CommandResult(success=True, message=f"✅ Router set to LLM ({llm_model})")
+
+
+async def _ensure_ollama_model(ctx: SharedContext, model: str) -> CommandResult | None:
+    """
+    Ensure the requested Ollama model is available (pull if missing).
+
+    Returns a CommandResult on failure, or None on success.
+    """
+    if not shutil.which("ollama"):
+        return CommandResult(
+            success=False,
+            message=ctx.t("commands.model.ollama_cli_missing"),
+        )
+
+    ctx.ui.info(ctx.t("commands.model.ollama_pull_start", model=model))
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ollama",
+            "pull",
+            model,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=os.environ.copy(),
+        )
+    except FileNotFoundError:
+        return CommandResult(
+            success=False,
+            message=ctx.t("commands.model.ollama_cli_missing"),
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        return CommandResult(
+            success=False,
+            message=ctx.t("commands.model.ollama_pull_failed", model=model, error=str(e)),
+        )
+
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return CommandResult(
+            success=False,
+            message=ctx.t("commands.model.ollama_pull_failed", model=model, error="timeout"),
+        )
+
+    if proc.returncode == 0:
+        ctx.ui.success(ctx.t("commands.model.ollama_pull_ready", model=model))
+        return None
+
+    error_text = (stderr or stdout or b"").decode(errors="ignore").strip()
+    lowered = error_text.lower()
+    if "not found" in lowered or "no such model" in lowered or "does not exist" in lowered:
+        return CommandResult(
+            success=False,
+            message=ctx.t("commands.model.ollama_pull_not_found", model=model),
+        )
+
+    return CommandResult(
+        success=False,
+        message=ctx.t(
+            "commands.model.ollama_pull_failed",
+            model=model,
+            error=error_text or "unknown error",
+        ),
+    )

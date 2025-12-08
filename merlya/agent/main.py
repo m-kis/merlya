@@ -16,6 +16,7 @@ from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter
 
 from merlya.agent.tools import register_all_tools
 from merlya.config.constants import TITLE_MAX_LENGTH
+from merlya.config.provider_env import ensure_provider_env
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -187,6 +188,7 @@ class MerlyaAgent:
             model: Model to use.
         """
         self.context = context
+        ensure_provider_env(self.context.config)
         self.model = model
         self._agent = create_agent(model)
         self._message_history: list[ModelMessage] = []

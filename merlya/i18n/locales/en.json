@@ -169,6 +169,15 @@
     },
     "new": {
       "started": "New conversation started"
+    },
+    "model": {
+      "provider_changed": "✅ Provider changed to `{provider}`",
+      "model_changed": "✅ Model changed to `{model}`",
+      "ollama_cli_missing": "❌ Ollama CLI not installed or not in PATH",
+      "ollama_pull_start": "📥 Pulling Ollama model `{model}`...",
+      "ollama_pull_ready": "✅ Ollama model `{model}` ready",
+      "ollama_pull_not_found": "❌ Ollama model `{model}` does not exist on this Ollama server",
+      "ollama_pull_failed": "❌ Failed to pull Ollama model `{model}` ({error})"
     }
   },
 

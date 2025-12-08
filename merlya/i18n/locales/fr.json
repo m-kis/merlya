@@ -170,6 +170,15 @@
     },
     "new": {
       "started": "Nouvelle conversation démarrée"
+    },
+    "model": {
+      "provider_changed": "✅ Provider changé pour `{provider}`",
+      "model_changed": "✅ Modèle changé pour `{model}`",
+      "ollama_cli_missing": "❌ Le binaire Ollama n'est pas installé ou introuvable dans le PATH",
+      "ollama_pull_start": "📥 Téléchargement du modèle Ollama `{model}`...",
+      "ollama_pull_ready": "✅ Modèle Ollama `{model}` prêt",
+      "ollama_pull_not_found": "❌ Le modèle Ollama `{model}` n'existe pas sur ce serveur Ollama",
+      "ollama_pull_failed": "❌ Échec du téléchargement du modèle Ollama `{model}` ({error})"
     }
   },
 

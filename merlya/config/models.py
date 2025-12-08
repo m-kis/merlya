@@ -28,6 +28,7 @@ class LLMConfig(BaseModel):
     provider: str = Field(default="openrouter", description="LLM provider name")
     model: str = Field(default="amazon/nova-2-lite-v1:free", description="Model identifier")
     api_key_env: str | None = Field(default=None, description="Environment variable for API key")
+    base_url: str | None = Field(default=None, description="Provider base URL (e.g., Ollama)")
 
 
 class RouterConfig(BaseModel):
