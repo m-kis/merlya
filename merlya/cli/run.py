@@ -208,7 +208,8 @@ def load_tasks_from_file(file_path: str) -> list[str]:
                 if isinstance(task, str):
                     tasks.append(task)
                 elif isinstance(task, dict):
-                    tasks.append(task.get("prompt", task.get("description", "")))
+                    prompt = task.get("prompt") or task.get("description") or ""
+                    tasks.append(str(prompt))
                 # Skip invalid task entries (numbers, None, etc.)
             return [t for t in tasks if t]
         elif isinstance(data, list):
