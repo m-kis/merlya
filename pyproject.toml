@@ -59,6 +59,10 @@ dependencies = [
     # Utils
     "psutil>=6.1",
     "ddgs>=9.9",
+
+    # Security: pin transitive dependencies with known CVEs
+    "urllib3>=2.6.0",  # CVE-2025-66418, CVE-2025-66471
+    "mcp>=1.23.0",     # CVE-2025-66416
 ]
 
 [project.optional-dependencies]
