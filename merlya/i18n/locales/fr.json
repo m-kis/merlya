@@ -1,0 +1,327 @@
+{
+  "general": {
+    "welcome": "Bienvenue dans Merlya v{version}",
+    "ready": "Prêt",
+    "loading": "Chargement...",
+    "done": "Terminé",
+    "error": "Erreur",
+    "warning": "Attention",
+    "info": "Info",
+    "success": "Succès",
+    "cancel": "Annulé",
+    "confirm": "Confirmer",
+    "yes": "oui",
+    "no": "non",
+    "unknown": "Inconnu"
+  },
+  "ui": {
+    "spinner": {
+      "routing": "🧠 Analyse de la requête...",
+      "agent": "⚡ Exécution du plan..."
+    }
+  },
+
+  "welcome_screen": {
+    "title": "Bienvenue",
+    "warning_title": "⚠️  Avertissement",
+    "subtitle": "🚀 Merlya v{version} - Mode Interactif",
+    "env_session": "Environnement: {env}    Session: {session}",
+    "provider": "Provider: {provider}",
+    "model": "Modèle: {model}",
+    "router": "Router: {router}",
+    "keyring": "Keyring: {keyring}",
+    "keyring_fallback": "⚠️ Keyring indisponible (mémoire)",
+    "commands_hint": "Posez vos questions naturellement ou utilisez les commandes slash :",
+    "command_help": "  • /help - Afficher les commandes",
+    "command_conv": "  • /conversations - Lister les conversations",
+    "command_new": "  • /new [title] - Nouvelle conversation",
+    "command_scan": "  • /scan - Scanner l'infrastructure",
+    "command_exit": "  • /exit - Quitter",
+    "prompt": "Commencez par me poser n'importe quelle question sur votre infrastructure !",
+    "feedback": "📝 Feedback : https://github.com/m-kis/merlya/issues",
+    "tip_specific": "Soyez précis dans vos requêtes",
+    "tip_target": "Précisez le serveur cible (nom ou IP) si possible",
+    "tip_context": "Ajoutez du contexte (service, erreur, etc.)",
+    "warning_header": "⚠️  LOGICIEL EXPÉRIMENTAL",
+    "warning_body": "Cet outil est en développement. À utiliser pour debug/test uniquement, pas en production.",
+    "warning_tips_title": "Conseils pour de meilleurs résultats :"
+  },
+
+  "startup": {
+    "health_checks": "Vérifications",
+    "router_init": "Router : {model} ({dims} dims)",
+    "router_fallback": "Router en fallback : {mode}",
+    "ready_time": "Prêt en {time}s",
+    "first_run": "Premier démarrage détecté - lancement de l'assistant de configuration"
+  },
+
+  "health": {
+    "ram": {
+      "ok": "RAM : {available}Go disponibles (tier : {tier})",
+      "warning": "RAM : {available}Go disponibles (limité)"
+    },
+    "disk": {
+      "ok": "Disque : {free}Mo libres",
+      "warning": "Disque : {free}Mo libres (limité)",
+      "error": "Disque : {free}Mo libres (insuffisant)"
+    },
+    "llm": {
+      "ok": "{provider} accessible",
+      "warning": "Provider inaccessible : {error} (réessai au premier appel)",
+      "error": "Aucune clé API configurée"
+    },
+    "ssh": {
+      "ok": "SSH disponible (asyncssh + client système)",
+      "warning": "asyncssh OK mais client SSH système absent",
+      "disabled": "asyncssh non installé - outils SSH désactivés"
+    },
+    "keyring": {
+      "ok": "Keyring accessible",
+      "warning": "Keyring indisponible ({error}) - fallback en mémoire"
+    },
+    "web_search": {
+      "ok": "Recherche DuckDuckGo disponible",
+      "warning": "DuckDuckGo indisponible : {error}",
+      "disabled": "duckduckgo-search non installé - recherche web désactivée"
+    }
+  },
+
+  "commands": {
+    "help": {
+      "title": "Commandes disponibles",
+      "usage": "Usage : {command}",
+      "description": "Description : {description}",
+      "command_header": "Commande",
+      "description_header": "Description",
+      "unknown": "Commande inconnue : {name}",
+      "usage_hint": "Utilisez `/help <commande>` pour le détail"
+    },
+    "hosts": {
+      "list_title": "Hôtes",
+      "added": "Hôte '{name}' ajouté",
+      "updated": "Hôte '{name}' mis à jour",
+      "deleted": "Hôte '{name}' supprimé",
+      "not_found": "Hôte '{name}' introuvable",
+      "already_exists": "L'hôte '{name}' existe déjà",
+      "tag_added": "Tag '{tag}' ajouté à '{name}'",
+      "tag_removed": "Tag '{tag}' retiré de '{name}'",
+      "scan_started": "Scan de l'hôte '{name}'...",
+      "scan_complete": "Scan terminé pour '{name}'",
+      "import_started": "Import depuis {file}...",
+      "import_complete": "{count} hôtes importés",
+      "import_errors": "{count} lignes n'ont pas pu être importées"
+    },
+    "ssh": {
+      "connecting": "Connexion à {host}...",
+      "connected": "Connecté à {host}",
+      "disconnected": "Déconnecté de {host}",
+      "connection_failed": "Échec de connexion : {error}",
+      "mfa_prompt": "Entrez le code MFA",
+      "passphrase_prompt": "Entrez la passphrase pour la clé {key}",
+      "executing": "Exécution : {command}",
+      "execution_complete": "Commande terminée (code de sortie : {code})"
+    },
+    "variable": {
+      "set": "Variable @{name} définie",
+      "deleted": "Variable @{name} supprimée",
+      "not_found": "Variable @{name} introuvable",
+      "list_title": "Variables",
+      "empty": "Aucune variable définie. Utilisez `/variable set <name> <value>` pour en ajouter."
+    },
+    "secret": {
+      "set": "Secret @{name} stocké de manière sécurisée",
+      "deleted": "Secret @{name} supprimé",
+      "not_found": "Secret @{name} introuvable",
+      "list_title": "Secrets",
+      "empty": "Aucun secret stocké. Utilisez `/secret set <name>` pour en ajouter."
+    },
+    "conv": {
+      "list_title": "Conversations",
+      "loaded": "Conversation '{title}' chargée",
+      "saved": "Conversation sauvegardée",
+      "deleted": "Conversation supprimée",
+      "not_found": "Conversation introuvable",
+      "new": "Nouvelle conversation démarrée"
+    },
+    "model": {
+      "current": "Modèle actuel : {provider}/{model}",
+      "changed": "Modèle changé pour {provider}/{model}",
+      "test_ok": "Test du modèle réussi (latence : {latency}ms)",
+      "test_failed": "Échec du test : {error}"
+    },
+    "log": {
+      "level_set": "Niveau de log défini à : {level}",
+      "current_level": "Niveau de log actuel : {level}",
+      "dir": "Répertoire des logs : {dir}",
+      "cleared": "{count} fichier(s) de log supprimé(s)"
+    },
+    "language": {
+      "current": "Langue actuelle : {lang}",
+      "changed": "Langue changée pour : {lang}",
+      "available": "Langues disponibles : {langs}"
+    },
+    "scan": {
+      "started": "Scan des sources locales...",
+      "found": "Trouvé : {source} ({count} hôtes)",
+      "complete": "Scan terminé : {count} hôtes depuis {sources} sources"
+    },
+    "exit": {
+      "goodbye": "Au revoir !"
+    },
+    "new": {
+      "started": "Nouvelle conversation démarrée"
+    },
+    "model": {
+      "provider_changed": "✅ Provider changé pour `{provider}`",
+      "model_changed": "✅ Modèle changé pour `{model}`",
+      "ollama_cli_missing": "❌ Le binaire Ollama n'est pas installé ou introuvable dans le PATH",
+      "ollama_pull_start": "📥 Téléchargement du modèle Ollama `{model}`...",
+      "ollama_pull_ready": "✅ Modèle Ollama `{model}` prêt",
+      "ollama_pull_not_found": "❌ Le modèle Ollama `{model}` n'existe pas sur ce serveur Ollama",
+      "ollama_pull_failed": "❌ Échec du téléchargement du modèle Ollama `{model}` ({error})"
+    }
+  },
+
+  "commands_meta": {
+    "help": {
+      "description": "Afficher l'aide des commandes",
+      "usage": "/help [commande]"
+    },
+    "exit": {
+      "description": "Quitter Merlya",
+      "usage": "/exit"
+    },
+    "new": {
+      "description": "Démarrer une nouvelle conversation",
+      "usage": "/new"
+    },
+    "language": {
+      "description": "Changer la langue de l'interface",
+      "usage": "/language <fr|en>"
+    },
+    "conv": {
+      "description": "Gérer l'historique des conversations",
+      "usage": "/conv <sous-commande>"
+    },
+    "hosts": {
+      "description": "Gérer l'inventaire des hôtes",
+      "usage": "/hosts <sous-commande>"
+    },
+    "ssh": {
+      "description": "Gestion des connexions SSH",
+      "usage": "/ssh <sous-commande>"
+    },
+    "model": {
+      "description": "Gérer le provider LLM et le router",
+      "usage": "/model <sous-commande>"
+    },
+    "scan": {
+      "description": "Scanner un hôte (infos système et sécurité)",
+      "usage": "/scan <hote> [--full|--security|--system]"
+    },
+    "health": {
+      "description": "Afficher l'état de santé du système",
+      "usage": "/health"
+    },
+    "log": {
+      "description": "Configurer les logs",
+      "usage": "/log <sous-commande>"
+    },
+    "variable": {
+      "description": "Gérer les variables",
+      "usage": "/variable <sous-commande>"
+    },
+    "secret": {
+      "description": "Gérer les secrets (stockage sécurisé)",
+      "usage": "/secret <sous-commande>"
+    }
+  },
+
+  "errors": {
+    "validation": {
+      "required": "'{field}' est requis",
+      "invalid_type": "'{field}' doit être de type {expected}",
+      "out_of_range": "'{field}' doit être entre {min} et {max}",
+      "invalid_format": "'{field}' a un format invalide"
+    },
+    "ssh": {
+      "connection_failed": "Échec de connexion SSH : {error}",
+      "auth_failed": "Échec d'authentification pour {user}@{host}",
+      "timeout": "Timeout de connexion après {timeout}s",
+      "command_failed": "Commande échouée avec le code {code}"
+    },
+    "host": {
+      "not_found": "Hôte '{name}' introuvable",
+      "resolution_failed": "Impossible de résoudre '{name}'",
+      "similar_hosts": "Hôtes similaires : {hosts}"
+    },
+    "config": {
+      "load_failed": "Échec du chargement de la config : {error}",
+      "save_failed": "Échec de la sauvegarde de la config : {error}",
+      "invalid": "Configuration invalide : {error}"
+    },
+    "llm": {
+      "api_error": "Erreur API LLM : {error}",
+      "rate_limit": "Limite de requêtes dépassée, réessai dans {seconds}s",
+      "no_provider": "Aucun provider LLM configuré"
+    }
+  },
+
+  "prompts": {
+    "confirm_action": "Êtes-vous sûr de vouloir {action} ?",
+    "enter_value": "Entrez la valeur pour {field}",
+    "select_option": "Sélectionnez une option",
+    "add_host": "Voulez-vous ajouter '{name}' à l'inventaire ?"
+  },
+
+  "setup": {
+    "title": "⚙️ Configuration de Merlya",
+    "welcome": "👋 Bienvenue dans Merlya !\n\nCet assistant va vous guider pour configurer :\n  1. Le choix de la langue\n  2. Le provider LLM\n  3. L'import des hôtes",
+    "language": {
+      "title": "🌐 Choix de la langue",
+      "prompt": "Sélectionnez votre langue",
+      "options": "  1. English\n  2. Français"
+    },
+    "step_llm": "📡 **Étape 1 : Configuration LLM**",
+    "step_inventory": "🖥️ **Étape 2 : Détection des inventaires**",
+    "llm_config": {
+      "title": "📡 Configuration du Provider LLM",
+      "providers": "Providers disponibles :\n  1. OpenRouter (recommandé - multi-modèles)\n  2. Anthropic (Claude direct)\n  3. OpenAI (modèles GPT)\n  4. Ollama (modèles locaux)",
+      "select_provider": "Sélectionnez un provider",
+      "enter_api_key": "Entrez votre {api_key}",
+      "select_model": "Modèle par défaut",
+      "select_fallback": "Modèle de secours pour le router (Entrée pour garder le défaut, préfixez avec le provider si besoin)",
+      "api_key_found": "✅ Clé API trouvée ({api_key})",
+      "api_key_saved": "✅ Clé API configurée et stockée de manière sécurisée",
+      "api_key_missing": "⚠️ Aucune clé API fournie",
+      "skipped": "⚠️ Configuration LLM ignorée"
+    },
+    "inventory": {
+      "title": "🖥️ Configuration de l'inventaire",
+      "searching": "🔍 Recherche des sources d'inventaire...",
+      "detected_sources": "📋 Sources détectées :",
+      "source_item": "  {name} : {count} hôte(s)",
+      "import_prompt": "Importer ces hôtes ?",
+      "importing": "📥 Import de {count} hôte(s) depuis {name}",
+      "imported": "✅ {count} hôte(s) importé(s) depuis {name}",
+      "no_sources": "ℹ️ Aucune source d'inventaire détectée",
+      "enable_sources": "Activer quelles sources ? (numéros séparés par des virgules, ou 'all')",
+      "add_custom": "Ajouter un fichier d'inventaire personnalisé ? (Entrée pour passer)",
+      "config_saved": "Configuration de l'inventaire sauvegardée",
+      "sources_count": "Sources : {sources}, ~{hosts} hôtes"
+    },
+    "complete": {
+      "title": "✅ Configuration terminée",
+      "summary": "- Provider LLM : {provider}\n- Hôtes importés : {hosts}\n\nUtilisez /help pour voir les commandes disponibles."
+    }
+  },
+
+  "agent": {
+    "thinking": "Réflexion...",
+    "executing_tool": "Exécution : {tool}",
+    "tool_result": "Résultat : {result}",
+    "confirmation_required": "Cette action nécessite une confirmation",
+    "action_cancelled": "Action annulée",
+    "action_approved": "Action approuvée"
+  }
+}

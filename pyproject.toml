@@ -1,0 +1,136 @@
+[project]
+name = "merlya"
+version = "0.5.6"
+description = "Merlya - AI-powered infrastructure assistant"
+authors = [
+    { name = "Cedric", email = "cedric@example.com" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["ai", "infrastructure", "ssh", "devops", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    # Agent Framework
+    "pydantic-ai>=1.26",
+    "pydantic>=2.10",
+
+    # LLM Providers (via PydanticAI)
+    "openai>=1.50",
+    "anthropic>=0.75",
+    "httpx>=0.28",
+
+    # Intent Router
+    "huggingface-hub>=0.26",
+    "numpy>=1.26",
+
+    # SSH
+    "asyncssh>=2.21",
+
+    # UI Console
+    "rich>=14.0",
+    "prompt-toolkit>=3.0",
+
+    # Logging
+    "loguru>=0.7",
+
+    # Persistence
+    "aiosqlite>=0.21",
+    # Secrets: core keyring + platform backends
+    "keyring>=25.5",
+    "keyrings.alt>=5.0; sys_platform == 'linux'",
+    "secretstorage>=3.3; sys_platform == 'linux'",
+
+    # Config
+    "pyyaml>=6.0",
+
+    # Utils
+    "psutil>=6.1",
+    "ddgs>=9.9",
+]
+
+[project.optional-dependencies]
+# Local intent routing with ONNX (not available on Python 3.14+)
+router = [
+    "onnxruntime>=1.19",
+    "tokenizers>=0.20",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    "types-PyYAML>=6.0",
+]
+# All optional features
+all = [
+    "merlya[router]",
+]
+
+[project.scripts]
+merlya = "merlya.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["merlya"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "PTH",    # flake8-use-pathlib
+    "RUF",    # Ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["merlya"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = ["B101"]  # Skip assert warnings in tests

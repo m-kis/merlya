@@ -1,0 +1,326 @@
+{
+  "general": {
+    "welcome": "Welcome to Merlya v{version}",
+    "ready": "Ready",
+    "loading": "Loading...",
+    "done": "Done",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Info",
+    "success": "Success",
+    "cancel": "Cancelled",
+    "confirm": "Confirm",
+    "yes": "yes",
+    "no": "no",
+    "unknown": "Unknown"
+  },
+  "ui": {
+    "spinner": {
+      "routing": "🧠 Routing request...",
+      "agent": "⚡ Executing plan..."
+    }
+  },
+  "welcome_screen": {
+    "title": "Welcome",
+    "warning_title": "⚠️  Warning",
+    "subtitle": "🚀 Merlya v{version} - Interactive Mode",
+    "env_session": "Environment: {env}    Session: {session}",
+    "provider": "Provider: {provider}",
+    "model": "Model: {model}",
+    "router": "Router: {router}",
+    "keyring": "Keyring: {keyring}",
+    "keyring_fallback": "⚠️ Keyring unavailable (in-memory)",
+    "commands_hint": "Ask naturally or use slash commands:",
+    "command_help": "  • /help - Show commands",
+    "command_conv": "  • /conversations - List all conversations",
+    "command_new": "  • /new [title] - Start new conversation",
+    "command_scan": "  • /scan - Scan infrastructure",
+    "command_exit": "  • /exit - Quit",
+    "prompt": "Start by asking me anything about your infrastructure!",
+    "feedback": "📝 Feedback: https://github.com/m-kis/merlya/issues",
+    "tip_specific": "Be specific in your requests",
+    "tip_target": "Specify the target server name or IP if possible",
+    "tip_context": "Provide context (service name, error message, etc.)",
+    "warning_header": "⚠️  EXPERIMENTAL SOFTWARE",
+    "warning_body": "This tool is in early development. Use for debugging/testing only, NOT production.",
+    "warning_tips_title": "Tips for best results:"
+  },
+
+  "startup": {
+    "health_checks": "Health Checks",
+    "router_init": "Router: {model} ({dims} dims)",
+    "router_fallback": "Router fallback: {mode}",
+    "ready_time": "Ready in {time}s",
+    "first_run": "First run detected - starting setup wizard"
+  },
+
+  "health": {
+    "ram": {
+      "ok": "RAM: {available}GB available (tier: {tier})",
+      "warning": "RAM: {available}GB available (limited)"
+    },
+    "disk": {
+      "ok": "Disk: {free}MB free",
+      "warning": "Disk: {free}MB free (limited)",
+      "error": "Disk: {free}MB free (insufficient)"
+    },
+    "llm": {
+      "ok": "{provider} accessible",
+      "warning": "Provider inaccessible: {error} (will retry)",
+      "error": "No API key configured"
+    },
+    "ssh": {
+      "ok": "SSH available (asyncssh + system client)",
+      "warning": "asyncssh OK but system SSH client missing",
+      "disabled": "asyncssh not installed - SSH tools disabled"
+    },
+    "keyring": {
+      "ok": "Keyring accessible",
+      "warning": "Keyring unavailable ({error}) - fallback in-memory"
+    },
+    "web_search": {
+      "ok": "DuckDuckGo Search available",
+      "warning": "DuckDuckGo unavailable: {error}",
+      "disabled": "duckduckgo-search not installed - web search disabled"
+    }
+  },
+
+  "commands": {
+    "help": {
+      "title": "Available Commands",
+      "usage": "Usage: {command}",
+      "description": "Description: {description}",
+      "command_header": "Command",
+      "description_header": "Description",
+      "unknown": "Unknown command: {name}",
+      "usage_hint": "Use `/help <command>` for details"
+    },
+    "hosts": {
+      "list_title": "Hosts",
+      "added": "Host '{name}' added",
+      "updated": "Host '{name}' updated",
+      "deleted": "Host '{name}' deleted",
+      "not_found": "Host '{name}' not found",
+      "already_exists": "Host '{name}' already exists",
+      "tag_added": "Tag '{tag}' added to '{name}'",
+      "tag_removed": "Tag '{tag}' removed from '{name}'",
+      "scan_started": "Scanning host '{name}'...",
+      "scan_complete": "Scan complete for '{name}'",
+      "import_started": "Importing from {file}...",
+      "import_complete": "{count} hosts imported",
+      "import_errors": "{count} lines could not be imported"
+    },
+    "ssh": {
+      "connecting": "Connecting to {host}...",
+      "connected": "Connected to {host}",
+      "disconnected": "Disconnected from {host}",
+      "connection_failed": "Connection failed: {error}",
+      "mfa_prompt": "Enter MFA code",
+      "passphrase_prompt": "Enter passphrase for key {key}",
+      "executing": "Executing: {command}",
+      "execution_complete": "Command completed (exit code: {code})"
+    },
+    "variable": {
+      "set": "Variable @{name} set",
+      "deleted": "Variable @{name} deleted",
+      "not_found": "Variable @{name} not found",
+      "list_title": "Variables",
+      "empty": "No variables set. Use `/variable set <name> <value>` to add one."
+    },
+    "secret": {
+      "set": "Secret @{name} stored securely",
+      "deleted": "Secret @{name} deleted",
+      "not_found": "Secret @{name} not found",
+      "list_title": "Secrets",
+      "empty": "No secrets stored. Use `/secret set <name>` to add one."
+    },
+    "conv": {
+      "list_title": "Conversations",
+      "loaded": "Conversation '{title}' loaded",
+      "saved": "Conversation saved",
+      "deleted": "Conversation deleted",
+      "not_found": "Conversation not found",
+      "new": "New conversation started"
+    },
+    "model": {
+      "current": "Current model: {provider}/{model}",
+      "changed": "Model changed to {provider}/{model}",
+      "test_ok": "Model test successful (latency: {latency}ms)",
+      "test_failed": "Model test failed: {error}"
+    },
+    "log": {
+      "level_set": "Log level set to: {level}",
+      "current_level": "Current log level: {level}",
+      "dir": "Log directory: {dir}",
+      "cleared": "Deleted {count} log file(s)"
+    },
+    "language": {
+      "current": "Current language: {lang}",
+      "changed": "Language changed to: {lang}",
+      "available": "Available languages: {langs}"
+    },
+    "scan": {
+      "started": "Scanning local sources...",
+      "found": "Found: {source} ({count} hosts)",
+      "complete": "Scan complete: {count} hosts from {sources} sources"
+    },
+    "exit": {
+      "goodbye": "Goodbye!"
+    },
+    "new": {
+      "started": "New conversation started"
+    },
+    "model": {
+      "provider_changed": "✅ Provider changed to `{provider}`",
+      "model_changed": "✅ Model changed to `{model}`",
+      "ollama_cli_missing": "❌ Ollama CLI not installed or not in PATH",
+      "ollama_pull_start": "📥 Pulling Ollama model `{model}`...",
+      "ollama_pull_ready": "✅ Ollama model `{model}` ready",
+      "ollama_pull_not_found": "❌ Ollama model `{model}` does not exist on this Ollama server",
+      "ollama_pull_failed": "❌ Failed to pull Ollama model `{model}` ({error})"
+    }
+  },
+
+  "commands_meta": {
+    "help": {
+      "description": "Show help for commands",
+      "usage": "/help [command]"
+    },
+    "exit": {
+      "description": "Exit Merlya",
+      "usage": "/exit"
+    },
+    "new": {
+      "description": "Start a new conversation",
+      "usage": "/new"
+    },
+    "language": {
+      "description": "Change interface language",
+      "usage": "/language <fr|en>"
+    },
+    "conv": {
+      "description": "Manage conversation history",
+      "usage": "/conv <subcommand>"
+    },
+    "hosts": {
+      "description": "Manage hosts inventory",
+      "usage": "/hosts <subcommand>"
+    },
+    "ssh": {
+      "description": "SSH connection management",
+      "usage": "/ssh <subcommand>"
+    },
+    "model": {
+      "description": "Manage LLM provider and router",
+      "usage": "/model <subcommand>"
+    },
+    "scan": {
+      "description": "Scan a host for system info and security",
+      "usage": "/scan <host> [--full|--security|--system]"
+    },
+    "health": {
+      "description": "Show system health status",
+      "usage": "/health"
+    },
+    "log": {
+      "description": "Configure logging",
+      "usage": "/log <subcommand>"
+    },
+    "variable": {
+      "description": "Manage variables",
+      "usage": "/variable <subcommand>"
+    },
+    "secret": {
+      "description": "Manage secrets (securely stored)",
+      "usage": "/secret <subcommand>"
+    }
+  },
+
+  "errors": {
+    "validation": {
+      "required": "'{field}' is required",
+      "invalid_type": "'{field}' must be {expected}",
+      "out_of_range": "'{field}' must be between {min} and {max}",
+      "invalid_format": "'{field}' has invalid format"
+    },
+    "ssh": {
+      "connection_failed": "SSH connection failed: {error}",
+      "auth_failed": "Authentication failed for {user}@{host}",
+      "timeout": "Connection timeout after {timeout}s",
+      "command_failed": "Command failed with exit code {code}"
+    },
+    "host": {
+      "not_found": "Host '{name}' not found",
+      "resolution_failed": "Could not resolve '{name}'",
+      "similar_hosts": "Similar hosts: {hosts}"
+    },
+    "config": {
+      "load_failed": "Failed to load config: {error}",
+      "save_failed": "Failed to save config: {error}",
+      "invalid": "Invalid configuration: {error}"
+    },
+    "llm": {
+      "api_error": "LLM API error: {error}",
+      "rate_limit": "Rate limit exceeded, retrying in {seconds}s",
+      "no_provider": "No LLM provider configured"
+    }
+  },
+
+  "prompts": {
+    "confirm_action": "Are you sure you want to {action}?",
+    "enter_value": "Enter value for {field}",
+    "select_option": "Select an option",
+    "add_host": "Do you want to add '{name}' to inventory?"
+  },
+
+  "setup": {
+    "title": "⚙️ Merlya Setup",
+    "welcome": "👋 Welcome to Merlya!\n\nThis wizard will guide you through:\n  1. Language selection\n  2. LLM provider setup\n  3. Host import",
+    "language": {
+      "title": "🌐 Language Selection",
+      "prompt": "Select your language",
+      "options": "  1. English\n  2. Français"
+    },
+    "step_llm": "📡 **Step 1: LLM Configuration**",
+    "step_inventory": "🖥️ **Step 2: Inventory Detection**",
+    "llm_config": {
+      "title": "📡 LLM Provider Configuration",
+      "providers": "Available providers:\n  1. OpenRouter (recommended - multi-model)\n  2. Anthropic (Claude direct)\n  3. OpenAI (GPT models)\n  4. Ollama (local models)",
+      "select_provider": "Select a provider",
+      "enter_api_key": "Enter your {api_key}",
+      "select_model": "Default model",
+      "select_fallback": "Router fallback model (Enter to keep default; prefix with provider if needed)",
+      "api_key_found": "✅ API key found ({api_key})",
+      "api_key_saved": "✅ API key configured and stored securely",
+      "api_key_missing": "⚠️ No API key provided",
+      "skipped": "⚠️ LLM configuration skipped"
+    },
+    "inventory": {
+      "title": "🖥️ Inventory Setup",
+      "searching": "🔍 Searching for inventory sources...",
+      "detected_sources": "📋 Detected sources:",
+      "source_item": "  {name}: {count} host(s)",
+      "import_prompt": "Import these hosts?",
+      "importing": "📥 Importing {count} host(s) from {name}",
+      "imported": "✅ Imported {count} host(s) from {name}",
+      "no_sources": "ℹ️ No inventory sources detected",
+      "enable_sources": "Enable which sources? (comma-separated numbers, or 'all')",
+      "add_custom": "Add custom inventory file path? (Enter to skip)",
+      "config_saved": "Inventory configuration saved",
+      "sources_count": "Sources: {sources}, ~{hosts} hosts"
+    },
+    "complete": {
+      "title": "✅ Setup Complete",
+      "summary": "- LLM Provider: {provider}\n- Hosts imported: {hosts}\n\nUse /help to see available commands."
+    }
+  },
+
+  "agent": {
+    "thinking": "Thinking...",
+    "executing_tool": "Executing: {tool}",
+    "tool_result": "Result: {result}",
+    "confirmation_required": "This action requires confirmation",
+    "action_cancelled": "Action cancelled",
+    "action_approved": "Action approved"
+  }
+}

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security issue
+    url: mailto:security@merlya.fr
+    about: Please report security vulnerabilities via email, not public issues.

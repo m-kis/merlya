@@ -1,0 +1,16 @@
+# CODEOWNERS - Defines code review requirements for this repository
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: All PRs require review from maintainer
+* @m-kis
+
+# Security-sensitive files require explicit maintainer approval
+/.github/workflows/ @m-kis
+/merlya/security/ @m-kis
+/merlya/ssh/ @m-kis
+SECURITY.md @m-kis
+pyproject.toml @m-kis
+
+# Documentation can have broader review
+/docs/ @m-kis
+*.md @m-kis

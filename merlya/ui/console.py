@@ -1,0 +1,251 @@
+"""
+Merlya UI - Console implementation.
+
+Rich-based console with panels, tables, and markdown.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager, suppress
+from typing import Any
+
+from prompt_toolkit import PromptSession
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from rich.theme import Theme
+
+from merlya.core.types import CheckStatus
+
+# Merlya brand color: #40C4E0 (sky blue)
+ACCENT_COLOR = "sky_blue2"
+MERLYA_THEME = Theme(
+    {
+        "info": "bold sky_blue2",
+        "warning": "gold3",
+        "error": "bold red",
+        "success": "sky_blue2",  # Use brand blue instead of green
+        "muted": "grey58",
+        "highlight": "medium_orchid",
+        "accent": ACCENT_COLOR,
+    }
+)
+
+
+class ConsoleUI:
+    """
+    Console user interface.
+
+    Provides rich formatting for output.
+    """
+
+    def __init__(self, theme: Theme | None = None) -> None:
+        """Initialize console."""
+        self.console = Console(theme=theme or MERLYA_THEME)
+        self._active_status: Any = None
+
+    def print(self, *args: Any, **kwargs: Any) -> None:
+        """Print to console."""
+        self.console.print(*args, **kwargs)
+
+    def markdown(self, text: str) -> None:
+        """Render markdown text."""
+        self.console.print(Markdown(text))
+
+    def panel(self, content: str, title: str | None = None, style: str = "info") -> None:
+        """Display a panel."""
+        border_style = style if style in MERLYA_THEME.styles else "accent"
+        self.console.print(Panel(content, title=title, border_style=border_style, padding=(1, 2)))
+
+    def success(self, message: str) -> None:
+        """Display success message."""
+        self.console.print(f"[success]{message}[/success]")
+
+    def error(self, message: str) -> None:
+        """Display error message."""
+        self.console.print(f"[error]{message}[/error]")
+
+    def warning(self, message: str) -> None:
+        """Display warning message."""
+        self.console.print(f"[warning]{message}[/warning]")
+
+    def info(self, message: str) -> None:
+        """Display info message."""
+        self.console.print(f"[info]{message}[/info]")
+
+    def muted(self, message: str) -> None:
+        """Display muted message."""
+        self.console.print(f"[muted]{message}[/muted]")
+
+    def newline(self) -> None:
+        """Print empty line."""
+        self.console.print()
+
+    def table(
+        self,
+        headers: list[str],
+        rows: list[list[str]],
+        title: str | None = None,
+    ) -> None:
+        """Display a table."""
+        table = Table(
+            title=title,
+            show_header=True,
+            header_style=f"{ACCENT_COLOR} bold",
+            box=None,
+            padding=(0, 1),
+        )
+
+        for header in headers:
+            table.add_column(header)
+
+        for row in rows:
+            table.add_row(*row)
+
+        self.console.print(table)
+
+    def health_status(self, _name: str, status: CheckStatus, message: str) -> None:
+        """Display a health check status."""
+        icons = {
+            CheckStatus.OK: "[sky_blue2]✅[/sky_blue2]",
+            CheckStatus.WARNING: "[yellow]⚠️[/yellow]",
+            CheckStatus.ERROR: "[red]❌[/red]",
+            CheckStatus.DISABLED: "[dim]⊘[/dim]",
+        }
+        icon = icons.get(status, "❓")
+        self.console.print(f"  {icon} {message}")
+
+    @contextmanager
+    def spinner(self, message: str, spinner: str = "dots") -> Any:
+        """Show a spinner while executing a task."""
+        status = self.console.status(f"[{ACCENT_COLOR}]{message}[/{ACCENT_COLOR}]", spinner=spinner)
+        self._active_status = status
+        try:
+            with status:
+                yield
+        finally:
+            # Ensure spinner is stopped before any prompt overlays
+            status.stop()
+            self._active_status = None
+
+    def progress(self, transient: bool = True) -> Progress:
+        """
+        Create a styled progress bar.
+
+        Usage:
+            with ui.progress() as progress:
+                task = progress.add_task("Doing work", total=3)
+                progress.advance(task)
+        """
+        return Progress(
+            SpinnerColumn(style=ACCENT_COLOR),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=None, pulse_style=ACCENT_COLOR),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=transient,
+            expand=True,
+        )
+
+    async def prompt(self, message: str, default: str = "") -> str:
+        """Prompt for input (async-safe)."""
+        self._stop_spinner()
+        session: PromptSession[str] = PromptSession()
+        result = await session.prompt_async(f"{message}: ", default=default)
+        return result.strip()
+
+    async def prompt_secret(self, message: str) -> str:
+        """Prompt for secret input (hidden, async-safe)."""
+        self._stop_spinner()
+        session: PromptSession[str] = PromptSession()
+        result = await session.prompt_async(f"{message}: ", is_password=True)
+        return result.strip()
+
+    async def prompt_confirm(self, message: str, default: bool = False) -> bool:
+        """Prompt for yes/no confirmation (async-safe)."""
+        self._stop_spinner()
+        suffix = " [Y/n]" if default else " [y/N]"
+        session: PromptSession[str] = PromptSession()
+        result = await session.prompt_async(f"{message}{suffix}: ")
+        result = result.strip().lower()
+
+        if not result:
+            return default
+
+        return result in ("y", "yes", "oui", "o")
+
+    async def prompt_choice(
+        self,
+        message: str,
+        choices: list[str],
+        default: str | None = None,
+    ) -> str:
+        """Prompt for choice from list (async-safe)."""
+        self._stop_spinner()
+        session: PromptSession[str] = PromptSession()
+        choices_str = "/".join(choices)
+        default_str = f" [{default}]" if default else ""
+
+        result = await session.prompt_async(f"{message} ({choices_str}){default_str}: ")
+        result = result.strip()
+
+        if not result and default:
+            return default
+
+        if result in choices:
+            return result
+
+        # Try numeric selection
+        try:
+            idx = int(result) - 1
+            if 0 <= idx < len(choices):
+                return choices[idx]
+        except ValueError:
+            pass
+
+        return result
+
+    def _stop_spinner(self) -> None:
+        """Stop any active spinner before prompting the user."""
+        if self._active_status:
+            with suppress(Exception):
+                self._active_status.stop()
+            self._active_status = None
+
+    def welcome_screen(
+        self,
+        *,
+        title: str,
+        warning_title: str,
+        hero_lines: list[str],
+        warning_lines: list[str],
+    ) -> None:
+        """Render legacy-inspired welcome screen with hero and warning panels."""
+        from rich.align import Align
+        from rich.panel import Panel
+
+        hero_panel = Panel(
+            Align.left("\n".join(hero_lines)),
+            title=title,
+            border_style="accent",
+            padding=(1, 3),
+        )
+
+        warning_panel = Panel(
+            Align.left("\n".join(warning_lines)),
+            title=warning_title,
+            border_style="warning",
+            padding=(1, 3),
+        )
+
+        self.console.print(hero_panel)
+        self.console.print()
+        self.console.print(warning_panel)

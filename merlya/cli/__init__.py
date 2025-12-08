@@ -1,0 +1,40 @@
+"""
+Merlya CLI - Command line interface.
+
+Main entry point for the Merlya application.
+"""
+
+import asyncio
+
+# Disable tokenizers parallelism warnings in forked processes
+import os
+import sys
+
+from loguru import logger
+
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+
+def main() -> None:
+    """Main entry point for merlya CLI."""
+    from merlya.core.logging import configure_logging
+
+    # Configure logging
+    configure_logging()
+
+    try:
+        from merlya.repl import run_repl
+
+        asyncio.run(run_repl())
+
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        sys.exit(0)
+
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
