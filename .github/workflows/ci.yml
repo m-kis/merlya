@@ -119,3 +119,53 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  notify:
+    name: Slack Notification
+    runs-on: self-hosted
+    timeout-minutes: 5
+    needs: [lint, typecheck, test, security, build]
+    if: always()
+    steps:
+      - name: Send Slack notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+          SLACK_USERNAME: ${{ vars.SLACK_USERNAME }}
+          SLACK_ICON_EMOJI: ${{ vars.SLACK_ICON_EMOJI }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL}" ]; then
+            echo "⚠️  SLACK_WEBHOOK_URL secret not configured - skipping notification"
+            exit 0
+          fi
+
+          CHANNEL="${SLACK_CHANNEL:-#ci-builds}"
+          USERNAME="${SLACK_USERNAME:-Merlya CI}"
+          ICON_EMOJI="${SLACK_ICON_EMOJI:-:robot_face:}"
+
+          LINT_RESULT="${{ needs.lint.result }}"
+          TEST_RESULT="${{ needs.test.result }}"
+          BUILD_RESULT="${{ needs.build.result }}"
+
+          if [ "$LINT_RESULT" == "success" ] && [ "$TEST_RESULT" == "success" ] && [ "$BUILD_RESULT" == "success" ]; then
+            STATUS_EMOJI="✅"
+            COLOR="good"
+          else
+            STATUS_EMOJI="❌"
+            COLOR="danger"
+          fi
+
+          SUMMARY="${STATUS_EMOJI} *Merlya CI* #${{ github.run_number }} | \`${{ github.ref_name }}\`"
+          DETAILS="Lint: ${LINT_RESULT} | Tests: ${TEST_RESULT} | Build: ${BUILD_RESULT}"
+
+          curl -X POST "${SLACK_WEBHOOK_URL}" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"channel\": \"${CHANNEL}\",
+              \"username\": \"${USERNAME}\",
+              \"icon_emoji\": \"${ICON_EMOJI}\",
+              \"attachments\": [{
+                \"color\": \"${COLOR}\",
+                \"text\": \"${SUMMARY}\n${DETAILS}\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View build>\"
+              }]
+            }"
