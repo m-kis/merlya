@@ -19,10 +19,11 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-# Validation patterns
+# Validation patterns and limits
 _VALID_MODE_PATTERN = re.compile(r"^[0-7]{3,4}$")
 _MAX_PATH_LENGTH = 4096
 _MAX_PATTERN_LENGTH = 256
+_MAX_TRANSFER_SIZE = 100 * 1024 * 1024  # 100 MB max file transfer
 
 
 @dataclass
@@ -478,6 +479,7 @@ async def upload_file(
     host_name: str,
     local_path: str,
     remote_path: str,
+    max_size: int | None = _MAX_TRANSFER_SIZE,
 ) -> FileResult:
     """
     Upload a local file to a remote host via SFTP.
@@ -487,6 +489,8 @@ async def upload_file(
         host_name: Target host name.
         local_path: Local file path.
         remote_path: Remote destination path.
+        max_size: Maximum file size in bytes. Set to None to disable limit.
+                  Default is 100 MB.
 
     Returns:
         FileResult with transfer status.
@@ -506,12 +510,20 @@ async def upload_file(
     if not local.is_file():
         return FileResult(success=False, error=f"Not a file: {local_path}")
 
+    # Check file size limit if enabled
+    size = local.stat().st_size
+    if max_size is not None and size > max_size:
+        max_mb = max_size // (1024 * 1024)
+        return FileResult(
+            success=False,
+            error=f"File too large: {_format_size(size)} (max {max_mb} MB)",
+        )
+
     try:
         ssh_pool = await ctx.get_ssh_pool()
         await ssh_pool.upload_file(host_name, local, remote_path)
 
-        # Get file size for reporting
-        size = local.stat().st_size
+        # File size already computed above
         size_str = _format_size(size)
 
         return FileResult(
@@ -558,6 +570,9 @@ async def download_file(
     # Default local path: current directory with remote filename
     if local_path is None:
         remote_name = Path(remote_path).name
+        # Validate extracted filename to prevent path traversal
+        if not remote_name or remote_name in (".", ".."):
+            return FileResult(success=False, error="Invalid remote filename")
         local_path = f"./{remote_name}"
 
     if error := _validate_path(local_path):

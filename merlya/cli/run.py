@@ -102,46 +102,47 @@ async def run_batch(
     passed = 0
     failed = 0
 
-    for cmd in commands:
-        if not quiet and output_format == "text":
-            ctx.ui.info(f"Executing: {cmd}")
+    try:
+        for cmd in commands:
+            if not quiet and output_format == "text":
+                ctx.ui.info(f"Executing: {cmd}")
 
-        try:
-            # Route the command
-            route_result = await ctx.router.route(cmd)
+            try:
+                # Route the command
+                route_result = await ctx.router.route(cmd)
 
-            # Execute via agent
-            response = await agent.run(cmd, route_result)
+                # Execute via agent
+                response = await agent.run(cmd, route_result)
 
-            task_result = TaskResult(
-                task=cmd,
-                success=True,
-                message=response.message,
-                actions=response.actions_taken or [],
-            )
-            results.append(task_result)
-            passed += 1
+                task_result = TaskResult(
+                    task=cmd,
+                    success=True,
+                    message=response.message,
+                    actions=response.actions_taken or [],
+                )
+                results.append(task_result)
+                passed += 1
 
-            if output_format == "text" and not quiet:
-                ctx.ui.markdown(response.message)
-                ctx.ui.newline()
+                if output_format == "text" and not quiet:
+                    ctx.ui.markdown(response.message)
+                    ctx.ui.newline()
 
-        except Exception as e:
-            logger.error(f"Task failed: {cmd} - {e}")
-            task_result = TaskResult(
-                task=cmd,
-                success=False,
-                message=str(e),
-                actions=[],
-            )
-            results.append(task_result)
-            failed += 1
+            except Exception as e:
+                logger.error(f"Task failed: {cmd} - {e}")
+                task_result = TaskResult(
+                    task=cmd,
+                    success=False,
+                    message=str(e),
+                    actions=[],
+                )
+                results.append(task_result)
+                failed += 1
 
-            if output_format == "text":
-                ctx.ui.error(f"Failed: {e}")
-
-    # Cleanup
-    await ctx.close()
+                if output_format == "text":
+                    ctx.ui.error(f"Failed: {e}")
+    finally:
+        # Cleanup - always runs even if exception occurs
+        await ctx.close()
 
     batch_result = BatchResult(
         success=failed == 0,
@@ -198,6 +199,9 @@ def load_tasks_from_file(file_path: str) -> list[str]:
     # Try YAML first
     if path.suffix in (".yml", ".yaml"):
         data = yaml.safe_load(content)
+        # Handle None/empty YAML files
+        if data is None:
+            return []
         if isinstance(data, dict) and "tasks" in data:
             tasks = []
             for task in data["tasks"]:
@@ -205,6 +209,7 @@ def load_tasks_from_file(file_path: str) -> list[str]:
                     tasks.append(task)
                 elif isinstance(task, dict):
                     tasks.append(task.get("prompt", task.get("description", "")))
+                # Skip invalid task entries (numbers, None, etc.)
             return [t for t in tasks if t]
         elif isinstance(data, list):
             return [str(item) for item in data if item]

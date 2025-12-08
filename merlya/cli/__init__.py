@@ -156,7 +156,7 @@ def run_batch_mode(args: argparse.Namespace) -> None:
                 auto_confirm=args.yes,
                 quiet=args.quiet,
                 output_format=args.format,
-                verbose=args.verbose if hasattr(args, "verbose") else False,
+                verbose=verbose,
             )
         )
     elif args.task:
@@ -166,7 +166,7 @@ def run_batch_mode(args: argparse.Namespace) -> None:
                 auto_confirm=args.yes,
                 quiet=args.quiet,
                 output_format=args.format,
-                verbose=args.verbose if hasattr(args, "verbose") else False,
+                verbose=verbose,
             )
         )
     else:
