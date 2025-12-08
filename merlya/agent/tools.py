@@ -497,3 +497,4 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
         )
         if result.success:
             return {"files": result.data, "count": len(result.data) if result.data else 0}
+        return {"error": result.error}
