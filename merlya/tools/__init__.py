@@ -45,6 +45,7 @@ from merlya.tools.system import (
     get_system_info,
     list_processes,
 )
+from merlya.tools.web import search_web
 
 __all__ = [
     # Files
@@ -77,6 +78,7 @@ __all__ = [
     "read_file",
     "request_confirmation",
     "search_files",
+    "search_web",
     "set_variable",
     "ssh_execute",
     "write_file",

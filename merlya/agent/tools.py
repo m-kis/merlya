@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 from pydantic_ai import Agent, ModelRetry, RunContext
 
+from merlya.agent.tools_security import register_security_tools
+from merlya.agent.tools_web import register_web_tools
+
 if TYPE_CHECKING:
     from merlya.agent.main import AgentDependencies, AgentResponse
 else:
@@ -23,7 +26,8 @@ def register_all_tools(agent: Agent[Any, Any]) -> None:
     _register_core_tools(agent)
     _register_system_tools(agent)
     _register_file_tools(agent)
-    _register_security_tools(agent)
+    register_security_tools(agent)
+    register_web_tools(agent)
 
 
 def _register_core_tools(agent: Agent[Any, Any]) -> None:
@@ -493,122 +497,3 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
         )
         if result.success:
             return {"files": result.data, "count": len(result.data) if result.data else 0}
-        return {"error": result.error}
-
-
-def _register_security_tools(agent: Agent[Any, Any]) -> None:
-    """Register security tools with the agent."""
-
-    @agent.tool
-    async def check_open_ports(
-        ctx: RunContext[AgentDependencies],
-        host: str,
-        include_established: bool = False,
-    ) -> dict[str, Any]:
-        """
-        Check open ports on a host.
-
-        Args:
-            ctx: Run context.
-            host: Host name.
-            include_established: Include established connections.
-
-        Returns:
-            List of open ports with process info.
-        """
-        from merlya.tools.security import check_open_ports as _check_open_ports
-
-        result = await _check_open_ports(
-            ctx.deps.context, host, include_established=include_established
-        )
-        if result.success:
-            return {"ports": result.data, "severity": result.severity}
-        return {"error": result.error}
-
-    @agent.tool
-    async def audit_ssh_keys(
-        ctx: RunContext[AgentDependencies],
-        host: str,
-    ) -> dict[str, Any]:
-        """
-        Audit SSH keys on a host.
-
-        Args:
-            ctx: Run context.
-            host: Host name.
-
-        Returns:
-            SSH key audit results with security issues.
-        """
-        from merlya.tools.security import audit_ssh_keys as _audit_ssh_keys
-
-        result = await _audit_ssh_keys(ctx.deps.context, host)
-        if result.success:
-            return {"audit": result.data, "severity": result.severity}
-        return {"error": result.error}
-
-    @agent.tool
-    async def check_security_config(
-        ctx: RunContext[AgentDependencies],
-        host: str,
-    ) -> dict[str, Any]:
-        """
-        Check security configuration on a host.
-
-        Args:
-            ctx: Run context.
-            host: Host name.
-
-        Returns:
-            Security configuration audit with issues.
-        """
-        from merlya.tools.security import check_security_config as _check_security_config
-
-        result = await _check_security_config(ctx.deps.context, host)
-        if result.success:
-            return {"config": result.data, "severity": result.severity}
-        return {"error": result.error}
-
-    @agent.tool
-    async def check_users(
-        ctx: RunContext[AgentDependencies],
-        host: str,
-    ) -> dict[str, Any]:
-        """
-        Audit user accounts on a host.
-
-        Args:
-            ctx: Run context.
-            host: Host name.
-
-        Returns:
-            User audit with security issues.
-        """
-        from merlya.tools.security import check_users as _check_users
-
-        result = await _check_users(ctx.deps.context, host)
-        if result.success:
-            return {"users": result.data, "severity": result.severity}
-        return {"error": result.error}
-
-    @agent.tool
-    async def check_sudo_config(
-        ctx: RunContext[AgentDependencies],
-        host: str,
-    ) -> dict[str, Any]:
-        """
-        Audit sudo configuration on a host.
-
-        Args:
-            ctx: Run context.
-            host: Host name.
-
-        Returns:
-            Sudo audit with security issues.
-        """
-        from merlya.tools.security import check_sudo_config as _check_sudo_config
-
-        result = await _check_sudo_config(ctx.deps.context, host)
-        if result.success:
-            return {"sudo": result.data, "severity": result.severity}
-        return {"error": result.error}

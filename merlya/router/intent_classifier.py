@@ -204,6 +204,16 @@ TOOL_KEYWORDS: dict[str, list[str]] = {
         "namespace",
         "ingress",
     ],
+    "web_search": [
+        "search",
+        "google",
+        "duckduckgo",
+        "internet",
+        "web",
+        "docs",
+        "documentation",
+        "article",
+    ],
 }
 
 
