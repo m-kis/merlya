@@ -141,9 +141,7 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
             # Normalize to provider-prefixed syntax when the user omits it
             fallback = f"{provider}:{fallback}"
 
-    return LLMConfig(
-        provider=provider, model=model, api_key_env=env_key, fallback_model=fallback
-    )
+    return LLMConfig(provider=provider, model=model, api_key_env=env_key, fallback_model=fallback)
 
 
 async def detect_inventory_sources(_ui: ConsoleUI) -> list[InventorySource]:

@@ -91,12 +91,14 @@ async def _check_ssh_config(
 
         key, value = parts[0], parts[1]
         status, message, new_severity = _evaluate_ssh_setting(key, value)
-        checks.append({
-            "setting": key,
-            "value": value,
-            "status": status,
-            "message": message,
-        })
+        checks.append(
+            {
+                "setting": key,
+                "value": value,
+                "status": status,
+                "message": message,
+            }
+        )
         if _severity_higher(new_severity, severity):
             severity = new_severity
 

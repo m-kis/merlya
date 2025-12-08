@@ -43,9 +43,7 @@ async def check_users(
         passwd_cmd = (
             "grep -E '(/bin/bash|/bin/sh|/bin/zsh|/usr/bin/bash|/usr/bin/zsh)$' /etc/passwd"
         )
-        result = await execute_security_command(
-            ctx, host_name, passwd_cmd, timeout=DEFAULT_TIMEOUT
-        )
+        result = await execute_security_command(ctx, host_name, passwd_cmd, timeout=DEFAULT_TIMEOUT)
 
         if result.exit_code == 0:
             for line in result.stdout.strip().split("\n"):

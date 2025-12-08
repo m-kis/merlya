@@ -321,6 +321,7 @@ def serialize_hosts(data: list[dict[str, Any]], file_format: str) -> str:
         return json.dumps(data, indent=2)
     elif file_format == "yaml":
         import yaml
+
         return yaml.dump(data, default_flow_style=False)
     elif file_format == "csv":
         output = io.StringIO()

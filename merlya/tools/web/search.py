@@ -81,7 +81,9 @@ def _coerce_result(item: dict[str, Any], rank: int) -> dict[str, str]:
     """Normalize ddgs result fields."""
     title = str(item.get("title") or "").strip()
     url = str(item.get("href") or item.get("url") or "").strip()
-    snippet_raw = str(item.get("body") or item.get("snippet") or item.get("description") or "").strip()
+    snippet_raw = str(
+        item.get("body") or item.get("snippet") or item.get("description") or ""
+    ).strip()
     snippet = _sanitize_snippet(snippet_raw)
 
     return {
@@ -183,4 +185,6 @@ async def search_web(
     _set_cache(key, results)
 
     logger.debug(f"🔍 Web search completed ({len(results)} results)")
-    return ToolResult(success=True, data={"results": results, "count": len(results), "cached": False})
+    return ToolResult(
+        success=True, data={"results": results, "count": len(results), "cached": False}
+    )

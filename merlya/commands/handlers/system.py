@@ -66,7 +66,9 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
     for host_name in host_names:
         host = await ctx.hosts.get_by_name(host_name)
         if not host:
-            outputs.append(f"❌ Host '{host_name}' not found. Use `/hosts add {host_name}` to add it.")
+            outputs.append(
+                f"❌ Host '{host_name}' not found. Use `/hosts add {host_name}` to add it."
+            )
             continue
 
         ctx.ui.info(f"Scanning {host.name} ({host.hostname})...")

@@ -231,7 +231,7 @@ class MerlyaAgent:
                     # Explicit instruction for the LLM to use jump host
                     notes.append(
                         f"JUMP_HOST_DETECTED={router_result.jump_host} "
-                        f"(USE via=\"{router_result.jump_host}\" in ssh_execute calls)"
+                        f'(USE via="{router_result.jump_host}" in ssh_execute calls)'
                     )
                 if notes:
                     flag_note = f"[router_flags {' '.join(notes)}]"
@@ -312,9 +312,7 @@ class MerlyaAgent:
         )
 
         if not self._active_conversation.title:
-            self._active_conversation.title = self._derive_title(
-                self._extract_first_user_message()
-            )
+            self._active_conversation.title = self._derive_title(self._extract_first_user_message())
 
         try:
             await self.context.conversations.update(self._active_conversation)
@@ -328,16 +326,16 @@ class MerlyaAgent:
         # Deserialize JSON messages back to ModelMessage objects
         if conv.messages:
             try:
-                self._message_history = ModelMessagesTypeAdapter.validate_python(
-                    conv.messages
-                )
+                self._message_history = ModelMessagesTypeAdapter.validate_python(conv.messages)
             except Exception as e:
                 logger.warning(f"Failed to deserialize conversation history: {e}")
                 self._message_history = []
         else:
             self._message_history = []
 
-        logger.debug(f"Loaded conversation {conv.id[:8]} with {len(self._message_history)} messages")
+        logger.debug(
+            f"Loaded conversation {conv.id[:8]} with {len(self._message_history)} messages"
+        )
 
     def _extract_first_user_message(self) -> str | None:
         """Extract text content from the first user message."""

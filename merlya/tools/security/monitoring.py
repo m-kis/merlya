@@ -176,10 +176,12 @@ def _parse_updates(stdout: str) -> tuple[list[dict[str, str]], str]:
             if parts:
                 pkg_name = parts[0].split("/")[0]
                 is_security = "security" in line.lower()
-                updates.append({
-                    "package": pkg_name,
-                    "security": is_security,  # type: ignore[dict-item]
-                })
+                updates.append(
+                    {
+                        "package": pkg_name,
+                        "security": is_security,  # type: ignore[dict-item]
+                    }
+                )
 
     return updates, pkg_manager
 
@@ -206,9 +208,9 @@ async def check_critical_services(
         services_to_check = services or default_services
 
         # Validate service names (alphanumeric, dash, underscore, dot only)
-        safe_services = [
-            s for s in services_to_check if re.match(r"^[a-zA-Z0-9_.-]+$", s)
-        ][:20]  # Limit to 20 services
+        safe_services = [s for s in services_to_check if re.match(r"^[a-zA-Z0-9_.-]+$", s)][
+            :20
+        ]  # Limit to 20 services
 
         if not safe_services:
             return SecurityResult(success=False, error="No valid service names provided")
@@ -267,11 +269,13 @@ def _parse_services(stdout: str) -> tuple[list[dict[str, Any]], int]:
             if len(parts) == 2:
                 svc_name, status = parts
                 is_active = status.strip() == "active"
-                service_status.append({
-                    "service": svc_name.strip(),
-                    "status": status.strip(),
-                    "active": is_active,
-                })
+                service_status.append(
+                    {
+                        "service": svc_name.strip(),
+                        "status": status.strip(),
+                        "active": is_active,
+                    }
+                )
                 if not is_active and status.strip() != "not-found":
                     inactive_count += 1
 

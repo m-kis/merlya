@@ -106,9 +106,7 @@ def format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None =
     )
     lines.append(f"## {severity_icon} Scan: `{host.name}` ({host.hostname})")
     lines.append("")
-    lines.append(
-        f"**Critical:** {result.critical_count} | **Warnings:** {result.warning_count}"
-    )
+    lines.append(f"**Critical:** {result.critical_count} | **Warnings:** {result.warning_count}")
     lines.append("")
 
     # System section
@@ -190,9 +188,7 @@ def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all:
     lines.append("")
 
 
-def _format_security_section(
-    lines: list[str], sec_data: dict[str, Any], show_all: bool
-) -> None:
+def _format_security_section(lines: list[str], sec_data: dict[str, Any], show_all: bool) -> None:
     """Format security section of scan output."""
     lines.append("### 🔒 Security")
     lines.append("")
@@ -312,8 +308,7 @@ def _format_users(lines: list[str], users: dict[str, Any], show_all: bool) -> No
     if shell_users:
         max_users = len(shell_users) if show_all else 8
         user_names = [
-            u.get("username", u) if isinstance(u, dict) else str(u)
-            for u in shell_users[:max_users]
+            u.get("username", u) if isinstance(u, dict) else str(u) for u in shell_users[:max_users]
         ]
         lines.append(f"   `{', '.join(user_names)}`")
         if not show_all and len(shell_users) > 8:
