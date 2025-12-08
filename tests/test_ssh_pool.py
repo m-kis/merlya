@@ -196,7 +196,9 @@ class TestSSHPoolPassphrase:
         SSHPool.reset_instance()
 
     @pytest.mark.asyncio
-    async def test_passphrase_callback_used_on_keyimporterror(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    async def test_passphrase_callback_used_on_keyimporterror(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         """Ensure KeyImportError triggers passphrase callback."""
         pool = await SSHPool.get_instance()
         pool._passphrase_callback = lambda _p: "secret-pass"
@@ -209,7 +211,9 @@ class TestSSHPoolPassphrase:
         def fake_read_private_key(_path: str, passphrase: str | None = None):
             if passphrase is None:
                 call_order.append("first")
-                raise asyncssh.KeyImportError("Passphrase must be specified to import encrypted private keys")
+                raise asyncssh.KeyImportError(
+                    "Passphrase must be specified to import encrypted private keys"
+                )
             call_order.append("second")
             return MagicMock()
 

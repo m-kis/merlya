@@ -14,7 +14,9 @@ class _StubUI:
         self.secret_calls: list[str] = []
 
     async def prompt_confirm(
-        self, message: str, default: bool = False  # noqa: ARG002
+        self,
+        message: str,  # noqa: ARG002
+        default: bool = False,  # noqa: ARG002
     ) -> bool:
         return self.confirm
 

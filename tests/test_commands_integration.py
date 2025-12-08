@@ -28,7 +28,9 @@ def registry() -> CommandRegistry:
 @pytest.fixture
 def mock_context() -> MagicMock:
     """Create a mock SharedContext with all required attributes."""
-    ctx = MagicMock(spec=["ui", "hosts", "variables", "conversations", "secrets", "i18n", "config", "t"])
+    ctx = MagicMock(
+        spec=["ui", "hosts", "variables", "conversations", "secrets", "i18n", "config", "t"]
+    )
 
     # Mock UI
     ctx.ui = MagicMock()
@@ -232,7 +234,10 @@ class TestVariableCommand:
     """Tests for /variable command."""
 
     async def test_variable_list(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_variables_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_variables_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /variable list."""
         result = await registry.execute(mock_context, "/variable list")
@@ -242,7 +247,10 @@ class TestVariableCommand:
         mock_context.ui.table.assert_called_once()
 
     async def test_variable_no_args(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_variables_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_variables_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /variable without args defaults to list."""
         result = await registry.execute(mock_context, "/variable")
@@ -268,7 +276,10 @@ class TestVariableCommand:
         mock_variables_repo.set.assert_called_with("myvar", "myvalue", is_env=True)
 
     async def test_variable_get(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_variables_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_variables_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /variable get name."""
         result = await registry.execute(mock_context, "/variable get test_var")
@@ -277,7 +288,10 @@ class TestVariableCommand:
         assert result.data == "test_value"
 
     async def test_variable_delete(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_variables_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_variables_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /variable delete name."""
         result = await registry.execute(mock_context, "/variable delete test_var")
@@ -323,7 +337,10 @@ class TestHostsCommand:
     """Tests for /hosts command."""
 
     async def test_hosts_list(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /hosts list."""
         result = await registry.execute(mock_context, "/hosts list")
@@ -342,7 +359,10 @@ class TestHostsCommand:
         mock_hosts_repo.get_by_tag.assert_called_with("web")
 
     async def test_hosts_show(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /hosts show name."""
         result = await registry.execute(mock_context, "/hosts show test-host")
@@ -390,7 +410,10 @@ class TestHostsCommand:
         mock_hosts_repo.update.assert_called_once()
 
     async def test_hosts_untag(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /hosts untag name tag."""
         result = await registry.execute(mock_context, "/hosts untag test-host web")
@@ -407,7 +430,10 @@ class TestConversationCommand:
     """Tests for /conv command."""
 
     async def test_conv_list(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_conversations_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_conversations_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /conv list."""
         result = await registry.execute(mock_context, "/conv list")
@@ -425,7 +451,10 @@ class TestConversationCommand:
         mock_conversations_repo.get_recent.assert_called_with(limit=5)
 
     async def test_conv_show(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_conversations_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_conversations_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /conv show id."""
         result = await registry.execute(mock_context, "/conv show conv-123")
@@ -434,7 +463,10 @@ class TestConversationCommand:
         assert "Test conversation" in result.message
 
     async def test_conv_load(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_conversations_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_conversations_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /conv load id."""
         result = await registry.execute(mock_context, "/conv load conv-123")
@@ -443,7 +475,10 @@ class TestConversationCommand:
         assert "load_conversation" in result.data
 
     async def test_conv_search(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_conversations_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_conversations_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /conv search query."""
         result = await registry.execute(mock_context, "/conv search hello")
@@ -508,7 +543,10 @@ class TestScanCommand:
     """Tests for /scan command."""
 
     async def test_scan_no_args(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /scan without args shows usage."""
         result = await registry.execute(mock_context, "/scan")
@@ -570,7 +608,9 @@ class TestCommandRegistry:
         assert "/help" in completions
         assert "/health" in completions
 
-    async def test_execute_unknown_command(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_execute_unknown_command(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test executing unknown command."""
         result = await registry.execute(mock_context, "/nonexistent")
         assert result is not None
@@ -635,7 +675,10 @@ class TestEdgeCases:
         assert "not found" in result.message
 
     async def test_hosts_tag_invalid_format(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /hosts tag with invalid tag format."""
         result = await registry.execute(mock_context, "/hosts tag test-host invalid@tag!")

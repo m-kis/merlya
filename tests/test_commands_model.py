@@ -28,7 +28,9 @@ def registry() -> CommandRegistry:
 @pytest.fixture
 def mock_context() -> MagicMock:
     """Create a mock SharedContext with all required attributes."""
-    ctx = MagicMock(spec=["ui", "hosts", "variables", "conversations", "secrets", "i18n", "config", "t"])
+    ctx = MagicMock(
+        spec=["ui", "hosts", "variables", "conversations", "secrets", "i18n", "config", "t"]
+    )
 
     # Mock UI
     ctx.ui = MagicMock()
@@ -85,7 +87,9 @@ class TestModelShowCommand:
         assert "openrouter" in result.message
         assert "amazon/nova-2-lite-v1:free" in result.message
 
-    async def test_model_no_args_shows_config(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_model_no_args_shows_config(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model without args defaults to show."""
         result = await registry.execute(mock_context, "/model")
         assert result is not None
@@ -111,7 +115,9 @@ class TestModelProviderCommand:
         assert result.success is False
         assert "Unknown provider" in result.message
 
-    async def test_provider_anthropic_with_key(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_provider_anthropic_with_key(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model provider anthropic when API key exists."""
         mock_context.secrets.has = MagicMock(return_value=True)
         result = await registry.execute(mock_context, "/model provider anthropic")
@@ -121,7 +127,9 @@ class TestModelProviderCommand:
         mock_context.config.save.assert_called()
         assert result.data == {"reload_agent": True}
 
-    async def test_provider_anthropic_prompts_key(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_provider_anthropic_prompts_key(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model provider anthropic prompts for API key if missing."""
         mock_context.secrets.has = MagicMock(return_value=False)
         mock_context.ui.prompt_secret = AsyncMock(return_value="sk-ant-xxx")
@@ -130,7 +138,9 @@ class TestModelProviderCommand:
         assert result.success is True
         mock_context.secrets.set.assert_called_with("ANTHROPIC_API_KEY", "sk-ant-xxx")
 
-    async def test_provider_ollama_no_key_needed(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_provider_ollama_no_key_needed(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model provider ollama doesn't require API key."""
         with patch("merlya.commands.handlers.model.ensure_provider_env"):
             result = await registry.execute(mock_context, "/model provider ollama")
@@ -255,7 +265,9 @@ class TestOllamaIntegration:
             assert result.success is True
             mock_subprocess.assert_called_once()
 
-    async def test_ollama_pull_model_not_found(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_ollama_pull_model_not_found(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model model with non-existent ollama model."""
         mock_context.config.model.provider = "ollama"
         mock_context.config.model.base_url = "http://localhost:11434/v1"

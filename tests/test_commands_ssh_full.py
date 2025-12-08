@@ -43,7 +43,19 @@ def mock_ssh_pool() -> MagicMock:
 @pytest.fixture
 def mock_context(mock_ssh_pool: MagicMock) -> MagicMock:
     """Create a mock SharedContext with all required attributes."""
-    ctx = MagicMock(spec=["ui", "hosts", "variables", "conversations", "secrets", "i18n", "config", "t", "get_ssh_pool"])
+    ctx = MagicMock(
+        spec=[
+            "ui",
+            "hosts",
+            "variables",
+            "conversations",
+            "secrets",
+            "i18n",
+            "config",
+            "t",
+            "get_ssh_pool",
+        ]
+    )
 
     # Mock UI
     ctx.ui = MagicMock()
@@ -114,7 +126,10 @@ class TestSSHConnectCommand:
     """Tests for /ssh connect command."""
 
     async def test_ssh_connect_no_args(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /ssh connect without args shows usage."""
         result = await registry.execute(mock_context, "/ssh connect")
@@ -133,7 +148,11 @@ class TestSSHConnectCommand:
         assert "not found" in result.message.lower()
 
     async def test_ssh_connect_success(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock, mock_ssh_pool: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_ssh_pool: MagicMock,
     ):
         """Test /ssh connect with valid host."""
         result = await registry.execute(mock_context, "/ssh connect test-host")
@@ -146,7 +165,10 @@ class TestSSHExecCommand:
     """Tests for /ssh exec command."""
 
     async def test_ssh_exec_no_args(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /ssh exec without args shows usage."""
         result = await registry.execute(mock_context, "/ssh exec")
@@ -155,7 +177,10 @@ class TestSSHExecCommand:
         assert "Usage" in result.message
 
     async def test_ssh_exec_no_command(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /ssh exec with host but no command."""
         result = await registry.execute(mock_context, "/ssh exec test-host")
@@ -164,7 +189,11 @@ class TestSSHExecCommand:
         assert "Usage" in result.message
 
     async def test_ssh_exec_success(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock, mock_ssh_pool: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_ssh_pool: MagicMock,
     ):
         """Test /ssh exec with valid host and command."""
         mock_result = MagicMock()
@@ -182,7 +211,11 @@ class TestSSHDisconnectCommand:
     """Tests for /ssh disconnect command."""
 
     async def test_ssh_disconnect_all(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock, mock_ssh_pool: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_ssh_pool: MagicMock,
     ):
         """Test /ssh disconnect without args disconnects all."""
         result = await registry.execute(mock_context, "/ssh disconnect")
@@ -191,7 +224,11 @@ class TestSSHDisconnectCommand:
         mock_ssh_pool.disconnect_all.assert_called_once()
 
     async def test_ssh_disconnect_specific_host(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock, mock_ssh_pool: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_ssh_pool: MagicMock,
     ):
         """Test /ssh disconnect with valid host."""
         result = await registry.execute(mock_context, "/ssh disconnect test-host")
@@ -204,7 +241,10 @@ class TestSSHConfigCommand:
     """Tests for /ssh config command."""
 
     async def test_ssh_config_no_args(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /ssh config without args shows usage."""
         result = await registry.execute(mock_context, "/ssh config")
@@ -227,7 +267,10 @@ class TestSSHTestCommand:
     """Tests for /ssh test command."""
 
     async def test_ssh_test_no_args(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
     ):
         """Test /ssh test without args shows usage."""
         result = await registry.execute(mock_context, "/ssh test")
@@ -246,7 +289,11 @@ class TestSSHTestCommand:
         assert "not found" in result.message.lower()
 
     async def test_ssh_test_success(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock, mock_ssh_pool: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_ssh_pool: MagicMock,
     ):
         """Test /ssh test with successful connection."""
         mock_result = MagicMock()
@@ -260,7 +307,11 @@ class TestSSHTestCommand:
         assert result.success is True
 
     async def test_ssh_test_failure(
-        self, registry: CommandRegistry, mock_context: MagicMock, mock_hosts_repo: MagicMock, mock_ssh_pool: MagicMock  # noqa: ARG002
+        self,
+        registry: CommandRegistry,
+        mock_context: MagicMock,
+        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_ssh_pool: MagicMock,
     ):
         """Test /ssh test with failed connection."""
         mock_ssh_pool.execute = AsyncMock(side_effect=Exception("Connection refused"))

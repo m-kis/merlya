@@ -63,44 +63,60 @@ class TestStartupHealth:
 
     def test_can_start_with_no_errors(self) -> None:
         """Test can_start is True when no critical errors."""
-        health = StartupHealth(checks=[
-            HealthCheck(name="test1", status=CheckStatus.OK, message="OK"),
-            HealthCheck(name="test2", status=CheckStatus.WARNING, message="Warning"),
-        ])
+        health = StartupHealth(
+            checks=[
+                HealthCheck(name="test1", status=CheckStatus.OK, message="OK"),
+                HealthCheck(name="test2", status=CheckStatus.WARNING, message="Warning"),
+            ]
+        )
         assert health.can_start is True
 
     def test_can_start_with_critical_error(self) -> None:
         """Test can_start is False when critical error exists."""
-        health = StartupHealth(checks=[
-            HealthCheck(name="critical", status=CheckStatus.ERROR, message="Error", critical=True),
-        ])
+        health = StartupHealth(
+            checks=[
+                HealthCheck(
+                    name="critical", status=CheckStatus.ERROR, message="Error", critical=True
+                ),
+            ]
+        )
         assert health.can_start is False
 
     def test_can_start_with_non_critical_error(self) -> None:
         """Test can_start is True when non-critical error exists."""
-        health = StartupHealth(checks=[
-            HealthCheck(name="non_critical", status=CheckStatus.ERROR, message="Error", critical=False),
-        ])
+        health = StartupHealth(
+            checks=[
+                HealthCheck(
+                    name="non_critical", status=CheckStatus.ERROR, message="Error", critical=False
+                ),
+            ]
+        )
         assert health.can_start is True
 
     def test_has_warnings(self) -> None:
         """Test has_warnings detection."""
-        health = StartupHealth(checks=[
-            HealthCheck(name="warn", status=CheckStatus.WARNING, message="Warning"),
-        ])
+        health = StartupHealth(
+            checks=[
+                HealthCheck(name="warn", status=CheckStatus.WARNING, message="Warning"),
+            ]
+        )
         assert health.has_warnings is True
 
-        health_ok = StartupHealth(checks=[
-            HealthCheck(name="ok", status=CheckStatus.OK, message="OK"),
-        ])
+        health_ok = StartupHealth(
+            checks=[
+                HealthCheck(name="ok", status=CheckStatus.OK, message="OK"),
+            ]
+        )
         assert health_ok.has_warnings is False
 
     def test_get_check(self) -> None:
         """Test get_check method."""
-        health = StartupHealth(checks=[
-            HealthCheck(name="ram", status=CheckStatus.OK, message="OK"),
-            HealthCheck(name="disk", status=CheckStatus.OK, message="OK"),
-        ])
+        health = StartupHealth(
+            checks=[
+                HealthCheck(name="ram", status=CheckStatus.OK, message="OK"),
+                HealthCheck(name="disk", status=CheckStatus.OK, message="OK"),
+            ]
+        )
 
         ram_check = health.get_check("ram")
         assert ram_check is not None
@@ -199,23 +215,30 @@ class TestRunStartupChecks:
     @pytest.mark.asyncio
     async def test_returns_startup_health(self) -> None:
         """Test that run_startup_checks returns StartupHealth."""
-        with patch("merlya.health.checks.check_ram") as mock_ram, \
-             patch("merlya.health.checks.check_disk_space") as mock_disk, \
-             patch("merlya.health.checks.check_ssh_available") as mock_ssh, \
-             patch("merlya.health.checks.check_keyring") as mock_keyring, \
-             patch("merlya.health.checks.check_onnx_model") as mock_onnx, \
-             patch("merlya.health.checks.check_web_search") as mock_web, \
-             patch("merlya.health.checks.check_llm_provider") as mock_llm:
-
-            mock_ram.return_value = (HealthCheck(name="ram", status=CheckStatus.OK, message="OK"), "performance")
+        with (
+            patch("merlya.health.checks.check_ram") as mock_ram,
+            patch("merlya.health.checks.check_disk_space") as mock_disk,
+            patch("merlya.health.checks.check_ssh_available") as mock_ssh,
+            patch("merlya.health.checks.check_keyring") as mock_keyring,
+            patch("merlya.health.checks.check_onnx_model") as mock_onnx,
+            patch("merlya.health.checks.check_web_search") as mock_web,
+            patch("merlya.health.checks.check_llm_provider") as mock_llm,
+        ):
+            mock_ram.return_value = (
+                HealthCheck(name="ram", status=CheckStatus.OK, message="OK"),
+                "performance",
+            )
             mock_disk.return_value = HealthCheck(name="disk", status=CheckStatus.OK, message="OK")
             mock_ssh.return_value = HealthCheck(name="ssh", status=CheckStatus.OK, message="OK")
-            mock_keyring.return_value = HealthCheck(name="keyring", status=CheckStatus.OK, message="OK")
+            mock_keyring.return_value = HealthCheck(
+                name="keyring", status=CheckStatus.OK, message="OK"
+            )
             mock_onnx.return_value = HealthCheck(name="onnx", status=CheckStatus.OK, message="OK")
             mock_web.return_value = HealthCheck(name="web", status=CheckStatus.OK, message="OK")
 
             async def mock_llm_coro(*_args, **_kwargs):
                 return HealthCheck(name="llm", status=CheckStatus.OK, message="OK")
+
             mock_llm.side_effect = mock_llm_coro
 
             result = await run_startup_checks(skip_llm_ping=True)

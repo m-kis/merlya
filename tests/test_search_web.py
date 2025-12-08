@@ -60,6 +60,7 @@ async def test_search_web_success_and_cache(monkeypatch: pytest.MonkeyPatch) -> 
 @pytest.mark.asyncio
 async def test_search_web_handles_missing_ddgs(monkeypatch: pytest.MonkeyPatch) -> None:
     """Should fail gracefully when ddgs is not installed."""
+
     def _raise_import_error() -> None:
         raise ImportError("ddgs missing")
 

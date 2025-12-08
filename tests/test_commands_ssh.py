@@ -43,7 +43,9 @@ async def test_prompt_ssh_config_requests_passphrase_on_encrypted_key(tmp_path: 
     with patch(
         "merlya.commands.handlers.ssh.asyncssh.read_private_key",
         side_effect=[
-            asyncssh.KeyImportError("Passphrase must be specified to import encrypted private keys"),
+            asyncssh.KeyImportError(
+                "Passphrase must be specified to import encrypted private keys"
+            ),
             MagicMock(),
         ],
     ):
@@ -133,7 +135,9 @@ async def test_cmd_ssh_connect_installs_passphrase_callback() -> None:
     ctx.ui.prompt_secret.assert_not_called()
 
 
-def test_lookup_passphrase_falls_back_to_keyring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_lookup_passphrase_falls_back_to_keyring(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Direct keyring lookup is used if SecretStore returns nothing."""
     collected: dict[str, str] = {"called": "false"}
 

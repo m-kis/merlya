@@ -144,7 +144,9 @@ async def test_request_credentials_ssh_prompts_password_when_hint() -> None:
     ctx.config = cfg
     ctx.hosts.get_by_name = AsyncMock(return_value=None)
 
-    result = await request_credentials(ctx, service="ssh", host="no-key-host", format_hint="password")
+    result = await request_credentials(
+        ctx, service="ssh", host="no-key-host", format_hint="password"
+    )
 
     assert result.success
     # Username may be prefilled from default_user; password must be prompted

@@ -441,6 +441,8 @@ def _load_api_keys_from_keyring(ctx: SharedContext) -> None:
     """
     import os
 
+    from merlya.config.provider_env import ollama_requires_api_key
+
     # Get the configured API key env variable
     api_key_env = ctx.config.model.api_key_env
     if not api_key_env:
@@ -448,8 +450,8 @@ def _load_api_keys_from_keyring(ctx: SharedContext) -> None:
         provider = ctx.config.model.provider.upper()
         api_key_env = f"{provider}_API_KEY"
 
-    # Ollama does not require an API key; skip quietly
-    if ctx.config.model.provider == "ollama":
+    # Ollama only needs a key when using cloud endpoints
+    if ctx.config.model.provider == "ollama" and not ollama_requires_api_key(ctx.config):
         return
 
     # Check if already in environment

@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from merlya.commands.registry import CommandResult, command, subcommand
-from merlya.config.provider_env import ensure_provider_env
+from merlya.config.provider_env import (
+    ensure_openrouter_headers,
+    ensure_provider_env,
+    ollama_requires_api_key,
+)
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -104,8 +108,12 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
         if api_key:
             ctx.secrets.set(api_key_env, api_key)
             ctx.ui.success("✅ API key saved to keyring")
+            _set_api_key_from_keyring(ctx, api_key_env)
         else:
             return CommandResult(success=False, message="API key required for this provider.")
+
+    if provider == "openrouter":
+        ensure_openrouter_headers()
 
     ctx.config.model.provider = provider
     if provider in default_models:
@@ -114,10 +122,13 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
         ctx.config.router.llm_fallback = router_fallbacks[provider]
     ctx.config.model.api_key_env = api_key_env or ""
     ctx.config.model.base_url = ctx.config.model.base_url or None
-    ctx.config.save()
+
+    if api_key_env:
+        _set_api_key_from_keyring(ctx, api_key_env)
 
     if provider == "ollama":
         ensure_provider_env(ctx.config)
+    ctx.config.save()
 
     return CommandResult(
         success=True,
@@ -145,13 +156,42 @@ async def cmd_model_model(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     model = args[0]
     ctx.config.model.model = model
-    ctx.config.save()
 
     if ctx.config.model.provider == "ollama":
+        ctx.config.model.base_url = None  # reset per model switch
+        is_cloud = "cloud" in model.lower() or ollama_requires_api_key(ctx.config)
+        ctx.config.model.base_url = ctx.config.model.base_url or (
+            "https://ollama.com" if is_cloud else "http://localhost:11434"
+        )
         ensure_provider_env(ctx.config)
-        pull_result = await _ensure_ollama_model(ctx, model)
-        if pull_result and not pull_result.success:
-            return pull_result
+        if is_cloud:
+            ctx.config.model.api_key_env = "OLLAMA_API_KEY"
+            api_key_env = "OLLAMA_API_KEY"
+            if not (os.getenv(api_key_env) or ctx.secrets.has(api_key_env)):
+                api_key = await ctx.ui.prompt_secret(f"🔑 Enter {api_key_env}")
+                if api_key:
+                    ctx.secrets.set(api_key_env, api_key)
+                    ctx.ui.success("✅ API key saved to keyring")
+                    _set_api_key_from_keyring(ctx, api_key_env)
+                else:
+                    return CommandResult(
+                        success=False,
+                        message=ctx.t("commands.model.api_key_missing"),
+                    )
+            # Force cloud endpoint if still local
+            if ctx.config.model.base_url and "localhost" in ctx.config.model.base_url:
+                ctx.config.model.base_url = "https://ollama.com/v1"
+                ensure_provider_env(ctx.config)
+        else:
+            pull_result = await _ensure_ollama_model(ctx, model)
+            if pull_result and not pull_result.success:
+                return pull_result
+    else:
+        api_key_env = ctx.config.model.api_key_env or f"{ctx.config.model.provider.upper()}_API_KEY"
+        _set_api_key_from_keyring(ctx, api_key_env)
+        if ctx.config.model.provider == "openrouter":
+            ensure_openrouter_headers()
+    ctx.config.save()
 
     return CommandResult(
         success=True,
@@ -393,3 +433,14 @@ async def _ensure_ollama_model(ctx: SharedContext, model: str) -> CommandResult 
             error=error_text or "unknown error",
         ),
     )
+
+
+def _set_api_key_from_keyring(ctx: SharedContext, api_key_env: str) -> None:
+    """Load an API key from keyring into the environment if present."""
+    if os.getenv(api_key_env):
+        return
+    secret_getter = getattr(ctx.secrets, "get", None)
+    if secret_getter:
+        value = secret_getter(api_key_env)
+        if isinstance(value, str) and value:
+            os.environ[api_key_env] = value
