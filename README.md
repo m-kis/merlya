@@ -10,7 +10,14 @@
 
 <p align="center">
   <a href="https://pypi.org/project/merlya/"><img src="https://img.shields.io/pypi/v/merlya?color=%2340C4E0" alt="PyPI"></a>
+  <a href="https://pypi.org/project/merlya/"><img src="https://img.shields.io/pypi/pyversions/merlya" alt="Python"></a>
+  <a href="https://pypi.org/project/merlya/"><img src="https://img.shields.io/pypi/dm/merlya" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/code%20style-ruff-000000" alt="Ruff">
+  <img src="https://img.shields.io/badge/type%20checked-mypy-blue" alt="mypy">
 </p>
 
 ## Features
