@@ -217,15 +217,22 @@ class MerlyaAgent:
             )
 
             augmented_input = user_input
-            if router_result and (
-                router_result.credentials_required or router_result.elevation_required
-            ):
-                flag_note = (
-                    f"[router_flags credentials_required={router_result.credentials_required} "
-                    f"elevation_required={router_result.elevation_required}]"
-                )
-                # Without interfering with user text, prepend a short note
-                augmented_input = f"{flag_note}\n{user_input}"
+            if router_result:
+                notes = []
+                if router_result.credentials_required or router_result.elevation_required:
+                    notes.append(
+                        f"credentials_required={router_result.credentials_required} "
+                        f"elevation_required={router_result.elevation_required}"
+                    )
+                if router_result.jump_host:
+                    # Explicit instruction for the LLM to use jump host
+                    notes.append(
+                        f"JUMP_HOST_DETECTED={router_result.jump_host} "
+                        f"(USE via=\"{router_result.jump_host}\" in ssh_execute calls)"
+                    )
+                if notes:
+                    flag_note = f"[router_flags {' '.join(notes)}]"
+                    augmented_input = f"{flag_note}\n{user_input}"
 
             # Pass message_history only if we have previous messages
             # This includes tool calls, tool results, and assistant responses

@@ -8,11 +8,29 @@ Uses local ONNX embedding model with LLM fallback for ambiguous cases.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from loguru import logger
 
 from merlya.router.intent_classifier import AgentMode, IntentClassifier
+
+# Patterns to detect jump host intent (multilingual)
+# These patterns look for "via/through/par/depuis + @hostname or hostname"
+JUMP_HOST_PATTERNS = [
+    # English
+    r"\bvia\s+(?:the\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
+    r"\bthrough\s+(?:the\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
+    r"\busing\s+(?:the\s+)?(?:bastion|jump\s*host?)\s+@?(\w[\w.-]*)",
+    # French
+    r"\bvia\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
+    r"\ben\s+passant\s+par\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
+    r"\bà\s+travers\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
+    r"\bdepuis\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
+    # Generic bastion/jump patterns
+    r"\bbastion\s*[=:]\s*@?(\w[\w.-]*)",
+    r"\bjump\s*host?\s*[=:]\s*@?(\w[\w.-]*)",
+]
 
 # Re-export for compatibility
 __all__ = ["AgentMode", "IntentClassifier", "IntentRouter", "RouterResult"]
@@ -30,6 +48,7 @@ class RouterResult:
     reasoning: str | None = None  # For LLM fallback explanation
     credentials_required: bool = False
     elevation_required: bool = False
+    jump_host: str | None = None  # Detected jump/bastion host for SSH tunneling
 
 
 class IntentRouter:
@@ -108,9 +127,10 @@ class IntentRouter:
         if result.delegate_to and available_agents and result.delegate_to not in available_agents:
             result.delegate_to = None
 
+        jump_info = f", jump_host={result.jump_host}" if result.jump_host else ""
         logger.debug(
             f"🧠 Routed: mode={result.mode.value}, conf={result.confidence:.2f}, "
-            f"tools={result.tools}, delegate={result.delegate_to}"
+            f"tools={result.tools}, delegate={result.delegate_to}{jump_info}"
         )
 
         return result
@@ -129,6 +149,11 @@ class IntentRouter:
 
         # Extract entities first
         entities = self.classifier.extract_entities(text)
+
+        # Detect jump host from patterns
+        jump_host = self._detect_jump_host(text)
+        if jump_host:
+            logger.debug(f"🔗 Detected jump host: {jump_host}")
 
         # Try embedding-based classification
         if self.classifier.model_loaded:
@@ -149,7 +174,35 @@ class IntentRouter:
             entities=entities,
             confidence=confidence,
             delegate_to=delegate_to,
+            jump_host=jump_host,
         )
+
+    def _detect_jump_host(self, text: str) -> str | None:
+        """
+        Detect jump/bastion host from user input.
+
+        Looks for patterns like:
+        - "via @ansible" / "via ansible"
+        - "through the bastion"
+        - "en passant par @jump-host"
+
+        Args:
+            text: User input text.
+
+        Returns:
+            Jump host name if detected, None otherwise.
+        """
+        text_lower = text.lower()
+
+        for pattern in JUMP_HOST_PATTERNS:
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                jump_host = match.group(1)
+                # Filter out common false positives
+                if jump_host and jump_host not in ("the", "la", "le", "machine", "host"):
+                    return jump_host
+
+        return None
 
     async def _classify_with_llm(self, user_input: str) -> RouterResult | None:
         """
@@ -217,9 +270,10 @@ Respond in JSON format:
             credentials_required = bool(data.get("credentials_required", False))
             elevation_required = bool(data.get("elevation_required", False))
 
-            # Re-extract entities
+            # Re-extract entities and jump host
             entities = self.classifier.extract_entities(user_input)
             delegate_to = self.classifier.check_delegation(user_input.lower())
+            jump_host = self._detect_jump_host(user_input)
 
             return RouterResult(
                 mode=mode,
@@ -230,6 +284,7 @@ Respond in JSON format:
                 reasoning=reasoning,
                 credentials_required=credentials_required,
                 elevation_required=elevation_required,
+                jump_host=jump_host,
             )
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"⚠️ Failed to parse LLM response: {e}")

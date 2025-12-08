@@ -189,3 +189,54 @@ class TestIntentRouter:
         assert isinstance(result.tools, list)
         # Should have at least some tools
         assert len(result.tools) >= 0
+
+
+class TestJumpHostDetection:
+    """Tests for jump host detection in router."""
+
+    @pytest.fixture
+    def router(self) -> IntentRouter:
+        """Create router instance."""
+        return IntentRouter(use_local=False)
+
+    @pytest.mark.asyncio
+    async def test_detect_via_hostname(self, router: IntentRouter) -> None:
+        """Test detection of 'via @hostname' pattern."""
+        await router.initialize()
+        result = await router.route("Check disk on 192.168.1.1 via @ansible")
+        assert result.jump_host == "ansible"
+
+    @pytest.mark.asyncio
+    async def test_detect_via_machine(self, router: IntentRouter) -> None:
+        """Test detection of 'via la machine @hostname' pattern (French)."""
+        await router.initialize()
+        result = await router.route("Analyse cette machine via la machine @bastion")
+        assert result.jump_host == "bastion"
+
+    @pytest.mark.asyncio
+    async def test_detect_through_hostname(self, router: IntentRouter) -> None:
+        """Test detection of 'through @hostname' pattern."""
+        await router.initialize()
+        result = await router.route("Execute command through @jump-server")
+        assert result.jump_host == "jump-server"
+
+    @pytest.mark.asyncio
+    async def test_detect_en_passant_par(self, router: IntentRouter) -> None:
+        """Test detection of 'en passant par @hostname' pattern (French)."""
+        await router.initialize()
+        result = await router.route("Vérifie le serveur en passant par @proxy")
+        assert result.jump_host == "proxy"
+
+    @pytest.mark.asyncio
+    async def test_no_jump_host_when_not_specified(self, router: IntentRouter) -> None:
+        """Test no jump_host when not specified."""
+        await router.initialize()
+        result = await router.route("Check disk on server1")
+        assert result.jump_host is None
+
+    @pytest.mark.asyncio
+    async def test_detect_via_without_at(self, router: IntentRouter) -> None:
+        """Test detection works without @ prefix."""
+        await router.initialize()
+        result = await router.route("Check status via bastion")
+        assert result.jump_host == "bastion"
