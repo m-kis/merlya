@@ -328,6 +328,14 @@ class ManagedSSHAgent:
 class SSHAuthManager:
     """Intelligent SSH authentication manager."""
 
+    # Default SSH key paths to try when no key is configured
+    DEFAULT_KEY_PATHS: ClassVar[list[str]] = [
+        "~/.ssh/id_ed25519",
+        "~/.ssh/id_rsa",
+        "~/.ssh/id_ecdsa",
+        "~/.ssh/id_dsa",
+    ]
+
     def __init__(self, secrets: SecretStore, ui: ConsoleUI) -> None:
         self.secrets = secrets
         self.ui = ui
@@ -337,6 +345,15 @@ class SSHAuthManager:
     def set_mfa_callback(self, callback: Callable[[str], str]) -> None:
         """Set callback for MFA/keyboard-interactive prompts."""
         self._mfa_callback = callback
+
+    def _find_default_keys(self) -> list[Path]:
+        """Find existing default SSH keys."""
+        found_keys = []
+        for key_path in self.DEFAULT_KEY_PATHS:
+            path = Path(key_path).expanduser()
+            if path.exists():
+                found_keys.append(path)
+        return found_keys
 
     async def prepare_auth(
         self,
@@ -357,15 +374,26 @@ class SSHAuthManager:
         # Case 2: Check if SSH agent is available
         env = await detect_ssh_environment()
         if env.agent_available:
-            # Use agent even if no keys listed - asyncssh can still try
             key_count = len(env.agent_keys) if env.agent_keys else 0
             if key_count > 0:
+                # Agent has keys - use it
                 logger.info(f"Using SSH agent with {key_count} key(s)")
-            else:
-                logger.info("Using SSH agent (no keys listed but socket available)")
-            options.agent_path = env.agent_socket
-            # Don't set client_keys - let asyncssh use the agent
-            return options
+                options.agent_path = env.agent_socket
+                return options
+
+            # Agent exists but has NO keys - try to find default keys
+            logger.debug("SSH agent available but empty, looking for default keys...")
+            default_keys = self._find_default_keys()
+
+            if default_keys:
+                # Found default keys - load the first one directly
+                first_key = default_keys[0]
+                logger.info(f"Using default key: {first_key}")
+                await self._prepare_key_auth(str(first_key), host_id, options)
+                return options
+
+            # No default keys found either - fall through to prompt
+            logger.warning("⚠️ SSH agent empty and no default keys found")
 
         # Case 3: Check for stored password
         if await self._has_stored_password(host_id):
@@ -403,20 +431,63 @@ class SSHAuthManager:
         # Note: Using agent_path with asyncssh doesn't properly trigger
         # keyboard-interactive callbacks after publickey partial success
         logger.info(f"Loading key for auth: {key_path_obj.name}")
-        await self._load_key_directly(key_path_obj, passphrase, options)
+        await self._load_key_directly(key_path_obj, passphrase, options, host_id)
 
     async def _load_key_directly(
-        self, key_path: Path, passphrase: str | None, options: SSHAuthOptions
+        self, key_path: Path, passphrase: str | None, options: SSHAuthOptions, host_id: str = ""
     ) -> None:
-        """Load a key directly for asyncssh (fallback when agent unavailable)."""
-        try:
-            import asyncssh
+        """Load a key directly for asyncssh with passphrase retry support."""
+        import asyncssh
 
+        try:
             key = asyncssh.read_private_key(str(key_path), passphrase)
             options.client_keys = [key]
             logger.debug(f"Loaded key directly: {key_path}")
+        except asyncssh.KeyEncryptionError:
+            # Key is encrypted and we don't have the right passphrase
+            logger.debug(f"Key {key_path} requires passphrase")
+            new_passphrase = await self.ui.prompt_secret(f"🔐 Passphrase for {key_path.name}")
+            if new_passphrase:
+                try:
+                    key = asyncssh.read_private_key(str(key_path), new_passphrase)
+                    options.client_keys = [key]
+                    logger.debug(f"Loaded encrypted key: {key_path}")
+                    # Store successful passphrase in keyring
+                    await self._store_passphrase(key_path, host_id, new_passphrase)
+                except Exception as e:
+                    logger.error(f"❌ Failed to load key with passphrase: {e}")
+            else:
+                logger.warning(f"⚠️ No passphrase provided for encrypted key {key_path}")
+        except asyncssh.KeyImportError as e:
+            if "passphrase" in str(e).lower():
+                # Some key formats report passphrase requirement via KeyImportError
+                logger.debug(f"Key {key_path} requires passphrase (KeyImportError)")
+                new_passphrase = await self.ui.prompt_secret(f"🔐 Passphrase for {key_path.name}")
+                if new_passphrase:
+                    try:
+                        key = asyncssh.read_private_key(str(key_path), new_passphrase)
+                        options.client_keys = [key]
+                        await self._store_passphrase(key_path, host_id, new_passphrase)
+                    except Exception as retry_e:
+                        logger.error(f"❌ Failed to load key: {retry_e}")
+            else:
+                logger.error(f"❌ Invalid key format {key_path}: {e}")
         except Exception as e:
-            logger.error(f"Failed to load key {key_path}: {e}")
+            logger.error(f"❌ Failed to load key {key_path}: {e}")
+
+    async def _store_passphrase(self, key_path: Path, host_id: str, passphrase: str) -> None:
+        """Store passphrase in keyring for future use."""
+        cache_keys = [
+            f"ssh:passphrase:{host_id}" if host_id else None,
+            f"ssh:passphrase:{key_path.name}",
+            f"ssh:passphrase:{key_path}",
+        ]
+        for cache_key in filter(None, cache_keys):
+            try:
+                self.secrets.set(cache_key, passphrase)
+            except Exception as e:
+                logger.debug(f"Failed to cache passphrase: {e}")
+        logger.info("✅ Passphrase stored in keyring")
 
     async def _get_passphrase(self, key_path: Path, host_id: str) -> str | None:
         """Get passphrase for a key (from cache or prompt)."""
