@@ -121,7 +121,10 @@ jobs:
 
       - name: Run pip-audit
         shell: bash
-        run: pip-audit -r <(pip freeze) --progress-spinner off
+        run: |
+          # Exclude local editable install from audit
+          pip freeze | grep -v '^-e' | grep -v '^merlya @' > /tmp/requirements-audit.txt
+          pip-audit -r /tmp/requirements-audit.txt --progress-spinner off
 
   build:
     name: Build
