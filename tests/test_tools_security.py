@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from merlya.tools.files.tools import _validate_mode, _validate_path
-from merlya.tools.security.tools import _is_safe_ssh_key_path
+from merlya.tools.security.base import _is_safe_ssh_key_path
 from merlya.tools.system.tools import _validate_service_name, _validate_username
 
 

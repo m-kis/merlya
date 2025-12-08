@@ -8,69 +8,23 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from merlya.commands.handlers.scan_format import (
+    ScanOptions,
+    ScanResult,
+    format_scan_output,
+    parse_scan_args,
+    scan_to_dict,
+)
 from merlya.commands.registry import CommandResult, command
 from merlya.ssh.pool import SSHConnectionOptions
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
-
-@dataclass
-class ScanOptions:
-    """Options for the scan command."""
-
-    scan_type: str = "full"  # full, system, security, quick
-    output_json: bool = False
-    all_disks: bool = False
-    include_docker: bool = True
-    include_updates: bool = True
-    include_logins: bool = True
-    show_all: bool = False  # Show all ports/users (no truncation)
-
-
 # Limit concurrent SSH channels to avoid MaxSessions limit (default 10 in OpenSSH)
 MAX_CONCURRENT_SSH_CHANNELS = 6
-
-
-@dataclass
-class ScanResult:
-    """Aggregated scan result with severity scoring."""
-
-    sections: dict[str, Any] = field(default_factory=dict)
-    issues: list[dict[str, Any]] = field(default_factory=list)
-    severity_score: int = 0  # 0-100, higher = more issues
-    critical_count: int = 0
-    warning_count: int = 0
-
-
-def _parse_scan_options(args: list[str]) -> ScanOptions:
-    """Parse scan options from arguments."""
-    opts = ScanOptions()
-
-    for arg in args[1:]:
-        if arg == "--security":
-            opts.scan_type = "security"
-        elif arg == "--system":
-            opts.scan_type = "system"
-        elif arg == "--full":
-            opts.scan_type = "full"
-        elif arg == "--quick":
-            opts.scan_type = "quick"
-        elif arg == "--json":
-            opts.output_json = True
-        elif arg == "--all-disks":
-            opts.all_disks = True
-        elif arg == "--no-docker":
-            opts.include_docker = False
-        elif arg == "--no-updates":
-            opts.include_updates = False
-        elif arg == "--show-all":
-            opts.show_all = True
-
-    return opts
 
 
 @command("scan", "Scan a host for system info and security", "/scan <host> [options]")
@@ -92,80 +46,86 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
     if not args:
         return CommandResult(
             success=False,
-            message="Usage: `/scan <host> [--full|--quick|--security|--system] [--json]`\n"
-            "Example: `/scan @myserver` or `/scan @myserver --quick --json`",
+            message="Usage: `/scan <host> [<host2> ...] [--full|--quick|--security|--system] [--json]`\n"
+            "Example: `/scan @myserver` or `/scan @myserver @myserver2 --quick --json`",
             show_help=True,
         )
 
-    host_name = args[0].lstrip("@")
-    opts = _parse_scan_options(args)
-
-    host = await ctx.hosts.get_by_name(host_name)
-    if not host:
+    host_names, opts = parse_scan_args(args)
+    if not host_names:
         return CommandResult(
             success=False,
-            message=f"Host '{host_name}' not found. Use `/hosts add {host_name}` to add it.",
+            message="No host specified. Usage: `/scan <host> [<host2> ...] [--full|--quick|--security|--system] [--json]`",
+            show_help=True,
         )
 
-    ctx.ui.info(f"Scanning {host.name} ({host.hostname})...")
+    outputs: list[str] = []
+    results: list[ScanResult] = []
+    successes = 0
 
-    # Establish connection once
-    try:
-        with ctx.ui.spinner(f"Connecting to {host.hostname}..."):
-            ssh_pool = await ctx.get_ssh_pool()
-            connect_timeout = min(ctx.config.ssh.connect_timeout, 15)
-            options = SSHConnectionOptions(
-                port=host.port,
-                jump_host=host.jump_host,
-                connect_timeout=connect_timeout,
-            )
-            await ssh_pool.get_connection(
-                host=host.hostname,
-                username=host.username,
-                private_key=host.private_key,
-                options=options,
-                host_name=host.name,  # Pass inventory name for credential lookup
-            )
-    except Exception as e:
-        return CommandResult(
-            success=False,
-            message=f"❌ Unable to connect to `{host.name}` ({host.hostname}): {e}",
-        )
+    for host_name in host_names:
+        host = await ctx.hosts.get_by_name(host_name)
+        if not host:
+            outputs.append(f"❌ Host '{host_name}' not found. Use `/hosts add {host_name}` to add it.")
+            continue
 
-    # Run scan based on type
-    scan_result = ScanResult()
+        ctx.ui.info(f"Scanning {host.name} ({host.hostname})...")
 
-    # Shared semaphore to limit total concurrent SSH channels
-    ssh_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SSH_CHANNELS)
+        # Establish connection once
+        try:
+            with ctx.ui.spinner(f"Connecting to {host.hostname}..."):
+                ssh_pool = await ctx.get_ssh_pool()
+                connect_timeout = min(ctx.config.ssh.connect_timeout, 15)
+                options = SSHConnectionOptions(
+                    port=host.port,
+                    jump_host=host.jump_host,
+                    connect_timeout=connect_timeout,
+                )
+                await ssh_pool.get_connection(
+                    host=host.hostname,
+                    username=host.username,
+                    private_key=host.private_key,
+                    options=options,
+                    host_name=host.name,  # Pass inventory name for credential lookup
+                )
+        except Exception as e:
+            outputs.append(f"❌ Unable to connect to `{host.name}` ({host.hostname}): {e}")
+            continue
 
-    with ctx.ui.spinner(f"Scanning {host.name}..."):
-        if opts.scan_type == "quick":
-            await _scan_quick(ctx, host, scan_result)
-        elif opts.scan_type == "system":
-            await _scan_system_parallel(ctx, host, scan_result, opts, ssh_semaphore)
-        elif opts.scan_type == "security":
-            await _scan_security_parallel(ctx, host, scan_result, opts, ssh_semaphore)
-        else:  # full
-            await asyncio.gather(
-                _scan_system_parallel(ctx, host, scan_result, opts, ssh_semaphore),
-                _scan_security_parallel(ctx, host, scan_result, opts, ssh_semaphore),
-            )
+        # Run scan based on type
+        scan_result = ScanResult()
 
-    # Calculate severity score using embeddings if available
-    await _calculate_severity_score(ctx, scan_result)
+        # Shared semaphore to limit total concurrent SSH channels
+        ssh_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SSH_CHANNELS)
 
-    # Format output
-    if opts.output_json:
-        return CommandResult(
-            success=True,
-            message=f"```json\n{json.dumps(_scan_to_dict(scan_result, host), indent=2)}\n```",
-            data=scan_result,
-        )
+        with ctx.ui.spinner(f"Scanning {host.name}..."):
+            if opts.scan_type == "quick":
+                await _scan_quick(ctx, host, scan_result)
+            elif opts.scan_type == "system":
+                await _scan_system_parallel(ctx, host, scan_result, opts, ssh_semaphore)
+            elif opts.scan_type == "security":
+                await _scan_security_parallel(ctx, host, scan_result, opts, ssh_semaphore)
+            else:  # full
+                await asyncio.gather(
+                    _scan_system_parallel(ctx, host, scan_result, opts, ssh_semaphore),
+                    _scan_security_parallel(ctx, host, scan_result, opts, ssh_semaphore),
+                )
+
+        # Calculate severity score using embeddings if available
+        await _calculate_severity_score(ctx, scan_result)
+        results.append(scan_result)
+        successes += 1
+
+        # Format output
+        if opts.output_json:
+            outputs.append(f"```json\n{json.dumps(scan_to_dict(scan_result, host), indent=2)}\n```")
+        else:
+            outputs.append(format_scan_output(scan_result, host, opts))
 
     return CommandResult(
-        success=True,
-        message=_format_scan_output(scan_result, host, opts),
-        data=scan_result,
+        success=successes > 0,
+        message="\n\n".join(outputs),
+        data=results if len(results) > 1 else (results[0] if results else None),
     )
 
 
@@ -386,217 +346,6 @@ async def _calculate_severity_score(ctx: SharedContext, result: ScanResult) -> N
                                     break
     except Exception:
         pass  # Fallback to base scoring if embeddings fail
-
-
-def _scan_to_dict(result: ScanResult, host: Any) -> dict[str, Any]:
-    """Convert scan result to dictionary for JSON output."""
-    return {
-        "host": host.name,
-        "hostname": host.hostname,
-        "severity_score": result.severity_score,
-        "critical_count": result.critical_count,
-        "warning_count": result.warning_count,
-        "sections": result.sections,
-        "issues": result.issues,
-    }
-
-
-def _format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None = None) -> str:
-    """Format scan result for display."""
-    lines: list[str] = []
-    show_all = opts.show_all if opts else False
-
-    # Header with severity
-    severity_icon = (
-        "🔴" if result.critical_count > 0 else ("🟡" if result.warning_count > 0 else "🟢")
-    )
-    lines.append(f"## {severity_icon} Scan: `{host.name}` ({host.hostname})")
-    lines.append("")
-    lines.append(
-        f"**Score:** {result.severity_score}/100 | **Critical:** {result.critical_count} | **Warnings:** {result.warning_count}"
-    )
-    lines.append("")
-
-    # System section
-    if "system" in result.sections:
-        sys_data = result.sections["system"]
-        lines.append("### 🖥️ System")
-        lines.append("")
-
-        if "system_info" in sys_data:
-            info = sys_data["system_info"]
-            lines.append(f"| Host | `{info.get('hostname', host.hostname)}` |")
-            lines.append(f"| OS | {info.get('os', 'N/A')} |")
-            lines.append(f"| Kernel | {info.get('kernel', 'N/A')} |")
-            lines.append(f"| Uptime | {info.get('uptime', 'N/A')} |")
-            lines.append(f"| Load | {info.get('load', 'N/A')} |")
-            lines.append("")
-
-        # Resources table
-        lines.append("**Resources:**")
-        lines.append("")
-
-        if "memory" in sys_data:
-            m = sys_data["memory"]
-            icon = "⚠️" if m.get("warning") else "✅"
-            pct = m.get("use_percent", 0)
-            bar = _progress_bar(pct)
-            lines.append(
-                f"- {icon} **Memory:** {bar} {pct}% ({m.get('used_mb', 0)}MB / {m.get('total_mb', 0)}MB)"
-            )
-
-        if "cpu" in sys_data:
-            c = sys_data["cpu"]
-            icon = "⚠️" if c.get("warning") else "✅"
-            pct = c.get("use_percent", 0)
-            bar = _progress_bar(pct)
-            lines.append(
-                f"- {icon} **CPU:** {bar} {pct}% (cores: {c.get('cpu_count', 0)}, load: {c.get('load_1m', 0)})"
-            )
-
-        if "disk" in sys_data:
-            d = sys_data["disk"]
-            icon = "⚠️" if d.get("warning") else "✅"
-            pct = d.get("use_percent", 0)
-            bar = _progress_bar(pct)
-            lines.append(
-                f"- {icon} **Disk (/):** {bar} {pct}% ({d.get('used', 'N/A')} / {d.get('size', 'N/A')})"
-            )
-
-        if "disks" in sys_data:
-            disks_data = sys_data["disks"]
-            for disk in disks_data.get("disks", [])[:5]:
-                icon = "⚠️" if disk.get("warning") else "✅"
-                pct = disk.get("use_percent", 0)
-                bar = _progress_bar(pct)
-                lines.append(f"- {icon} **Disk ({disk.get('mount', '?')}):** {bar} {pct}%")
-
-        if "docker" in sys_data:
-            docker = sys_data["docker"]
-            if docker.get("status") == "running":
-                lines.append(
-                    f"- 🐳 **Docker:** {docker.get('running_count', 0)} running, {docker.get('stopped_count', 0)} stopped"
-                )
-            elif docker.get("status") == "not-installed":
-                lines.append("- ◻️ **Docker:** not installed")
-            else:
-                lines.append("- ⚠️ **Docker:** not running")
-
-        lines.append("")
-
-    # Security section
-    if "security" in result.sections:
-        sec_data = result.sections["security"]
-        lines.append("### 🔒 Security")
-        lines.append("")
-
-        # Ports - show 10 by default, all with --show-all
-        if "ports" in sec_data and isinstance(sec_data["ports"], list):
-            ports = sec_data["ports"]
-            lines.append(f"**Open Ports:** {len(ports)}")
-            if ports:
-                max_ports = len(ports) if show_all else 10
-                port_list = []
-                for p in ports[:max_ports]:
-                    port_val = p.get("port", "?")
-                    proto = p.get("protocol", "?")
-                    process = p.get("process") or p.get("service") or ""
-                    if process:
-                        port_list.append(f"`{port_val}/{proto}` ({process})")
-                    else:
-                        port_list.append(f"`{port_val}/{proto}`")
-                lines.append("  " + " · ".join(port_list))
-                if not show_all and len(ports) > 10:
-                    lines.append(f"  *... and {len(ports) - 10} more (use --show-all)*")
-            lines.append("")
-
-        # SSH config
-        if "ssh_config" in sec_data and isinstance(sec_data["ssh_config"], dict):
-            checks = sec_data["ssh_config"].get("checks", [])
-            issues = [c for c in checks if c.get("status") != "ok"]
-            if issues:
-                lines.append(f"⚠️ **SSH Config:** {len(issues)} issue(s)")
-                for item in issues[:3]:
-                    lines.append(f"   - {item.get('setting')}: {item.get('message', '')}")
-            else:
-                lines.append("✅ **SSH Config:** secure")
-            lines.append("")
-
-        # Failed logins
-        if "failed_logins" in sec_data:
-            logins = sec_data["failed_logins"]
-            total = logins.get("total_attempts", 0)
-            if total > 0:
-                icon = "🔴" if total > 50 else ("⚠️" if total > 20 else "ℹ️")  # noqa: RUF001
-                lines.append(f"{icon} **Failed Logins (24h):** {total}")
-                top_ips = logins.get("top_ips", [])[:3]
-                if top_ips:
-                    ips = ", ".join(f"{ip['ip']} ({ip['count']})" for ip in top_ips)
-                    lines.append(f"   Top IPs: {ips}")
-            else:
-                lines.append("✅ **Failed Logins:** none in 24h")
-            lines.append("")
-
-        # Updates
-        if "updates" in sec_data:
-            updates = sec_data["updates"]
-            total = updates.get("total_updates", 0)
-            security = updates.get("security_updates", 0)
-            if total > 0:
-                icon = "🔴" if security > 5 else ("⚠️" if total > 10 else "ℹ️")  # noqa: RUF001
-                lines.append(f"{icon} **Updates:** {total} pending ({security} security)")
-            else:
-                lines.append("✅ **Updates:** system up to date")
-            lines.append("")
-
-        # Services
-        if "services" in sec_data:
-            services = sec_data["services"]
-            inactive = services.get("inactive_count", 0)
-            if inactive > 0:
-                lines.append(f"⚠️ **Services:** {inactive} critical service(s) inactive")
-                for svc in services.get("services", []):
-                    if not svc.get("active") and svc.get("status") != "not-found":
-                        lines.append(f"   - {svc['service']}: {svc['status']}")
-            else:
-                lines.append("✅ **Services:** all critical services active")
-            lines.append("")
-
-        # Users - show names and highlight issues
-        if "users" in sec_data and isinstance(sec_data["users"], dict):
-            users = sec_data["users"]
-            shell_users = users.get("users", [])
-            issues = users.get("issues", [])
-            icon = "⚠️" if issues else "ℹ️"  # noqa: RUF001
-            lines.append(f"{icon} **Users:** {len(shell_users)} with shell access")
-
-            # Show user names (max 8 by default, all with --show-all)
-            if shell_users:
-                max_users = len(shell_users) if show_all else 8
-                user_names = [
-                    u.get("username", u) if isinstance(u, dict) else str(u)
-                    for u in shell_users[:max_users]
-                ]
-                lines.append(f"   `{', '.join(user_names)}`")
-                if not show_all and len(shell_users) > 8:
-                    lines.append(f"   *... and {len(shell_users) - 8} more (use --show-all)*")
-
-            if issues:
-                for issue in issues[:3]:
-                    lines.append(f"   ⚠️ {issue}")
-            lines.append("")
-
-    return "\n".join(lines)
-
-
-def _progress_bar(percent: int | float, width: int = 10) -> str:
-    """Create a simple progress bar."""
-    filled = int(percent / 100 * width)
-    empty = width - filled
-    if percent >= 90 or percent >= 70:
-        return "█" * filled + "░" * empty
-    else:
-        return "█" * filled + "░" * empty
 
 
 @command("health", "Show system health status", "/health")

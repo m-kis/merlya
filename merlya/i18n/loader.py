@@ -79,9 +79,10 @@ class I18n:
         if language and language in SUPPORTED_LANGUAGES:
             return language
 
-        # Try system locale
+        # Try system locale (Python 3.15+ compatible)
         try:
-            sys_lang = locale.getdefaultlocale()[0]
+            # getdefaultlocale() is deprecated since Python 3.11, removed in 3.15
+            sys_lang = locale.getlocale()[0]
             if sys_lang:
                 lang_code = sys_lang.split("_")[0].lower()
                 if lang_code in SUPPORTED_LANGUAGES:

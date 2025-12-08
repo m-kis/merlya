@@ -7,75 +7,20 @@ Manages SSH connections with reuse and timeout.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from merlya.ssh.sftp import SFTPOperations
+from merlya.ssh.types import SSHConnection, SSHConnectionOptions, SSHResult
+from merlya.ssh.validation import validate_private_key as _validate_private_key
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from asyncssh import SSHClientConnection
-
-
-@dataclass
-class SSHResult:
-    """Result of an SSH command execution."""
-
-    stdout: str
-    stderr: str
-    exit_code: int
-
-
-@dataclass
-class SSHConnectionOptions:
-    """SSH connection configuration options."""
-
-    port: int = 22
-    jump_host: str | None = None
-    jump_port: int | None = None
-    jump_username: str | None = None
-    jump_private_key: str | None = None
-    connect_timeout: int | None = None
-
-
-@dataclass
-class SSHConnection:
-    """Wrapper for an SSH connection with timeout management."""
-
-    host: str
-    connection: SSHClientConnection | None
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
-    timeout: int = 600
-
-    def is_alive(self) -> bool:
-        """Check if connection is still valid."""
-        if self.connection is None:
-            return False
-        # Use timezone-aware comparison
-        now = datetime.now(UTC)
-        return not now - self.last_used > timedelta(seconds=self.timeout)
-
-    def refresh_timeout(self) -> None:
-        """Refresh the timeout."""
-        self.last_used = datetime.now(UTC)
-
-    async def close(self) -> None:
-        """Close the connection."""
-        import asyncio
-
-        if self.connection:
-            self.connection.close()
-            try:
-                await asyncio.wait_for(self.connection.wait_closed(), timeout=10.0)
-            except TimeoutError:
-                logger.warning("⚠️ Connection close timeout after 10s")
-            self.connection = None
+# Re-export types for backwards compatibility
+__all__ = ["SSHConnection", "SSHConnectionOptions", "SSHPool", "SSHResult"]
 
 
 class SSHPool(SFTPOperations):
@@ -632,39 +577,7 @@ class SSHPool(SFTPOperations):
         Returns:
             Tuple of (success, message).
         """
-        from pathlib import Path as PathlibPath
-
-        import asyncssh
-
-        path = PathlibPath(key_path).expanduser()
-
-        if not path.exists():
-            return False, f"Key file not found: {path}"
-
-        # Check permissions (should be 600 or 400)
-        mode = path.stat().st_mode & 0o777
-        if mode not in (0o600, 0o400):
-            return False, f"Key permissions too open ({oct(mode)}). Should be 600 or 400."
-
-        try:
-            # Try to read the key
-            if passphrase:
-                key = asyncssh.read_private_key(str(path), passphrase)
-            else:
-                key = asyncssh.read_private_key(str(path))
-
-            # Get key info
-            key_type = key.get_algorithm()
-            key_comment = getattr(key, "comment", None) or "no comment"
-
-            return True, f"Valid {key_type} key ({key_comment})"
-
-        except asyncssh.KeyEncryptionError:
-            return False, "Key is encrypted - passphrase required"
-        except asyncssh.KeyImportError as e:
-            return False, f"Invalid key format: {e}"
-        except Exception as e:
-            return False, f"Failed to load key: {e}"
+        return await _validate_private_key(key_path, passphrase)
 
     # =========================================================================
     # MFA/2FA Support
