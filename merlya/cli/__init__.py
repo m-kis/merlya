@@ -16,7 +16,7 @@ from loguru import logger
 # Disable tokenizers parallelism warnings in forked processes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 
 def create_parser() -> argparse.ArgumentParser:
