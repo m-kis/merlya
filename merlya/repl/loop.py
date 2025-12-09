@@ -433,43 +433,6 @@ class REPL:
         self.agent.clear_history()
 
 
-def _load_api_keys_from_keyring(ctx: SharedContext) -> None:
-    """
-    Load API keys from keyring into environment variables.
-
-    This ensures the agent can access API keys stored securely in keyring.
-    """
-    import os
-
-    from merlya.config.provider_env import ollama_requires_api_key
-
-    # Get the configured API key env variable
-    api_key_env = ctx.config.model.api_key_env
-    if not api_key_env:
-        # Fallback to provider-based env var
-        provider = ctx.config.model.provider.upper()
-        api_key_env = f"{provider}_API_KEY"
-
-    # Ollama only needs a key when using cloud endpoints
-    if ctx.config.model.provider == "ollama" and not ollama_requires_api_key(ctx.config):
-        return
-
-    # Check if already in environment
-    if os.environ.get(api_key_env):
-        logger.debug(f"🔑 API key already in environment: {api_key_env}")
-        return
-
-    # Try to load from keyring
-    from merlya.secrets import get_secret
-
-    secret_value = get_secret(api_key_env)
-    if secret_value:
-        os.environ[api_key_env] = secret_value
-        logger.debug(f"🔑 Loaded API key from keyring: {api_key_env}")
-    else:
-        logger.warning(f"⚠️ No API key found for {api_key_env}")
-
-
 async def run_repl() -> None:
     """
     Main entry point for the REPL.
@@ -480,6 +443,7 @@ async def run_repl() -> None:
     from merlya.commands import init_commands
     from merlya.core.context import SharedContext
     from merlya.health import run_startup_checks
+    from merlya.secrets import load_api_keys_from_keyring
     from merlya.setup import check_first_run, run_setup_wizard
 
     # Initialize commands
@@ -504,7 +468,7 @@ async def run_repl() -> None:
             ctx.ui.success("Configuration saved to ~/.merlya/config.yaml")
 
     # Load API keys from keyring into environment
-    _load_api_keys_from_keyring(ctx)
+    load_api_keys_from_keyring(ctx.config, ctx.secrets)
 
     # Run health checks
     ctx.ui.info(ctx.t("startup.health_checks"))

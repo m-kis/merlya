@@ -70,6 +70,9 @@ class UIConfig(BaseModel):
 class LoggingConfig(BaseModel):
     """Logging settings."""
 
+    console_level: Literal["debug", "info", "warning", "error"] = Field(
+        default="info", description="Console log level"
+    )
     file_level: Literal["debug", "info", "warning", "error"] = Field(
         default="debug", description="File log level"
     )
