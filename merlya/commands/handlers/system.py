@@ -393,11 +393,12 @@ def _show_log_config(ctx: SharedContext) -> CommandResult:
     return CommandResult(
         success=True,
         message=f"**Logging Configuration**\n\n"
-        f"  - Level: `{config.file_level}`\n"
+        f"  - Console level: `{config.console_level}`\n"
+        f"  - File level: `{config.file_level}`\n"
         f"  - Max size: `{config.max_size_mb}MB`\n"
         f"  - Retention: `{config.retention_days} days`\n"
         f"  - Max files: `{config.max_files}`\n\n"
-        "Use `/log level <debug|info|warning|error>` to change.",
+        "Use `/log level <debug|info|warning|error>` to change console level.",
     )
 
 
@@ -410,14 +411,18 @@ def _set_log_level(ctx: SharedContext, level_str: str) -> CommandResult:
             message="Valid levels: `debug`, `info`, `warning`, `error`",
         )
 
-    ctx.config.logging.file_level = level  # type: ignore[assignment]
+    ctx.config.logging.console_level = level  # type: ignore[assignment]
     ctx.config.save()
 
     from merlya.core.logging import configure_logging
 
-    configure_logging(console_level=level, file_level=level, force=True)
+    configure_logging(
+        console_level=level,
+        file_level=ctx.config.logging.file_level,
+        force=True,
+    )
 
-    return CommandResult(success=True, message=f"✅ Log level set to `{level}`")
+    return CommandResult(success=True, message=f"✅ Console log level set to `{level}`")
 
 
 def _show_recent_logs(ctx: SharedContext) -> CommandResult:

@@ -7,7 +7,6 @@ Merlya stores configuration in `~/.merlya/config.yaml`.
 ```yaml
 general:
   language: en              # en, fr
-  log_level: info           # debug, info, warning, error
   data_dir: ~/.merlya       # Base data directory
 
 model:
@@ -34,6 +33,7 @@ ui:
   syntax_highlight: true    # Enable syntax highlighting
 
 logging:
+  console_level: info       # Console log level (debug, info, warning, error)
   file_level: debug         # File log level
   max_size_mb: 10           # Max log file size
   max_files: 5              # Number of log files to keep
