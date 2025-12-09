@@ -55,4 +55,7 @@ def load_api_keys_from_keyring(
         os.environ[api_key_env] = secret_value
         logger.debug(f"🔑 Loaded API key from keyring: {api_key_env}")
     else:
-        logger.warning(f"⚠️ No API key found for {api_key_env}")
+        logger.warning(
+            f"⚠️ No API key found for {api_key_env}. "
+            f"Set via: export {api_key_env}=... or use /secret set {api_key_env}"
+        )

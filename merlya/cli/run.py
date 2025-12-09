@@ -113,6 +113,8 @@ async def run_batch(
 
             try:
                 # Route the command
+                if not ctx.router:
+                    raise RuntimeError("Router not initialized")
                 route_result = await ctx.router.route(cmd)
 
                 # Execute via agent
