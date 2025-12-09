@@ -212,7 +212,7 @@ def _config_set(config: object, key: str, value: str) -> None:
     section_map = {
         "llm": "model",
         "model": "model",
-        "logging": "general",
+        "logging": "logging",
         "general": "general",
         "ssh": "ssh",
         "router": "router",
@@ -225,14 +225,16 @@ def _config_set(config: object, key: str, value: str) -> None:
 
     section_obj = getattr(config, section_name)
 
-    # Handle special keys
+    # Handle special keys and aliases
     attr_map = {
         "provider": "provider",
         "api_key": "api_key_env",
         "api_key_env": "api_key_env",
         "model": "model",
-        "level": "log_level",
-        "log_level": "log_level",
+        "level": "console_level",  # logging.level -> logging.console_level
+        "console_level": "console_level",
+        "file_level": "file_level",
+        "log_level": "log_level",  # general.log_level (legacy)
         "language": "language",
     }
 
@@ -242,8 +244,8 @@ def _config_set(config: object, key: str, value: str) -> None:
         print(f"Error: Unknown key '{attr}' in section '{section}'", file=sys.stderr)
         sys.exit(1)
 
-    # Normalize log_level to lowercase
-    if attr_name == "log_level":
+    # Normalize log level values to lowercase
+    if attr_name in ("console_level", "file_level", "log_level"):
         value = value.lower()
 
     setattr(section_obj, attr_name, value)
@@ -268,7 +270,7 @@ def _config_get(config: object, key: str) -> None:
     section_map = {
         "llm": "model",
         "model": "model",
-        "logging": "general",
+        "logging": "logging",
         "general": "general",
         "ssh": "ssh",
         "router": "router",
@@ -286,8 +288,10 @@ def _config_get(config: object, key: str) -> None:
         "api_key": "api_key_env",
         "api_key_env": "api_key_env",
         "model": "model",
-        "level": "log_level",
-        "log_level": "log_level",
+        "level": "console_level",  # logging.level -> logging.console_level
+        "console_level": "console_level",
+        "file_level": "file_level",
+        "log_level": "log_level",  # general.log_level (legacy)
         "language": "language",
     }
 
@@ -315,7 +319,6 @@ def _config_show(config: object) -> None:
     config_dict = {
         "general": {
             "language": config.general.language,
-            "log_level": config.general.log_level,
         },
         "model": {
             "provider": config.model.provider,
@@ -329,6 +332,10 @@ def _config_show(config: object) -> None:
         "ssh": {
             "connect_timeout": config.ssh.connect_timeout,
             "pool_timeout": config.ssh.pool_timeout,
+        },
+        "logging": {
+            "console_level": config.logging.console_level,
+            "file_level": config.logging.file_level,
         },
     }
 
