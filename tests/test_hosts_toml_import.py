@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -89,7 +88,7 @@ hostname = "192.168.1.100"
 user = "www"
 tags = ["production", "web"]
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await _import_toml(mock_ctx, content)
 
         assert imported == 1
         # Check the host was created with correct data
@@ -132,7 +131,7 @@ user = "admin"
 [hosts.server]
 host = "10.0.0.1"
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await _import_toml(mock_ctx, content)
 
         assert imported == 1
 
@@ -144,7 +143,7 @@ host = "10.0.0.1"
 hostname = "10.0.0.1"
 bastion = "jump.example.com"
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await _import_toml(mock_ctx, content)
 
         assert imported == 1
         call_args = mock_ctx.hosts.create.call_args[0][0]
@@ -162,6 +161,6 @@ user = "web"
 hostname = "10.0.0.2"
 user = "db"
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await _import_toml(mock_ctx, content)
 
         assert imported == 2
