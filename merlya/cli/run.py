@@ -61,6 +61,7 @@ async def run_batch(
     from merlya.commands import init_commands
     from merlya.core.context import SharedContext
     from merlya.health import run_startup_checks
+    from merlya.secrets import load_api_keys_from_keyring
 
     # Initialize commands
     init_commands()
@@ -70,6 +71,9 @@ async def run_batch(
     ctx.auto_confirm = auto_confirm
     ctx.quiet = quiet
     ctx.output_format = output_format
+
+    # Load API keys from keyring into environment
+    load_api_keys_from_keyring(ctx.config, ctx.secrets)
 
     # Configure logging level
     if verbose:
@@ -109,6 +113,8 @@ async def run_batch(
 
             try:
                 # Route the command
+                if not ctx.router:
+                    raise RuntimeError("Router not initialized")
                 route_result = await ctx.router.route(cmd)
 
                 # Execute via agent

@@ -103,6 +103,8 @@ def detect_import_format(file_path: Path, args: list[str]) -> str:
         return "yaml"
     elif ext == ".csv":
         return "csv"
+    elif ext in (".toml", ".tml"):
+        return "toml"
     elif ext == ".conf" or file_path.name == "config":
         return "ssh"
     return "json"
@@ -137,6 +139,8 @@ async def import_hosts(
             imported, errors = await _import_json(ctx, content)
         elif file_format == "yaml":
             imported, errors = await _import_yaml(ctx, content)
+        elif file_format == "toml":
+            imported, errors = await _import_toml(ctx, content)
         elif file_format == "csv":
             imported, errors = await _import_csv(ctx, content)
         elif file_format == "ssh":
@@ -186,6 +190,67 @@ async def _import_yaml(ctx: SharedContext, content: str) -> tuple[int, list[str]
             imported += 1
         except Exception as e:
             errors.append(f"{item.get('name', '?')}: {e}")
+
+    return imported, errors
+
+
+async def _import_toml(ctx: SharedContext, content: str) -> tuple[int, list[str]]:
+    """
+    Import from TOML content.
+
+    Supports format:
+        [hosts.internal-db]
+        hostname = "10.0.1.50"
+        user = "dbadmin"
+        jump_host = "bastion.example.com"
+        port = 22
+        tags = ["database", "production"]
+    """
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    imported = 0
+    errors: list[str] = []
+    data = tomllib.loads(content)
+
+    # Handle [hosts.xxx] format
+    hosts_section = data.get("hosts", {})
+    if not hosts_section:
+        # Try flat structure where host entries are at root level
+        hosts_section = {k: v for k, v in data.items() if isinstance(v, dict)}
+
+    for name, item in hosts_section.items():
+        if not isinstance(item, dict):
+            continue
+        try:
+            host_data = {
+                "name": name,
+                "hostname": item.get("hostname") or item.get("host"),
+                "port": item.get("port", DEFAULT_SSH_PORT),
+                "username": item.get("user") or item.get("username"),
+                "private_key": item.get("private_key") or item.get("key"),
+                "jump_host": item.get("jump_host") or item.get("bastion"),
+                "tags": item.get("tags", []),
+            }
+
+            if not host_data["hostname"]:
+                errors.append(f"{name}: missing hostname")
+                continue
+
+            # Check if exists
+            existing = await ctx.hosts.get_by_name(name)
+            if existing:
+                errors.append(f"{name}: already exists (skipped)")
+                continue
+
+            host = create_host_from_dict(host_data)
+            await ctx.hosts.create(host)
+            imported += 1
+            logger.debug(f"🖥️ Imported host from TOML: {name}")
+        except Exception as e:
+            errors.append(f"{name}: {e}")
 
     return imported, errors
 

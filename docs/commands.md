@@ -78,6 +78,46 @@ Remove a tag from a host.
 /hosts untag web01 staging
 ```
 
+### `/hosts import <file>`
+Import hosts from a file.
+
+Supported formats:
+
+- **JSON** - Array of host objects
+- **YAML** - List of hosts
+- **TOML** - Host definitions with `[hosts.name]` sections
+- **CSV** - Columns: name, hostname, port, username, tags
+- **SSH config** - `~/.ssh/config` format
+
+```bash
+/hosts import hosts.toml
+/hosts import ~/.ssh/config
+/hosts import inventory.yaml
+```
+
+**TOML Example:**
+
+```toml
+[hosts.internal-db]
+hostname = "10.0.1.50"
+user = "dbadmin"
+jump_host = "bastion.example.com"
+port = 22
+tags = ["database", "production"]
+
+[hosts.bastion]
+hostname = "bastion.example.com"
+user = "admin"
+```
+
+### `/hosts export <file>`
+Export hosts to a file.
+
+```bash
+/hosts export hosts.json
+/hosts export backup.yaml
+```
+
 ## Scanning
 
 ### `/scan <host> [options]`
