@@ -7,16 +7,21 @@ from merlya.config.models import (
     GeneralConfig,
     LLMConfig,
     LoggingConfig,
+    PolicyConfig,
     RouterConfig,
     SSHConfig,
     UIConfig,
 )
+from merlya.config.policies import EffectivePolicy, PolicyManager
 
 __all__ = [
     "Config",
+    "EffectivePolicy",
     "GeneralConfig",
     "LLMConfig",
     "LoggingConfig",
+    "PolicyConfig",
+    "PolicyManager",
     "RouterConfig",
     "SSHConfig",
     "UIConfig",

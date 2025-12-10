@@ -17,6 +17,8 @@ from merlya.config.models import (
     GeneralConfig,
     LLMConfig,
     LoggingConfig,
+    MCPConfig,
+    PolicyConfig,
     RouterConfig,
     SSHConfig,
     UIConfig,
@@ -37,6 +39,8 @@ class Config(BaseModel):
     ssh: SSHConfig = Field(default_factory=SSHConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
+    policy: PolicyConfig = Field(default_factory=PolicyConfig)
 
     # Internal state
     _path: Path | None = None
