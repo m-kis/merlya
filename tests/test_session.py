@@ -315,3 +315,94 @@ class TestComplexityFactors:
         assert d["has_logs"] is True
         assert d["router_confidence"] == 0.8
         assert len(d) == 15  # All fields present
+
+
+class TestSessionManagerValidation:
+    """Tests for SessionManager validation (N7: coverage gaps)."""
+
+    @pytest.fixture
+    def manager(self):
+        """Create a session manager."""
+        from merlya.session.manager import SessionManager
+
+        return SessionManager(db=None, model="gpt-4")
+
+    @pytest.mark.asyncio
+    async def test_load_session_invalid_uuid(self, manager):
+        """Test that invalid UUID raises ValueError."""
+        from merlya.session.manager import SessionManager
+
+        manager = SessionManager(db=None)
+
+        # Invalid UUID should raise ValueError
+        with pytest.raises(ValueError, match="Invalid session ID format"):
+            await manager.load_session("not-a-valid-uuid")
+
+        with pytest.raises(ValueError, match="Invalid session ID format"):
+            await manager.load_session("12345")
+
+    @pytest.mark.asyncio
+    async def test_load_session_valid_uuid_no_db(self, manager):
+        """Test that valid UUID with no DB returns None."""
+        result = await manager.load_session("12345678-1234-1234-1234-123456789012")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_start_session_creates_state(self, manager):
+        """Test that start_session creates a valid session state."""
+        session = await manager.start_session()
+
+        assert session is not None
+        assert session.id is not None
+        assert len(session.id) == 36  # UUID format
+        assert session.token_count == 0
+        assert session.message_count == 0
+
+
+class TestSafeCompressionRatio:
+    """Tests for safe compression ratio calculation (N5)."""
+
+    def test_compression_ratio_normal(self):
+        """Test normal compression ratio calculation."""
+        from merlya.session.summarizer import _safe_compression_ratio
+
+        ratio = _safe_compression_ratio(100, 1000)
+        assert ratio == 0.1
+
+    def test_compression_ratio_zero_original(self):
+        """Test compression ratio with zero original tokens."""
+        from merlya.session.summarizer import _safe_compression_ratio
+
+        ratio = _safe_compression_ratio(100, 0)
+        assert ratio == 1.0
+
+    def test_compression_ratio_negative_original(self):
+        """Test compression ratio with negative original tokens."""
+        from merlya.session.summarizer import _safe_compression_ratio
+
+        ratio = _safe_compression_ratio(100, -10)
+        assert ratio == 1.0
+
+
+class TestTokenEstimatorConstants:
+    """Tests for token estimator constants (N3)."""
+
+    def test_constants_imported(self):
+        """Test that constants are accessible."""
+        from merlya.session.token_estimator import (
+            CODE_CHARS_PER_TOKEN,
+            COMPLETION_RATIO,
+            DEFAULT_CHARS_PER_TOKEN,
+            DEFAULT_CONTEXT_LIMIT,
+            JSON_CHARS_PER_TOKEN,
+            MAX_COMPLETION_ESTIMATE,
+            MESSAGE_OVERHEAD_TOKENS,
+        )
+
+        assert DEFAULT_CHARS_PER_TOKEN == 4.0
+        assert CODE_CHARS_PER_TOKEN == 3.0
+        assert JSON_CHARS_PER_TOKEN == 2.5
+        assert MESSAGE_OVERHEAD_TOKENS == 4
+        assert COMPLETION_RATIO == 0.25
+        assert MAX_COMPLETION_ESTIMATE == 2000
+        assert DEFAULT_CONTEXT_LIMIT == 8192

@@ -9,12 +9,22 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
+
+
+# Constants (N3)
+DEFAULT_CHARS_PER_TOKEN = 4.0  # Conservative estimate for plain text
+CODE_CHARS_PER_TOKEN = 3.0  # Code is often more token-dense
+JSON_CHARS_PER_TOKEN = 2.5  # JSON has many small tokens
+MESSAGE_OVERHEAD_TOKENS = 4  # Tokens added per message (role, formatting)
+COMPLETION_RATIO = 0.25  # Estimate completion as 25% of prompt
+MAX_COMPLETION_ESTIMATE = 2000  # Cap completion estimate
+DEFAULT_CONTEXT_LIMIT = 8192  # Default if model not found
 
 
 @dataclass
@@ -34,12 +44,12 @@ class TokenEstimator:
 
     Uses tiktoken for accurate counts when available,
     falls back to heuristic estimation otherwise.
-    """
 
-    # Average tokens per character for different content types
-    CHARS_PER_TOKEN = 4  # Conservative estimate
-    CODE_CHARS_PER_TOKEN = 3  # Code is often more token-dense
-    JSON_CHARS_PER_TOKEN = 2.5  # JSON has many small tokens
+    Example:
+        >>> estimator = TokenEstimator(model="gpt-4")
+        >>> tokens = estimator.estimate_tokens("Hello, world!")
+        >>> print(f"Estimated tokens: {tokens}")
+    """
 
     # Model-specific context limits
     MODEL_LIMITS = {
@@ -115,19 +125,17 @@ class TokenEstimator:
         has_json = "{" in text and "}" in text and '"' in text
 
         if has_json:
-            chars_per_token = self.JSON_CHARS_PER_TOKEN
+            chars_per_token = JSON_CHARS_PER_TOKEN
         elif has_code:
-            chars_per_token = self.CODE_CHARS_PER_TOKEN
+            chars_per_token = CODE_CHARS_PER_TOKEN
         else:
-            chars_per_token = self.CHARS_PER_TOKEN
+            chars_per_token = DEFAULT_CHARS_PER_TOKEN
 
         # Base estimate
         base_tokens = len(text) / chars_per_token
 
         # Add overhead for special tokens, formatting
-        overhead = 4  # Start/end tokens
-
-        return int(base_tokens + overhead)
+        return int(base_tokens + MESSAGE_OVERHEAD_TOKENS)
 
     def estimate_messages(self, messages: list[ModelMessage]) -> TokenEstimate:
         """
@@ -138,6 +146,14 @@ class TokenEstimator:
 
         Returns:
             TokenEstimate with breakdown.
+
+        Example:
+            >>> from dataclasses import dataclass
+            >>> @dataclass
+            ... class MockMsg:
+            ...     content: str
+            >>> msgs = [MockMsg(content="Hello"), MockMsg(content="World")]
+            >>> estimate = estimator.estimate_messages(msgs)
         """
         prompt_tokens = 0
 
@@ -147,10 +163,13 @@ class TokenEstimator:
             prompt_tokens += self.estimate_tokens(content)
 
             # Add message overhead (role, formatting)
-            prompt_tokens += 4
+            prompt_tokens += MESSAGE_OVERHEAD_TOKENS
 
         # Estimate completion (typically 20-30% of prompt for assistant)
-        completion_estimate = min(int(prompt_tokens * 0.25), 2000)
+        completion_estimate = min(
+            int(prompt_tokens * COMPLETION_RATIO),
+            MAX_COMPLETION_ESTIMATE,
+        )
 
         return TokenEstimate(
             total_tokens=prompt_tokens + completion_estimate,
@@ -169,12 +188,15 @@ class TokenEstimator:
                 return content
             if isinstance(content, list):
                 # Multi-part content
-                parts = []
+                parts: list[str] = []
                 for part in content:
-                    if hasattr(part, "text"):
-                        parts.append(part.text)
-                    elif isinstance(part, str):
+                    # Type-safe extraction with None check
+                    if isinstance(part, str):
                         parts.append(part)
+                    elif hasattr(part, "text"):
+                        text = getattr(part, "text", None)
+                        if isinstance(text, str):
+                            parts.append(text)
                 return " ".join(parts)
         return str(msg)
 
@@ -187,6 +209,11 @@ class TokenEstimator:
 
         Returns:
             Maximum context tokens.
+
+        Example:
+            >>> estimator = TokenEstimator()
+            >>> limit = estimator.get_context_limit("gpt-4")
+            >>> print(f"Context limit: {limit}")
         """
         model_name = model or self.model
 
@@ -201,7 +228,7 @@ class TokenEstimator:
                 return limit
 
         # Default conservative limit
-        return 8192
+        return DEFAULT_CONTEXT_LIMIT
 
     def estimate_remaining(
         self,

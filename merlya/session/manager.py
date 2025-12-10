@@ -7,12 +7,23 @@ Integrates TokenEstimator, ContextTierPredictor, and SessionSummarizer.
 
 from __future__ import annotations
 
+import asyncio
+import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+
+# UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+# Session limits
+MAX_MESSAGES_IN_MEMORY = 1000
 
 from merlya.session.context_tier import (
     TIER_CONFIG,
@@ -30,6 +41,11 @@ if TYPE_CHECKING:
     from merlya.router.classifier import RouterResult
 
 
+def _utc_now() -> datetime:
+    """Return current UTC datetime (timezone-aware)."""
+    return datetime.now(timezone.utc)
+
+
 @dataclass
 class SessionState:
     """Current session state."""
@@ -41,8 +57,8 @@ class SessionState:
     summary: str | None = None
     token_count: int = 0
     message_count: int = 0
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=_utc_now)
+    updated_at: datetime = field(default_factory=_utc_now)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for persistence."""
@@ -106,6 +122,9 @@ class SessionManager:
         # Current session
         self._session: SessionState | None = None
 
+        # Lock for concurrent access (M3)
+        self._lock = asyncio.Lock()
+
         logger.debug(f"📋 SessionManager initialized (model={model})")
 
     @property
@@ -140,6 +159,15 @@ class SessionManager:
         Returns:
             New SessionState.
         """
+        async with self._lock:
+            return await self._start_session_unlocked(conversation_id, tier)
+
+    async def _start_session_unlocked(
+        self,
+        conversation_id: str | None = None,
+        tier: ContextTier | None = None,
+    ) -> SessionState:
+        """Internal start_session without lock (for use within locked contexts)."""
         session_id = str(uuid.uuid4())
 
         self._session = SessionState(
@@ -168,38 +196,47 @@ class SessionManager:
             message: Message to add.
             router_result: Optional router result for tier prediction.
         """
-        if not self._session:
-            await self.start_session()
+        async with self._lock:
+            if not self._session:
+                await self._start_session_unlocked()
 
-        assert self._session is not None
+            assert self._session is not None
 
-        # Add message
-        self._session.messages.append(message)
-        self._session.message_count += 1
-        self._session.updated_at = datetime.now()
-
-        # Update token count
-        content = self._extract_content(message)
-        tokens = self.token_estimator.estimate_tokens(content)
-        self._session.token_count += tokens
-
-        # Check if tier adjustment needed (first message)
-        if self._session.message_count == 1 and router_result:
-            new_tier = await self.tier_predictor.predict(content, router_result)
-            if new_tier != self._session.tier:
-                logger.info(
-                    f"🎯 Tier adjusted: {self._session.tier.value} → {new_tier.value}"
+            # Check memory limit (M4)
+            if len(self._session.messages) >= MAX_MESSAGES_IN_MEMORY:
+                logger.warning(
+                    f"⚠️ Memory limit reached ({MAX_MESSAGES_IN_MEMORY} messages), "
+                    "forcing summarization"
                 )
-                self._session.tier = new_tier
+                await self._trigger_summarization()
 
-        # Check if summarization needed
-        if self._should_summarize():
-            await self._trigger_summarization()
+            # Add message
+            self._session.messages.append(message)
+            self._session.message_count += 1
+            self._session.updated_at = _utc_now()
 
-        logger.debug(
-            f"📋 Message added: {self._session.message_count} messages, "
-            f"{self._session.token_count} tokens"
-        )
+            # Update token count
+            content = self._extract_content(message)
+            tokens = self.token_estimator.estimate_tokens(content)
+            self._session.token_count += tokens
+
+            # Check if tier adjustment needed (first message)
+            if self._session.message_count == 1 and router_result:
+                new_tier = await self.tier_predictor.predict(content, router_result)
+                if new_tier != self._session.tier:
+                    logger.info(
+                        f"🎯 Tier adjusted: {self._session.tier.value} → {new_tier.value}"
+                    )
+                    self._session.tier = new_tier
+
+            # Check if summarization needed
+            if self._should_summarize():
+                await self._trigger_summarization()
+
+            logger.debug(
+                f"📋 Message added: {self._session.message_count} messages, "
+                f"{self._session.token_count} tokens"
+            )
 
     def _extract_content(self, msg: ModelMessage) -> str:
         """Extract text content from message."""
@@ -208,12 +245,15 @@ class SessionManager:
             if isinstance(content, str):
                 return content
             if isinstance(content, list):
-                parts = []
+                parts: list[str] = []
                 for part in content:
-                    if hasattr(part, "text"):
-                        parts.append(part.text)
-                    elif isinstance(part, str):
+                    # Type-safe extraction with None check
+                    if isinstance(part, str):
                         parts.append(part)
+                    elif hasattr(part, "text"):
+                        text = getattr(part, "text", None)
+                        if isinstance(text, str):
+                            parts.append(text)
                 return " ".join(parts)
         return str(msg)
 
@@ -375,28 +415,28 @@ class SessionManager:
             return
 
         try:
-            # Use INSERT OR REPLACE to avoid check-then-act race condition
-            await self.db.execute(
-                """
-                INSERT OR REPLACE INTO sessions (
-                    id, conversation_id, summary, token_count, message_count,
-                    context_tier, created_at, updated_at
+            # Use transaction context manager for automatic rollback on error
+            async with self.db.transaction():
+                await self.db.execute(
+                    """
+                    INSERT OR REPLACE INTO sessions (
+                        id, conversation_id, summary, token_count, message_count,
+                        context_tier, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        self._session.id,
+                        self._session.conversation_id,
+                        self._session.summary,
+                        self._session.token_count,
+                        self._session.message_count,
+                        self._session.tier.value,
+                        self._session.created_at,
+                        _utc_now(),
+                    ),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    self._session.id,
-                    self._session.conversation_id,
-                    self._session.summary,
-                    self._session.token_count,
-                    self._session.message_count,
-                    self._session.tier.value,
-                    self._session.created_at,
-                    datetime.now(),
-                ),
-            )
-
-            await self.db.connection.commit()
+                # Commit is handled by transaction context manager
 
         except Exception as e:
             logger.warning(f"⚠️ Failed to persist session: {e}")
@@ -410,7 +450,14 @@ class SessionManager:
 
         Returns:
             SessionState or None if not found.
+
+        Raises:
+            ValueError: If session_id is not a valid UUID.
         """
+        # M1: Validate UUID format
+        if not UUID_PATTERN.match(session_id):
+            raise ValueError(f"Invalid session ID format: {session_id}")
+
         if not self.db:
             return None
 
@@ -448,8 +495,12 @@ class SessionManager:
             logger.info(f"📋 Session loaded: {session_id[:8]}...")
             return self._session
 
-        except Exception as e:
-            logger.error(f"❌ Failed to load session: {e}")
+        # M2: Catch specific exceptions
+        except (KeyError, TypeError) as e:
+            logger.error(f"❌ Invalid session data: {e}")
+            return None
+        except OSError as e:
+            logger.error(f"❌ Database I/O error: {e}")
             return None
 
     async def end_session(self) -> SummaryResult | None:

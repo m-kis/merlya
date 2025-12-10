@@ -17,6 +17,55 @@ if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
 
 
+# Pre-compiled patterns for performance and ReDoS protection (M6)
+_KEY_PATTERNS_RAW = [
+    r"@\w{1,64}",  # Host references (limited length)
+    r"\b(?:error|failed|success|completed)\b",  # Status indicators
+    r"\b(?:executed|ran|checked|found)\b",  # Action verbs
+    r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",  # IP addresses
+    r"/[\w/.-]{1,256}",  # Paths (limited length)
+]
+
+COMPILED_KEY_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(p, re.IGNORECASE) for p in _KEY_PATTERNS_RAW
+]
+
+# Action extraction patterns (pre-compiled)
+_ACTION_PATTERNS_RAW = [
+    r"\b(executed|ran|checked|found|created|deleted|updated|fixed)\b",
+    r"(ssh\s+\S{1,64}\s+to\s+@\w{1,64})",
+    r"\b(installed|configured|restarted|stopped|started)\b",
+]
+
+COMPILED_ACTION_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(p, re.IGNORECASE) for p in _ACTION_PATTERNS_RAW
+]
+
+# Entity extraction patterns (pre-compiled)
+HOST_PATTERN = re.compile(r"@(\w{1,64})")
+IP_PATTERN = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b")
+SERVICE_PATTERN = re.compile(
+    r"\b(nginx|mysql|postgres|redis|docker)\b", re.IGNORECASE
+)
+
+# Sentence splitting pattern
+SENTENCE_SPLIT_PATTERN = re.compile(r"[.!?\n]+")
+
+# Constants (N3)
+DEFAULT_MAX_SUMMARY_TOKENS = 500
+DEFAULT_MAX_SENTENCES = 10
+DEFAULT_MAX_ENTITIES = 20
+DEFAULT_MAX_ACTIONS = 10
+CHARS_PER_TOKEN = 4  # Approximate
+
+
+def _safe_compression_ratio(summary_tokens: int, original_tokens: int) -> float:
+    """Calculate compression ratio safely (N5: avoid division by zero)."""
+    if original_tokens <= 0:
+        return 1.0
+    return summary_tokens / original_tokens
+
+
 @dataclass
 class SummaryResult:
     """Result of summarization."""
@@ -40,21 +89,12 @@ class SessionSummarizer:
     3. Smart truncation (last resort)
     """
 
-    # Key patterns to preserve in summaries
-    KEY_PATTERNS = [
-        r"@\w+",  # Host references
-        r"error|failed|success|completed",  # Status indicators
-        r"executed|ran|checked|found",  # Action verbs
-        r"\d+\.\d+\.\d+\.\d+",  # IP addresses
-        r"/[\w/.-]+",  # Paths
-    ]
-
     def __init__(
         self,
         tier: str = "balanced",
         fallback_model: str | None = None,
         main_model: str | None = None,
-        max_summary_tokens: int = 500,
+        max_summary_tokens: int = DEFAULT_MAX_SUMMARY_TOKENS,
     ) -> None:
         """
         Initialize the summarizer.
@@ -64,6 +104,11 @@ class SessionSummarizer:
             fallback_model: Mini-LLM for summarization.
             main_model: Main LLM (last resort).
             max_summary_tokens: Target summary size.
+
+        Example:
+            >>> summarizer = SessionSummarizer(tier="balanced")
+            >>> result = await summarizer.summarize(messages)
+            >>> print(f"Compressed to {result.summary_tokens} tokens")
         """
         self.tier = tier
         self.fallback_model = fallback_model
@@ -84,7 +129,7 @@ class SessionSummarizer:
 
     def _estimate_tokens(self, text: str) -> int:
         """Quick token estimation."""
-        return len(text) // 4  # ~4 chars per token
+        return len(text) // CHARS_PER_TOKEN
 
     def _extract_content(self, msg: ModelMessage) -> tuple[str, str]:
         """
@@ -97,23 +142,31 @@ class SessionSummarizer:
         content = ""
 
         if hasattr(msg, "kind"):
-            role = msg.kind
+            kind = getattr(msg, "kind", None)
+            if isinstance(kind, str):
+                role = kind
 
         if hasattr(msg, "content"):
-            if isinstance(msg.content, str):
-                content = msg.content
-            elif isinstance(msg.content, list):
-                parts = []
-                for part in msg.content:
-                    if hasattr(part, "text"):
-                        parts.append(part.text)
-                    elif isinstance(part, str):
+            msg_content = msg.content
+            if isinstance(msg_content, str):
+                content = msg_content
+            elif isinstance(msg_content, list):
+                parts: list[str] = []
+                for part in msg_content:
+                    # Type-safe extraction with None check
+                    if isinstance(part, str):
                         parts.append(part)
+                    elif hasattr(part, "text"):
+                        text = getattr(part, "text", None)
+                        if isinstance(text, str):
+                            parts.append(text)
                 content = " ".join(parts)
 
         return role, content
 
-    def _extract_key_sentences(self, text: str, max_sentences: int = 10) -> list[str]:
+    def _extract_key_sentences(
+        self, text: str, max_sentences: int = DEFAULT_MAX_SENTENCES
+    ) -> list[str]:
         """
         Extract key sentences from text.
 
@@ -124,8 +177,8 @@ class SessionSummarizer:
         Returns:
             List of key sentences.
         """
-        # Split into sentences
-        sentences = re.split(r"[.!?\n]+", text)
+        # Split into sentences using pre-compiled pattern
+        sentences = SENTENCE_SPLIT_PATTERN.split(text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
         # Score sentences by key patterns
@@ -134,9 +187,9 @@ class SessionSummarizer:
         for sentence in sentences:
             score = 0.0
 
-            # Check for key patterns
-            for pattern in self.KEY_PATTERNS:
-                if re.search(pattern, sentence, re.IGNORECASE):
+            # Check for key patterns (using pre-compiled)
+            for pattern in COMPILED_KEY_PATTERNS:
+                if pattern.search(sentence):
                     score += 0.2
 
             # Prefer shorter sentences (more likely to be key info)
@@ -144,11 +197,12 @@ class SessionSummarizer:
                 score += 0.1
 
             # Prefer sentences with specific indicators
-            if any(w in sentence.lower() for w in ["host", "server", "service"]):
+            sentence_lower = sentence.lower()
+            if any(w in sentence_lower for w in ["host", "server", "service"]):
                 score += 0.15
-            if any(w in sentence.lower() for w in ["error", "warning", "failed"]):
+            if any(w in sentence_lower for w in ["error", "warning", "failed"]):
                 score += 0.2
-            if any(w in sentence.lower() for w in ["success", "completed", "done"]):
+            if any(w in sentence_lower for w in ["success", "completed", "done"]):
                 score += 0.15
 
             scored.append((score, sentence))
@@ -164,44 +218,37 @@ class SessionSummarizer:
         for msg in messages:
             _, content = self._extract_content(msg)
 
-            # Extract hosts
-            hosts = re.findall(r"@(\w+)", content)
+            # Extract hosts using pre-compiled pattern
+            hosts = HOST_PATTERN.findall(content)
             entities.update(hosts)
 
-            # Extract IPs
-            ips = re.findall(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", content)
+            # Extract IPs using pre-compiled pattern
+            ips = IP_PATTERN.findall(content)
             entities.update(ips)
 
-            # Extract services
-            services = re.findall(
-                r"\b(nginx|mysql|postgres|redis|docker)\b", content, re.IGNORECASE
-            )
+            # Extract services using pre-compiled pattern
+            services = SERVICE_PATTERN.findall(content)
             entities.update(s.lower() for s in services)
 
-        return list(entities)[:20]
+        return list(entities)[:DEFAULT_MAX_ENTITIES]
 
     def _extract_actions(self, messages: list[ModelMessage]) -> list[str]:
         """Extract key actions from messages."""
         actions: list[str] = []
 
-        action_patterns = [
-            r"(executed|ran|checked|found|created|deleted|updated|fixed)",
-            r"(ssh.*?to.*?@\w+)",
-            r"(installed|configured|restarted|stopped|started)",
-        ]
-
         for msg in messages:
             _, content = self._extract_content(msg)
 
-            for pattern in action_patterns:
-                matches = re.findall(pattern, content, re.IGNORECASE)
+            # Use pre-compiled patterns
+            for pattern in COMPILED_ACTION_PATTERNS:
+                matches = pattern.findall(content)
                 for match in matches:
                     if isinstance(match, tuple):
                         actions.append(match[0])
                     else:
                         actions.append(match)
 
-        return list(dict.fromkeys(actions))[:10]  # Unique, preserve order
+        return list(dict.fromkeys(actions))[:DEFAULT_MAX_ACTIONS]  # Unique, preserve order
 
     async def summarize(
         self,
@@ -254,7 +301,7 @@ class SessionSummarizer:
                 summary=summary,
                 original_tokens=original_tokens,
                 summary_tokens=summary_tokens,
-                compression_ratio=summary_tokens / max(original_tokens, 1),
+                compression_ratio=_safe_compression_ratio(summary_tokens, original_tokens),
                 method="extractive",
                 key_entities=key_entities,
                 key_actions=key_actions,
@@ -274,7 +321,7 @@ class SessionSummarizer:
                         summary=summary,
                         original_tokens=original_tokens,
                         summary_tokens=summary_tokens,
-                        compression_ratio=summary_tokens / max(original_tokens, 1),
+                        compression_ratio=_safe_compression_ratio(summary_tokens, original_tokens),
                         method="llm_fallback",
                         key_entities=key_entities,
                         key_actions=key_actions,
@@ -290,7 +337,7 @@ class SessionSummarizer:
             summary=summary,
             original_tokens=original_tokens,
             summary_tokens=summary_tokens,
-            compression_ratio=summary_tokens / max(original_tokens, 1),
+            compression_ratio=_safe_compression_ratio(summary_tokens, original_tokens),
             method="truncate",
             key_entities=key_entities,
             key_actions=key_actions,
@@ -332,7 +379,7 @@ class SessionSummarizer:
         Returns:
             Truncated text.
         """
-        max_chars = self.max_summary_tokens * 4  # ~4 chars per token
+        max_chars = self.max_summary_tokens * CHARS_PER_TOKEN
 
         # Start with metadata
         header_parts = []
