@@ -167,6 +167,32 @@ class Database:
                 PRIMARY KEY (host_id, scan_type)
             );
 
+            -- Raw logs table (for storing command outputs)
+            CREATE TABLE IF NOT EXISTS raw_logs (
+                id TEXT PRIMARY KEY,
+                host_id TEXT,
+                command TEXT NOT NULL,
+                output TEXT NOT NULL,
+                exit_code INTEGER,
+                line_count INTEGER NOT NULL,
+                byte_size INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                FOREIGN KEY (host_id) REFERENCES hosts(id)
+            );
+
+            -- Sessions table (for context management)
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                summary TEXT,
+                token_count INTEGER DEFAULT 0,
+                context_tier TEXT DEFAULT 'STANDARD',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+            );
+
             -- Config table (for internal state)
             CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY,
@@ -180,6 +206,11 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_scan_cache_expires ON scan_cache(expires_at);
             CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_variables_is_env ON variables(is_env);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON raw_logs(host_id);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_created ON raw_logs(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_expires ON raw_logs(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_sessions_conversation ON sessions(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
             """
         )
         await conn.commit()
