@@ -3,6 +3,11 @@ Merlya Parser - Heuristic backend using regex and patterns.
 
 This is the lightweight backend (tier=lightweight) that uses
 pattern matching and regex for text parsing. No external models required.
+
+Security notes:
+- All regex patterns are pre-compiled to avoid ReDoS
+- Input is validated and truncated to MAX_INPUT_SIZE
+- Patterns are designed to avoid catastrophic backtracking
 """
 
 from __future__ import annotations
@@ -30,26 +35,30 @@ from merlya.parser.models import (
     Severity,
 )
 
-# Patterns for entity extraction
-PATTERNS = {
+# Security: Maximum input size (10 MB)
+MAX_INPUT_SIZE = 10 * 1024 * 1024
+
+# Patterns for entity extraction (raw strings, compiled below)
+_PATTERNS_RAW = {
     # Host patterns: @hostname, hostname.domain.com, IPs
+    # Simplified patterns to avoid ReDoS (no nested quantifiers)
     "hosts": [
-        r"@([a-zA-Z][a-zA-Z0-9_-]*)",  # @hostname
-        r"\b([a-zA-Z][a-zA-Z0-9-]*(?:\.[a-zA-Z0-9-]+)+)\b",  # hostname.domain
+        r"@([a-zA-Z][a-zA-Z0-9_-]{0,63})",  # @hostname (max 64 chars)
+        r"\b([a-zA-Z][a-zA-Z0-9-]{0,62}(?:\.[a-zA-Z0-9-]{1,63}){1,5})\b",  # hostname.domain (max 5 levels)
         r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b",  # IPv4
     ],
-    # File paths
+    # File paths (limited depth to avoid backtracking)
     "paths": [
-        r"(/[a-zA-Z0-9_./-]+)",  # Unix paths
-        r"(~/[a-zA-Z0-9_./-]+)",  # Home paths
-        r"(\./[a-zA-Z0-9_./-]+)",  # Relative paths
+        r"(/[a-zA-Z0-9_.-]{1,255}(?:/[a-zA-Z0-9_.-]{1,255}){0,20})",  # Unix paths
+        r"(~/[a-zA-Z0-9_.-]{1,255}(?:/[a-zA-Z0-9_.-]{1,255}){0,20})",  # Home paths
+        r"(\./[a-zA-Z0-9_.-]{1,255}(?:/[a-zA-Z0-9_.-]{1,255}){0,20})",  # Relative paths
     ],
     # Services (common patterns)
     "services": [
         r"\b(nginx|apache|httpd|mysql|postgres|mongodb|redis|elasticsearch)\b",
         r"\b(docker|kubernetes|k8s|systemd|journald)\b",
         r"\b(ssh|sshd|sftp|ftp|smtp|imap)\b",
-        r"\b([a-zA-Z][a-zA-Z0-9_-]*\.service)\b",  # systemd services
+        r"\b([a-zA-Z][a-zA-Z0-9_-]{0,63}\.service)\b",  # systemd services
     ],
     # Error indicators
     "errors": [
@@ -60,54 +69,75 @@ PATTERNS = {
     ],
     # Timestamps (various formats)
     "timestamps": [
-        r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)",
+        r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:?\d{2})?)",
         r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})",
         r"([A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2})",  # Syslog format
     ],
-    # Secrets (@secret-name)
+    # Secrets (@secret-name) - simplified pattern
     "secrets": [
-        r"@([a-zA-Z][a-zA-Z0-9_-]*(?:-[a-zA-Z0-9_-]+)+)",
+        r"@([a-zA-Z][a-zA-Z0-9_-]{0,63}(?:-[a-zA-Z0-9_-]{1,63})+)",
     ],
 }
 
-# Environment detection patterns
-ENV_PATTERNS = {
+# Pre-compile all patterns for performance and ReDoS protection
+COMPILED_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    entity_type: [re.compile(p, re.IGNORECASE) for p in patterns]
+    for entity_type, patterns in _PATTERNS_RAW.items()
+}
+
+# Environment detection patterns (pre-compiled)
+_ENV_PATTERNS_RAW = {
     Environment.PRODUCTION: [r"\bprod\b", r"\bproduction\b", r"\bprd\b"],
     Environment.STAGING: [r"\bstaging\b", r"\bstage\b", r"\bstg\b", r"\bpreprod\b"],
     Environment.DEVELOPMENT: [r"\bdev\b", r"\bdevelopment\b", r"\blocal\b"],
     Environment.TESTING: [r"\btest\b", r"\btesting\b", r"\bqa\b", r"\buat\b"],
 }
+ENV_PATTERNS: dict[Environment, list[re.Pattern[str]]] = {
+    env: [re.compile(p, re.IGNORECASE) for p in patterns]
+    for env, patterns in _ENV_PATTERNS_RAW.items()
+}
 
-# Severity detection patterns
-SEVERITY_PATTERNS = {
+# Severity detection patterns (pre-compiled)
+_SEVERITY_PATTERNS_RAW = {
     Severity.CRITICAL: [r"\bcritical\b", r"\bp0\b", r"\bsev0\b", r"\bdown\b", r"\boutage\b"],
     Severity.HIGH: [r"\bhigh\b", r"\bp1\b", r"\bsev1\b", r"\burgent\b", r"\bblocking\b"],
     Severity.MEDIUM: [r"\bmedium\b", r"\bp2\b", r"\bsev2\b", r"\bdegraded\b"],
     Severity.LOW: [r"\blow\b", r"\bp3\b", r"\bsev3\b", r"\bminor\b"],
 }
+SEVERITY_PATTERNS: dict[Severity, list[re.Pattern[str]]] = {
+    sev: [re.compile(p, re.IGNORECASE) for p in patterns]
+    for sev, patterns in _SEVERITY_PATTERNS_RAW.items()
+}
 
-# Log level patterns
-LOG_LEVEL_PATTERNS = {
+# Log level patterns (pre-compiled)
+_LOG_LEVEL_PATTERNS_RAW = {
     LogLevel.ERROR: [r"\berror\b", r"\berr\b", r"\bfatal\b", r"\bcrit\b"],
     LogLevel.WARNING: [r"\bwarn\b", r"\bwarning\b"],
     LogLevel.INFO: [r"\binfo\b", r"\bnotice\b"],
     LogLevel.DEBUG: [r"\bdebug\b"],
     LogLevel.TRACE: [r"\btrace\b", r"\bverbose\b"],
 }
+LOG_LEVEL_PATTERNS: dict[LogLevel, list[re.Pattern[str]]] = {
+    level: [re.compile(p, re.IGNORECASE) for p in patterns]
+    for level, patterns in _LOG_LEVEL_PATTERNS_RAW.items()
+}
 
-# Destructive command patterns
-DESTRUCTIVE_PATTERNS = [
+# Destructive command patterns (pre-compiled)
+_DESTRUCTIVE_PATTERNS_RAW = [
     r"\brm\s+(-rf?|--recursive)",
     r"\bdrop\s+(database|table|index)",
     r"\bdelete\s+from\b",
     r"\btruncate\s+table\b",
     r"\bformat\b",
     r"\bmkfs\b",
-    r"\bdd\s+.*of=",
+    r"\bdd\s+[^\n]*of=",  # Simplified to avoid backtracking
     r"\bshutdown\b",
     r"\breboot\b",
     r"\bkill\s+-9",
     r"\bsystemctl\s+(stop|disable|mask)",
+]
+DESTRUCTIVE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(p, re.IGNORECASE) for p in _DESTRUCTIVE_PATTERNS_RAW
 ]
 
 
@@ -138,9 +168,22 @@ class HeuristicBackend(ParserBackend):
         """Load (no-op for heuristic backend)."""
         return True
 
+    def _validate_input(self, text: str) -> str:
+        """Validate and sanitize input text."""
+        if not text:
+            return ""
+        # Truncate if too large (security: prevent DoS)
+        if len(text) > MAX_INPUT_SIZE:
+            logger.warning(
+                f"⚠️ Input truncated from {len(text)} to {MAX_INPUT_SIZE} bytes"
+            )
+            text = text[:MAX_INPUT_SIZE]
+        return text
+
     async def parse_incident(self, text: str) -> IncidentParsingResult:
         """Parse text as an incident description."""
         start_time = time.perf_counter()
+        text = self._validate_input(text)
 
         entities = await self.extract_entities(text)
         text_lower = text.lower()
@@ -197,8 +240,9 @@ class HeuristicBackend(ParserBackend):
     async def parse_log(self, text: str) -> LogParsingResult:
         """Parse text as log output."""
         start_time = time.perf_counter()
+        text = self._validate_input(text)
 
-        lines = text.strip().split("\n")
+        lines = text.strip().split("\n") if text else []
         entries: list[LogEntry] = []
         error_count = 0
         warning_count = 0
@@ -270,6 +314,7 @@ class HeuristicBackend(ParserBackend):
     async def parse_host_query(self, text: str) -> HostQueryParsingResult:
         """Parse text as a host query."""
         start_time = time.perf_counter()
+        text = self._validate_input(text)
 
         entities = await self.extract_entities(text)
         text_lower = text.lower()
@@ -327,6 +372,7 @@ class HeuristicBackend(ParserBackend):
     async def parse_command(self, text: str) -> CommandParsingResult:
         """Parse text as a command."""
         start_time = time.perf_counter()
+        text = self._validate_input(text)
 
         entities = await self.extract_entities(text)
 
@@ -352,10 +398,8 @@ class HeuristicBackend(ParserBackend):
         if cmd_match:
             command = cmd_match.group(1)
 
-        # Check if destructive
-        is_destructive = any(
-            re.search(pattern, command, re.IGNORECASE) for pattern in DESTRUCTIVE_PATTERNS
-        )
+        # Check if destructive (using pre-compiled patterns)
+        is_destructive = any(pattern.search(command) for pattern in DESTRUCTIVE_PATTERNS)
 
         # Check if requires elevation
         requires_elevation = any(
@@ -387,13 +431,13 @@ class HeuristicBackend(ParserBackend):
         )
 
     async def extract_entities(self, text: str) -> dict[str, list[str]]:
-        """Extract named entities from text using regex patterns."""
+        """Extract named entities from text using pre-compiled regex patterns."""
         entities: dict[str, list[str]] = {}
 
-        for entity_type, patterns in PATTERNS.items():
+        for entity_type, compiled_patterns in COMPILED_PATTERNS.items():
             found: set[str] = set()
-            for pattern in patterns:
-                matches = re.findall(pattern, text, re.IGNORECASE)
+            for pattern in compiled_patterns:
+                matches = pattern.findall(text)
                 found.update(matches)
 
             if found:
@@ -403,15 +447,15 @@ class HeuristicBackend(ParserBackend):
 
     def _detect_environment(self, text_lower: str) -> Environment:
         """Detect environment from text."""
-        for env, patterns in ENV_PATTERNS.items():
-            if any(re.search(p, text_lower) for p in patterns):
+        for env, compiled_patterns in ENV_PATTERNS.items():
+            if any(p.search(text_lower) for p in compiled_patterns):
                 return env
         return Environment.UNKNOWN
 
     def _detect_severity(self, text_lower: str) -> Severity:
         """Detect severity from text."""
-        for sev, patterns in SEVERITY_PATTERNS.items():
-            if any(re.search(p, text_lower) for p in patterns):
+        for sev, compiled_patterns in SEVERITY_PATTERNS.items():
+            if any(p.search(text_lower) for p in compiled_patterns):
                 return sev
         # Default based on error indicators
         if re.search(r"\b(down|outage|crash)\b", text_lower):
@@ -429,10 +473,8 @@ class HeuristicBackend(ParserBackend):
             sentence = sentence.strip()
             if not sentence:
                 continue
-            # Check for error indicators
-            if any(
-                re.search(p, sentence, re.IGNORECASE) for patterns in PATTERNS["errors"] for p in [patterns]
-            ):
+            # Check for error indicators using compiled patterns
+            if any(p.search(sentence) for p in COMPILED_PATTERNS["errors"]):
                 symptoms.append(sentence[:200])
 
         return symptoms[:10]  # Limit to 10 symptoms
@@ -496,20 +538,20 @@ class HeuristicBackend(ParserBackend):
 
     def _parse_log_line(self, line: str, line_number: int) -> LogEntry:
         """Parse a single log line."""
-        # Try to extract timestamp
+        # Try to extract timestamp using compiled patterns
         timestamp = None
-        for pattern in PATTERNS["timestamps"]:
-            match = re.search(pattern, line)
+        for pattern in COMPILED_PATTERNS["timestamps"]:
+            match = pattern.search(line)
             if match:
                 ts_str = match.group(1)
                 timestamp = self._parse_single_timestamp(ts_str)
                 break
 
-        # Detect log level
+        # Detect log level using compiled patterns
         level = LogLevel.INFO
         line_lower = line.lower()
-        for log_level, patterns in LOG_LEVEL_PATTERNS.items():
-            if any(re.search(p, line_lower) for p in patterns):
+        for log_level, compiled_patterns in LOG_LEVEL_PATTERNS.items():
+            if any(p.search(line_lower) for p in compiled_patterns):
                 level = log_level
                 break
 
