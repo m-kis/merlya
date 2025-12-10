@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2025-12-10
+
+### Added
+- **MCP (Model Context Protocol) integration** for external tool servers
+  - `/mcp add|remove|list|show|test|tools|examples` commands
+  - Stdio server support with environment variable templating
+  - Secret resolution via Merlya's keyring: `${GITHUB_TOKEN}` syntax
+  - Default value syntax: `${VAR:-default}` for optional env vars
+  - Tool discovery and invocation across multiple servers
+  - Warning suppression for optional MCP capabilities (prompts/resources)
+- **Mistral and Groq provider configuration**
+  - Full `/model provider mistral` support
+  - Full `/model provider groq` support
+  - API key handling via keyring (`MISTRAL_API_KEY`, `GROQ_API_KEY`)
+  - Router fallback configuration for both providers
+- **PydanticAI agent improvements**
+  - History processors for context window management
+  - Tool call/return pairing validation
+  - `@agent.system_prompt` for dynamic router context injection
+  - `@agent.output_validator` for response coherence validation
+  - `UsageLimits` for request/tool call limits
+- **Centralized agent constants** in `config/constants.py`
+
+### Changed
+- **Dynamic tool call limits** based on task mode from router
+  - Diagnostic: 100 calls (SSH investigation, log analysis)
+  - Remediation: 50 calls (fixing, configuring)
+  - Query: 30 calls (information gathering)
+  - Chat: 20 calls (simple conversations)
+- Improved error keyword detection with word boundaries (regex)
+- Persistence failure logs elevated to `warning` level
+- Hard fallback limit (100 messages) prevents unbounded history growth
+
+### Fixed
+- Missing `Implementation` type import in MCP manager
+- Type annotations for history processor (`HistoryProcessor` alias)
+- **Tool retry limit** increased to 3 (was 1) for elevation/credential flows
+- Clearer system prompt guidance for privilege elevation workflow
+
 ## [0.6.2] - 2025-12-10
 
 ### Added

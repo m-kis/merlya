@@ -28,6 +28,7 @@ def register_all_tools(agent: Agent[Any, Any]) -> None:
     _register_file_tools(agent)
     register_security_tools(agent)
     register_web_tools(agent)
+    _register_mcp_tools(agent)
 
 
 def _register_core_tools(agent: Agent[Any, Any]) -> None:
@@ -198,6 +199,27 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         if result.success:
             return cast("dict[str, Any]", result.data or {})
         raise ModelRetry(f"Failed to request elevation: {getattr(result, 'error', result.message)}")
+
+
+def _register_mcp_tools(agent: Agent[Any, Any]) -> None:
+    """Register MCP bridge tools."""
+
+    @agent.tool
+    async def list_mcp_tools(ctx: RunContext[AgentDependencies]) -> dict[str, Any]:
+        """List available MCP tools aggregated from configured servers."""
+        manager = await ctx.deps.context.get_mcp_manager()
+        tools = await manager.list_tools()
+        return {"tools": [tool.name for tool in tools], "count": len(tools)}
+
+    @agent.tool
+    async def call_mcp_tool(
+        ctx: RunContext[AgentDependencies],
+        tool: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call an MCP tool by aggregated name (server.tool)."""
+        manager = await ctx.deps.context.get_mcp_manager()
+        return await manager.call_tool(tool, arguments or {})
 
     @agent.tool
     async def request_confirmation(

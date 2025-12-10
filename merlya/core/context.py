@@ -21,6 +21,7 @@ from merlya.secrets import SecretStore, get_secret_store
 
 if TYPE_CHECKING:
     from merlya.health import StartupHealth
+    from merlya.mcp import MCPManager
     from merlya.persistence import (
         ConversationRepository,
         Database,
@@ -66,6 +67,9 @@ class SharedContext:
 
     # Intent Router (lazy init)
     _router: IntentRouter | None = field(default=None, repr=False)
+
+    # MCP Manager
+    _mcp_manager: MCPManager | None = field(default=None, repr=False)
 
     # Console UI
     _ui: ConsoleUI | None = field(default=None, repr=False)
@@ -183,6 +187,14 @@ class SharedContext:
 
         logger.debug("✅ SharedContext async components initialized")
 
+    async def get_mcp_manager(self) -> MCPManager:
+        """Get MCP manager (lazy)."""
+        if self._mcp_manager is None:
+            from merlya.mcp import MCPManager
+
+            self._mcp_manager = MCPManager(self.config, self.secrets)
+        return self._mcp_manager
+
     async def init_router(self, tier: str | None = None) -> None:
         """
         Initialize intent router.
@@ -240,6 +252,12 @@ class SharedContext:
 
         if self._ssh_pool:
             await self._ssh_pool.disconnect_all()
+
+        if self._mcp_manager:
+            try:
+                await self._mcp_manager.close()
+            except Exception as e:  # pragma: no cover - defensive
+                logger.debug(f"Failed to close MCP manager: {e}")
 
         # Clear singleton reference
         SharedContext._instance = None

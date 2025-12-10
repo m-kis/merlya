@@ -1,6 +1,6 @@
 [project]
 name = "merlya"
-version = "0.6.2"
+version = "0.6.3"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
     { name = "Cedric", email = "infra@merlya.fr" }
@@ -116,6 +116,7 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    "RUF001", # ambiguous Unicode (emojis used intentionally per CONTRIBUTING.md)
 ]
 
 [tool.ruff.lint.isort]

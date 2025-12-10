@@ -38,6 +38,10 @@ logging:
   max_size_mb: 10           # Max log file size
   max_files: 5              # Number of log files to keep
   retention_days: 7         # Log retention period
+
+mcp:
+  default_timeout: 30       # Default timeout (seconds) for MCP requests
+  servers: {}               # MCP servers (see examples below)
 ```
 
 ## LLM Providers
@@ -79,6 +83,28 @@ model:
   model: gpt-4o
   api_key_env: OPENAI_API_KEY
 ```
+
+### Mistral
+
+```yaml
+model:
+  provider: mistral
+  model: mistral-large-latest
+  api_key_env: MISTRAL_API_KEY
+```
+
+Available models: `mistral-large-latest`, `mistral-small-latest`, `codestral-latest`, `open-mistral-nemo`
+
+### Groq
+
+```yaml
+model:
+  provider: groq
+  model: llama-3.1-70b-versatile
+  api_key_env: GROQ_API_KEY
+```
+
+Groq offers fast inference on open models. Available models: `llama-3.1-70b-versatile`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768`
 
 ### Ollama (Local)
 
@@ -136,9 +162,13 @@ ssh:
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | OpenAI API key |
+| `MISTRAL_API_KEY` | Mistral API key |
+| `GROQ_API_KEY` | Groq API key |
 | `MERLYA_ROUTER_MODEL` | Override router model |
 | `MERLYA_ROUTER_FALLBACK` | Override LLM fallback |
 | `SSH_AUTH_SOCK` | SSH agent socket |
+| `GITHUB_TOKEN` | Token used by the GitHub MCP server example |
+| `SLACK_BOT_TOKEN` | Token used by the Slack MCP server example |
 
 ## Data Directory
 
@@ -161,6 +191,31 @@ API keys are stored securely in the system keyring:
 - **Windows**: Windows Credential Manager
 
 If keyring is unavailable, falls back to in-memory storage (not persisted).
+
+## MCP Configuration
+
+Configure MCP servers in `~/.merlya/config.yaml`:
+
+```yaml
+mcp:
+  servers:
+    github:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      env:
+        GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    slack:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-slack"]
+      env:
+        SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+```
+
+**Environment variable resolution:**
+- `${VAR}` - Required variable from OS env or Merlya keyring (warning if missing)
+- `${VAR:-default}` - Optional variable with default fallback
+
+Use `/mcp test <name>` to validate connectivity and list available tools.
 
 ## First Run Wizard
 

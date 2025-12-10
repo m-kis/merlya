@@ -13,7 +13,22 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
+from merlya.config.constants import (
+    DEFAULT_TOOL_CALLS_LIMIT,
+    TOOL_CALLS_LIMIT_CHAT,
+    TOOL_CALLS_LIMIT_DIAGNOSTIC,
+    TOOL_CALLS_LIMIT_QUERY,
+    TOOL_CALLS_LIMIT_REMEDIATION,
+)
 from merlya.router.intent_classifier import AgentMode, IntentClassifier
+
+# Mode to tool calls limit mapping
+MODE_TOOL_LIMITS: dict[AgentMode, int] = {
+    AgentMode.DIAGNOSTIC: TOOL_CALLS_LIMIT_DIAGNOSTIC,
+    AgentMode.REMEDIATION: TOOL_CALLS_LIMIT_REMEDIATION,
+    AgentMode.QUERY: TOOL_CALLS_LIMIT_QUERY,
+    AgentMode.CHAT: TOOL_CALLS_LIMIT_CHAT,
+}
 
 # Patterns to detect jump host intent (multilingual)
 # These patterns look for "via/through/par/depuis + @hostname or hostname"
@@ -49,6 +64,11 @@ class RouterResult:
     credentials_required: bool = False
     elevation_required: bool = False
     jump_host: str | None = None  # Detected jump/bastion host for SSH tunneling
+
+    @property
+    def tool_calls_limit(self) -> int:
+        """Get dynamic tool calls limit based on task mode."""
+        return MODE_TOOL_LIMITS.get(self.mode, DEFAULT_TOOL_CALLS_LIMIT)
 
 
 class IntentRouter:

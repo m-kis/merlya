@@ -55,6 +55,27 @@ class TestRouterResult:
         assert result.entities == {}
         assert result.delegate_to is None
 
+    def test_tool_calls_limit_by_mode(self) -> None:
+        """Test dynamic tool_calls_limit based on mode."""
+        from merlya.config.constants import (
+            TOOL_CALLS_LIMIT_CHAT,
+            TOOL_CALLS_LIMIT_DIAGNOSTIC,
+            TOOL_CALLS_LIMIT_QUERY,
+            TOOL_CALLS_LIMIT_REMEDIATION,
+        )
+
+        diagnostic = RouterResult(mode=AgentMode.DIAGNOSTIC, tools=[])
+        assert diagnostic.tool_calls_limit == TOOL_CALLS_LIMIT_DIAGNOSTIC
+
+        remediation = RouterResult(mode=AgentMode.REMEDIATION, tools=[])
+        assert remediation.tool_calls_limit == TOOL_CALLS_LIMIT_REMEDIATION
+
+        query = RouterResult(mode=AgentMode.QUERY, tools=[])
+        assert query.tool_calls_limit == TOOL_CALLS_LIMIT_QUERY
+
+        chat = RouterResult(mode=AgentMode.CHAT, tools=[])
+        assert chat.tool_calls_limit == TOOL_CALLS_LIMIT_CHAT
+
 
 class TestIntentClassifier:
     """Tests for IntentClassifier (internal component of IntentRouter)."""

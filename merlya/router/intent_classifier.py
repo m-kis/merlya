@@ -319,7 +319,7 @@ class IntentClassifier:
                 logger.warning(f"⚠️ ONNX model not found: {model_path}")
             elif not tokenizer_path.exists():
                 logger.warning(f"⚠️ Tokenizer not found: {tokenizer_path}")
-            logger.info("ℹ️ Using pattern matching for intent classification")  # noqa: RUF001
+            logger.info("ℹ️ Using pattern matching for intent classification")
             IntentClassifier._onnx_warning_shown = True
         self.use_embeddings = False
         return False

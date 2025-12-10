@@ -12,10 +12,19 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel
-from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter, ModelRetry, RunContext
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.usage import UsageLimits
 
+from merlya.agent.history import create_history_processor
 from merlya.agent.tools import register_all_tools
-from merlya.config.constants import TITLE_MAX_LENGTH
+from merlya.config.constants import (
+    DEFAULT_REQUEST_LIMIT,
+    DEFAULT_TOOL_CALLS_LIMIT,
+    DEFAULT_TOOL_RETRIES,
+    MIN_RESPONSE_LENGTH_WITH_ACTIONS,
+    TITLE_MAX_LENGTH,
+)
 from merlya.config.provider_env import ensure_provider_env
 
 if TYPE_CHECKING:
@@ -72,6 +81,25 @@ The `via` parameter:
 
 IMPORTANT: When the user says "via @hostname" or "through @hostname", ALWAYS use the via parameter.
 Do NOT try to connect directly to hosts that require a jump host - this will timeout.
+
+## Privilege Elevation (sudo)
+
+When a command fails with "Permission denied" or requires root/admin access:
+
+1. **FIRST** call `request_elevation(command="the_command", host="hostname")` to get user approval
+2. **THEN** call `ssh_execute` with the returned `elevation` payload
+
+Example flow:
+```
+# Step 1: Get elevation
+elevation = request_elevation(command="cat /var/log/mongodb/mongod.log", host="db-server")
+
+# Step 2: Execute with elevation
+result = ssh_execute(host="db-server", command="cat /var/log/mongodb/mongod.log", elevation=elevation)
+```
+
+IMPORTANT: Do NOT retry `sudo` commands directly - ALWAYS use `request_elevation` first to get proper authorization.
+If the user asks to "use elevation" or "use sudo", this is a signal to use the elevation flow.
 
 ## Coherence Verification (CRITICAL)
 
@@ -145,25 +173,103 @@ class AgentResponse(BaseModel):
 
 def create_agent(
     model: str = "anthropic:claude-3-5-sonnet-latest",
+    max_history_messages: int = 30,
 ) -> Agent[AgentDependencies, AgentResponse]:
     """
     Create the main Merlya agent.
 
     Args:
         model: Model to use (PydanticAI format).
+        max_history_messages: Maximum messages to keep in history.
 
     Returns:
         Configured Agent instance.
     """
+    history_processor = create_history_processor(max_messages=max_history_messages)
+
     agent = Agent(
         model,
         deps_type=AgentDependencies,
         output_type=AgentResponse,
         system_prompt=SYSTEM_PROMPT,
         defer_model_check=True,  # Allow dynamic model names
+        history_processors=[history_processor],
+        retries=DEFAULT_TOOL_RETRIES,  # Allow tool retries for elevation/credential flows
     )
 
     register_all_tools(agent)
+
+    @agent.system_prompt
+    def inject_router_context(ctx: RunContext[AgentDependencies]) -> str:
+        """
+        Inject router context as dynamic system prompt.
+
+        Adds contextual information from the intent router to guide
+        the agent's behavior. Includes:
+        - Credential/elevation requirements from router flags
+        - Jump host information for SSH tunneling
+        - Detected operation mode (diagnostic, remediation, etc.)
+
+        Args:
+            ctx: Run context with agent dependencies.
+
+        Returns:
+            Dynamic system prompt string, empty if no router context.
+        """
+        router_result = ctx.deps.router_result
+        if not router_result:
+            return ""
+
+        parts = []
+
+        # Add credentials/elevation context
+        if router_result.credentials_required or router_result.elevation_required:
+            parts.append(
+                f"⚠️ ROUTER CONTEXT: credentials_required={router_result.credentials_required}, "
+                f"elevation_required={router_result.elevation_required}. "
+                "Address these requirements using the appropriate tools before proceeding."
+            )
+
+        # Add jump host context
+        if router_result.jump_host:
+            parts.append(
+                f"🔗 JUMP HOST DETECTED: {router_result.jump_host}. "
+                f'For SSH commands, use via="{router_result.jump_host}" parameter in ssh_execute.'
+            )
+
+        # Add detected mode context
+        if router_result.mode:
+            parts.append(f"📋 Detected mode: {router_result.mode.value}")
+
+        return "\n".join(parts) if parts else ""
+
+    @agent.output_validator
+    def validate_response(
+        _ctx: RunContext[AgentDependencies],
+        output: AgentResponse,
+    ) -> AgentResponse:
+        """Validate the agent response for coherence."""
+        # Check for empty message
+        if not output.message or not output.message.strip():
+            raise ModelRetry("Response message cannot be empty. Please provide a meaningful response.")
+
+        # Check for overly short responses when actions were taken
+        if output.actions_taken and len(output.message) < MIN_RESPONSE_LENGTH_WITH_ACTIONS:
+            raise ModelRetry(
+                "Response is too brief given the actions taken. "
+                "Please explain what was done and the results."
+            )
+
+        # Warn in logs if message indicates an error but no suggestions provided
+        # Use word boundaries to avoid false positives (e.g., "impossible" in "not impossible")
+        import re
+
+        error_pattern = r"\b(error|failed|cannot|unable|impossible)\b"
+        has_error = re.search(error_pattern, output.message, re.IGNORECASE) is not None
+        if has_error and not output.suggestions:
+            logger.debug("⚠️ Response indicates an error but no suggestions provided")
+
+        return output
 
     return agent
 
@@ -199,6 +305,7 @@ class MerlyaAgent:
         user_input: str,
         router_result: RouterResult | None = None,
         timeout: float = 120.0,
+        usage_limits: UsageLimits | None = None,
     ) -> AgentResponse:
         """
         Process user input.
@@ -207,10 +314,23 @@ class MerlyaAgent:
             user_input: User message.
             router_result: Optional routing result.
             timeout: Maximum time to wait for LLM response (default 120s).
+            usage_limits: Optional limits on token/request usage.
 
         Returns:
             Agent response.
         """
+        # Apply usage limits: use router's dynamic limit if available
+        if usage_limits is None:
+            # Router provides mode-specific limits (diagnostic=100, remediation=50, etc.)
+            tool_limit = (
+                router_result.tool_calls_limit
+                if router_result is not None
+                else DEFAULT_TOOL_CALLS_LIMIT
+            )
+            usage_limits = UsageLimits(
+                request_limit=DEFAULT_REQUEST_LIMIT,
+                tool_calls_limit=tool_limit,
+            )
         try:
             # Create conversation lazily on first user message
             if self._active_conversation is None:
@@ -221,33 +341,17 @@ class MerlyaAgent:
                 router_result=router_result,
             )
 
-            augmented_input = user_input
-            if router_result:
-                notes = []
-                if router_result.credentials_required or router_result.elevation_required:
-                    notes.append(
-                        f"credentials_required={router_result.credentials_required} "
-                        f"elevation_required={router_result.elevation_required}"
-                    )
-                if router_result.jump_host:
-                    # Explicit instruction for the LLM to use jump host
-                    notes.append(
-                        f"JUMP_HOST_DETECTED={router_result.jump_host} "
-                        f'(USE via="{router_result.jump_host}" in ssh_execute calls)'
-                    )
-                if notes:
-                    flag_note = f"[router_flags {' '.join(notes)}]"
-                    augmented_input = f"{flag_note}\n{user_input}"
-
+            # Router context is now injected via @agent.system_prompt decorator
             # Pass message_history only if we have previous messages
             # This includes tool calls, tool results, and assistant responses
             # Wrap with timeout to prevent infinite hangs on LLM provider issues
             try:
                 result = await asyncio.wait_for(
                     self._agent.run(
-                        augmented_input,
+                        user_input,
                         deps=deps,
                         message_history=self._message_history if self._message_history else None,
+                        usage_limits=usage_limits,
                     ),
                     timeout=timeout,
                 )
@@ -258,6 +362,14 @@ class MerlyaAgent:
                     message=f"Request timed out after {timeout}s. The LLM provider may be slow or unresponsive.",
                     actions_taken=[],
                     suggestions=["Try again", "Check your internet connection"],
+                )
+            except UsageLimitExceeded as e:
+                logger.warning(f"⚠️ Usage limit exceeded: {e}")
+                await self._persist_history()
+                return AgentResponse(
+                    message=f"Usage limit exceeded: {e}. The request was too complex.",
+                    actions_taken=[],
+                    suggestions=["Simplify your request", "Break into smaller tasks"],
                 )
 
             # Update history with ALL messages including tool calls
@@ -299,7 +411,7 @@ class MerlyaAgent:
         try:
             conv = await self.context.conversations.create(conv)
         except Exception as e:
-            logger.debug(f"Failed to persist conversation start: {e}")
+            logger.warning(f"Failed to persist conversation start: {e}")
         return conv
 
     async def _persist_history(self) -> None:
@@ -319,7 +431,7 @@ class MerlyaAgent:
         try:
             await self.context.conversations.update(self._active_conversation)
         except Exception as e:
-            logger.debug(f"Failed to persist conversation history: {e}")
+            logger.warning(f"Failed to persist conversation history: {e}")
 
     def load_conversation(self, conv: Conversation) -> None:
         """Load an existing conversation into the agent history."""

@@ -262,7 +262,7 @@ def _format_failed_logins(lines: list[str], logins: dict[str, Any]) -> None:
     """Format failed logins section."""
     total = logins.get("total_attempts", 0)
     if total > 0:
-        icon = "🔴" if total > 50 else ("⚠️" if total > 20 else "ℹ️")  # noqa: RUF001
+        icon = "🔴" if total > 50 else ("⚠️" if total > 20 else "ℹ️")
         lines.append(f"{icon} **Failed Logins (24h):** {total}")
         top_ips = logins.get("top_ips", [])[:3]
         if top_ips:
@@ -278,7 +278,7 @@ def _format_updates(lines: list[str], updates: dict[str, Any]) -> None:
     total = updates.get("total_updates", 0)
     security = updates.get("security_updates", 0)
     if total > 0:
-        icon = "🔴" if security > 5 else ("⚠️" if total > 10 else "ℹ️")  # noqa: RUF001
+        icon = "🔴" if security > 5 else ("⚠️" if total > 10 else "ℹ️")
         lines.append(f"{icon} **Updates:** {total} pending ({security} security)")
     else:
         lines.append("✅ **Updates:** system up to date")
@@ -302,7 +302,7 @@ def _format_users(lines: list[str], users: dict[str, Any], show_all: bool) -> No
     """Format users section."""
     shell_users = users.get("users", [])
     issues = users.get("issues", [])
-    icon = "⚠️" if issues else "ℹ️"  # noqa: RUF001
+    icon = "⚠️" if issues else "ℹ️"
     lines.append(f"{icon} **Users:** {len(shell_users)} with shell access")
 
     if shell_users:
