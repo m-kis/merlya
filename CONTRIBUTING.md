@@ -429,12 +429,70 @@ Use dot-separated hierarchical keys:
 
 ---
 
+## Documentation
+
+The documentation is hosted in a **separate repository**: [merlya-docs](https://github.com/m-kis/merlya-docs).
+
+### Structure
+
+```text
+merlya-docs/
+├── mkdocs.yml          # MkDocs configuration + navigation
+├── docs/               # Markdown source files
+│   ├── index.md
+│   ├── getting-started/
+│   ├── guides/
+│   └── reference/      # CLI, configuration, API docs
+└── .github/workflows/
+    └── docs.yml        # Auto-deploy to GitHub Pages
+```
+
+### Updating Documentation
+
+1. Clone the docs repository:
+
+   ```bash
+   git clone https://github.com/m-kis/merlya-docs.git
+   ```
+
+2. Edit files in `docs/`:
+
+   ```bash
+   cd merlya-docs
+   # Edit docs/reference/cli.md, docs/guides/*, etc.
+   ```
+
+3. Preview locally (optional):
+
+   ```bash
+   pip install -r requirements.txt
+   mkdocs serve  # Opens http://localhost:8000
+   ```
+
+4. Commit and push:
+
+   ```bash
+   git add . && git commit -m "docs: description"
+   git push origin main
+   ```
+
+The documentation is **automatically deployed** to GitHub Pages on push to main.
+
+### When to Update Documentation
+
+- New CLI commands or options → `docs/reference/cli.md`
+- New features in `merlya run` → `docs/reference/non-interactive.md`
+- Configuration changes → `docs/reference/configuration.md`
+- New guides or tutorials → `docs/guides/`
+
+---
+
 ## Release Process
 
-1. Update version in `pyproject.toml`
+1. Update version in `pyproject.toml` and `merlya/__init__.py`
 2. Update CHANGELOG.md
 3. Create PR to main
-4. After merge, create GitHub release
+4. After merge, tag the version: `git tag v0.x.x && git push --tags`
 5. CI builds and publishes to PyPI
 
 ---
