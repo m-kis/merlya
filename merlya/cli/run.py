@@ -2,6 +2,7 @@
 Non-interactive batch execution for Merlya.
 
 Handles `merlya run` command for automated tasks.
+Supports both natural language commands (via AI agent) and slash commands.
 """
 
 from __future__ import annotations
@@ -10,9 +11,27 @@ import json
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from loguru import logger
+
+if TYPE_CHECKING:
+    from merlya.core.context import SharedContext
+
+# Commands that should never run in batch mode
+BLOCKED_COMMANDS = frozenset({
+    "exit", "quit", "q",  # Session control
+    "new",                # Conversation management
+    "conv", "conversation",  # No context in batch
+})
+
+# Commands requiring interactive input (blocked without workaround)
+INTERACTIVE_COMMANDS = frozenset({
+    "hosts add",     # Prompts for hostname, port, user
+    "ssh config",    # Prompts for SSH configuration
+    "secret set",    # Secure input prompt required
+})
 
 
 @dataclass
@@ -23,6 +42,8 @@ class TaskResult:
     success: bool
     message: str
     actions: list[str]
+    data: Any = None  # Structured data for JSON output
+    task_type: str = "agent"  # "agent" or "command"
 
 
 @dataclass
@@ -34,6 +55,109 @@ class BatchResult:
     total: int
     passed: int
     failed: int
+
+
+def _parse_slash_command(cmd: str) -> tuple[str, str, list[str]]:
+    """
+    Parse a slash command into its components.
+
+    Args:
+        cmd: Command string starting with "/".
+
+    Returns:
+        Tuple of (base_command, full_command_path, args).
+        Example: "/hosts list --tag=web" -> ("hosts", "hosts list", ["--tag=web"])
+    """
+    parts = cmd[1:].split()  # Remove leading "/" and split
+    if not parts:
+        return "", "", []
+
+    base_cmd = parts[0].lower()
+
+    # Check for subcommand
+    if len(parts) > 1 and not parts[1].startswith("-"):
+        full_cmd = f"{base_cmd} {parts[1].lower()}"
+        args = parts[2:]
+    else:
+        full_cmd = base_cmd
+        args = parts[1:]
+
+    return base_cmd, full_cmd, args
+
+
+def _check_command_allowed(cmd: str) -> tuple[bool, str | None]:
+    """
+    Check if a slash command is allowed in batch mode.
+
+    Args:
+        cmd: Command string starting with "/".
+
+    Returns:
+        Tuple of (is_allowed, error_message).
+    """
+    base_cmd, full_cmd, _ = _parse_slash_command(cmd)
+
+    # Check blocked commands
+    if base_cmd in BLOCKED_COMMANDS:
+        return False, f"Command '/{base_cmd}' is not available in batch mode"
+
+    # Check interactive commands
+    if full_cmd in INTERACTIVE_COMMANDS:
+        return False, f"Command '/{full_cmd}' requires interactive input and cannot run in batch mode"
+
+    return True, None
+
+
+async def _execute_slash_command(
+    ctx: SharedContext,
+    cmd: str,
+) -> TaskResult:
+    """
+    Execute a slash command and return a TaskResult.
+
+    Args:
+        ctx: Shared context.
+        cmd: Command string starting with "/".
+
+    Returns:
+        TaskResult with command execution result.
+    """
+    from merlya.commands import get_registry
+
+    registry = get_registry()
+
+    # Check if command is allowed
+    allowed, error_msg = _check_command_allowed(cmd)
+    if not allowed:
+        return TaskResult(
+            task=cmd,
+            success=False,
+            message=error_msg or "Command not allowed",
+            actions=[],
+            task_type="command",
+        )
+
+    # Execute the command
+    result = await registry.execute(ctx, cmd)
+
+    if result is None:
+        return TaskResult(
+            task=cmd,
+            success=False,
+            message="Command not found or returned no result",
+            actions=[],
+            task_type="command",
+        )
+
+    # Build TaskResult from CommandResult
+    return TaskResult(
+        task=cmd,
+        success=result.success,
+        message=result.message,
+        actions=["command_execute"],
+        data=result.data,
+        task_type="command",
+    )
 
 
 async def run_batch(
@@ -112,25 +236,39 @@ async def run_batch(
                 ctx.ui.info(f"Executing: {cmd}")
 
             try:
-                # Route the command
-                if not ctx.router:
-                    raise RuntimeError("Router not initialized")
-                route_result = await ctx.router.route(cmd)
+                # Check if this is a slash command
+                if cmd.startswith("/"):
+                    # Execute slash command directly
+                    task_result = await _execute_slash_command(ctx, cmd)
+                else:
+                    # Route and execute via agent
+                    if not ctx.router:
+                        raise RuntimeError("Router not initialized")
+                    route_result = await ctx.router.route(cmd)
 
-                # Execute via agent
-                response = await agent.run(cmd, route_result)
+                    response = await agent.run(cmd, route_result)
 
-                task_result = TaskResult(
-                    task=cmd,
-                    success=True,
-                    message=response.message,
-                    actions=response.actions_taken or [],
-                )
+                    task_result = TaskResult(
+                        task=cmd,
+                        success=True,
+                        message=response.message,
+                        actions=response.actions_taken or [],
+                        task_type="agent",
+                    )
+
+                # Track results
                 results.append(task_result)
-                passed += 1
+                if task_result.success:
+                    passed += 1
+                else:
+                    failed += 1
 
+                # Display output
                 if output_format == "text" and not quiet:
-                    ctx.ui.markdown(response.message)
+                    if task_result.success:
+                        ctx.ui.markdown(task_result.message)
+                    else:
+                        ctx.ui.error(task_result.message)
                     ctx.ui.newline()
 
             except Exception as e:
