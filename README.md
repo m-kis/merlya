@@ -20,6 +20,10 @@
   <img src="https://img.shields.io/badge/type%20checked-mypy-blue" alt="mypy">
 </p>
 
+<p align="center">
+  <a href="README_EN.md">Read in English</a>
+</p>
+
 ---
 
 ## Aperçu
