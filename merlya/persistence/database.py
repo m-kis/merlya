@@ -187,6 +187,7 @@ class Database:
                 conversation_id TEXT,
                 summary TEXT,
                 token_count INTEGER DEFAULT 0,
+                message_count INTEGER DEFAULT 0,
                 context_tier TEXT DEFAULT 'STANDARD',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

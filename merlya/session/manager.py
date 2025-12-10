@@ -370,52 +370,31 @@ class SessionManager:
         return result
 
     async def _persist_session(self) -> None:
-        """Persist session to database."""
+        """Persist session to database using UPSERT to avoid race conditions."""
         if not self.db or not self._session:
             return
 
         try:
-            # Check if session exists
-            async with await self.db.execute(
-                "SELECT id FROM sessions WHERE id = ?",
-                (self._session.id,),
-            ) as cursor:
-                exists = await cursor.fetchone()
-
-            if exists:
-                # Update
-                await self.db.execute(
-                    """
-                    UPDATE sessions
-                    SET summary = ?, token_count = ?, context_tier = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        self._session.summary,
-                        self._session.token_count,
-                        self._session.tier.value,
-                        datetime.now(),
-                        self._session.id,
-                    ),
+            # Use INSERT OR REPLACE to avoid check-then-act race condition
+            await self.db.execute(
+                """
+                INSERT OR REPLACE INTO sessions (
+                    id, conversation_id, summary, token_count, message_count,
+                    context_tier, created_at, updated_at
                 )
-            else:
-                # Insert
-                await self.db.execute(
-                    """
-                    INSERT INTO sessions (id, conversation_id, summary, token_count,
-                                         context_tier, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        self._session.id,
-                        self._session.conversation_id,
-                        self._session.summary,
-                        self._session.token_count,
-                        self._session.tier.value,
-                        self._session.created_at,
-                        self._session.updated_at,
-                    ),
-                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self._session.id,
+                    self._session.conversation_id,
+                    self._session.summary,
+                    self._session.token_count,
+                    self._session.message_count,
+                    self._session.tier.value,
+                    self._session.created_at,
+                    datetime.now(),
+                ),
+            )
 
             await self.db.connection.commit()
 
@@ -445,12 +424,23 @@ class SessionManager:
             if not row:
                 return None
 
+            # Safe enum deserialization with fallback
+            try:
+                tier = ContextTier(row["context_tier"])
+            except ValueError:
+                logger.warning(
+                    f"⚠️ Invalid context_tier '{row['context_tier']}', "
+                    f"defaulting to STANDARD"
+                )
+                tier = ContextTier.STANDARD
+
             self._session = SessionState(
                 id=row["id"],
                 conversation_id=row["conversation_id"],
-                tier=ContextTier(row["context_tier"]),
+                tier=tier,
                 summary=row["summary"],
-                token_count=row["token_count"],
+                token_count=row["token_count"] or 0,
+                message_count=row["message_count"] or 0,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
