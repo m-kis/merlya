@@ -20,18 +20,25 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 # Commands that should never run in batch mode
-BLOCKED_COMMANDS = frozenset({
-    "exit", "quit", "q",  # Session control
-    "new",                # Conversation management
-    "conv", "conversation",  # No context in batch
-})
+BLOCKED_COMMANDS = frozenset(
+    {
+        "exit",
+        "quit",
+        "q",  # Session control
+        "new",  # Conversation management
+        "conv",
+        "conversation",  # No context in batch
+    }
+)
 
 # Commands requiring interactive input (blocked without workaround)
-INTERACTIVE_COMMANDS = frozenset({
-    "hosts add",     # Prompts for hostname, port, user
-    "ssh config",    # Prompts for SSH configuration
-    "secret set",    # Secure input prompt required
-})
+INTERACTIVE_COMMANDS = frozenset(
+    {
+        "hosts add",  # Prompts for hostname, port, user
+        "ssh config",  # Prompts for SSH configuration
+        "secret set",  # Secure input prompt required
+    }
+)
 
 
 @dataclass
@@ -103,7 +110,10 @@ def _check_command_allowed(cmd: str) -> tuple[bool, str | None]:
 
     # Check interactive commands
     if full_cmd in INTERACTIVE_COMMANDS:
-        return False, f"Command '/{full_cmd}' requires interactive input and cannot run in batch mode"
+        return (
+            False,
+            f"Command '/{full_cmd}' requires interactive input and cannot run in batch mode",
+        )
 
     return True, None
 
