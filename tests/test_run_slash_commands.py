@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from merlya.cli.run import (
     BLOCKED_COMMANDS,
     INTERACTIVE_COMMANDS,
@@ -45,7 +43,7 @@ class TestParseSlashCommand:
 
     def test_command_lowercase(self):
         """Test that command names are lowercased."""
-        base, full, args = _parse_slash_command("/HOSTS LIST")
+        base, full, _args = _parse_slash_command("/HOSTS LIST")
         assert base == "hosts"
         assert full == "hosts list"
 
@@ -75,17 +73,17 @@ class TestCheckCommandAllowed:
 
     def test_blocked_quit(self):
         """Test that quit command is blocked."""
-        allowed, msg = _check_command_allowed("/quit")
+        allowed, _ = _check_command_allowed("/quit")
         assert not allowed
 
     def test_blocked_new(self):
         """Test that new command is blocked."""
-        allowed, msg = _check_command_allowed("/new")
+        allowed, _ = _check_command_allowed("/new")
         assert not allowed
 
     def test_blocked_conv(self):
         """Test that conv command is blocked."""
-        allowed, msg = _check_command_allowed("/conv list")
+        allowed, _ = _check_command_allowed("/conv list")
         assert not allowed
 
     def test_interactive_hosts_add(self):
