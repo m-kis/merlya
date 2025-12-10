@@ -7,12 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2025-12-10
+
 ### Added
-- CODE_OF_CONDUCT, CODEOWNERS, templates GitHub (issues/PR) pour cadrer les contributions
+- **Slash command support in `merlya run`** - Execute internal commands directly without AI processing
+  - Command classification: blocked, interactive, allowed
+  - Blocked: `/exit`, `/quit`, `/new`, `/conv` (session control)
+  - Interactive: `/hosts add`, `/ssh config`, `/secret set` (require user input)
+  - Allowed: `/scan`, `/hosts list`, `/health`, `/model show`, etc.
+- **English README** (`README_EN.md`) with link from French README
+- **Documentation section** in CONTRIBUTING.md explaining merlya-docs workflow
+
+## [0.6.1] - 2025-12-09
+
+### Fixed
+- API key loading from keyring in `merlya run` mode
+- Harmonized CLI and REPL initialization for consistent context setup
+
+## [0.6.0] - 2025-12-09
+
+### Added
+- **Non-interactive mode** (`merlya run`) for automation and CI/CD
+  - Single command execution: `merlya run "Check disk space"`
+  - Task file support (YAML/text): `merlya run --file tasks.yml`
+  - JSON output format: `merlya run --format json`
+  - Auto-confirmation: `merlya run --yes`
+- **File transfer tools** for SSH operations
+- **TOML import** for hosts with jump_host/bastion support
+- CODE_OF_CONDUCT, CODEOWNERS, GitHub templates (issues/PR)
 
 ### Changed
-- README réécrit pour préparer l’ouverture publique (installation, qualité, CI/CD, sécurité)
-- CI durcie sur runners GitHub (lint + format check + mypy + tests + Bandit + pip-audit + build) et workflow de release migré hors self-hosted
+- README rewritten for public release
+- CI hardened on GitHub runners (lint + format + mypy + tests + Bandit + pip-audit + build)
+- Release workflow migrated from self-hosted runners
 
 ## [0.5.6] - 2025-12-08
 
