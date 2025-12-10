@@ -181,6 +181,18 @@ class TestPolicyManager:
         assert is_valid is False
         assert "exceeds maximum" in error
 
+    def test_validate_hosts_count_negative(self, manager):
+        """Test validate_hosts_count with negative value."""
+        is_valid, error = manager.validate_hosts_count(-1)
+        assert is_valid is False
+        assert "negative" in error
+
+    def test_validate_hosts_count_zero(self, manager):
+        """Test validate_hosts_count with zero value."""
+        is_valid, error = manager.validate_hosts_count(0)
+        assert is_valid is False
+        assert "zero" in error
+
     def test_validate_tokens_valid(self, manager):
         """Test validate_tokens with valid count."""
         is_valid, error = manager.validate_tokens(4000)
@@ -192,6 +204,12 @@ class TestPolicyManager:
         is_valid, error = manager.validate_tokens(10000)
         assert is_valid is False
         assert "exceeds maximum" in error
+
+    def test_validate_tokens_negative(self, manager):
+        """Test validate_tokens with negative value."""
+        is_valid, error = manager.validate_tokens(-100)
+        assert is_valid is False
+        assert "negative" in error
 
     def test_get_tier_limits(self, manager):
         """Test get_tier_limits."""

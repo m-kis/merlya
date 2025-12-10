@@ -183,6 +183,29 @@ class TestContextTierPredictor:
             ContextTier.STANDARD, current_messages=25, current_tokens=3500
         )
 
+    def test_extract_factors_large_input_truncates(self, predictor):
+        """Test that large input is truncated safely."""
+        from merlya.session.context_tier import MAX_INPUT_SIZE
+
+        # Create input larger than limit
+        large_input = "x" * (MAX_INPUT_SIZE + 10000)
+        factors = predictor.extract_factors(large_input)
+
+        # Should be truncated to MAX_INPUT_SIZE
+        assert factors.message_length == MAX_INPUT_SIZE
+
+    def test_extract_factors_empty_input(self, predictor):
+        """Test extracting factors from empty input."""
+        factors = predictor.extract_factors("")
+        assert factors.message_length == 0
+        assert factors.word_count == 0
+
+    def test_extract_factors_none_input(self, predictor):
+        """Test extracting factors from None input."""
+        factors = predictor.extract_factors(None)
+        assert factors.message_length == 0
+        assert factors.word_count == 0
+
 
 class TestSessionSummarizer:
     """Tests for SessionSummarizer."""

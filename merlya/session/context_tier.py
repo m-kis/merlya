@@ -14,6 +14,15 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+# Input size limit to prevent DoS
+MAX_INPUT_SIZE = 100_000  # 100KB max for complexity analysis
+
+# Pre-compiled regex patterns for performance and ReDoS prevention
+_RE_LOGS = re.compile(r"\b(error|exception|traceback|failed|warning)\b", re.IGNORECASE)
+_RE_CODE = re.compile(r"^\s{4,}", re.MULTILINE)
+_RE_PATHS = re.compile(r"(/[\w/.-]{1,200}|~/[\w/.-]{0,200})")
+_RE_COMMANDS = re.compile(r"\b(run|execute|check|show|list|get|find)\b", re.IGNORECASE)
+
 if TYPE_CHECKING:
     from merlya.router.classifier import RouterResult
 
@@ -150,19 +159,21 @@ class ContextTierPredictor:
         """
         text = user_input or ""
 
+        # Input size validation - truncate if too large
+        if len(text) > MAX_INPUT_SIZE:
+            logger.warning(f"Input too large ({len(text)} bytes), truncating to {MAX_INPUT_SIZE}")
+            text = text[:MAX_INPUT_SIZE]
+
         # Text characteristics
         message_length = len(text)
         line_count = text.count("\n") + 1
         word_count = len(text.split())
 
-        # Content detection
-        text_lower = text.lower()
-        has_logs = bool(
-            re.search(r"(error|exception|traceback|failed|warning)", text_lower)
-        )
-        has_code = "```" in text or bool(re.search(r"^\s{4,}", text, re.MULTILINE))
+        # Content detection using pre-compiled patterns
+        has_logs = bool(_RE_LOGS.search(text))
+        has_code = "```" in text or bool(_RE_CODE.search(text))
         has_json = "{" in text and "}" in text and '"' in text
-        has_paths = bool(re.search(r"(/[\w/.-]+|~/)", text))
+        has_paths = bool(_RE_PATHS.search(text))
 
         # Router context (if available)
         router_confidence = 0.5
@@ -190,9 +201,7 @@ class ContextTierPredictor:
 
         # Complexity markers
         question_count = text.count("?")
-        command_count = len(
-            re.findall(r"\b(run|execute|check|show|list|get|find)\b", text_lower)
-        )
+        command_count = len(_RE_COMMANDS.findall(text))
 
         return ComplexityFactors(
             message_length=message_length,
@@ -306,8 +315,10 @@ class ContextTierPredictor:
                 tier = self._score_to_tier(score)
                 logger.debug(f"🎯 Tier predicted by ONNX: {tier.value} (score={score:.2f})")
                 return tier
+            except (ValueError, TypeError, RuntimeError) as e:
+                logger.warning(f"⚠️ ONNX prediction failed ({type(e).__name__}): {e}")
             except Exception as e:
-                logger.warning(f"⚠️ ONNX prediction failed: {e}")
+                logger.error(f"⚠️ Unexpected ONNX error ({type(e).__name__}): {e}")
 
         # 2. Enriched heuristic
         score = self._compute_heuristic_score(factors)
@@ -319,8 +330,10 @@ class ContextTierPredictor:
                 if llm_score is not None:
                     score = llm_score
                     logger.debug(f"🎯 Tier refined by LLM: score={score:.2f}")
+            except (ValueError, TypeError, TimeoutError) as e:
+                logger.warning(f"⚠️ LLM complexity check failed ({type(e).__name__}): {e}")
             except Exception as e:
-                logger.warning(f"⚠️ LLM complexity check failed: {e}")
+                logger.error(f"⚠️ Unexpected LLM error ({type(e).__name__}): {e}")
 
         tier = self._score_to_tier(score)
         logger.debug(
@@ -381,6 +394,11 @@ class ContextTierPredictor:
         """
         limits = self.get_tier_limits(tier)
         threshold = limits.summarize_threshold
+
+        # Protect against division by zero
+        if limits.max_messages <= 0 or limits.max_tokens <= 0:
+            logger.warning("Invalid tier limits (zero or negative), skipping summarization check")
+            return False
 
         messages_pct = current_messages / limits.max_messages
         tokens_pct = current_tokens / limits.max_tokens

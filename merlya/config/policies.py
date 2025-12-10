@@ -204,6 +204,11 @@ class PolicyManager:
         # Use config threshold
         threshold = self.config.summarize_threshold
 
+        # Protect against division by zero
+        if limits.max_messages <= 0 or limits.max_tokens <= 0:
+            logger.warning("Invalid tier limits (zero or negative), skipping summarization check")
+            return False
+
         messages_pct = current_messages / limits.max_messages
         tokens_pct = current_tokens / limits.max_tokens
 
@@ -248,6 +253,10 @@ class PolicyManager:
         Returns:
             Tuple of (is_valid, error_message).
         """
+        if host_count < 0:
+            return (False, f"Host count cannot be negative ({host_count}).")
+        if host_count == 0:
+            return (False, "Host count cannot be zero.")
         if host_count > self.config.max_hosts_per_skill:
             return (
                 False,
@@ -267,6 +276,8 @@ class PolicyManager:
         Returns:
             Tuple of (is_valid, error_message).
         """
+        if estimated_tokens < 0:
+            return (False, f"Token count cannot be negative ({estimated_tokens}).")
         if estimated_tokens > self.config.max_tokens_per_call:
             return (
                 False,
