@@ -26,6 +26,8 @@ DEFAULT_MAX_CONCURRENT = 5
 MIN_MAX_CONCURRENT = 1
 MAX_MAX_CONCURRENT = 20
 DEFAULT_TIMEOUT_SECONDS = 120
+MIN_TIMEOUT_SECONDS = 1
+MAX_TIMEOUT_SECONDS = 3600  # 1 hour max
 
 
 class SubagentOrchestrator:
@@ -76,8 +78,9 @@ class SubagentOrchestrator:
         # Concurrency control
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
-        # Tracking
+        # Tracking with thread-safe lock
         self._active_executions: dict[str, str] = {}  # execution_id -> status
+        self._executions_lock = asyncio.Lock()
 
         logger.debug(
             f"🎼 SubagentOrchestrator initialized (max_concurrent={max_concurrent})"
@@ -111,17 +114,30 @@ class SubagentOrchestrator:
         execution_id = str(uuid.uuid4())[:8]
         started_at = datetime.now(timezone.utc)
 
-        # Determine timeout
+        # Determine and validate timeout
         effective_timeout = timeout
         if effective_timeout is None:
             effective_timeout = skill.timeout_seconds if skill else DEFAULT_TIMEOUT_SECONDS
+
+        # Clamp timeout to valid range
+        if effective_timeout < MIN_TIMEOUT_SECONDS:
+            logger.warning(
+                f"Timeout {effective_timeout}s too low, using minimum {MIN_TIMEOUT_SECONDS}s"
+            )
+            effective_timeout = MIN_TIMEOUT_SECONDS
+        elif effective_timeout > MAX_TIMEOUT_SECONDS:
+            logger.warning(
+                f"Timeout {effective_timeout}s too high, using maximum {MAX_TIMEOUT_SECONDS}s"
+            )
+            effective_timeout = MAX_TIMEOUT_SECONDS
 
         logger.info(
             f"🎼 Starting parallel execution {execution_id} on {len(hosts)} hosts "
             f"(concurrent={self.max_concurrent}, timeout={effective_timeout}s)"
         )
 
-        self._active_executions[execution_id] = "running"
+        async with self._executions_lock:
+            self._active_executions[execution_id] = "running"
 
         # Execute on all hosts in parallel
         async def run_one(host: str) -> SubagentResult:
@@ -162,7 +178,8 @@ class SubagentOrchestrator:
             else:
                 results.append(result)
 
-        self._active_executions[execution_id] = "completed"
+        async with self._executions_lock:
+            self._active_executions[execution_id] = "completed"
 
         # Create aggregated results
         aggregated = AggregatedResults(
@@ -213,7 +230,7 @@ class SubagentOrchestrator:
             try:
                 await on_progress(host, "starting", None)
             except Exception as e:
-                logger.debug(f"Progress callback error: {e}")
+                logger.warning(f"⚠️ Progress callback failed for host {host}: {e}")
 
         try:
             # Create subagent for this host
@@ -248,7 +265,7 @@ class SubagentOrchestrator:
                 try:
                     await on_progress(host, "completed", result)
                 except Exception as e:
-                    logger.debug(f"Progress callback error: {e}")
+                    logger.warning(f"⚠️ Progress callback failed for host {host}: {e}")
 
             logger.debug(f"🎼 Host {host} completed in {duration_ms}ms")
             return result
@@ -272,7 +289,7 @@ class SubagentOrchestrator:
                 try:
                     await on_progress(host, "timeout", result)
                 except Exception as e:
-                    logger.debug(f"Progress callback error: {e}")
+                    logger.warning(f"⚠️ Progress callback failed for host {host}: {e}")
 
             return result
 
@@ -295,9 +312,10 @@ class SubagentOrchestrator:
                 try:
                     await on_progress(host, "cancelled", result)
                 except Exception as e:
-                    logger.debug(f"Progress callback error: {e}")
+                    logger.warning(f"⚠️ Progress callback failed for host {host}: {e}")
 
-            return result
+            # Re-raise to propagate cancellation properly
+            raise
 
         except Exception as e:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -318,7 +336,7 @@ class SubagentOrchestrator:
                 try:
                     await on_progress(host, "failed", result)
                 except Exception as e2:
-                    logger.debug(f"Progress callback error: {e2}")
+                    logger.warning(f"⚠️ Progress callback failed for host {host}: {e2}")
 
             return result
 
@@ -356,10 +374,12 @@ class SubagentOrchestrator:
             error="No result returned",
         )
 
-    def get_active_executions(self) -> dict[str, str]:
+    async def get_active_executions(self) -> dict[str, str]:
         """Get currently active execution IDs and their status."""
-        return dict(self._active_executions)
+        async with self._executions_lock:
+            return dict(self._active_executions)
 
-    def clear_execution_history(self) -> None:
+    async def clear_execution_history(self) -> None:
         """Clear execution history."""
-        self._active_executions.clear()
+        async with self._executions_lock:
+            self._active_executions.clear()

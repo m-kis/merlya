@@ -6,11 +6,22 @@ Pydantic models for subagent execution results and aggregation.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, computed_field
+from loguru import logger
+from pydantic import BaseModel, Field, computed_field, field_validator
+
+# Size limits for safety
+MAX_OUTPUT_LENGTH = 500_000  # 500KB max for output
+MAX_ERROR_LENGTH = 100_000  # 100KB max for error messages
+MAX_RAW_OUTPUT_SIZE = 1_000_000  # 1MB max for raw_output (serialized)
+
+# ID length constants
+SUBAGENT_ID_LENGTH = 8
+EXECUTION_ID_LENGTH = 8
 
 
 class SubagentStatus(str, Enum):
@@ -113,6 +124,38 @@ class SubagentResult(BaseModel):
         default=None,
         description="Reference to raw log in log store",
     )
+
+    @field_validator("output")
+    @classmethod
+    def validate_output_length(cls, v: str | None) -> str | None:
+        """Validate and truncate output to prevent memory issues."""
+        if v and len(v) > MAX_OUTPUT_LENGTH:
+            logger.warning(f"Output exceeds {MAX_OUTPUT_LENGTH} chars, truncating")
+            return v[:MAX_OUTPUT_LENGTH] + "\n\n[... output truncated ...]"
+        return v
+
+    @field_validator("error")
+    @classmethod
+    def validate_error_length(cls, v: str | None) -> str | None:
+        """Validate and truncate error message."""
+        if v and len(v) > MAX_ERROR_LENGTH:
+            logger.warning(f"Error exceeds {MAX_ERROR_LENGTH} chars, truncating")
+            return v[:MAX_ERROR_LENGTH] + "..."
+        return v
+
+    @field_validator("raw_output")
+    @classmethod
+    def validate_raw_output_size(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Validate raw_output doesn't exceed size limits."""
+        try:
+            serialized = json.dumps(v)
+            if len(serialized) > MAX_RAW_OUTPUT_SIZE:
+                logger.warning("raw_output exceeds size limit, replacing with error")
+                return {"error": "Output too large", "truncated": True}
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Failed to validate raw_output size: {e}")
+            return {"error": "Failed to serialize output"}
+        return v
 
     def to_summary(self) -> str:
         """Generate a one-line summary of the result."""
@@ -246,6 +289,8 @@ class AggregatedResults(BaseModel):
 
     def get_result_by_host(self, host: str) -> SubagentResult | None:
         """Get result for a specific host."""
+        if not host:
+            return None
         for r in self.results:
             if r.host == host:
                 return r

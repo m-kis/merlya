@@ -564,33 +564,35 @@ class TestSubagentOrchestrator:
         assert progress_calls[0] == ("web-01", "starting")
         assert progress_calls[1] == ("web-01", "completed")
 
-    def test_get_active_executions(self, mock_context):
+    @pytest.mark.asyncio
+    async def test_get_active_executions(self, mock_context):
         """Test getting active executions."""
         from merlya.subagents.orchestrator import SubagentOrchestrator
 
         orchestrator = SubagentOrchestrator(mock_context)
 
         # Initially empty
-        assert orchestrator.get_active_executions() == {}
+        assert await orchestrator.get_active_executions() == {}
 
         # Simulate some executions
         orchestrator._active_executions["exec-1"] = "running"
         orchestrator._active_executions["exec-2"] = "completed"
 
-        active = orchestrator.get_active_executions()
+        active = await orchestrator.get_active_executions()
         assert "exec-1" in active
         assert active["exec-1"] == "running"
 
-    def test_clear_execution_history(self, mock_context):
+    @pytest.mark.asyncio
+    async def test_clear_execution_history(self, mock_context):
         """Test clearing execution history."""
         from merlya.subagents.orchestrator import SubagentOrchestrator
 
         orchestrator = SubagentOrchestrator(mock_context)
 
         orchestrator._active_executions["exec-1"] = "running"
-        orchestrator.clear_execution_history()
+        await orchestrator.clear_execution_history()
 
-        assert orchestrator.get_active_executions() == {}
+        assert await orchestrator.get_active_executions() == {}
 
 
 class TestSkillExecutorIntegration:

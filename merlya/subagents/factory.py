@@ -6,6 +6,8 @@ Creates ephemeral agents for parallel host execution.
 
 from __future__ import annotations
 
+import re
+import threading
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +25,13 @@ if TYPE_CHECKING:
 DEFAULT_SUBAGENT_MODEL = "anthropic:claude-3-5-sonnet-latest"
 DEFAULT_MAX_HISTORY = 10
 MAX_SYSTEM_PROMPT_LENGTH = 10000
+
+# Input validation limits
+MAX_HOST_LENGTH = 1000
+MAX_TASK_LENGTH = 10000
+
+# Regex to remove control characters (except newlines/tabs)
+CONTROL_CHAR_PATTERN = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
 
 
 # Base system prompt for subagents
@@ -196,15 +205,27 @@ class SubagentFactory:
         return prompt
 
     def _format_prompt(self, prompt: str, host: str, task: str) -> str:
-        """Format a prompt template with host and task."""
-        # Truncate for safety
+        """Format a prompt template with host and task.
+
+        Uses safe string replacement instead of .format() to prevent
+        format string injection vulnerabilities.
+        """
+        # Sanitize inputs - remove control characters and limit length
+        safe_host = CONTROL_CHAR_PATTERN.sub('', host)[:MAX_HOST_LENGTH]
+        safe_task = CONTROL_CHAR_PATTERN.sub('', task)[:MAX_TASK_LENGTH]
+
+        # Truncate prompt for safety
         safe_prompt = prompt[:MAX_SYSTEM_PROMPT_LENGTH]
 
-        try:
-            return safe_prompt.format(host=host, task=task)
-        except KeyError:
-            # If prompt doesn't have placeholders, append context
-            return f"{safe_prompt}\n\nHost: {host}\nTask: {task}"
+        # Use safe string replacement instead of format()
+        # This avoids format string injection vulnerabilities
+        result = safe_prompt.replace("{host}", safe_host).replace("{task}", safe_task)
+
+        # If no placeholders were replaced, append context
+        if "{host}" not in prompt and "{task}" not in prompt:
+            result = f"{safe_prompt}\n\nHost: {safe_host}\nTask: {safe_task}"
+
+        return result
 
 
 class SubagentInstance:
@@ -252,8 +273,9 @@ class SubagentInstance:
         self.max_history = max_history
         self.skill_name = skill_name
 
-        # Create the underlying agent lazily
+        # Create the underlying agent lazily with thread-safe lock
         self._agent: Agent[Any, Any] | None = None
+        self._agent_lock = threading.Lock()
         self._tools_registered = False
 
     def _create_agent(self) -> Agent[Any, Any]:
@@ -277,31 +299,42 @@ class SubagentInstance:
     def _register_filtered_tools(self, agent: Agent[Any, Any]) -> None:
         """Register tools on the agent.
 
-        Currently registers all tools and relies on system prompt
-        to guide tool usage. Tool filtering is enforced by:
-        1. System prompt instructions
-        2. Skill's tools_allowed list in guidance
+        SECURITY NOTE: Currently registers all tools and relies on system
+        prompt to guide tool usage. This is an advisory control, not a
+        hard enforcement. Tool filtering is enforced by:
+        1. System prompt instructions (explicit "ONLY use these tools" guidance)
+        2. Skill's tools_allowed list in prompt
 
-        Future: Implement tool-level filtering at registration.
+        True tool-level filtering would require PydanticAI infrastructure
+        changes (tool registry with selective registration). The current
+        approach provides defense-in-depth through strong prompt guidance.
+
+        For production use with untrusted inputs, consider additional
+        validation at the tool execution layer.
         """
         from merlya.agent.tools import register_all_tools
 
         # Register all tools - filtering is done via system prompt guidance
         register_all_tools(agent)
 
-        # Add tools_allowed to system prompt if specified
+        # Log tools guidance for debugging
         if self.tools_allowed:
             logger.debug(
-                f"🔧 Subagent {self.subagent_id} tools guidance: {self.tools_allowed}"
+                f"🔧 Subagent {self.subagent_id} tools guidance (advisory): {self.tools_allowed}"
             )
+        else:
+            logger.debug(f"🔧 Subagent {self.subagent_id} has no tool restrictions")
 
         self._tools_registered = True
 
     @property
     def agent(self) -> Agent[Any, Any]:
-        """Get or create the underlying agent."""
+        """Get or create the underlying agent (thread-safe)."""
+        # Double-checked locking pattern for thread safety
         if self._agent is None:
-            self._agent = self._create_agent()
+            with self._agent_lock:
+                if self._agent is None:
+                    self._agent = self._create_agent()
         return self._agent
 
     async def run(self, task: str, **kwargs: Any) -> SubagentRunResult:
