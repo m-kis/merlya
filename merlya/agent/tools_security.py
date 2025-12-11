@@ -29,9 +29,8 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         Check open ports on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            include_established: Include established connections.
+            host: Host name from inventory.
+            include_established: Include established connections (default: False).
 
         Returns:
             List of open ports with process info.
@@ -54,8 +53,7 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         Audit SSH keys on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             SSH key audit results with security issues.
@@ -76,8 +74,7 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         Check security configuration on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             Security configuration audit with issues.
@@ -98,8 +95,7 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         Audit user accounts on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             User audit with security issues.
@@ -120,8 +116,7 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         Audit sudo configuration on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             Sudo audit with security issues.
