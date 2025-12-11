@@ -10,7 +10,33 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Constants for skill configuration limits
+DEFAULT_MAX_HOSTS = 5
+MIN_MAX_HOSTS = 1
+MAX_MAX_HOSTS = 100
+DEFAULT_TIMEOUT_SECONDS = 120
+MIN_TIMEOUT_SECONDS = 10
+MAX_TIMEOUT_SECONDS = 600
+
+# Limits for validation
+MAX_INTENT_PATTERNS = 50
+MAX_PATTERN_LENGTH = 500
+MAX_NAME_LENGTH = 50
+MAX_DESCRIPTION_LENGTH = 1000
+MAX_SYSTEM_PROMPT_LENGTH = 10000
+
+# Status emoji mapping
+STATUS_EMOJI = {
+    "success": "✅",
+    "partial": "⚠️",
+    "failed": "❌",
+    "timeout": "⏱️",
+    "cancelled": "🚫",
+    "running": "🔄",
+    "pending": "⏳",
+}
 
 
 class SkillStatus(str, Enum):
@@ -74,15 +100,15 @@ class SkillConfig(BaseModel):
 
     # Execution limits
     max_hosts: int = Field(
-        default=5,
-        ge=1,
-        le=100,
+        default=DEFAULT_MAX_HOSTS,
+        ge=MIN_MAX_HOSTS,
+        le=MAX_MAX_HOSTS,
         description="Maximum hosts to execute on in parallel",
     )
     timeout_seconds: int = Field(
-        default=120,
-        ge=10,
-        le=600,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        ge=MIN_TIMEOUT_SECONDS,
+        le=MAX_TIMEOUT_SECONDS,
         description="Maximum execution time per host",
     )
 
@@ -108,6 +134,47 @@ class SkillConfig(BaseModel):
         default=None,
         description="Path to the YAML file (set by loader)",
     )
+
+    @field_validator("intent_patterns")
+    @classmethod
+    def validate_intent_patterns(cls, v: list[str]) -> list[str]:
+        """Validate intent patterns count and length."""
+        if len(v) > MAX_INTENT_PATTERNS:
+            raise ValueError(f"Too many intent patterns (max {MAX_INTENT_PATTERNS})")
+        for pattern in v:
+            if len(pattern) > MAX_PATTERN_LENGTH:
+                raise ValueError(f"Pattern too long (max {MAX_PATTERN_LENGTH} chars)")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate skill name format."""
+        if len(v) > MAX_NAME_LENGTH:
+            raise ValueError(f"Name too long (max {MAX_NAME_LENGTH} chars)")
+        if not v or len(v) < 2:
+            raise ValueError("Name must be at least 2 characters")
+        # Only allow alphanumeric, underscore, hyphen
+        import re
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", v):
+            raise ValueError("Name must start with letter and contain only letters, numbers, _, -")
+        return v.lower()
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str) -> str:
+        """Validate description length."""
+        if len(v) > MAX_DESCRIPTION_LENGTH:
+            raise ValueError(f"Description too long (max {MAX_DESCRIPTION_LENGTH} chars)")
+        return v
+
+    @field_validator("system_prompt")
+    @classmethod
+    def validate_system_prompt(cls, v: str | None) -> str | None:
+        """Validate system prompt length."""
+        if v and len(v) > MAX_SYSTEM_PROMPT_LENGTH:
+            raise ValueError(f"System prompt too long (max {MAX_SYSTEM_PROMPT_LENGTH} chars)")
+        return v
 
 
 class HostResult(BaseModel):
@@ -181,17 +248,7 @@ class SkillResult(BaseModel):
         if self.summary:
             return self.summary
 
-        status_emoji = {
-            SkillStatus.SUCCESS: "✅",
-            SkillStatus.PARTIAL: "⚠️",
-            SkillStatus.FAILED: "❌",
-            SkillStatus.TIMEOUT: "⏱️",
-            SkillStatus.CANCELLED: "🚫",
-            SkillStatus.RUNNING: "🔄",
-            SkillStatus.PENDING: "⏳",
-        }
-
-        emoji = status_emoji.get(self.status, "❓")
+        emoji = STATUS_EMOJI.get(self.status.value, "❓")
         rate = f"{self.success_rate:.0f}%"
 
         return (

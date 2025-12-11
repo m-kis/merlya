@@ -351,24 +351,23 @@ max_hosts: 5
 
     def test_load_file(self):
         """Test loading skill from file."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
-            f.write("""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create file in temp dir used as user_dir
+            skill_path = Path(tmpdir) / "file_skill.yaml"
+            skill_path.write_text("""
 name: file_skill
 version: "2.0"
 description: "From file"
 """)
-            f.flush()
 
             registry = SkillRegistry()
-            loader = SkillLoader(registry=registry)
+            loader = SkillLoader(registry=registry, user_dir=Path(tmpdir))
 
-            skill = loader.load_file(Path(f.name))
+            skill = loader.load_file(skill_path, builtin=False)
 
             assert skill is not None
             assert skill.name == "file_skill"
-            assert skill.source_path == f.name
+            assert skill.source_path == str(skill_path)
 
     def test_load_builtin(self):
         """Test loading builtin skills."""

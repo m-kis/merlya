@@ -6,6 +6,8 @@ Loads skills from YAML files in builtin and user directories.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -18,6 +20,11 @@ from merlya.skills.registry import SkillRegistry, get_registry
 # Default paths
 BUILTIN_SKILLS_DIR = Path(__file__).parent / "builtin"
 USER_SKILLS_DIR = Path.home() / ".merlya" / "skills"
+
+# File size limits
+MAX_YAML_FILE_SIZE = 1_000_000  # 1MB max for YAML files
+MAX_YAML_STRING_SIZE = 100_000  # 100KB max for YAML strings
+YAML_EXTENSIONS = ("*.yaml", "*.yml")
 
 
 class SkillLoader:
@@ -106,18 +113,23 @@ class SkillLoader:
         """
         count = 0
 
-        for yaml_file in directory.glob("*.yaml"):
-            skill = self.load_file(yaml_file, builtin=builtin)
-            if skill:
-                count += 1
-
-        for yml_file in directory.glob("*.yml"):
-            skill = self.load_file(yml_file, builtin=builtin)
-            if skill:
-                count += 1
+        for extension in YAML_EXTENSIONS:
+            for skill_file in directory.glob(extension):
+                skill = self.load_file(skill_file, builtin=builtin)
+                if skill:
+                    count += 1
 
         logger.debug(f"📁 Loaded {count} skills from {directory}")
         return count
+
+    def _is_safe_path(self, path: Path, allowed_dir: Path) -> bool:
+        """Check if path is within allowed directory (path traversal protection)."""
+        try:
+            resolved = path.resolve()
+            allowed_resolved = allowed_dir.resolve()
+            return str(resolved).startswith(str(allowed_resolved))
+        except (OSError, ValueError):
+            return False
 
     def load_file(self, path: Path, builtin: bool = False) -> SkillConfig | None:
         """
@@ -131,11 +143,25 @@ class SkillLoader:
             SkillConfig or None if loading failed.
         """
         try:
-            with path.open(encoding="utf-8") as f:
+            # Path traversal protection
+            allowed_dir = self.builtin_dir if builtin else self.user_dir
+            if not self._is_safe_path(path, allowed_dir):
+                logger.warning(f"⚠️ Path traversal blocked: {path}")
+                return None
+
+            # File size check
+            file_size = path.stat().st_size
+            if file_size > MAX_YAML_FILE_SIZE:
+                logger.warning(f"⚠️ File too large ({file_size} bytes): {path}")
+                return None
+
+            # Read with UTF-8 error handling
+            with path.open(encoding="utf-8", errors="replace") as f:
                 data = yaml.safe_load(f)
 
-            if not data:
-                logger.warning(f"⚠️ Empty skill file: {path}")
+            # Type validation
+            if not data or not isinstance(data, dict):
+                logger.warning(f"⚠️ Invalid skill file format: {path}")
                 return None
 
             # Add metadata
@@ -157,8 +183,11 @@ class SkillLoader:
         except ValidationError as e:
             logger.error(f"❌ Invalid skill config in {path}: {e}")
             return None
+        except (OSError, IOError) as e:
+            logger.error(f"❌ Failed to read file {path}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"❌ Failed to load skill from {path}: {e}")
+            logger.error(f"❌ Unexpected error loading {path}: {type(e).__name__}: {e}")
             return None
 
     def load_from_string(self, yaml_content: str, builtin: bool = False) -> SkillConfig | None:
@@ -166,17 +195,23 @@ class SkillLoader:
         Load a skill from a YAML string.
 
         Args:
-            yaml_content: YAML content.
+            yaml_content: YAML content (max 100KB).
             builtin: Whether this is a builtin skill.
 
         Returns:
             SkillConfig or None if loading failed.
         """
         try:
+            # Size validation
+            if len(yaml_content) > MAX_YAML_STRING_SIZE:
+                logger.warning(f"⚠️ YAML content too large ({len(yaml_content)} bytes)")
+                return None
+
             data = yaml.safe_load(yaml_content)
 
-            if not data:
-                logger.warning("⚠️ Empty skill content")
+            # Type validation
+            if not data or not isinstance(data, dict):
+                logger.warning("⚠️ Invalid skill content format")
                 return None
 
             data["builtin"] = builtin
@@ -196,13 +231,16 @@ class SkillLoader:
 
     def save_user_skill(self, skill: SkillConfig) -> Path:
         """
-        Save a skill to the user skills directory.
+        Save a skill to the user skills directory using atomic write.
 
         Args:
             skill: Skill to save.
 
         Returns:
             Path to the saved file.
+
+        Raises:
+            OSError: If writing fails.
         """
         # Ensure directory exists
         self.user_dir.mkdir(parents=True, exist_ok=True)
@@ -220,8 +258,26 @@ class SkillLoader:
         yaml_content += f"# Created by Merlya SkillWizard\n\n"
         yaml_content += yaml.dump(data, default_flow_style=False, sort_keys=False)
 
-        with path.open("w", encoding="utf-8") as f:
-            f.write(yaml_content)
+        # Atomic write: write to temp file then rename
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.user_dir,
+                suffix=".yaml.tmp",
+                delete=False,
+            ) as f:
+                f.write(yaml_content)
+                temp_path = Path(f.name)
+
+            # Atomic rename
+            temp_path.rename(path)
+        except (OSError, IOError) as e:
+            logger.error(f"❌ Failed to save skill: {e}")
+            # Cleanup temp file if exists
+            if "temp_path" in locals() and temp_path.exists():
+                temp_path.unlink()
+            raise
 
         # Update source_path
         skill.source_path = str(path)

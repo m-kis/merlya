@@ -15,6 +15,11 @@ from loguru import logger
 if TYPE_CHECKING:
     from merlya.skills.models import SkillConfig
 
+# Constants
+MAX_USER_INPUT_LENGTH = 10_000  # 10KB max for intent matching
+CONFIDENCE_BOOST = 0.3  # Boost for longer pattern matches
+LOG_TRUNCATE_LENGTH = 100  # Max chars in log messages
+
 # Singleton instance with thread-safety
 _registry_instance: SkillRegistry | None = None
 _registry_lock = threading.Lock()
@@ -62,14 +67,16 @@ class SkillRegistry:
 
             self._skills[skill.name] = skill
 
-            # Compile intent patterns
+            # Compile intent patterns with safety limits
             patterns: list[re.Pattern[str]] = []
             for pattern in skill.intent_patterns:
                 try:
                     compiled = re.compile(pattern, re.IGNORECASE)
                     patterns.append(compiled)
                 except re.error as e:
-                    logger.warning(f"⚠️ Invalid pattern '{pattern}' in skill '{skill.name}': {e}")
+                    # Truncate pattern in log for safety
+                    safe_pattern = pattern[:LOG_TRUNCATE_LENGTH] + "..." if len(pattern) > LOG_TRUNCATE_LENGTH else pattern
+                    logger.warning(f"⚠️ Invalid pattern '{safe_pattern}' in skill '{skill.name}': {e}")
 
             self._intent_patterns[skill.name] = patterns
 
@@ -141,32 +148,49 @@ class SkillRegistry:
         Match user input against skill intent patterns.
 
         Args:
-            user_input: User message to match.
+            user_input: User message to match (truncated if > 10KB).
 
         Returns:
             List of (skill, confidence) tuples, sorted by confidence descending.
         """
+        # Validate and truncate input
+        if not user_input:
+            return []
+
+        safe_input = user_input
+        if len(user_input) > MAX_USER_INPUT_LENGTH:
+            logger.warning(f"⚠️ Input too long for matching ({len(user_input)} chars), truncating")
+            safe_input = user_input[:MAX_USER_INPUT_LENGTH]
+
+        # Copy data under lock, then release for matching
+        with self._lock:
+            skills_copy = dict(self._skills)
+            patterns_copy = dict(self._intent_patterns)
+
         matches: list[tuple[SkillConfig, float]] = []
 
-        with self._lock:
-            for name, patterns in self._intent_patterns.items():
-                skill = self._skills[name]
-                max_confidence = 0.0
+        for name, patterns in patterns_copy.items():
+            skill = skills_copy[name]
+            max_confidence = 0.0
 
-                for pattern in patterns:
-                    match = pattern.search(user_input)
+            for pattern in patterns:
+                try:
+                    match = pattern.search(safe_input)
                     if match:
                         # Calculate confidence based on match length relative to input
                         match_len = len(match.group())
-                        input_len = len(user_input.strip())
+                        input_len = len(safe_input.strip())
                         if input_len > 0:
                             confidence = min(match_len / input_len, 1.0)
                             # Boost confidence for longer matches
-                            confidence = min(confidence + 0.3, 1.0)
+                            confidence = min(confidence + CONFIDENCE_BOOST, 1.0)
                             max_confidence = max(max_confidence, confidence)
+                except (re.error, RuntimeError) as e:
+                    logger.warning(f"⚠️ Pattern matching error for '{name}': {e}")
+                    continue
 
-                if max_confidence > 0:
-                    matches.append((skill, max_confidence))
+            if max_confidence > 0:
+                matches.append((skill, max_confidence))
 
         # Sort by confidence descending
         matches.sort(key=lambda x: x[1], reverse=True)
