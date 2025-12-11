@@ -140,6 +140,7 @@ class MerlyaCompleter(Completer):
     - Slash commands (/help, /hosts, etc.)
     - Host mentions (@hostname)
     - Variable mentions (@variable)
+    - Secret mentions (@secret-name)
     """
 
     def __init__(self, ctx: SharedContext) -> None:
@@ -147,6 +148,7 @@ class MerlyaCompleter(Completer):
         self.ctx = ctx
         self._hosts_cache: list[str] = []
         self._variables_cache: list[str] = []
+        self._secrets_cache: list[str] = []
         self._last_cache_update: float = 0.0
 
     async def _update_cache(self) -> None:
@@ -163,6 +165,9 @@ class MerlyaCompleter(Completer):
 
             variables = await self.ctx.variables.get_all()
             self._variables_cache = [v.name for v in variables]
+
+            # Secrets from keyring
+            self._secrets_cache = self.ctx.secrets.list_names()
 
             self._last_cache_update = now
         except Exception as e:
@@ -210,6 +215,16 @@ class MerlyaCompleter(Completer):
                         start_position=-len(prefix),
                         display=f"@{var}",
                         display_meta="variable",
+                    )
+
+            # Complete secrets
+            for secret in self._secrets_cache:
+                if secret.lower().startswith(prefix.lower()):
+                    yield Completion(
+                        secret,
+                        start_position=-len(prefix),
+                        display=f"@{secret}",
+                        display_meta="secret",
                     )
 
 
@@ -313,13 +328,26 @@ class REPL:
                 with self.ctx.ui.spinner(self.ctx.t("ui.spinner.routing")):
                     route_result = await self.router.route(user_input)
 
-                # Expand @ mentions
-                expanded_input = await self._expand_mentions(user_input)
+                # Expand @ mentions (only for non-fast-path)
+                if not route_result.is_fast_path:
+                    expanded_input = await self._expand_mentions(user_input)
+                else:
+                    expanded_input = user_input
 
-                # Run agent
+                # Handle via fast path, skill, or agent
                 try:
-                    with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
-                        response = await self.agent.run(expanded_input, route_result)
+                    from merlya.router.handler import handle_user_message
+
+                    # Use spinner only for non-fast-path (fast path is instant)
+                    if route_result.is_fast_path:
+                        response = await handle_user_message(
+                            self.ctx, self.agent, expanded_input, route_result
+                        )
+                    else:
+                        with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
+                            response = await handle_user_message(
+                                self.ctx, self.agent, expanded_input, route_result
+                            )
                 except asyncio.CancelledError:
                     # Handle Ctrl+C during agent execution
                     self.ctx.ui.newline()
@@ -335,6 +363,10 @@ class REPL:
 
                 if response.suggestions:
                     self.ctx.ui.info(f"\nSuggestions: {', '.join(response.suggestions)}")
+
+                # Show handler info in debug mode
+                if response.handled_by != "agent":
+                    self.ctx.ui.muted(f"[{response.handled_by}]")
 
                 self.ctx.ui.newline()
 
@@ -358,26 +390,29 @@ class REPL:
         """
         Expand @ mentions in text.
 
-        @hostname -> resolved host info
-        @variable -> variable value
+        @hostname -> kept as-is (agent will resolve from inventory)
+        @variable -> variable value (non-sensitive, user-defined)
+        @secret   -> kept as-is (resolved only at execution time in ssh_execute)
+
+        SECURITY: Secrets are NEVER expanded here to prevent leaking to LLM.
+        The LLM sees @secret-name, and resolution happens in ssh_execute.
         """
         # Find all @ mentions
         mentions = re.findall(r"@(\w[\w.-]*)", text)
 
         for mention in mentions:
-            # Try as variable first
+            # Try as variable first (variables are non-sensitive, OK to expand)
             var = await self.ctx.variables.get(mention)
             if var:
                 text = text.replace(f"@{mention}", var.value)
                 continue
 
-            # Try as secret
-            secret = self.ctx.secrets.get(mention)
-            if secret:
-                text = text.replace(f"@{mention}", secret)
-                continue
+            # SECURITY: Do NOT expand secrets here!
+            # Secrets are resolved only in ssh_execute at execution time.
+            # This prevents secret values from leaking to the LLM.
+            # The LLM will see @secret-name and use it in commands.
 
-            # Keep as host reference (agent will resolve)
+            # Keep as host reference or secret reference (agent will handle)
 
         return text
 
