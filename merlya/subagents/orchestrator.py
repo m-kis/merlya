@@ -264,13 +264,12 @@ class SubagentOrchestrator:
 
             # Execute with activity-based timeout
             # The timeout monitors both idle time (no activity) and max runtime
-            async with ActivityTimeout(
+            # Tools should call touch_activity() to signal progress
+            timeout_tracker = ActivityTimeout(
                 idle_timeout=idle_timeout,
                 max_timeout=max_timeout,
-            ) as tracker:
-                run_result = await subagent.run(task)
-                # Touch after completion to prevent false timeout on slow final response
-                tracker.touch()
+            )
+            run_result = await timeout_tracker.run(subagent.run(task))
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
             completed_at = datetime.now(timezone.utc)

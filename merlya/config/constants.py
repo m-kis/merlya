@@ -32,17 +32,27 @@ DEFAULT_LIST_LIMIT = 10  # Default limit for list operations
 MAX_LIST_LIMIT = 100  # Maximum allowed list limit
 
 # Agent Limits
-DEFAULT_MAX_HISTORY_MESSAGES = 30  # Maximum messages to keep in history
-DEFAULT_REQUEST_LIMIT = 50  # Maximum LLM requests per run
+DEFAULT_MAX_HISTORY_MESSAGES = 50  # Maximum messages to keep in history (default)
+DIAGNOSTIC_MAX_HISTORY_MESSAGES = 100  # For diagnostic tasks with many tool calls
+DEFAULT_REQUEST_LIMIT = 100  # Maximum LLM requests per run (fallback)
 DEFAULT_TOOL_CALLS_LIMIT = 50  # Maximum tool calls per run (fallback)
 MIN_RESPONSE_LENGTH_WITH_ACTIONS = 20  # Minimum response length when actions taken
-HARD_MAX_HISTORY_MESSAGES = 100  # Absolute maximum to prevent unbounded growth
+HARD_MAX_HISTORY_MESSAGES = 200  # Absolute maximum to prevent unbounded growth
 
 # Mode-specific tool call limits (set by router based on task type)
 TOOL_CALLS_LIMIT_DIAGNOSTIC = 100  # SSH investigation, log analysis, monitoring
 TOOL_CALLS_LIMIT_REMEDIATION = 50  # Fixing, deploying, configuring
 TOOL_CALLS_LIMIT_QUERY = 30  # Information gathering, explanations
 TOOL_CALLS_LIMIT_CHAT = 20  # Simple conversations
+
+# Mode-specific request limits (should be >= tool_calls_limit)
+REQUEST_LIMIT_DIAGNOSTIC = 150  # More headroom for complex investigation
+REQUEST_LIMIT_REMEDIATION = 80  # Moderate for fix/deploy tasks
+REQUEST_LIMIT_QUERY = 50  # Enough for information gathering
+REQUEST_LIMIT_CHAT = 30  # Simple conversations
+
+# Skill-specific limits (skills can involve complex multi-step operations)
+REQUEST_LIMIT_SKILL = 100  # Request limit for skill execution
 
 # Tool retry configuration
 DEFAULT_TOOL_RETRIES = 3  # Allow tools to retry on ModelRetry (e.g., elevation flow)

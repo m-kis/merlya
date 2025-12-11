@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 from pydantic_ai import Agent
 
-from merlya.config.constants import DEFAULT_TOOL_RETRIES
+from merlya.config.constants import DEFAULT_TOOL_RETRIES, REQUEST_LIMIT_SKILL
 from merlya.config.provider_env import ensure_provider_env
 
 if TYPE_CHECKING:
@@ -98,7 +98,10 @@ class SubagentFactory:
             return self._model
         # Try to get from config, fallback to default
         if hasattr(self.context, "config") and self.context.config:
-            return self.context.config.llm.model_id
+            provider = getattr(self.context.config.model, "provider", None)
+            model = getattr(self.context.config.model, "model", None)
+            if provider and model:
+                return f"{provider}:{model}"
         return DEFAULT_SUBAGENT_MODEL
 
     def create(
@@ -349,11 +352,20 @@ class SubagentInstance:
             SubagentRunResult with output and metadata.
         """
         from merlya.agent.main import AgentDependencies
+        from pydantic_ai.settings import ModelSettings
 
         deps = AgentDependencies(context=self.context)
 
+        # Set model settings with request limit for skills
+        model_settings = ModelSettings(request_limit=REQUEST_LIMIT_SKILL)
+
         try:
-            result = await self.agent.run(task, deps=deps, **kwargs)
+            result = await self.agent.run(
+                task,
+                deps=deps,
+                model_settings=model_settings,
+                **kwargs,
+            )
 
             return SubagentRunResult(
                 subagent_id=self.subagent_id,

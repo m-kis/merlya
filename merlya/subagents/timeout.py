@@ -7,6 +7,7 @@ Provides intelligent timeout that tracks activity instead of absolute time.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import time
 from typing import Any, Callable
 
@@ -18,6 +19,28 @@ DEFAULT_MAX_TIMEOUT_SECONDS = 600  # Absolute max of 10 minutes
 MIN_IDLE_TIMEOUT_SECONDS = 10
 MIN_MAX_TIMEOUT_SECONDS = 30
 
+# Context variable for current activity tracker (allows tools to call touch())
+_current_tracker: contextvars.ContextVar[ActivityTimeout | None] = contextvars.ContextVar(
+    "activity_tracker", default=None
+)
+
+
+def get_current_tracker() -> "ActivityTimeout | None":
+    """Get the current activity tracker from context (if any)."""
+    return _current_tracker.get()
+
+
+def touch_activity() -> None:
+    """
+    Touch the current activity tracker (if any).
+
+    Call this from tools to signal that work is being done.
+    Safe to call even if no tracker is active.
+    """
+    tracker = _current_tracker.get()
+    if tracker:
+        tracker.touch()
+
 
 class ActivityTimeout:
     """Activity-based timeout manager.
@@ -28,13 +51,12 @@ class ActivityTimeout:
     This is useful for long-running tasks that make continuous progress
     but would be killed by a fixed timeout.
 
-    Example:
-        >>> async with ActivityTimeout(idle=30, max_timeout=300) as tracker:
-        ...     # Long running operation
-        ...     for item in items:
-        ...         result = await process(item)
-        ...         tracker.touch()  # Reset idle timer
-        ...     return result
+    Usage with run():
+        >>> tracker = ActivityTimeout(idle=30, max_timeout=300)
+        >>> result = await tracker.run(my_coroutine())
+
+    The tracker is set in context, so tools can call touch_activity()
+    to signal they are doing work.
 
     Attributes:
         idle_timeout: Seconds of inactivity before timeout.
@@ -64,9 +86,8 @@ class ActivityTimeout:
         self.start_time: float = 0.0
         self.last_activity: float = 0.0
         self._cancelled = False
-        self._cancel_event: asyncio.Event | None = None
-        self._monitor_task: asyncio.Task[None] | None = None
         self._timeout_reason: str | None = None
+        self._task: asyncio.Task[Any] | None = None
 
     def touch(self) -> None:
         """Record activity - resets the idle timer."""
@@ -96,87 +117,37 @@ class ActivityTimeout:
         """Get the reason for timeout (idle or max)."""
         return self._timeout_reason
 
-    async def _monitor_loop(self) -> None:
-        """Background task that monitors for timeout conditions."""
-        check_interval = min(self.idle_timeout / 4, 5.0)  # Check frequently
+    def _check_timeout(self) -> bool:
+        """Check if timeout should trigger. Returns True if timed out."""
+        now = time.monotonic()
+        elapsed = now - self.start_time
+        idle = now - self.last_activity
 
-        while not self._cancelled:
-            await asyncio.sleep(check_interval)
+        # Check max timeout
+        if elapsed >= self.max_timeout:
+            self._cancelled = True
+            self._timeout_reason = f"max timeout ({self.max_timeout:.0f}s)"
+            logger.warning(f"⏱️ ActivityTimeout: max timeout reached after {elapsed:.1f}s")
+            return True
 
-            now = time.monotonic()
-            elapsed = now - self.start_time
-            idle = now - self.last_activity
+        # Check idle timeout
+        if idle >= self.idle_timeout:
+            self._cancelled = True
+            self._timeout_reason = f"idle timeout ({self.idle_timeout:.0f}s)"
+            logger.warning(
+                f"⏱️ ActivityTimeout: idle timeout after {idle:.1f}s "
+                f"(no activity for {self.idle_timeout:.0f}s)"
+            )
+            return True
 
-            # Check max timeout
-            if elapsed >= self.max_timeout:
-                self._cancelled = True
-                self._timeout_reason = f"max timeout ({self.max_timeout:.0f}s)"
-                logger.warning(f"⏱️ ActivityTimeout: max timeout reached after {elapsed:.1f}s")
-                break
+        return False
 
-            # Check idle timeout
-            if idle >= self.idle_timeout:
-                self._cancelled = True
-                self._timeout_reason = f"idle timeout ({self.idle_timeout:.0f}s)"
-                logger.warning(
-                    f"⏱️ ActivityTimeout: idle timeout after {idle:.1f}s "
-                    f"(last activity {self.idle_timeout:.0f}s ago)"
-                )
-                break
-
-        # Signal cancellation
-        if self._cancel_event:
-            self._cancel_event.set()
-
-        # Invoke callback
-        if self._cancelled and self.on_timeout:
-            try:
-                result = self.on_timeout()
-                if asyncio.iscoroutine(result):
-                    await result
-            except Exception as e:
-                logger.warning(f"⚠️ Timeout callback failed: {e}")
-
-    async def __aenter__(self) -> ActivityTimeout:
-        """Enter the context - start monitoring."""
-        self.start_time = time.monotonic()
-        self.last_activity = self.start_time
-        self._cancelled = False
-        self._timeout_reason = None
-        self._cancel_event = asyncio.Event()
-
-        # Start background monitor
-        self._monitor_task = asyncio.create_task(self._monitor_loop())
-
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: Any,
-    ) -> bool:
-        """Exit the context - stop monitoring."""
-        # Cancel the monitor task
-        if self._monitor_task and not self._monitor_task.done():
-            self._monitor_task.cancel()
-            try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-
-        # If we were cancelled due to timeout, raise TimeoutError
-        if self._cancelled and exc_type is None:
-            raise TimeoutError(f"Activity timeout: {self._timeout_reason}")
-
-        return False  # Don't suppress exceptions
-
-    async def wait_or_timeout(self, coro: Any) -> Any:
+    async def run(self, coro: Any) -> Any:
         """
-        Execute a coroutine with activity-based timeout monitoring.
+        Execute a coroutine with activity-based timeout.
 
-        This runs the coroutine while the monitor checks for timeouts.
-        The caller should call touch() periodically to signal progress.
+        This is the preferred way to use ActivityTimeout.
+        The tracker is set in context so tools can call touch_activity().
 
         Args:
             coro: Coroutine to execute.
@@ -185,35 +156,73 @@ class ActivityTimeout:
             Result of the coroutine.
 
         Raises:
-            TimeoutError: If timeout occurs.
+            TimeoutError: If timeout occurs (idle or max).
             asyncio.CancelledError: If externally cancelled.
         """
+        # Initialize timing
+        self.start_time = time.monotonic()
+        self.last_activity = self.start_time
+        self._cancelled = False
+        self._timeout_reason = None
+
+        # Set this tracker in context so tools can call touch_activity()
+        token = _current_tracker.set(self)
+
         # Create task for the coroutine
-        task = asyncio.create_task(coro)
+        self._task = asyncio.create_task(coro)
+
+        # Check interval - frequently enough to catch timeouts
+        check_interval = min(self.idle_timeout / 4, 2.0)
 
         try:
-            # Wait for either task completion or cancellation
-            while not task.done():
-                if self._cancelled:
-                    task.cancel()
+            while not self._task.done():
+                # Wait for task or check interval
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(self._task),
+                        timeout=check_interval,
+                    )
+                except asyncio.TimeoutError:
+                    # Check interval elapsed, check for timeout
+                    pass
+
+                # Check if we should timeout
+                if not self._task.done() and self._check_timeout():
+                    # Cancel the task
+                    self._task.cancel()
                     try:
-                        await task
+                        await self._task
                     except asyncio.CancelledError:
                         pass
+
+                    # Invoke callback if set
+                    if self.on_timeout:
+                        try:
+                            result = self.on_timeout()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        except Exception as e:
+                            logger.warning(f"⚠️ Timeout callback failed: {e}")
+
                     raise TimeoutError(f"Activity timeout: {self._timeout_reason}")
 
-                # Wait a bit before checking again
-                await asyncio.sleep(0.1)
-
-            return task.result()
+            # Task completed successfully
+            return self._task.result()
 
         except asyncio.CancelledError:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            # External cancellation
+            if self._task and not self._task.done():
+                self._task.cancel()
+                try:
+                    await self._task
+                except asyncio.CancelledError:
+                    pass
             raise
+
+        finally:
+            # Reset context
+            _current_tracker.reset(token)
+            self._task = None
 
 
 def create_activity_timeout(

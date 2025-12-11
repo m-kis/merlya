@@ -86,18 +86,20 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         host: str,
         command: str,
         timeout: int = 60,
-        elevation: dict[str, Any] | None = None,
         via: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a command on a host via SSH.
 
+        Features handled automatically by Merlya:
+        - Secret resolution: @secret-name in commands are resolved from keyring
+        - Auto-elevation: Permission denied errors trigger automatic elevation retry
+
         Args:
             ctx: Run context.
             host: Host name or hostname (target machine).
-            command: Command to execute.
+            command: Command to execute. Can contain @secret-name references.
             timeout: Command timeout in seconds.
-            elevation: Optional elevation payload (from request_elevation).
             via: Optional jump host/bastion to reach the target.
                  Use this when the target is not directly accessible.
                  Can be a host name from inventory (e.g., "ansible", "bastion")
@@ -107,28 +109,36 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
             Command output with stdout, stderr, and exit_code.
 
         Example:
-            To execute on a remote host via a bastion:
+            # Execute on a remote host via a bastion
             ssh_execute(host="db-server", command="df -h", via="bastion")
+
+            # Use secrets in commands (resolved automatically)
+            ssh_execute(host="db", command="mongosh -u admin -p @db-password")
         """
+        from merlya.subagents.timeout import touch_activity
         from merlya.tools.core import ssh_execute as _ssh_execute
 
-        router_result = getattr(ctx.deps, "router_result", None)
-        if router_result and router_result.elevation_required and elevation is None:
-            raise ModelRetry(
-                "Elevation flagged by router. Use request_elevation to prepare the command, "
-                "then pass the returned payload to ssh_execute via the 'elevation' argument."
-            )
-
         via_info = f" via {via}" if via else ""
+        # Note: command may contain @secret-name, resolved in _ssh_execute
+        # Logs will show @secret-name, not actual values
         logger.info(f"Executing on {host}{via_info}: {command[:50]}...")
+
+        # Signal activity before and after SSH command
+        touch_activity()
+
         result = await _ssh_execute(
-            ctx.deps.context, host, command, timeout, elevation=elevation, via=via
+            ctx.deps.context, host, command, timeout, via=via
         )
+
+        # Signal activity after command completes
+        touch_activity()
+
         return {
             "success": result.success,
             "stdout": result.data.get("stdout", "") if result.data else "",
             "stderr": result.data.get("stderr", "") if result.data else "",
             "exit_code": result.data.get("exit_code", -1) if result.data else -1,
+            "elevation": result.data.get("elevation") if result.data else None,
             "via": result.data.get("via") if result.data else None,
         }
 
