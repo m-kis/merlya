@@ -151,12 +151,85 @@ class TestIsSafeSshKeyPath:
         assert _is_safe_ssh_key_path("/var/log/syslog") is False
 
     def test_path_traversal_blocked(self):
-        """Test path traversal attempts are blocked when not starting with allowed prefix."""
+        """Test path traversal attempts are blocked after canonicalization."""
         # These don't start with allowed prefixes
         assert _is_safe_ssh_key_path("/../etc/shadow") is False
         assert _is_safe_ssh_key_path("../etc/passwd") is False
-        # Note: /home/user/../../etc/passwd starts with /home/ so it passes the prefix check
-        # The validation is prefix-based, not canonicalization-based
+
+    def test_path_traversal_with_allowed_prefix_blocked(self):
+        """Test path traversal attempts that start with allowed prefix are blocked.
+
+        Critical security test: paths like /home/user/../../etc/passwd start with
+        /home/ but after canonicalization resolve to /etc/passwd which is not allowed.
+        """
+        # These start with allowed prefixes but traverse outside
+        # Use paths that escape via /root since macOS /home is special
+        assert _is_safe_ssh_key_path("/home/user/../../etc/passwd") is False
+        assert _is_safe_ssh_key_path("/root/../etc/passwd") is False
+        assert _is_safe_ssh_key_path("/root/.ssh/../../../etc/shadow") is False
+        assert _is_safe_ssh_key_path("/etc/ssh/../../tmp/malicious") is False
+
+    def test_path_traversal_with_mock_resolution(self):
+        """Test path traversal using mocked resolution for consistent cross-platform behavior.
+
+        This test mocks Path.resolve() to simulate Linux filesystem semantics
+        where /home/user/../../etc/passwd resolves to /etc/passwd.
+        """
+        from unittest.mock import patch
+        import posixpath
+
+        def mock_resolve_linux(path_str: str) -> str:
+            """Simulate Linux-style path resolution (pure, no symlink resolution)."""
+            return posixpath.normpath(path_str)
+
+        # Test cases: (input_path, expected_resolved, expected_result)
+        # Note: posixpath.normpath follows path segments literally
+        test_cases = [
+            # Traversal escaping /home to /etc - should be blocked
+            ("/home/user/../../etc/passwd", "/etc/passwd", False),
+            # /home/user/.ssh/../.. = /home, then /etc/shadow = /home/etc/shadow (stays in /home)
+            ("/home/user/.ssh/../../etc/shadow", "/home/etc/shadow", True),
+            # Traversal escaping /root to /etc - should be blocked
+            ("/root/../etc/passwd", "/etc/passwd", False),
+            # Deep traversal to /etc - should be blocked
+            ("/root/.ssh/../../../etc/shadow", "/etc/shadow", False),
+            # Valid path staying within /home/.ssh - should pass
+            ("/home/user/.ssh/../.ssh/id_rsa", "/home/user/.ssh/id_rsa", True),
+            # Valid /etc/ssh path - should pass
+            ("/etc/ssh/ssh_host_key", "/etc/ssh/ssh_host_key", True),
+            # More escape attempts that should be blocked
+            ("/home/a/../../../tmp/evil", "/tmp/evil", False),
+            ("/root/../../var/log/auth.log", "/var/log/auth.log", False),
+        ]
+
+        # Verify our mock produces expected Linux-style resolution
+        for input_path, expected_resolved, _ in test_cases:
+            resolved = mock_resolve_linux(input_path)
+            assert resolved == expected_resolved, (
+                f"Mock resolution of {input_path} produced {resolved}, "
+                f"expected {expected_resolved}"
+            )
+
+        # Now test the actual function with mocked Path.resolve
+        from pathlib import Path
+
+        def patched_resolve(self):
+            """Return a Path with Linux-style normalized path."""
+            normalized = mock_resolve_linux(str(self))
+            return Path(normalized)
+
+        with patch.object(Path, 'resolve', patched_resolve):
+            for input_path, _, expected in test_cases:
+                result = _is_safe_ssh_key_path(input_path)
+                assert result is expected, (
+                    f"Path {input_path} returned {result}, expected {expected}"
+                )
+
+    def test_path_traversal_staying_in_allowed_directory(self):
+        """Test path traversal that stays within allowed directories is accepted."""
+        # These traverse but stay within allowed directories
+        assert _is_safe_ssh_key_path("/home/user/.ssh/../.ssh/id_rsa") is True
+        assert _is_safe_ssh_key_path("/root/.ssh/../.ssh/id_ed25519") is True
 
 
 class TestCheckOpenPorts:
