@@ -6,6 +6,7 @@ Handles user messages with fast path, skill, and LLM agent routing.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +19,12 @@ if TYPE_CHECKING:
     from merlya.router.classifier import RouterResult
 
 # Constants
-SKILL_CONFIDENCE_THRESHOLD = 0.6  # Minimum confidence to use skill path
+# Minimum confidence score (0.0-1.0) to route to skill instead of LLM agent.
+# Set to 0.6 to balance precision (avoid false positives) with recall.
+SKILL_CONFIDENCE_THRESHOLD = 0.6
+
+# Default timeout for skill execution if not specified by skill
+DEFAULT_SKILL_TIMEOUT_SECONDS = 120
 
 
 @dataclass
@@ -208,12 +214,24 @@ async def handle_skill_flow(
             policy_manager=policy_manager,
         )
 
-        # Execute skill
-        result = await executor.execute(
-            skill=skill,
-            hosts=hosts or ["localhost"],  # Default to localhost for single-host skills
-            task=user_input,
-        )
+        # P1: Execute skill with explicit timeout enforcement
+        timeout = skill.timeout_seconds if hasattr(skill, 'timeout_seconds') else DEFAULT_SKILL_TIMEOUT_SECONDS
+        try:
+            result = await asyncio.wait_for(
+                executor.execute(
+                    skill=skill,
+                    hosts=hosts or ["localhost"],  # Default to localhost for single-host skills
+                    task=user_input,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Skill execution timeout: {skill.name} after {timeout}s")
+            return HandlerResponse(
+                message=f"**Skill: {skill.name}**\n\n❌ Execution timed out after {timeout}s.",
+                handled_by="skill",
+                actions_taken=[f"skill:{skill.name}:timeout"],
+            )
 
         # Format response
         message_parts = [

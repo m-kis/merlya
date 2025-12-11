@@ -7,6 +7,7 @@ Uses local ONNX embedding model with LLM fallback for ambiguous cases.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
@@ -192,6 +193,7 @@ class IntentRouter:
         )
         self._llm_model: str | None = None
         self._initialized = False
+        self._init_lock: asyncio.Lock | None = None  # Lazy init for async lock
 
     async def initialize(self) -> None:
         """Initialize the router (load embedding model)."""
@@ -227,9 +229,13 @@ class IntentRouter:
         Returns:
             RouterResult with classification.
         """
-        # Ensure initialized
+        # P1: Thread-safe initialization with double-checked locking
         if not self._initialized:
-            await self.initialize()
+            if self._init_lock is None:
+                self._init_lock = asyncio.Lock()
+            async with self._init_lock:
+                if not self._initialized:
+                    await self.initialize()
 
         # 1. Check for fast path intents first (simple operations)
         fast_path, fast_path_args = self._detect_fast_path(user_input)
@@ -249,13 +255,16 @@ class IntentRouter:
         # 2. Classify input using embeddings/patterns
         result = await self._classify(user_input)
 
-        # 3. Check for skill matches
+        # 3. Check for skill matches (P1: with exception handling)
         if check_skills:
-            skill_match, skill_confidence = self._match_skill(user_input)
-            if skill_match and skill_confidence >= 0.5:
-                result.skill_match = skill_match
-                result.skill_confidence = skill_confidence
-                logger.debug(f"🎯 Skill match: {skill_match} ({skill_confidence:.2f})")
+            try:
+                skill_match, skill_confidence = self._match_skill(user_input)
+                if skill_match and skill_confidence >= 0.5:
+                    result.skill_match = skill_match
+                    result.skill_confidence = skill_confidence
+                    logger.debug(f"🎯 Skill match: {skill_match} ({skill_confidence:.2f})")
+            except Exception as e:
+                logger.warning(f"⚠️ Skill matching failed: {e}")
 
         # 4. If confidence is low and we have LLM fallback, use it
         if result.confidence < self.classifier.CONFIDENCE_THRESHOLD and self._llm_model:
@@ -280,6 +289,21 @@ class IntentRouter:
 
         return result
 
+    def _validate_identifier(self, name: str) -> bool:
+        """Validate that an identifier is safe (hostname, variable name, etc.).
+
+        Prevents path traversal and injection attacks.
+        """
+        if not name or len(name) > 255:
+            return False
+        # Must start with alphanumeric, contain only safe chars
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$', name):
+            return False
+        # Reject path traversal attempts
+        if '..' in name:
+            return False
+        return True
+
     def _detect_fast_path(self, text: str) -> tuple[str | None, dict[str, str]]:
         """
         Detect fast path intent from user input.
@@ -299,8 +323,12 @@ class IntentRouter:
                     # Extract named groups or positional groups as args
                     args: dict[str, str] = {}
                     if match.groups():
-                        # Use first captured group as target
-                        args["target"] = match.group(1)
+                        target = match.group(1)
+                        # P0 Security: Validate identifier before using
+                        if not self._validate_identifier(target):
+                            logger.warning(f"⚠️ Invalid target identifier: {target[:50]}")
+                            continue  # Skip this pattern, try next
+                        args["target"] = target
                     return intent, args
 
         return None, {}
@@ -455,6 +483,9 @@ Respond in JSON format:
 
     def _parse_llm_response(self, response: object, user_input: str) -> RouterResult | None:
         """Parse LLM classification response."""
+        # Security limit for LLM response size
+        MAX_LLM_RESPONSE_SIZE = 100_000  # 100KB
+
         try:
             raw = getattr(response, "data", None)
             if raw is None and hasattr(response, "output"):
@@ -462,8 +493,22 @@ Respond in JSON format:
             if raw is None:
                 raw = str(response)
 
-            data = json.loads(str(raw))
-            mode = AgentMode(data.get("mode", "chat"))
+            # P0 Security: Validate size before parsing
+            raw_str = str(raw)
+            if len(raw_str) > MAX_LLM_RESPONSE_SIZE:
+                logger.warning(f"⚠️ LLM response too large: {len(raw_str)} bytes")
+                return None
+
+            data = json.loads(raw_str)
+
+            # Validate mode before creating enum
+            mode_str = data.get("mode", "chat")
+            try:
+                mode = AgentMode(mode_str)
+            except ValueError:
+                logger.warning(f"⚠️ Invalid mode from LLM: {mode_str}, defaulting to CHAT")
+                mode = AgentMode.CHAT
+
             tools = data.get("tools", ["core"])
             reasoning = data.get("reasoning")
             credentials_required = bool(data.get("credentials_required", False))
