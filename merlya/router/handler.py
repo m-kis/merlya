@@ -20,8 +20,10 @@ if TYPE_CHECKING:
 
 # Constants
 # Minimum confidence score (0.0-1.0) to route to skill instead of LLM agent.
-# Set to 0.6 to balance precision (avoid false positives) with recall.
-SKILL_CONFIDENCE_THRESHOLD = 0.6
+# Set to 0.88 to avoid false positives - skills should only trigger when confident
+# Lower values cause skills like service_check to trigger for config queries
+# A score of 0.87 for "config cloudflared" -> service_check shows embeddings can be wrong
+SKILL_CONFIDENCE_THRESHOLD = 0.88
 
 # Note: Timeout is now handled by SubagentOrchestrator with ActivityTimeout
 # which provides intelligent idle-based timeout detection

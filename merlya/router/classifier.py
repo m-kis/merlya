@@ -266,11 +266,17 @@ class IntentRouter:
                 if self.classifier.model_loaded:
                     skill_match, skill_confidence = await self._match_skill_embeddings(user_input)
 
-                    # Require higher confidence (0.7) to avoid false positives
-                    if skill_match and skill_confidence >= 0.7:
+                    # Log ALL matches for debugging (even below threshold)
+                    if skill_match:
+                        logger.info(f"🎯 Skill candidate: {skill_match} ({skill_confidence:.2f})")
+
+                    # Require higher confidence (0.88) to avoid false positives
+                    # Lower values cause skills like service_check to trigger for config queries
+                    # Example: "config cloudflared" scores 0.87 for service_check (false positive)
+                    if skill_match and skill_confidence >= 0.88:
                         result.skill_match = skill_match
                         result.skill_confidence = skill_confidence
-                        logger.debug(f"🎯 Skill match: {skill_match} ({skill_confidence:.2f})")
+                        logger.info(f"✅ Skill activated: {skill_match} ({skill_confidence:.2f})")
                 elif self._llm_model:
                     # ONNX not loaded but LLM fallback is configured
                     # Use LLM to match skills (slower but accurate)

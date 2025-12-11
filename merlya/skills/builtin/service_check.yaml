@@ -2,15 +2,19 @@
 # Check and manage system services
 
 name: service_check
-version: "1.0"
-description: "Check service status and health across hosts"
+version: "1.1"
+description: "Check systemd service status (running/stopped/failed), restart services, or view service logs via journalctl. NOT for configuration viewing."
 
 intent_patterns:
-  - "service.*"
-  - "systemctl.*"
-  - "status.*"
-  - "is.*running"
-  - "check.*service"
+  # NOTE: Patterns are DEPRECATED - use description for semantic matching
+  # These are only used as fallback when ONNX model is not loaded
+  # Keep patterns VERY specific to avoid false matches
+  - "\\bservice\\s+status\\b"
+  - "\\bsystemctl\\s+status\\b"
+  - "\\bcheck\\s+.*\\s+service\\b"
+  - "\\bservice\\s+.*\\s+running\\b"
+  - "\\brestart\\s+service\\b"
+  - "\\bstop\\s+service\\b"
 
 tools_allowed:
   - ssh_execute
