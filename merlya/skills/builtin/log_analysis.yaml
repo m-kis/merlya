@@ -6,12 +6,16 @@ version: "1.0"
 description: "Analyze logs and identify errors or anomalies"
 
 intent_patterns:
-  - "log.*"
-  - "tail.*"
-  - "journalctl.*"
-  - "error.*log"
-  - "check.*log"
-  - "analyze.*log"
+  # NOTE: Patterns are DEPRECATED - use description for semantic matching
+  # Keep patterns specific to avoid false matches
+  - "\\banalyze\\s+.*logs?\\b"
+  - "\\bcheck\\s+.*logs?\\b"
+  - "\\berrors?\\s+.*logs?\\b"
+  - "\\blog\\s+analysis\\b"
+  - "\\bjournalctl\\s+-[ue]"
+  - "\\btail\\s+-[fn]\\s+.*log"
+  - "\\bsyslog\\b"
+  - "\\bdmesg\\b"
 
 tools_allowed:
   - ssh_execute
@@ -22,7 +26,8 @@ tools_allowed:
 max_hosts: 5
 timeout_seconds: 120
 
-require_confirmation_for: []
+require_confirmation_for:
+  - ssh_execute
 
 system_prompt: |
   You are a log analysis expert.

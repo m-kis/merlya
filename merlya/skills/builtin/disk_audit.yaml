@@ -6,13 +6,20 @@ version: "1.0"
 description: "Audit disk usage and identify storage issues"
 
 intent_patterns:
-  - "disk.*"
-  - "storage.*"
-  - "space.*"
-  - "df .*"
-  - "du .*"
+  # Specific disk-related patterns (avoid matching French words like "du")
+  - "disk.*usage"
+  - "disk.*space"
+  - "disk.*full"
+  - "storage.*audit"
+  - "storage.*check"
+  - "espace.*disque"
+  - "stockage.*"
   - "full.*disk"
   - "low.*space"
+  - "manque.*espace"
+  # Command patterns with word boundaries
+  - "\\bdf\\s+-"
+  - "\\bdu\\s+-"
 
 tools_allowed:
   - ssh_execute
@@ -21,7 +28,8 @@ tools_allowed:
 max_hosts: 10
 timeout_seconds: 60
 
-require_confirmation_for: []
+require_confirmation_for:
+  - ssh_execute  # Require explicit user approval before running remote commands
 
 system_prompt: |
   You are a storage expert analyzing disk usage.
