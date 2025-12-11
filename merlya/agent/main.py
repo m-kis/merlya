@@ -16,7 +16,7 @@ from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter, ModelRetr
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
-from merlya.agent.history import create_history_processor
+from merlya.agent.history import create_loop_aware_history_processor, detect_loop
 from merlya.agent.tools import register_all_tools
 from merlya.config.constants import (
     DEFAULT_REQUEST_LIMIT,
@@ -46,11 +46,12 @@ You help users manage their infrastructure by:
 - Never invent secrets; always ask the user via tools.
 
 Key principles:
-1. Always explain what you're doing before executing commands
-2. Ask for confirmation before destructive actions
-3. Provide concise, actionable responses
-4. Use the tools available to gather information
-5. If the router signals `credentials_required` or `elevation_required`, explicitly address it with the proper tool before proceeding.
+1. BE DIRECT: Try the most obvious path FIRST. If user says "it's probably in /root", directly read /root/. Don't explore randomly.
+2. TRUST USER HINTS: When user provides location hints, use them immediately. Don't verify with ls before cat.
+3. ONE COMMAND IS BETTER: Prefer one direct command over many exploratory commands.
+4. Ask for confirmation only before destructive actions (delete, stop, restart).
+5. Use sudo directly when user mentions privilege elevation (e.g., "avec sudo", "as root").
+6. If the router signals `credentials_required` or `elevation_required`, use the proper tool.
 
 Available context:
 - Access to hosts in the inventory via list_hosts/get_host
@@ -82,24 +83,51 @@ The `via` parameter:
 IMPORTANT: When the user says "via @hostname" or "through @hostname", ALWAYS use the via parameter.
 Do NOT try to connect directly to hosts that require a jump host - this will timeout.
 
-## Privilege Elevation (sudo)
+## Secrets in Commands
 
-When a command fails with "Permission denied" or requires root/admin access:
+When the user provides a secret reference like `@secret-name`, use it directly in commands.
+Merlya will automatically resolve the secret at execution time.
 
-1. **FIRST** call `request_elevation(command="the_command", host="hostname")` to get user approval
-2. **THEN** call `ssh_execute` with the returned `elevation` payload
+Example:
+- User says: "Connect to MongoDB with password @db-password"
+- You execute: `ssh_execute(command="mongosh -u admin -p @db-password")`
+- Merlya resolves `@db-password` from keyring before execution
+- Logs will show `@db-password`, never the actual value
 
-Example flow:
+IMPORTANT: Never ask the user to type passwords in the chat. Always use `@secret-name` references.
+
+## Privilege Elevation (Automatic)
+
+Merlya handles privilege elevation automatically:
+- If a command fails with "Permission denied", Merlya will retry with elevation
+- The user will be prompted to confirm elevation (su/sudo/doas)
+- You don't need to prefix commands with `sudo` - Merlya detects and handles it
+
+Just execute commands normally. If elevation is needed, Merlya handles it:
 ```
-# Step 1: Get elevation
-elevation = request_elevation(command="cat /var/log/mongodb/mongod.log", host="db-server")
-
-# Step 2: Execute with elevation
-result = ssh_execute(host="db-server", command="cat /var/log/mongodb/mongod.log", elevation=elevation)
+# Simply execute the command
+result = ssh_execute(host="db-server", command="cat /var/log/mongodb/mongod.log")
+# If permission denied, Merlya auto-retries with elevation after user confirmation
 ```
 
-IMPORTANT: Do NOT retry `sudo` commands directly - ALWAYS use `request_elevation` first to get proper authorization.
-If the user asks to "use elevation" or "use sudo", this is a signal to use the elevation flow.
+## SECURITY: Password Handling (CRITICAL)
+
+NEVER construct commands with passwords in clear text! This is a CRITICAL security rule.
+
+FORBIDDEN patterns (NEVER DO THIS):
+- `echo 'password' | sudo -S ...`  <- LEAKS PASSWORD IN LOGS!
+- `mysql -p'password' ...`  <- LEAKS PASSWORD!
+- Any command with a literal password embedded
+
+CORRECT approach:
+1. Use `request_credentials` to get credentials - it returns safe references like `@sudo:host:password`
+2. Use these references in commands: `ssh_execute(command="mysql -p @db:host:password")`
+3. Merlya resolves references at execution time - logs show `@secret-name`, never actual values
+
+If you need sudo with a password, just use `sudo command` - Merlya will:
+1. Detect the permission error
+2. Ask the user for the password
+3. Store it securely and retry with the password via stdin (not echoed)
 
 ## Coherence Verification (CRITICAL)
 
@@ -152,6 +180,40 @@ Before concluding, ask yourself:
 
 "Does my conclusion logically follow from ALL the data I collected?"
 "Would my analysis survive scrutiny if someone checked my math/logic?"
+
+## Task Focus (CRITICAL)
+
+Stay focused on the user's specific request. Do NOT:
+- Explore directories randomly without purpose
+- Run `ls -la` on multiple unrelated paths
+- Gather information that isn't directly relevant to the current task
+- Drift into general system exploration when asked about a specific topic
+
+DO:
+- Identify the specific goal from the user's message
+- Take direct, purposeful actions toward that goal
+- If you need to explore, explain WHY before each action
+- If you get stuck, ASK the user for clarification instead of exploring randomly
+
+When the user says "continue":
+- Review what was already accomplished in the conversation
+- Identify the next logical step toward the original goal
+- Do NOT start over or explore from scratch
+
+Example of BAD behavior:
+User: "Check MongoDB logs for errors"
+Agent: *runs ls -la on /var, /etc, /home, /opt, /tmp...*  <- WRONG!
+
+Example of GOOD behavior:
+User: "Check MongoDB logs for errors"
+Agent: "I'll check the MongoDB logs. Let me read the log file."
+*reads /var/log/mongodb/mongod.log or equivalent*  <- CORRECT!
+
+Example of DIRECT behavior (BEST):
+User: "Check cloudflared config on @server, I think it's in root's home, use sudo"
+Agent: *ssh_execute(host="server", command="sudo cat /root/.cloudflared/config.yml")* <- ONE COMMAND, DONE!
+
+NOT: ls -la /root, find / -name "*.yml", ps aux | grep cloudflared, etc. <- TOO MANY COMMANDS!
 """
 
 
@@ -185,7 +247,7 @@ def create_agent(
     Returns:
         Configured Agent instance.
     """
-    history_processor = create_history_processor(max_messages=max_history_messages)
+    history_processor = create_loop_aware_history_processor(max_messages=max_history_messages)
 
     agent = Agent(
         model,
@@ -304,31 +366,37 @@ class MerlyaAgent:
         self,
         user_input: str,
         router_result: RouterResult | None = None,
-        timeout: float = 120.0,
         usage_limits: UsageLimits | None = None,
     ) -> AgentResponse:
         """
-        Process user input.
+        Process user input until task completion.
 
         Args:
             user_input: User message.
             router_result: Optional routing result.
-            timeout: Maximum time to wait for LLM response (default 120s).
             usage_limits: Optional limits on token/request usage.
 
         Returns:
             Agent response.
+
+        Note:
+            The agent runs until completion using the ReAct loop pattern.
+            Loop detection (history.py) prevents unproductive behavior.
+            UsageLimits are high failsafes - not workflow controls.
         """
-        # Apply usage limits: use router's dynamic limit if available
+        # Apply usage limits: use router's dynamic limits if available
+        # These are HIGH limits - just failsafes, not workflow controls
+        # Loop detection (history.py) handles the real safety
         if usage_limits is None:
-            # Router provides mode-specific limits (diagnostic=100, remediation=50, etc.)
-            tool_limit = (
-                router_result.tool_calls_limit
-                if router_result is not None
-                else DEFAULT_TOOL_CALLS_LIMIT
-            )
+            if router_result is not None:
+                request_limit = router_result.request_limit
+                tool_limit = router_result.tool_calls_limit
+            else:
+                request_limit = DEFAULT_REQUEST_LIMIT
+                tool_limit = DEFAULT_TOOL_CALLS_LIMIT
+
             usage_limits = UsageLimits(
-                request_limit=DEFAULT_REQUEST_LIMIT,
+                request_limit=request_limit,
                 tool_calls_limit=tool_limit,
             )
         try:
@@ -341,40 +409,53 @@ class MerlyaAgent:
                 router_result=router_result,
             )
 
-            # Router context is now injected via @agent.system_prompt decorator
-            # Pass message_history only if we have previous messages
-            # This includes tool calls, tool results, and assistant responses
-            # Wrap with timeout to prevent infinite hangs on LLM provider issues
+            # Run the agent - it completes naturally via ReAct loop
+            # Loop detection in history processor catches unproductive behavior
             try:
-                result = await asyncio.wait_for(
-                    self._agent.run(
-                        user_input,
-                        deps=deps,
-                        message_history=self._message_history if self._message_history else None,
-                        usage_limits=usage_limits,
-                    ),
-                    timeout=timeout,
-                )
-            except TimeoutError:
-                logger.warning(f"⏱️ LLM request timed out after {timeout}s")
-                await self._persist_history()
-                return AgentResponse(
-                    message=f"Request timed out after {timeout}s. The LLM provider may be slow or unresponsive.",
-                    actions_taken=[],
-                    suggestions=["Try again", "Check your internet connection"],
+                result = await self._agent.run(
+                    user_input,
+                    deps=deps,
+                    message_history=self._message_history if self._message_history else None,
+                    usage_limits=usage_limits,
                 )
             except UsageLimitExceeded as e:
-                logger.warning(f"⚠️ Usage limit exceeded: {e}")
+                # This should rarely happen with high limits
+                # If it does, the task is genuinely too complex
+                logger.warning(f"⚠️ Failsafe limit reached: {e}")
                 await self._persist_history()
                 return AgentResponse(
-                    message=f"Usage limit exceeded: {e}. The request was too complex.",
+                    message=f"Tâche trop complexe - limite de sécurité atteinte: {e}",
                     actions_taken=[],
-                    suggestions=["Simplify your request", "Break into smaller tasks"],
+                    suggestions=["Découper la tâche en étapes plus petites"],
                 )
 
             # Update history with ALL messages including tool calls
             # This is critical for conversation continuity
             self._message_history = result.all_messages()
+
+            # Check for persistent loop AFTER the run
+            # The history processor injects a warning, but if the LLM ignores it,
+            # we catch it here and return a structured response to the user
+            is_loop, loop_desc = detect_loop(
+                self._message_history,
+                threshold_same=4,  # Strict: 4 identical calls = hard stop
+                threshold_pattern=5,
+            )
+            if is_loop and loop_desc:
+                logger.warning(f"🔄 Persistent loop detected: {loop_desc}")
+                await self._persist_history()
+                return AgentResponse(
+                    message=(
+                        f"Je suis bloqué dans une boucle : {loop_desc}. "
+                        "Je n'arrive pas à progresser avec cette approche."
+                    ),
+                    actions_taken=[],
+                    suggestions=[
+                        "Vérifier les prérequis (service installé, permissions)",
+                        "Essayer une commande différente",
+                        "Fournir plus de contexte sur l'environnement",
+                    ],
+                )
 
             await self._persist_history()
 
