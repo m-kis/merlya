@@ -3,6 +3,15 @@ Privilege elevation manager.
 
 Detects sudo/doas/su capabilities and prepares elevated commands when needed.
 Capabilities are cached in host metadata for persistence across sessions.
+
+Priority order for elevation methods:
+1. sudo NOPASSWD - Best: no password needed, standard on most systems
+2. doas - Often configured without password on BSD systems
+3. sudo with password - Common fallback
+4. su - Last resort, requires root password
+
+Passwords are stored in the system keyring (macOS Keychain, Linux Secret Service)
+and referenced via @elevation:host:password tokens to prevent leakage.
 """
 
 from __future__ import annotations
@@ -10,29 +19,25 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from merlya.ssh.pool import SSHConnectionOptions
 
+if TYPE_CHECKING:
+    from merlya.secrets.store import SecretStore
+
 # Cache TTL for elevation capabilities (24 hours)
 ELEVATION_CACHE_TTL = timedelta(hours=24)
 
-# Password cache TTL (30 minutes for security)
-PASSWORD_CACHE_TTL = timedelta(minutes=30)
-
-
-@dataclass
-class CachedPassword:
-    """Password with expiration timestamp."""
-
-    password: str
-    expires_at: datetime = field(default_factory=lambda: datetime.now(UTC) + PASSWORD_CACHE_TTL)
-
-    def is_expired(self) -> bool:
-        """Check if the cached password has expired."""
-        return datetime.now(UTC) > self.expires_at
+# Elevation method priority (lower = better)
+ELEVATION_PRIORITY = {
+    "sudo": 1,  # NOPASSWD sudo - best
+    "doas": 2,  # Often NOPASSWD on BSD
+    "sudo_with_password": 3,  # Needs password
+    "su": 4,  # Needs root password - last resort
+}
 
 
 @dataclass
@@ -45,16 +50,18 @@ class ElevationResult:
     note: str | None = None
     needs_password: bool = False
     base_command: str | None = None
+    password_ref: str | None = None  # @elevation:host:password reference
 
 
 class PermissionManager:
     """Manage privilege elevation for SSH commands.
 
-    Caches elevation consent and passwords per host for the session to avoid
-    repeated prompts.
+    Caches elevation consent per host for the session to avoid repeated prompts.
+    Passwords are stored in the system keyring for security.
 
     Security features:
-    - Password cache with TTL (30 min expiry)
+    - Passwords stored in keyring (not in memory)
+    - Returns @secret references instead of raw passwords
     - Lock to prevent race conditions in capability detection
     """
 
@@ -62,9 +69,17 @@ class PermissionManager:
         self.ctx = ctx
         self._cache: dict[str, dict[str, Any]] = {}  # Capabilities cache
         self._consent_cache: dict[str, bool] = {}  # host -> user consented
-        self._password_cache: dict[str, CachedPassword] = {}  # host -> password with TTL
         self._detection_locks: dict[str, asyncio.Lock] = {}  # Per-host lock for detection
         self._locks_lock = asyncio.Lock()  # Protects _detection_locks dict creation
+
+    @property
+    def _secrets(self) -> SecretStore:
+        """Get secret store from context."""
+        return self.ctx.secrets
+
+    def _password_key(self, host: str) -> str:
+        """Get keyring key for elevation password."""
+        return f"elevation:{host}:password"
 
     async def _get_host_lock(self, host: str) -> asyncio.Lock:
         """Get or create a lock for a specific host (thread-safe)."""
@@ -74,26 +89,15 @@ class PermissionManager:
             return self._detection_locks[host]
 
     def _get_cached_password(self, host: str) -> str | None:
-        """Get cached password if not expired, atomically cleaning up expired entries.
-
-        Uses pop() for atomic cleanup to prevent race conditions between
-        concurrent coroutines accessing the same password cache entry.
+        """Get elevation password from keyring.
 
         Args:
             host: Host name to look up.
 
         Returns:
-            Password string if cached and not expired, None otherwise.
+            Password string if stored, None otherwise.
         """
-        cached_pwd = self._password_cache.get(host)
-        if cached_pwd is None:
-            return None
-        if cached_pwd.is_expired():
-            # Use pop for atomic cleanup (handles concurrent access safely)
-            self._password_cache.pop(host, None)
-            logger.debug(f"🔒 Password cache expired for {host}")
-            return None
-        return cached_pwd.password
+        return self._secrets.get(self._password_key(host))
 
     async def detect_capabilities(self, host: str, force_refresh: bool = False) -> dict[str, Any]:
         """Detect elevation capabilities on a host.
@@ -190,7 +194,14 @@ class PermissionManager:
             logger.debug(f"Failed to save capabilities for {host}: {e}")
 
     async def _detect_capabilities_ssh(self, host: str) -> dict[str, Any]:
-        """Detect elevation capabilities via SSH probes."""
+        """Detect elevation capabilities via SSH probes.
+
+        Detection order and priority:
+        1. sudo NOPASSWD - Best option, no password needed
+        2. doas NOPASSWD - Common on BSD, often configured passwordless
+        3. sudo with password - Standard fallback
+        4. su - Last resort, requires root password
+        """
         capabilities: dict[str, Any] = {
             "user": "unknown",
             "is_root": False,
@@ -199,9 +210,11 @@ class PermissionManager:
             "sudo_nopasswd": False,
             "has_su": False,
             "has_doas": False,
+            "doas_nopasswd": False,
             "has_privileged_group": False,
             "privileged_groups": [],
             "elevation_method": None,
+            "available_methods": [],  # All available methods with priority
         }
 
         async def _run(cmd: str) -> tuple[bool, str]:
@@ -212,10 +225,16 @@ class PermissionManager:
                 logger.debug(f"Permission probe failed on {host}: {cmd} ({exc})")
                 return False, ""
 
+        # Get user info
         ok, user = await _run("whoami")
         if ok:
             capabilities["user"] = user
             capabilities["is_root"] = user == "root"
+
+        # Already root? No elevation needed
+        if capabilities["is_root"]:
+            capabilities["elevation_method"] = "none"
+            return capabilities
 
         ok, groups = await _run("groups")
         if ok and groups:
@@ -226,32 +245,46 @@ class PermissionManager:
         capabilities["has_privileged_group"] = bool(group_set & privileged)
         capabilities["privileged_groups"] = list(group_set & privileged)
 
+        available: list[tuple[int, str, bool]] = []  # (priority, method, needs_password)
+
+        # Check sudo
         ok, sudo_path = await _run("which sudo")
         if ok and sudo_path:
             capabilities["has_sudo"] = True
             ok, _ = await _run("sudo -n true")
             if ok:
                 capabilities["sudo_nopasswd"] = True
-                capabilities["elevation_method"] = "sudo"
+                available.append((ELEVATION_PRIORITY["sudo"], "sudo", False))
             else:
-                capabilities["elevation_method"] = "sudo_with_password"
+                available.append((ELEVATION_PRIORITY["sudo_with_password"], "sudo_with_password", True))
 
+        # Check doas (test NOPASSWD)
         ok, doas_path = await _run("which doas")
-        if ok and doas_path and not capabilities["elevation_method"]:
+        if ok and doas_path:
             capabilities["has_doas"] = True
-            capabilities["elevation_method"] = "doas"
+            ok, _ = await _run("doas -n true 2>/dev/null")
+            if ok:
+                capabilities["doas_nopasswd"] = True
+                available.append((ELEVATION_PRIORITY["doas"], "doas", False))
+            else:
+                # doas with password is similar priority to sudo with password
+                available.append((ELEVATION_PRIORITY["sudo_with_password"], "doas_with_password", True))
 
+        # Check su (always needs password)
         ok, su_path = await _run("which su")
         if ok and su_path:
             capabilities["has_su"] = True
-            if (
-                not capabilities["elevation_method"]
-                or capabilities["elevation_method"] == "sudo_with_password"
-            ):
-                capabilities["elevation_method"] = "su"
+            available.append((ELEVATION_PRIORITY["su"], "su", True))
 
-        if capabilities["is_root"]:
-            capabilities["elevation_method"] = "none"
+        # Sort by priority and pick best
+        available.sort(key=lambda x: x[0])
+        capabilities["available_methods"] = [
+            {"method": m, "needs_password": p} for _, m, p in available
+        ]
+
+        if available:
+            _, best_method, _ = available[0]
+            capabilities["elevation_method"] = best_method
 
         return capabilities
 
@@ -310,6 +343,10 @@ class PermissionManager:
 
         return False
 
+    def _method_needs_password(self, method: str) -> bool:
+        """Check if elevation method requires a password."""
+        return method in {"sudo_with_password", "doas_with_password", "su"}
+
     async def prepare_command(
         self,
         host: str,
@@ -318,9 +355,16 @@ class PermissionManager:
         """
         Prepare an elevated command if needed.
 
-        Uses cached consent and password to avoid repeated prompts.
-        First time for a host: asks for confirmation.
-        Subsequent times: uses cached consent.
+        Logic:
+        - NOPASSWD methods (sudo, doas): Use directly, no password needed
+        - Password methods (sudo_with_password, su): We already know from
+          capability detection that password is required, so:
+          1. Check keyring for stored password
+          2. If found → use it
+          3. If not found → needs_password=True, caller prompts user
+
+        Note: Capability detection already tested `sudo -n true` - if it failed,
+        we know for sure the method needs a password. No need to retry.
         """
         caps = await self.detect_capabilities(host)
         if caps.get("is_root") or caps.get("elevation_method") == "none":
@@ -344,7 +388,6 @@ class PermissionManager:
         # Check consent cache first
         if host in self._consent_cache:
             if not self._consent_cache[host]:
-                # User previously declined for this host
                 return ElevationResult(
                     command=command,
                     input_data=None,
@@ -352,7 +395,6 @@ class PermissionManager:
                     note="user_declined_cached",
                     base_command=command,
                 )
-            # User previously consented - use cached decision
             logger.debug(f"🔒 Using cached elevation consent for {host}")
         else:
             # First time - ask for consent
@@ -370,48 +412,82 @@ class PermissionManager:
                     base_command=command,
                 )
 
-        # Check if we have cached password (with TTL check)
-        password = self._get_cached_password(host)
+        # NOPASSWD methods - just use them, no password needed
+        # (we already verified with `sudo -n true` during capability detection)
+        if not self._method_needs_password(method):
+            elevated_command, input_data = self._elevate_command(command, caps, method, None)
+            return ElevationResult(
+                command=elevated_command,
+                input_data=input_data,
+                method=method,
+                note="nopasswd",
+                needs_password=False,
+                base_command=command,
+            )
+
+        # Password-requiring methods - we KNOW password is needed
+        # (capability detection already confirmed `sudo -n true` failed)
+        password_key = self._password_key(host)
+        password = self._secrets.get(password_key)
 
         if password:
-            # Use cached password
+            # Use password from keyring
             elevated_command, input_data = self._elevate_command(command, caps, method, password)
             return ElevationResult(
                 command=elevated_command,
                 input_data=input_data,
                 method=method,
-                note="password_cached",
+                note="password_from_keyring",
                 needs_password=False,
                 base_command=command,
+                password_ref=f"@{password_key}",
             )
 
-        # No cached password - try without password first
-        # su/sudo might work without password on some systems
-        elevated_command, input_data = self._elevate_command(command, caps, method, None)
+        # No password in keyring - caller must prompt user
+        # Return needs_password=True so caller knows to use request_credentials()
         return ElevationResult(
-            command=elevated_command,
-            input_data=input_data,
+            command=command,  # Return original, caller will re-call after getting password
+            input_data=None,
             method=method,
-            note="try_without_password",
-            needs_password=False,  # Will retry with password if it fails
+            note="password_needed",
+            needs_password=True,
             base_command=command,
+            password_ref=f"@{password_key}",
         )
 
+    def store_password(self, host: str, password: str) -> str:
+        """Store elevation password in keyring.
+
+        Args:
+            host: Host name.
+            password: Password to store.
+
+        Returns:
+            Secret reference (@elevation:host:password) for use in commands.
+        """
+        password_key = self._password_key(host)
+        self._secrets.set(password_key, password)
+        logger.debug(f"🔒 Stored elevation password for {host} in keyring")
+        return f"@{password_key}"
+
     def cache_password(self, host: str, password: str) -> None:
-        """Cache elevation password for a host (with TTL expiry)."""
-        self._password_cache[host] = CachedPassword(password=password)
-        logger.debug(f"🔒 Cached elevation password for {host} (expires in {PASSWORD_CACHE_TTL})")
+        """Store elevation password (alias for store_password for compatibility)."""
+        self.store_password(host, password)
 
     def clear_cache(self, host: str | None = None) -> None:
         """Clear cached consent and password for a host (or all hosts)."""
         if host:
             self._consent_cache.pop(host, None)
-            self._password_cache.pop(host, None)
             self._cache.pop(host, None)
+            # Remove password from keyring
+            self._secrets.remove(self._password_key(host))
         else:
             self._consent_cache.clear()
-            self._password_cache.clear()
             self._cache.clear()
+            # Remove all elevation passwords from keyring
+            for key in self._secrets.list_names():
+                if key.startswith("elevation:"):
+                    self._secrets.remove(key)
 
     def elevate_command(
         self,
@@ -419,6 +495,7 @@ class PermissionManager:
         capabilities: dict[str, Any],
         method: str,
         password: str | None = None,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Prefix command with the chosen elevation method.
 
@@ -427,13 +504,14 @@ class PermissionManager:
         Args:
             command: The command to elevate.
             capabilities: Host capabilities dict (must include 'is_root' key).
-            method: Elevation method ('sudo', 'sudo_with_password', 'doas', 'su').
+            method: Elevation method ('sudo', 'sudo_with_password', 'doas', 'doas_with_password', 'su').
             password: Optional password for methods that require it.
+            login_shell: Use login shell for su (loads profile scripts).
 
         Returns:
             Tuple of (elevated_command, input_data).
         """
-        return self._elevate_command(command, capabilities, method, password)
+        return self._elevate_command(command, capabilities, method, password, login_shell)
 
     def _elevate_command(
         self,
@@ -441,26 +519,62 @@ class PermissionManager:
         capabilities: dict[str, Any],
         method: str,
         password: str | None = None,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
-        """Prefix command with the chosen elevation method."""
+        """Prefix command with the chosen elevation method.
+
+        Args:
+            command: Command to elevate.
+            capabilities: Host capabilities dict.
+            method: Elevation method (sudo, sudo_with_password, doas, doas_with_password, su).
+            password: Password for methods that require it (None for NOPASSWD).
+            login_shell: Use login shell for su (su - instead of su).
+
+        Returns:
+            Tuple of (elevated_command, stdin_input).
+        """
         if capabilities.get("is_root"):
             return command, None
 
         stripped = command.strip()
-        if stripped.startswith(("sudo ", "doas ", "su ", "su-")):
+        if stripped.startswith(("sudo ", "doas ", "su ", "su -")):
             return command, None
 
         if method == "sudo":
+            # NOPASSWD sudo
             return f"sudo -n {command}", None
+
         if method == "sudo_with_password":
             if password:
+                # -S reads password from stdin, -p '' disables prompt
                 return f"sudo -S -p '' {command}", f"{password}\n"
+            # Try without password first (might be NOPASSWD for this specific command)
             return f"sudo -n {command}", None
+
         if method == "doas":
+            # NOPASSWD doas (common on OpenBSD)
             return f"doas {command}", None
+
+        if method == "doas_with_password":
+            # doas doesn't have -S like sudo, it reads from /dev/tty
+            # We need to use expect or script to provide password
+            # Fallback: just use doas and let it prompt
+            if password:
+                # Use script to provide password via pseudo-terminal
+                escaped_cmd = command.replace("'", "'\\''")
+                escaped_pwd = password.replace("'", "'\\''")
+                return (
+                    f"printf '%s\\n' '{escaped_pwd}' | doas sh -c '{escaped_cmd}'",
+                    None,
+                )
+            return f"doas {command}", None
+
         if method == "su":
             escaped = command.replace("'", "'\"'\"'")
-            return f"su -c '{escaped}'", f"{password}\n" if password else None
+            # su - creates a login shell (loads /etc/profile, ~/.profile etc.)
+            # su -c just runs command in current environment
+            su_cmd = "su -" if login_shell else "su"
+            return f"{su_cmd} -c '{escaped}'", f"{password}\n" if password else None
 
         logger.warning(f"⚠️ Unknown elevation method {method}, running without elevation")
         return command, None

@@ -3,16 +3,28 @@ Merlya Secrets - Secret store implementation.
 
 Uses keyring for secure storage (macOS Keychain, Windows Credential Manager,
 Linux Secret Service) with in-memory fallback.
+
+Secret names are persisted in ~/.merlya/secrets.json since keyring doesn't
+provide enumeration.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+import threading
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import ClassVar
 
 from loguru import logger
 
 # Service name for keyring
 SERVICE_NAME = "merlya"
+
+# File to persist secret names (keyring doesn't provide enumeration)
+SECRETS_INDEX_FILE = Path.home() / ".merlya" / "secrets.json"
 
 
 @dataclass
@@ -21,16 +33,23 @@ class SecretStore:
     Secure secret storage.
 
     Uses system keyring if available, otherwise falls back to in-memory storage.
+    Secret names are persisted in a separate index file since keyring doesn't
+    provide enumeration.
+
+    Thread-safe singleton pattern with atomic file writes.
     """
 
+    # Class-level singleton with thread safety
+    _instance: ClassVar[SecretStore | None] = None
+    _lock: ClassVar[threading.Lock] = threading.Lock()
+
+    # Instance fields
     _keyring_available: bool = field(default=False, init=False)
     _memory_store: dict[str, str] = field(default_factory=dict, init=False)
     _secret_names: set[str] = field(default_factory=set, init=False)
 
-    _instance: SecretStore | None = field(default=None, init=False, repr=False)
-
     def __post_init__(self) -> None:
-        """Check keyring availability."""
+        """Check keyring availability and load persisted secret names."""
         available, reason = self._check_keyring()
         self._keyring_available = available
         if not self._keyring_available:
@@ -39,6 +58,9 @@ class SecretStore:
                 "⚠️ Keyring unavailable - using in-memory storage (secrets lost on exit){}",
                 reason_suffix,
             )
+
+        # Load persisted secret names
+        self._load_secret_names()
 
     def _check_keyring(self) -> tuple[bool, str | None]:
         """Check if keyring is available and working."""
@@ -62,6 +84,44 @@ class SecretStore:
             logger.debug(f"Keyring test failed: {e}")
             return False, str(e)
 
+    def _load_secret_names(self) -> None:
+        """Load persisted secret names from index file."""
+        if not SECRETS_INDEX_FILE.exists():
+            return
+
+        try:
+            with SECRETS_INDEX_FILE.open(encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    self._secret_names = set(data)
+                    logger.debug(f"Loaded {len(self._secret_names)} secret names from index")
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to load secret names index: {e}")
+
+    def _save_secret_names(self) -> None:
+        """Persist secret names to index file (atomic write)."""
+        try:
+            SECRETS_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write to temp file first, then atomic rename
+            fd, temp_path = tempfile.mkstemp(
+                dir=SECRETS_INDEX_FILE.parent,
+                prefix=".secrets_",
+                suffix=".json.tmp",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(sorted(self._secret_names), f, indent=2)
+                # Atomic rename (POSIX guarantees atomicity)
+                Path(temp_path).replace(SECRETS_INDEX_FILE)
+                logger.debug(f"Saved {len(self._secret_names)} secret names to index")
+            except Exception:
+                # Clean up temp file on failure
+                Path(temp_path).unlink(missing_ok=True)
+                raise
+        except OSError as e:
+            logger.warning(f"Failed to save secret names index: {e}")
+
     @property
     def is_secure(self) -> bool:
         """Check if using secure storage (keyring)."""
@@ -83,6 +143,7 @@ class SecretStore:
             self._memory_store[name] = value
 
         self._secret_names.add(name)
+        self._save_secret_names()
         logger.debug(f"🔒 Secret '{name}' stored")
 
     def get(self, name: str) -> str | None:
@@ -121,6 +182,7 @@ class SecretStore:
                 self._memory_store.pop(name, None)
 
             self._secret_names.discard(name)
+            self._save_secret_names()
             logger.debug(f"🔒 Secret '{name}' removed")
             return True
 
@@ -162,15 +224,20 @@ class SecretStore:
 
     @classmethod
     def get_instance(cls) -> SecretStore:
-        """Get singleton instance."""
+        """Get singleton instance (thread-safe)."""
+        # Double-checked locking pattern
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._lock:
+                # Check again after acquiring lock
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     @classmethod
     def reset_instance(cls) -> None:
         """Reset singleton (for tests)."""
-        cls._instance = None
+        with cls._lock:
+            cls._instance = None
 
 
 # Convenience functions
