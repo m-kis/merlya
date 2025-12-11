@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Session Message Persistence**
+  - Messages now persisted to SQLite for session resumption
+  - Full conversation history restored on `/session load`
+  - Automatic trimming to MAX_MESSAGES_IN_MEMORY on load
+
+- **Loop Detection** (`merlya/agent/history.py`)
+  - Detects repetitive tool call patterns
+  - Three detection modes: same call repeated, consecutive identical calls, alternating patterns
+  - Injects "loop breaker" system message to redirect agent
+  - Configurable thresholds: LOOP_DETECTION_WINDOW=10, LOOP_THRESHOLD_SAME_CALL=3
+
+- **Secret References in Commands**
+  - Commands can contain `@secret-name` references (e.g., `@db-password`)
+  - Secrets auto-resolved from keyring at execution time
+  - Safe logging: actual values never appear in logs
+  - New SECRET_PATTERN for structured keys like `@service:host:field`
+
+- **Observability Status API** (`merlya/audit/`)
+  - `get_observability_status()` returns Logfire/SQLite backend status
+  - Used in `/audit stats` for cleaner status display
+
+- **Host Metadata Update** (`merlya/persistence/repositories.py`)
+  - `update_metadata()` for efficient partial host updates
+  - Used by elevation system to persist capabilities
+
+### Changed
+
+- **Elevation System Refactoring** (`merlya/security/permissions.py`)
+  - Priority-based method selection: sudo NOPASSWD > doas > sudo_with_password > su
+  - Passwords stored in system keyring (macOS Keychain, Linux Secret Service)
+  - Returns `@elevation:host:password` references instead of raw values
+  - Detection already determines if password needed; no retry logic
+  - Added `store_password()`, `clear_cache()` methods
+
+- **Agent System Prompt** (`merlya/agent/main.py`)
+  - BE DIRECT: Try most obvious path first
+  - TRUST USER HINTS: Use location hints immediately
+  - ONE COMMAND IS BETTER: Prefer direct commands over exploration
+  - Auto-elevation documented: no manual `request_elevation` needed
+  - Security: Forbidden plaintext password patterns documented
+
+- **Tool Call Limits** (`merlya/config/constants.py`)
+  - Raised limits as failsafes only (loop detection handles safety)
+  - TOOL_CALLS_LIMIT_DIAGNOSTIC: 200
+  - REQUEST_LIMIT_DIAGNOSTIC: 300
+
+### Fixed
+
+- **Thread-Safety** (`merlya/mcp/manager.py`, `merlya/ssh/pool.py`)
+  - SSHPool: Changed from asyncio.Lock to threading.Lock for singleton
+  - MCPManager: Added threading.Lock guard for lazy asyncio.Lock creation
+  - suppress_mcp_capability_warnings() now only suppresses MCP-related loggers
+
+- **Parser Improvements** (`merlya/parser/`)
+  - IPv4 validation: reject octets > 255
+  - Better incident detection with minimum confidence threshold
+  - Check initialize() return value before proceeding
+
+- **Security Improvements**
+  - Path canonicalization in SSH key audit (prevent traversal)
+  - Variables import: reject symlinks, world-writable files
+  - Removed /tmp from allowed import directories
+  - Case-insensitive health_status comparison
+
+- **PydanticAI Tool Docstrings**
+  - Removed `ctx: Run context.` from all tool docstrings
+  - Improves tool description extraction for LLM
+
+### Security
+
+- **Plaintext Password Detection**: `detect_unsafe_password()` warns about embedded passwords
+- **Credential References**: `request_credentials()` returns `@service:host:field` references
+- **Elevation Password Security**: Never stored in memory, always in keyring with `@` references
+
 ## [0.7.0] - 2025-12-11
 
 ### Added
@@ -260,4 +336,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy with vulnerability reporting process
 - Architecture Decision Records (ADR)
 
+[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/m-kis/merlya/releases/tag/v0.7.0
+[0.6.3]: https://github.com/m-kis/merlya/releases/tag/v0.6.3
+[0.6.2]: https://github.com/m-kis/merlya/releases/tag/v0.6.2
+[0.6.1]: https://github.com/m-kis/merlya/releases/tag/v0.6.1
+[0.6.0]: https://github.com/m-kis/merlya/releases/tag/v0.6.0
 [0.5.6]: https://github.com/m-kis/merlya/releases/tag/v0.5.6

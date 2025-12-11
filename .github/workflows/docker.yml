@@ -16,8 +16,12 @@ on:
     branches:
       - main
     paths:
+      - 'merlya/**'
       - 'Dockerfile'
       - '.dockerignore'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/docker.yml'
   workflow_dispatch:
     inputs:
       push:
@@ -46,6 +50,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -80,28 +87,32 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' || github.event.inputs.push == 'true' }}
+          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.push == 'true') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: Test image
+      - name: Test multi-platform build
         if: github.event_name == 'pull_request'
         run: |
-          docker build -t merlya-test .
-          docker run --rm merlya-test --version
-          echo "✅ Image built and tested successfully"
+          # Build and test amd64
+          echo "🔨 Building and testing linux/amd64..."
+          docker buildx build --platform linux/amd64 --output=type=docker -t merlya-test:amd64 .
+          docker run --rm --platform linux/amd64 --entrypoint python merlya-test:amd64 -c "import merlya; print('amd64 OK')"
+          echo "✅ linux/amd64 build successful"
+
+          # Build and test arm64 (via QEMU emulation)
+          echo "🔨 Building and testing linux/arm64..."
+          docker buildx build --platform linux/arm64 --output=type=docker -t merlya-test:arm64 .
+          docker run --rm --platform linux/arm64 --entrypoint python merlya-test:arm64 -c "import merlya; print('arm64 OK')"
+          echo "✅ linux/arm64 build successful"
+
+          echo "✅ Multi-platform images built and tested successfully"
 
       - name: Image size check
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' && github.ref_type == 'branch'
         run: |
-          IMAGE_SIZE=$(docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }} --format "{{.Size}}" | head -1)
-          echo "📦 Image size: ${IMAGE_SIZE}"
-          # Extract numeric value (in MB or GB)
-          SIZE_NUM=$(echo "${IMAGE_SIZE}" | grep -oE '[0-9.]+')
-          SIZE_UNIT=$(echo "${IMAGE_SIZE}" | grep -oE '[A-Z]+')
-          if [ "$SIZE_UNIT" == "GB" ]; then
-            echo "⚠️ Warning: Image size exceeds 1GB"
-          fi
+          echo "📦 Image size check skipped for multi-platform builds (not available in local daemon)"
+          echo "To monitor image size, query the registry directly or implement a post-push size check"
