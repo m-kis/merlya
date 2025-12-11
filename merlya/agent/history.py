@@ -5,20 +5,30 @@ Provides tools for managing message history, including:
 - Tool call/return pairing validation
 - Context window limiting
 - History truncation with integrity checks
+- Loop detection to prevent repetitive tool calls
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections import Counter
 from collections.abc import Callable
 
 from loguru import logger
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse
 from pydantic_ai.messages import (
+    SystemPromptPart,
     ToolCallPart,
     ToolReturnPart,
 )
 
 from merlya.config.constants import HARD_MAX_HISTORY_MESSAGES
+
+# Loop detection thresholds
+LOOP_DETECTION_WINDOW = 10  # Look at last N tool calls
+LOOP_THRESHOLD_SAME_CALL = 3  # Same tool+args called N times = loop
+LOOP_THRESHOLD_PATTERN = 4  # Same 2-3 tool alternation pattern
 
 # Type alias for history processor function
 HistoryProcessor = Callable[[list[ModelMessage]], list[ModelMessage]]
@@ -227,3 +237,198 @@ def get_user_message_count(messages: list[ModelMessage]) -> int:
                 if isinstance(part, UserPromptPart):
                     count += 1
     return count
+
+
+def _compute_tool_signature(tool_name: str, args: dict | str | None) -> str:
+    """
+    Compute a signature for a tool call (name + args hash).
+
+    Args:
+        tool_name: Name of the tool.
+        args: Tool arguments (dict or JSON string).
+
+    Returns:
+        A short hash signature for the tool call.
+    """
+    if args is None:
+        args_str = ""
+    elif isinstance(args, str):
+        args_str = args
+    else:
+        # Sort keys for deterministic hash
+        args_str = json.dumps(args, sort_keys=True, default=str)
+
+    combined = f"{tool_name}:{args_str}"
+    return hashlib.md5(combined.encode(), usedforsecurity=False).hexdigest()[:12]
+
+
+def extract_recent_tool_signatures(
+    messages: list[ModelMessage],
+    window: int = LOOP_DETECTION_WINDOW,
+) -> list[tuple[str, str]]:
+    """
+    Extract recent tool call signatures from message history.
+
+    Args:
+        messages: Message history to analyze.
+        window: Number of recent tool calls to consider.
+
+    Returns:
+        List of (tool_name, signature) tuples, most recent last.
+    """
+    signatures: list[tuple[str, str]] = []
+
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart):
+                    sig = _compute_tool_signature(part.tool_name, part.args)
+                    signatures.append((part.tool_name, sig))
+
+    # Return only the last `window` calls
+    return signatures[-window:] if len(signatures) > window else signatures
+
+
+def detect_loop(
+    messages: list[ModelMessage],
+    threshold_same: int = LOOP_THRESHOLD_SAME_CALL,
+    threshold_pattern: int = LOOP_THRESHOLD_PATTERN,
+) -> tuple[bool, str | None]:
+    """
+    Detect if the agent is stuck in a loop.
+
+    Detects three types of loops:
+    1. Same exact tool+args called N times (total in window)
+    2. Last N calls are all identical (consecutive)
+    3. Alternating pattern (A-B-A-B or A-B-C-A-B-C)
+
+    Args:
+        messages: Message history to analyze.
+        threshold_same: Number of identical calls to trigger loop detection.
+        threshold_pattern: Number of pattern repetitions to trigger.
+
+    Returns:
+        Tuple of (is_loop, description).
+    """
+    signatures = extract_recent_tool_signatures(messages)
+
+    if len(signatures) < threshold_same:
+        return False, None
+
+    # Check 1: Last N calls are ALL identical (consecutive loop - most aggressive)
+    consecutive_threshold = min(threshold_same, 3)  # At least 3 consecutive
+    if len(signatures) >= consecutive_threshold:
+        last_n = signatures[-consecutive_threshold:]
+        if len(set(sig for _, sig in last_n)) == 1:
+            tool_name = last_n[0][0]
+            return True, f"Same tool call '{tool_name}' repeated {consecutive_threshold}+ times consecutively"
+
+    # Check 2: Same exact call repeated (total count in window)
+    sig_counter = Counter(sig for _, sig in signatures)
+    most_common_sig, count = sig_counter.most_common(1)[0]
+
+    if count >= threshold_same:
+        # Find tool name for this signature
+        tool_name = next(name for name, sig in signatures if sig == most_common_sig)
+        return True, f"Same tool call '{tool_name}' repeated {count} times"
+
+    # Check 3: Alternating patterns (A-B-A-B or similar)
+    if len(signatures) >= threshold_pattern * 2:
+        # Check 2-element pattern (A-B-A-B)
+        last_sigs = [sig for _, sig in signatures[-threshold_pattern * 2 :]]
+        pattern_2 = last_sigs[:2]
+        if len(pattern_2) == 2 and pattern_2[0] != pattern_2[1]:
+            is_pattern = all(
+                last_sigs[i] == pattern_2[i % 2]
+                for i in range(len(last_sigs))
+            )
+            if is_pattern:
+                tools = [name for name, _ in signatures[-threshold_pattern * 2 :]]
+                unique_tools = list(dict.fromkeys(tools))[:2]
+                return True, f"Alternating loop between '{unique_tools[0]}' and '{unique_tools[1]}'"
+
+    return False, None
+
+
+def inject_loop_breaker(
+    messages: list[ModelMessage],
+    loop_description: str,
+) -> list[ModelMessage]:
+    """
+    Inject a system message to help the agent break out of a loop.
+
+    Args:
+        messages: Current message history.
+        loop_description: Description of the detected loop.
+
+    Returns:
+        Modified message history with loop breaker injected.
+    """
+    breaker_text = (
+        f"⚠️ LOOP DETECTED: {loop_description}. "
+        "You are repeating the same actions without progress. "
+        "STOP and try a DIFFERENT approach: "
+        "1) If a command fails, explain WHY it failed and suggest alternatives. "
+        "2) If you need information you can't get, ask the user. "
+        "3) Do NOT retry the same command with the same arguments."
+    )
+
+    logger.warning(f"🔄 {loop_description} - injecting loop breaker")
+
+    # Find a good insertion point (before the last ModelRequest)
+    # We inject as a SystemPromptPart in an existing ModelRequest
+    modified = list(messages)
+
+    # Add to the last ModelRequest if possible
+    for i in range(len(modified) - 1, -1, -1):
+        if isinstance(modified[i], ModelRequest):
+            # Create a new ModelRequest with the system prompt prepended
+            original_req = modified[i]
+            new_parts = [SystemPromptPart(content=breaker_text), *original_req.parts]
+            modified[i] = ModelRequest(parts=new_parts)
+            break
+    else:
+        # No ModelRequest found, prepend as new request
+        modified.insert(0, ModelRequest(parts=[SystemPromptPart(content=breaker_text)]))
+
+    return modified
+
+
+def create_loop_aware_history_processor(
+    max_messages: int = 20,
+    enable_loop_detection: bool = True,
+) -> HistoryProcessor:
+    """
+    Create a history processor with loop detection.
+
+    This processor:
+    1. Detects repetitive tool call patterns
+    2. Injects a "loop breaker" message when loops are detected
+    3. Truncates history while preserving tool call/return pairs
+
+    Args:
+        max_messages: Maximum messages to retain.
+        enable_loop_detection: Whether to detect and break loops.
+
+    Returns:
+        A callable history processor for PydanticAI agent.
+
+    Example:
+        >>> processor = create_loop_aware_history_processor(max_messages=30)
+        >>> agent = Agent(model, history_processors=[processor])
+    """
+
+    def processor(messages: list[ModelMessage]) -> list[ModelMessage]:
+        """Process message history with loop detection."""
+        result = messages
+
+        # Check for loops before truncation (to see full pattern)
+        if enable_loop_detection:
+            is_loop, description = detect_loop(messages)
+            if is_loop and description:
+                result = inject_loop_breaker(result, description)
+
+        # Then truncate
+        return limit_history(result, max_messages=max_messages)
+
+    return processor

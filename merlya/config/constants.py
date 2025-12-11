@@ -40,15 +40,18 @@ MIN_RESPONSE_LENGTH_WITH_ACTIONS = 20  # Minimum response length when actions ta
 HARD_MAX_HISTORY_MESSAGES = 200  # Absolute maximum to prevent unbounded growth
 
 # Mode-specific tool call limits (set by router based on task type)
-TOOL_CALLS_LIMIT_DIAGNOSTIC = 100  # SSH investigation, log analysis, monitoring
-TOOL_CALLS_LIMIT_REMEDIATION = 50  # Fixing, deploying, configuring
-TOOL_CALLS_LIMIT_QUERY = 30  # Information gathering, explanations
-TOOL_CALLS_LIMIT_CHAT = 20  # Simple conversations
+# IMPORTANT: These are FAILSAFE limits only - loop detection handles real safety
+# The agent should complete tasks naturally; limits are just emergency stops
+# Loop detection (history.py) catches unproductive behavior BEFORE these limits
+TOOL_CALLS_LIMIT_DIAGNOSTIC = 200  # Allow complex investigations to complete
+TOOL_CALLS_LIMIT_REMEDIATION = 100  # Allow multi-step fixes
+TOOL_CALLS_LIMIT_QUERY = 50  # Allow thorough information gathering
+TOOL_CALLS_LIMIT_CHAT = 20  # Simple conversations rarely need more
 
 # Mode-specific request limits (should be >= tool_calls_limit)
-REQUEST_LIMIT_DIAGNOSTIC = 150  # More headroom for complex investigation
-REQUEST_LIMIT_REMEDIATION = 80  # Moderate for fix/deploy tasks
-REQUEST_LIMIT_QUERY = 50  # Enough for information gathering
+REQUEST_LIMIT_DIAGNOSTIC = 300  # Headroom for complex investigation
+REQUEST_LIMIT_REMEDIATION = 150  # Moderate for fix/deploy tasks
+REQUEST_LIMIT_QUERY = 80  # Enough for information gathering
 REQUEST_LIMIT_CHAT = 30  # Simple conversations
 
 # Skill-specific limits (skills can involve complex multi-step operations)
