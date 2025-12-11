@@ -33,7 +33,7 @@ async def cmd_skill(ctx: SharedContext, args: list[str]) -> CommandResult:
         success=False,
         message=(
             "**Skill Commands:**\n\n"
-            "  `/skill list` - List all registered skills\n"
+            "  `/skill list [tag]` - List all registered skills (optionally filter by tag)\n"
             "  `/skill show <name>` - Show skill details\n"
             "  `/skill create` - Create a new skill (wizard)\n"
             "  `/skill template <name>` - Generate a skill template\n"
@@ -44,9 +44,9 @@ async def cmd_skill(ctx: SharedContext, args: list[str]) -> CommandResult:
     )
 
 
-@subcommand("skill", "list", "List all registered skills", "/skill list")
+@subcommand("skill", "list", "List all registered skills", "/skill list [tag]")
 async def cmd_skill_list(_ctx: SharedContext, args: list[str]) -> CommandResult:
-    """List all registered skills."""
+    """List all registered skills, optionally filtered by tag."""
     registry = get_registry()
     stats = registry.get_stats()
 
@@ -60,6 +60,39 @@ async def cmd_skill_list(_ctx: SharedContext, args: list[str]) -> CommandResult:
             ),
         )
 
+    # Filter by tag if provided
+    tag_filter = args[0] if args else None
+    if tag_filter:
+        tagged = registry.find_by_tag(tag_filter)
+        if not tagged:
+            return CommandResult(
+                success=True,
+                message=(
+                    f"No skills found for tag `{tag_filter}`.\n\n"
+                    "Use `/skill list` to see all available skills."
+                ),
+            )
+
+        lines = [f"**Skills tagged '{tag_filter}'** ({len(tagged)} total)\n"]
+
+        # Split tagged skills into builtin and user
+        builtin = [s for s in tagged if s.builtin]
+        user = [s for s in tagged if not s.builtin]
+
+        if builtin:
+            lines.append("**Builtin:**")
+            for skill in sorted(builtin, key=lambda s: s.name):
+                lines.append(f"  `{skill.name}` - {skill.description}")
+            lines.append("")
+
+        if user:
+            lines.append("**User:**")
+            for skill in sorted(user, key=lambda s: s.name):
+                lines.append(f"  `{skill.name}` - {skill.description}")
+
+        return CommandResult(success=True, message="\n".join(lines), data={"tag": tag_filter, "count": len(tagged)})
+
+    # No tag filter - show all skills
     lines = [f"**Registered Skills** ({stats['total']} total)\n"]
 
     # Builtin skills
@@ -76,13 +109,6 @@ async def cmd_skill_list(_ctx: SharedContext, args: list[str]) -> CommandResult:
         lines.append("**User:**")
         for skill in sorted(user, key=lambda s: s.name):
             lines.append(f"  `{skill.name}` - {skill.description}")
-
-    # Show tag filter if provided
-    if args:
-        tag = args[0]
-        tagged = registry.find_by_tag(tag)
-        if tagged:
-            lines.append(f"\n**Tagged '{tag}':** {len(tagged)} skills")
 
     return CommandResult(success=True, message="\n".join(lines), data=stats)
 
@@ -233,22 +259,19 @@ async def cmd_skill_reload(ctx: SharedContext, _args: list[str]) -> CommandResul
     loader = SkillLoader()
 
     # Clear user skills (keep builtin)
-    builtin_count = len(registry.get_builtin())
     for skill in registry.get_user():
         registry.unregister(skill.name)
 
-    # Reload from disk
+    # Reload from disk (load_all already registers skills via registry)
     with ctx.ui.spinner("Reloading skills..."):
-        loaded = loader.load_all()
-        for skill in loaded:
-            registry.register(skill)
+        loader.load_all()
 
     stats = registry.get_stats()
     return CommandResult(
         success=True,
         message=(
             f"✅ Skills reloaded!\n\n"
-            f"  Builtin: {builtin_count}\n"
+            f"  Builtin: {stats['builtin']}\n"
             f"  User: {stats['user']}\n"
             f"  Total: {stats['total']}"
         ),
