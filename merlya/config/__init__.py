@@ -22,6 +22,8 @@ from merlya.config.tiers import (
     get_router_model_id,
     is_model_available,
     resolve_model_path,
+    resolve_parser_model_path,
+    resolve_router_model_path,
 )
 
 __all__ = [
@@ -45,5 +47,7 @@ __all__ = [
     "is_model_available",
     "load_config",
     "resolve_model_path",
+    "resolve_parser_model_path",
+    "resolve_router_model_path",
     "save_config",
 ]

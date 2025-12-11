@@ -115,6 +115,21 @@ PARSER_MODELS: dict[ModelTier, ModelConfig] = {
 }
 
 
+def _normalize_tier(tier: ModelTier | str | None) -> ModelTier:
+    """Normalize tier input to ModelTier enum."""
+    if isinstance(tier, ModelTier):
+        return tier
+    if isinstance(tier, str):
+        return ModelTier.from_string(tier)
+    return ModelTier.BALANCED
+
+
+def _get_model_id(tier: ModelTier | str | None, models: dict[ModelTier, ModelConfig]) -> str:
+    """Get model ID from a models dict for the given tier."""
+    normalized = _normalize_tier(tier)
+    return models[normalized].model_id
+
+
 def get_router_model_id(tier: ModelTier | str | None) -> str:
     """
     Get router model ID for the given tier.
@@ -123,14 +138,9 @@ def get_router_model_id(tier: ModelTier | str | None) -> str:
         tier: ModelTier enum or string.
 
     Returns:
-        Model ID string, or empty string for lightweight.
+        Model ID string.
     """
-    if isinstance(tier, str):
-        tier = ModelTier.from_string(tier)
-    elif tier is None:
-        tier = ModelTier.BALANCED
-
-    return ROUTER_MODELS[tier].model_id
+    return _get_model_id(tier, ROUTER_MODELS)
 
 
 def get_parser_model_id(tier: ModelTier | str | None) -> str:
@@ -143,40 +153,53 @@ def get_parser_model_id(tier: ModelTier | str | None) -> str:
     Returns:
         Model ID string, or empty string for lightweight.
     """
-    if isinstance(tier, str):
-        tier = ModelTier.from_string(tier)
-    elif tier is None:
-        tier = ModelTier.BALANCED
-
-    return PARSER_MODELS[tier].model_id
+    return _get_model_id(tier, PARSER_MODELS)
 
 
-def resolve_model_path(model_id: str) -> Path:
+def resolve_model_path(model_id: str, subdir: str = "onnx") -> Path:
     """
     Resolve local path for a HuggingFace model.
 
     Args:
         model_id: Model ID in format "org/model".
+        subdir: Subdirectory under ~/.merlya/models/ (default: "onnx").
 
     Returns:
         Path to the model.onnx file.
+
+    Raises:
+        ValueError: If model_id is empty.
     """
+    if not model_id:
+        raise ValueError("model_id cannot be empty")
+
     # Normalize model ID for filesystem
     safe_name = model_id.replace("/", "__").replace(":", "__")
 
-    # Use ~/.merlya/models/ directory
-    models_dir = Path.home() / ".merlya" / "models" / "onnx"
+    # Use ~/.merlya/models/{subdir}/ directory
+    models_dir = Path.home() / ".merlya" / "models" / subdir
     model_path = models_dir / safe_name / "model.onnx"
 
     return model_path
 
 
-def is_model_available(model_id: str) -> bool:
+def resolve_router_model_path(model_id: str) -> Path:
+    """Resolve path for router embedding model."""
+    return resolve_model_path(model_id, subdir="onnx")
+
+
+def resolve_parser_model_path(model_id: str) -> Path:
+    """Resolve path for parser NER model."""
+    return resolve_model_path(model_id, subdir="parser")
+
+
+def is_model_available(model_id: str, subdir: str = "onnx") -> bool:
     """
     Check if a model is available locally.
 
     Args:
         model_id: Model ID to check.
+        subdir: Subdirectory under ~/.merlya/models/.
 
     Returns:
         True if model exists locally.
@@ -184,7 +207,7 @@ def is_model_available(model_id: str) -> bool:
     if not model_id:
         return True  # No model needed for lightweight
 
-    model_path = resolve_model_path(model_id)
+    model_path = resolve_model_path(model_id, subdir=subdir)
     tokenizer_path = model_path.parent / "tokenizer.json"
 
     return model_path.exists() and tokenizer_path.exists()

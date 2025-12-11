@@ -14,6 +14,8 @@ from merlya.config.tiers import (
     get_router_model_id,
     is_model_available,
     resolve_model_path,
+    resolve_parser_model_path,
+    resolve_router_model_path,
 )
 
 
@@ -120,11 +122,35 @@ class TestModelPaths:
         assert isinstance(path, Path)
         assert path.name == "model.onnx"
         assert "Xenova__bge-m3" in str(path)
+        assert "onnx" in str(path)  # default subdir
+
+    def test_resolve_model_path_with_subdir(self):
+        """Test resolve_model_path with custom subdir."""
+        path = resolve_model_path("Xenova/model", subdir="parser")
+        assert "parser" in str(path)
+        assert "Xenova__model" in str(path)
 
     def test_resolve_model_path_special_chars(self):
         """Test resolve_model_path handles special characters."""
         path = resolve_model_path("org/model:version")
         assert "org__model__version" in str(path)
+
+    def test_resolve_model_path_empty_raises(self):
+        """Test resolve_model_path raises ValueError for empty model_id."""
+        with pytest.raises(ValueError, match="cannot be empty"):
+            resolve_model_path("")
+
+    def test_resolve_router_model_path(self):
+        """Test resolve_router_model_path uses onnx subdir."""
+        path = resolve_router_model_path("Xenova/bge-m3")
+        assert "onnx" in str(path)
+        assert "Xenova__bge-m3" in str(path)
+
+    def test_resolve_parser_model_path(self):
+        """Test resolve_parser_model_path uses parser subdir."""
+        path = resolve_parser_model_path("Xenova/bert-base-NER")
+        assert "parser" in str(path)
+        assert "Xenova__bert-base-NER" in str(path)
 
     def test_is_model_available_empty_id(self):
         """Test is_model_available with empty model_id returns True."""
@@ -133,3 +159,9 @@ class TestModelPaths:
     def test_is_model_available_nonexistent(self):
         """Test is_model_available with nonexistent model returns False."""
         assert is_model_available("nonexistent/model") is False
+
+    def test_is_model_available_with_subdir(self):
+        """Test is_model_available respects subdir parameter."""
+        # Both should return False for nonexistent models
+        assert is_model_available("nonexistent/model", subdir="onnx") is False
+        assert is_model_available("nonexistent/model", subdir="parser") is False

@@ -30,7 +30,12 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 # Import centralized tier configuration
-from merlya.config.tiers import PARSER_MODELS, ModelTier, get_parser_model_id
+from merlya.config.tiers import (
+    PARSER_MODELS,
+    ModelTier,
+    get_parser_model_id,
+    resolve_parser_model_path,
+)
 
 # Legacy alias for backwards compatibility (used in tests)
 ONNX_MODELS = {
@@ -106,10 +111,8 @@ class ONNXParserBackend(ParserBackend):
         return get_parser_model_id(tier)
 
     def _resolve_model_path(self, model_id: str) -> Path:
-        """Resolve local model path."""
-        # Parser models use a different directory structure
-        slug = model_id.replace("/", "__").replace(":", "__")
-        return Path.home() / ".merlya" / "models" / "parser" / slug / "model.onnx"
+        """Resolve local model path using centralized config."""
+        return resolve_parser_model_path(model_id)
 
     async def load(self) -> bool:
         """Load the ONNX NER model."""
@@ -134,6 +137,10 @@ class ONNXParserBackend(ParserBackend):
 
             if not model_path.exists():
                 logger.warning(f"⚠️ ONNX model not found: {model_path}")
+                return False
+
+            if not tokenizer_path.exists():
+                logger.warning(f"⚠️ ONNX tokenizer not found: {tokenizer_path}")
                 return False
 
             # Load in thread
@@ -209,8 +216,13 @@ class ONNXParserBackend(ParserBackend):
         """Load label configuration from config.json."""
         config_path = model_dir / "config.json"
         if not config_path.exists():
-            # Use default NER labels
-            self._id2label = {i: label for i, label in enumerate(NER_LABELS.keys())}
+            # Cannot assume label ordering without config - use empty mapping
+            # which will treat all predictions as "O" (outside/no entity)
+            logger.warning(
+                f"⚠️ No config.json found in {model_dir}; "
+                "NER label mapping unavailable, entity extraction will be limited"
+            )
+            self._id2label = {}
             return
 
         try:
@@ -220,10 +232,15 @@ class ONNXParserBackend(ParserBackend):
             if "id2label" in config:
                 self._id2label = {int(k): v for k, v in config["id2label"].items()}
             else:
-                self._id2label = {i: label for i, label in enumerate(NER_LABELS.keys())}
+                # Config exists but no id2label - cannot assume ordering
+                logger.warning(
+                    "⚠️ config.json missing 'id2label' field; "
+                    "NER label mapping unavailable, entity extraction will be limited"
+                )
+                self._id2label = {}
         except Exception as e:
             logger.debug(f"Could not load label config: {e}")
-            self._id2label = {i: label for i, label in enumerate(NER_LABELS.keys())}
+            self._id2label = {}
 
     async def parse_incident(self, text: str) -> IncidentParsingResult:
         """Parse text as an incident using ONNX NER + heuristic."""
@@ -266,9 +283,10 @@ class ONNXParserBackend(ParserBackend):
         if self._loaded:
             ner_entities = await self._run_ner(text)
             # Enhance host detection with NER
-            if "ORG" in ner_entities:  # Organizations might be hostnames
+            if "ORG" in ner_entities:
                 for org in ner_entities["ORG"]:
-                    if org not in result.query.target_hosts:
+                    # Only add if it looks like a valid hostname (not generic org names)
+                    if org not in result.query.target_hosts and self._looks_like_hostname(org):
                         result.query.target_hosts.append(org)
             result.backend_used = self.name
 
@@ -396,6 +414,37 @@ class ONNXParserBackend(ParserBackend):
         if is_continuation:
             return " " + token
         return token
+
+    def _looks_like_hostname(self, value: str) -> bool:
+        """Check if a value looks like a valid hostname.
+
+        Filters out generic organization names that are unlikely to be hostnames.
+        """
+        import re
+
+        # Must have at least one dot or hyphen (typical hostname patterns)
+        # or contain common hostname indicators
+        hostname_indicators = (
+            "." in value
+            or "-" in value
+            or value.endswith(("-server", "-db", "-api", "-app", "-host", "-node"))
+            or re.match(r"^[a-z0-9]+-[a-z0-9]+$", value.lower())  # e.g., web-01
+        )
+
+        # Reject if it looks like a generic organization name
+        generic_orgs = {
+            "microsoft", "amazon", "google", "apple", "facebook", "meta",
+            "netflix", "twitter", "oracle", "ibm", "intel", "cisco",
+            "vmware", "redhat", "ubuntu", "debian", "linux", "windows",
+        }
+        if value.lower() in generic_orgs:
+            return False
+
+        # Reject if contains spaces (hostnames don't have spaces)
+        if " " in value:
+            return False
+
+        return hostname_indicators
 
     def _enhance_incident_result(
         self,
