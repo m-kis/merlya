@@ -151,10 +151,10 @@ async def list_hosts_summary(
         status_lower = status.lower()
         hosts = [h for h in hosts if h.health_status.lower() == status_lower]
 
-    # Calculate counts
+    # Calculate counts (use lowercase for case-insensitive comparison)
     total = len(hosts)
-    healthy = sum(1 for h in hosts if h.health_status == "healthy")
-    unhealthy = sum(1 for h in hosts if h.health_status in ("unhealthy", "failed"))
+    healthy = sum(1 for h in hosts if h.health_status.lower() == "healthy")
+    unhealthy = sum(1 for h in hosts if h.health_status.lower() in ("unhealthy", "failed"))
     unknown = total - healthy - unhealthy
 
     # Count by tag
@@ -270,7 +270,7 @@ async def list_groups(
     # Build summaries
     summaries = []
     for tag, hosts in sorted(groups.items(), key=lambda x: -len(x[1])):
-        healthy = sum(1 for h in hosts if h.health_status == "healthy")
+        healthy = sum(1 for h in hosts if (h.health_status or "").lower() == "healthy")
         sample = [h.name for h in hosts[:3]]
 
         summaries.append(

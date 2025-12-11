@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from merlya.ssh.pool import SSHConnectionOptions, SSHResult
@@ -64,14 +65,47 @@ _ALLOWED_SSH_KEY_PATHS = (
 
 
 def _is_safe_ssh_key_path(path: str) -> bool:
-    """Check if path is a valid SSH key location."""
+    """Check if path is a valid SSH key location.
+
+    Uses path canonicalization to prevent path traversal attacks.
+    Paths like /home/user/../../etc/passwd will be rejected after resolution.
+    """
     path = path.strip()
-    # Must start with one of the allowed prefixes
+
+    # Handle tilde expansion for ~ paths
+    if path.startswith("~"):
+        # For ~ paths, we check the pattern without resolving
+        # since we can't resolve ~ on remote systems
+        return path.startswith("~/.ssh/")
+
+    # For absolute paths, canonicalize to prevent traversal attacks
+    try:
+        # Resolve the path to eliminate .. segments and symlinks
+        # Using strict=False to handle paths that may not exist locally
+        # (these paths are for remote SSH key auditing)
+        resolved = Path(path).resolve()
+        resolved_str = str(resolved)
+    except (OSError, ValueError):
+        # If resolution fails, reject the path
+        return False
+
+    # Canonicalize allowed prefixes for comparison
+    allowed_resolved = []
     for allowed in _ALLOWED_SSH_KEY_PATHS:
-        if path.startswith(allowed):
+        if allowed.startswith("~"):
+            continue  # Skip ~ prefixes, handled above
+        try:
+            allowed_resolved.append(str(Path(allowed).resolve()))
+        except (OSError, ValueError):
+            allowed_resolved.append(allowed)
+
+    # Check if resolved path starts with an allowed prefix
+    for allowed in allowed_resolved:
+        if resolved_str.startswith(allowed):
             return True
-    # Also allow paths that look like home directories
-    return bool(re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", path))
+
+    # Also allow paths that look like home directories (after canonicalization)
+    return bool(re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", resolved_str))
 
 
 async def execute_security_command(

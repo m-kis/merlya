@@ -85,10 +85,15 @@ class TokenEstimator:
         try:
             import tiktoken
 
-            self._encoder = tiktoken.encoding_for_model("gpt-4")
+            # Try to get encoding for the specified model, fall back to cl100k_base
+            try:
+                self._encoder = tiktoken.encoding_for_model(model)
+            except KeyError:
+                # Model not recognized, use cl100k_base (GPT-4/Claude compatible)
+                self._encoder = tiktoken.get_encoding("cl100k_base")
             self._tiktoken_available = True
             logger.debug("📊 TokenEstimator: Using tiktoken for accurate counts")
-        except (ImportError, KeyError):
+        except ImportError:
             logger.debug("📊 TokenEstimator: Using heuristic estimation")
 
     def estimate_tokens(self, text: str) -> int:
@@ -131,11 +136,8 @@ class TokenEstimator:
         else:
             chars_per_token = DEFAULT_CHARS_PER_TOKEN
 
-        # Base estimate
-        base_tokens = len(text) / chars_per_token
-
-        # Add overhead for special tokens, formatting
-        return int(base_tokens + MESSAGE_OVERHEAD_TOKENS)
+        # Base estimate (content only, overhead added by estimate_messages)
+        return int(base_tokens)
 
     def estimate_messages(self, messages: list[ModelMessage]) -> TokenEstimate:
         """
@@ -288,10 +290,15 @@ class TokenEstimator:
             Formatted string.
         """
         limit = self.get_context_limit(estimate.model)
-        pct = (estimate.total_tokens / limit) * 100
+
+        if limit:
+            pct = (estimate.total_tokens / limit) * 100
+            pct_str = f"{pct:.1f}%"
+        else:
+            pct_str = "N/A"
 
         return (
             f"📊 Tokens: {estimate.prompt_tokens:,} prompt + "
             f"~{estimate.completion_estimate:,} completion = "
-            f"{estimate.total_tokens:,} ({pct:.1f}% of {limit:,} limit)"
+            f"{estimate.total_tokens:,} ({pct_str} of {limit:,} limit)"
         )
