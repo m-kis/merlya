@@ -7,24 +7,54 @@ merlya/
 ├── agent/          # PydanticAI agent and tools
 ├── cli/            # CLI entry point
 ├── commands/       # Slash command system
-├── config/         # Configuration management
+├── config/         # Configuration management + policies
+│   ├── loader.py   # Config loading
+│   ├── models.py   # Pydantic config models
+│   ├── tiers.py    # Tier configuration (model selection)
+│   └── policies.py # Policy management (guardrails)
 ├── core/           # Shared context and logging
 ├── health/         # Startup health checks
 ├── hosts/          # Host resolution
 ├── i18n/           # Internationalization (EN, FR)
+├── mcp/            # MCP (Model Context Protocol) integration
+│   └── manager.py  # MCPManager (async-safe singleton)
+├── parser/         # Input/output parsing service
+│   ├── service.py  # ParserService (tier-based backend selection)
+│   ├── models.py   # Pydantic models (IncidentInput, ParsedLog)
+│   └── backends/   # Heuristic and ONNX backends
 ├── persistence/    # SQLite database layer
+│   ├── database.py # Async DB with migration locking
+│   └── repositories.py # Typed repositories
 ├── repl/           # Interactive console
 ├── router/         # Intent classification
+│   ├── classifier.py # IntentRouter with fast/heavy path
+│   └── handler.py  # Request handler (fast path, skills, agent)
 ├── secrets/        # Keyring integration
-├── security/       # Permission management
+├── security/       # Permission management + audit
+│   ├── permissions.py # PermissionManager (password TTL, locking)
+│   └── audit.py    # AuditLogger
+├── session/        # Session and context management
+│   ├── manager.py  # SessionManager
+│   ├── context_tier.py # ContextTierPredictor (auto tier detection)
+│   └── summarizer.py # Hybrid summarization (ONNX + LLM)
 ├── setup/          # First-run wizard
+├── skills/         # Reusable workflow system
+│   ├── registry.py # SkillRegistry singleton
+│   ├── loader.py   # YAML skill loader
+│   ├── executor.py # SkillExecutor
+│   └── builtin/    # Default skills (YAML)
 ├── ssh/            # SSH connection pool
+├── subagents/      # Parallel execution system
+│   ├── factory.py  # SubagentFactory
+│   └── orchestrator.py # asyncio.gather orchestration
 ├── tools/          # Tool implementations
 │   ├── core/       # Core tools (ssh_execute, list_hosts)
 │   ├── files/      # File operations
 │   ├── system/     # System monitoring
 │   ├── security/   # Security auditing
-│   └── web/        # Web search
+│   ├── web/        # Web search
+│   ├── logs/       # Log store (raw log persistence)
+│   └── context/    # Context tools (host summaries)
 └── ui/             # Console UI (Rich)
 ```
 
@@ -115,6 +145,116 @@ SQLite database with async access via aiosqlite.
 - `variables` - User-defined variables
 - `conversations` - Chat history with messages
 - `command_history` - Executed commands log
+- `raw_logs` - Stored command outputs with TTL
+- `sessions` - Session context and summaries
+
+**Migration Safety:**
+- Single atomic transaction for all migrations
+- Migration lock prevents concurrent updates
+- Stale lock detection (30s timeout)
+
+### 6. Session Manager (`merlya/session/`)
+
+Manages context tiers and automatic summarization.
+
+**Context Tiers:**
+```python
+class ContextTier(Enum):
+    MINIMAL = "minimal"    # ~10 messages, 2000 tokens
+    STANDARD = "standard"  # ~30 messages, 4000 tokens
+    EXTENDED = "extended"  # ~100 messages, 8000 tokens
+```
+
+**Auto-detection:** Based on available RAM:
+- ≥8GB → EXTENDED
+- ≥4GB → STANDARD
+- <4GB → MINIMAL
+
+**Summarization Chain:**
+1. ONNX extractive (key sentences)
+2. Mini-LLM fallback
+3. Main LLM fallback
+4. Smart truncation
+
+### 7. Skills System (`merlya/skills/`)
+
+Reusable workflows for well-defined intents.
+
+**Skill Configuration (YAML):**
+```yaml
+name: incident_triage
+version: "1.0"
+description: "Triage et diagnostic d'incidents"
+intent_patterns:
+  - "incident.*"
+  - "problème.*"
+tools_allowed:
+  - ssh_execute
+  - read_file
+max_hosts: 5
+timeout_seconds: 120
+require_confirmation_for: ["restart", "kill"]
+```
+
+**Execution Flow:**
+1. Router matches skill pattern
+2. SkillExecutor validates input
+3. Subagents parallelize per-host
+4. Results aggregated
+
+### 8. Parser Service (`merlya/parser/`)
+
+Structures all input/output before LLM processing.
+
+**Backend Selection (tier-based):**
+- `performance` → ONNX NER model
+- `balanced` → ONNX DistilBERT
+- `lightweight` → Heuristic (regex + patterns)
+
+**Output Models:**
+```python
+class ParsingResult(BaseModel):
+    confidence: float       # 0.0-1.0
+    coverage_ratio: float   # % of text parsed
+    has_unparsed_blocks: bool
+    truncated: bool
+```
+
+### 9. MCP Manager (`merlya/mcp/`)
+
+Integrates external MCP servers (GitHub, Slack, etc.).
+
+**Async-safe Singleton:**
+```python
+manager = await MCPManager.create(config, secrets)
+```
+
+**Tool Namespacing:** Tools prefixed as `server.tool_name`
+
+**Environment Resolution:**
+- `${VAR}` - Required (raises if missing)
+- `${VAR:-default}` - Optional with fallback
+
+### 10. Policy System (`merlya/config/policies.py`)
+
+Guardrails and safety controls.
+
+**PolicyConfig:**
+```yaml
+policy:
+  context_tier: "auto"           # auto-detect or manual
+  max_tokens_per_call: 8000
+  max_hosts_per_skill: 10
+  max_parallel_subagents: 5
+  require_confirmation_for_write: true
+  audit_logging: true
+```
+
+**Guardrails:**
+- No destructive commands without confirmation
+- Password caching with 30-minute TTL
+- Per-host async locking for capability detection
+- Audit logging of all executed commands
 
 ## Request Flow
 

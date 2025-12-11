@@ -559,7 +559,7 @@ def check_onnx_model(tier: str | None = None) -> HealthCheck:
     )
 
 
-def check_parser_service(tier: str | None = None) -> HealthCheck:
+async def check_parser_service(tier: str | None = None) -> HealthCheck:
     """Check if Parser service is properly initialized."""
     try:
         # Reset if instance exists with different tier to ensure correct backend
@@ -569,6 +569,10 @@ def check_parser_service(tier: str | None = None) -> HealthCheck:
 
         # Pass tier to ensure correct backend selection
         parser = ParserService.get_instance(tier=tier)
+
+        # Initialize the backend (required before use)
+        await parser.initialize()
+
         backend_name = type(parser._backend).__name__
 
         return HealthCheck(
@@ -778,7 +782,7 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     health.capabilities["onnx_router"] = can_use_onnx
 
     # Parser service
-    parser_check = check_parser_service(tier=tier)
+    parser_check = await check_parser_service(tier=tier)
     health.checks.append(parser_check)
     health.capabilities["parser"] = parser_check.status == CheckStatus.OK
 

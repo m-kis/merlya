@@ -39,9 +39,16 @@ logging:
   max_files: 5              # Number of log files to keep
   retention_days: 7         # Log retention period
 
-mcp:
-  default_timeout: 30       # Default timeout (seconds) for MCP requests
-  servers: {}               # MCP servers (see examples below)
+policy:
+  context_tier: "auto"      # auto, minimal, standard, extended
+  max_tokens_per_call: 8000
+  max_hosts_per_skill: 10
+  max_parallel_subagents: 5
+  require_confirmation_for_write: true
+  audit_logging: true
+  auto_summarize: true
+
+mcp: {}                     # See "MCP Configuration" section below
 ```
 
 ## LLM Providers
@@ -194,7 +201,7 @@ If keyring is unavailable, falls back to in-memory storage (not persisted).
 
 ## MCP Configuration
 
-Configure MCP servers in `~/.merlya/config.yaml`:
+The `mcp` block belongs at the root level of `~/.merlya/config.yaml` (sibling to `general`, `model`, etc.). Configure MCP servers as follows:
 
 ```yaml
 mcp:
@@ -254,3 +261,73 @@ Or use commands:
 ```
 
 Changes take effect immediately for most settings.
+
+## Policy Configuration
+
+Policies control context management, guardrails, and safety features.
+
+### Context Tiers
+
+```yaml
+policy:
+  context_tier: "auto"  # auto, minimal, standard, extended
+```
+
+**Tier Behavior:**
+- `auto` - Auto-detect based on available RAM (≥8GB=extended, ≥4GB=standard, <4GB=minimal)
+- `minimal` - 10 messages, 2000 tokens, lightweight parser
+- `standard` - 30 messages, 4000 tokens, balanced parser
+- `extended` - 100 messages, 8000 tokens, performance parser
+
+### Token Limits
+
+```yaml
+policy:
+  max_tokens_per_call: 8000   # Maximum tokens per LLM call
+  auto_summarize: true         # Auto-summarize when threshold reached
+```
+
+### Parallel Execution Limits
+
+```yaml
+policy:
+  max_hosts_per_skill: 10      # Max hosts per skill execution
+  max_parallel_subagents: 5    # Max concurrent subagents
+```
+
+### Safety Guardrails
+
+```yaml
+policy:
+  require_confirmation_for_write: true  # Confirm destructive commands
+  audit_logging: true                    # Log all command executions
+```
+
+**Audit Logging:**
+When enabled, all executed commands are logged to the `command_history` table with:
+- Host, command, timestamp
+- Exit code, stdout/stderr (truncated)
+- User who initiated the command
+
+### Skills Configuration
+
+Skills are stored in `~/.merlya/skills/` as YAML files:
+
+```yaml
+# ~/.merlya/skills/disk_audit.yaml
+name: disk_audit
+version: "1.0"
+description: "Audit disk usage across hosts"
+intent_patterns:
+  - "disk.*audit"
+  - "storage.*check"
+tools_allowed:
+  - ssh_execute
+  - list_hosts
+max_hosts: 10
+timeout_seconds: 120
+require_confirmation_for: []
+system_prompt: |
+  You are a disk usage auditor. Check disk space and identify
+  hosts with low available space.
+```

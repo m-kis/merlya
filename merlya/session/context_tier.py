@@ -34,6 +34,46 @@ class ContextTier(Enum):
     STANDARD = "standard"  # ~30 messages, 4000 tokens
     EXTENDED = "extended"  # ~100 messages, 8000 tokens
 
+    @classmethod
+    def from_ram_gb(cls, available_gb: float) -> "ContextTier":
+        """
+        Select tier based on available RAM.
+
+        Args:
+            available_gb: Available RAM in gigabytes.
+
+        Returns:
+            Appropriate ContextTier for the available memory.
+        """
+        if available_gb >= 8.0:
+            return cls.EXTENDED
+        elif available_gb >= 4.0:
+            return cls.STANDARD
+        else:
+            return cls.MINIMAL
+
+    @classmethod
+    def from_string(cls, value: str | None) -> "ContextTier":
+        """
+        Convert string to ContextTier, with sensible defaults.
+
+        Args:
+            value: Tier string (minimal/standard/extended).
+
+        Returns:
+            Corresponding ContextTier enum value.
+        """
+        if not value:
+            return cls.STANDARD
+
+        normalized = value.lower().strip()
+
+        try:
+            return cls(normalized)
+        except ValueError:
+            logger.warning(f"Unknown context tier '{value}', defaulting to standard")
+            return cls.STANDARD
+
 
 @dataclass
 class TierLimits:

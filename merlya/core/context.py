@@ -188,11 +188,11 @@ class SharedContext:
         logger.debug("✅ SharedContext async components initialized")
 
     async def get_mcp_manager(self) -> MCPManager:
-        """Get MCP manager (lazy)."""
+        """Get MCP manager (lazy, async-safe singleton)."""
         if self._mcp_manager is None:
             from merlya.mcp import MCPManager
 
-            self._mcp_manager = MCPManager(self.config, self.secrets)
+            self._mcp_manager = await MCPManager.create(self.config, self.secrets)
         return self._mcp_manager
 
     async def init_router(self, tier: str | None = None) -> None:

@@ -602,22 +602,25 @@ async def run_repl() -> None:
     # Initialize components BEFORE health checks so they report correctly
     # 1. Initialize SessionManager
     try:
+        import psutil
+
         from merlya.session import SessionManager
         from merlya.session.context_tier import ContextTier
 
-        # Convert string tier to enum, default to STANDARD if invalid/auto
+        # Convert string tier to enum, use RAM-based detection when "auto"
         tier_str = ctx.config.policy.context_tier
-        if tier_str and tier_str != "auto":
-            try:
-                tier = ContextTier(tier_str.upper())
-            except ValueError:
-                tier = ContextTier.STANDARD
+        if tier_str and tier_str.lower() != "auto":
+            tier = ContextTier.from_string(tier_str)
         else:
-            tier = ContextTier.STANDARD
+            # Auto-detect based on available RAM
+            mem = psutil.virtual_memory()
+            available_gb = mem.available / (1024**3)
+            tier = ContextTier.from_ram_gb(available_gb)
+            logger.debug(f"Auto-detected context tier: {tier.value} (RAM: {available_gb:.1f}GB)")
 
         model = f"{ctx.config.model.provider}:{ctx.config.model.model}"
         SessionManager(model=model, default_tier=tier)
-        logger.debug("SessionManager initialized")
+        logger.debug(f"SessionManager initialized with tier={tier.value}")
     except Exception as e:
         logger.debug(f"SessionManager init skipped: {e}")
 
