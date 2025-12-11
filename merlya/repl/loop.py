@@ -400,8 +400,14 @@ class REPL:
         NEW: If a @mention is not found as variable, secret, or host,
         prompt the user to define it inline (issue #40).
         """
-        # Find all @ mentions
-        mentions = re.findall(r"@(\w[\w.-]*)", text)
+        # Find all @ mentions (deduplicated, preserve order)
+        seen: set[str] = set()
+        mentions: list[str] = []
+        for m in re.findall(r"@(\w[\w.-]*)", text):
+            if m not in seen:
+                seen.add(m)
+                mentions.append(m)
+
         undefined_mentions: list[str] = []
 
         for mention in mentions:
@@ -432,6 +438,9 @@ class REPL:
 
         return text
 
+    # Valid pattern for variable/secret names (must start with letter)
+    _VALID_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+
     async def _prompt_for_undefined_mentions(
         self, text: str, undefined: list[str]
     ) -> str:
@@ -441,8 +450,21 @@ class REPL:
         For each undefined mention, ask if it should be a variable or secret,
         then prompt for the value.
         """
-        for mention in undefined:
-            self.ctx.ui.warning(f"@{mention} is not defined as a variable, secret, or host.")
+        total = len(undefined)
+        for i, mention in enumerate(undefined, 1):
+            # Show progress for multiple mentions
+            progress = f"[{i}/{total}] " if total > 1 else ""
+            self.ctx.ui.warning(
+                f"{progress}@{mention} is not defined as a variable, secret, or host."
+            )
+
+            # Validate name format before allowing to set
+            if not self._VALID_NAME_PATTERN.match(mention):
+                self.ctx.ui.muted(
+                    f"@{mention} has invalid format (must start with letter, "
+                    "contain only letters, numbers, hyphens, underscores). Keeping as-is."
+                )
+                continue
 
             # Ask what type it should be
             choice = await self.ctx.ui.prompt(
@@ -458,9 +480,13 @@ class REPL:
                 # Define as variable
                 value = await self.ctx.ui.prompt(f"Enter value for @{mention}:")
                 if value:
-                    await self.ctx.variables.set(mention, value)
-                    text = text.replace(f"@{mention}", value)
-                    self.ctx.ui.success(f"Variable @{mention} set.")
+                    try:
+                        await self.ctx.variables.set(mention, value)
+                        text = text.replace(f"@{mention}", value)
+                        self.ctx.ui.success(f"Variable @{mention} set.")
+                    except Exception as e:
+                        logger.error(f"Failed to set variable @{mention}: {e}")
+                        self.ctx.ui.error(f"Failed to set @{mention}: {e}")
                 else:
                     self.ctx.ui.muted(f"Skipped @{mention}")
 
@@ -468,9 +494,13 @@ class REPL:
                 # Define as secret
                 value = await self.ctx.ui.prompt_secret(f"Enter secret value for @{mention}:")
                 if value:
-                    self.ctx.secrets.set(mention, value)
-                    # Don't expand secrets - keep @mention in text
-                    self.ctx.ui.success(f"Secret @{mention} set.")
+                    try:
+                        self.ctx.secrets.set(mention, value)
+                        # Don't expand secrets - keep @mention in text
+                        self.ctx.ui.success(f"Secret @{mention} set.")
+                    except Exception as e:
+                        logger.error(f"Failed to set secret @{mention}: {e}")
+                        self.ctx.ui.error(f"Failed to set @{mention}: {e}")
                 else:
                     self.ctx.ui.muted(f"Skipped @{mention}")
 
@@ -568,6 +598,37 @@ async def run_repl() -> None:
 
     # Load API keys from keyring into environment
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
+
+    # Initialize components BEFORE health checks so they report correctly
+    # 1. Initialize SessionManager
+    try:
+        from merlya.session import SessionManager
+
+        SessionManager(
+            default_tier=ctx.config.policy.context_tier,
+            max_tokens=ctx.config.policy.max_tokens_per_call,
+        )
+        logger.debug("SessionManager initialized")
+    except Exception as e:
+        logger.debug(f"SessionManager init skipped: {e}")
+
+    # 2. Load skills
+    try:
+        from merlya.skills import SkillLoader
+
+        loader = SkillLoader()
+        loader.load_all()
+        logger.debug("Skills loaded")
+    except Exception as e:
+        logger.debug(f"Skills loading skipped: {e}")
+
+    # 3. Initialize MCPManager (if configured)
+    try:
+        if ctx.config.mcp and ctx.config.mcp.servers:
+            await ctx.get_mcp_manager()
+            logger.debug("MCPManager initialized")
+    except Exception as e:
+        logger.debug(f"MCPManager init skipped: {e}")
 
     # Run health checks
     ctx.ui.info(ctx.t("startup.health_checks"))
