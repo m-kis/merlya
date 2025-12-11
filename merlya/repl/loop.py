@@ -6,6 +6,7 @@ Interactive console with autocompletion.
 
 from __future__ import annotations
 
+import contextlib
 import asyncio
 import os
 import re
@@ -371,8 +372,17 @@ class REPL:
                 self.ctx.ui.newline()
 
             except KeyboardInterrupt:
+                # User interrupt: cancel current input/command but keep REPL alive
                 self.ctx.ui.newline()
+                self.ctx.ui.warning("Interrupted, command cancelled")
                 continue
+
+            except asyncio.CancelledError:
+                # Graceful shutdown initiated by signal handler
+                self.ctx.ui.newline()
+                self.ctx.ui.warning("Interrupted, shutting down...")
+                self.running = False
+                break
 
             except EOFError:
                 self.running = False
@@ -382,8 +392,14 @@ class REPL:
                 logger.error(f"REPL error: {e}")
                 self.ctx.ui.error(f"Error: {e}")
 
-        # Cleanup
-        await self.ctx.close()
+        # Cleanup (may be called again by CLI wrapper, but close() is idempotent)
+        try:
+            # Shield cleanup from cancellation so we can close resources cleanly
+            await asyncio.shield(self.ctx.close())
+        except asyncio.CancelledError:
+            logger.debug("Cleanup cancelled, retrying close without shield")
+            with contextlib.suppress(Exception):
+                await self.ctx.close()
         self.ctx.ui.info("Goodbye!")
 
     async def _expand_mentions(self, text: str) -> str:
