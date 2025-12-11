@@ -419,8 +419,13 @@ class AuditLogger:
 
     @classmethod
     def reset_instance(cls) -> None:
-        """Reset instance (for tests)."""
+        """Reset instance (for tests).
+
+        Also recreates the lock to ensure correctness when the event loop
+        changes between test runs.
+        """
         cls._instance = None
+        cls._lock = asyncio.Lock()
 
 
 async def get_audit_logger(enabled: bool = True) -> AuditLogger:
