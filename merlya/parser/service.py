@@ -112,10 +112,17 @@ class ParserService:
         if isinstance(self._backend, ONNXParserBackend):
             logger.warning("⚠️ ONNX backend failed, falling back to heuristic")
             self._backend = HeuristicBackend()
-            await self._backend.load()
-            self._initialized = True
-            return True
+            if await self._backend.load():
+                self._initialized = True
+                return True
+            # Heuristic fallback failed
+            logger.error("❌ HeuristicBackend fallback failed to load")
+            self._backend = None
+            return False
 
+        # HeuristicBackend was initially selected but failed to load
+        logger.error("❌ HeuristicBackend failed to load")
+        self._backend = None
         return False
 
     def _select_backend(self, tier: str, model_id: str | None = None) -> ParserBackend:
@@ -171,7 +178,8 @@ class ParserService:
             - backend_used: Which backend performed the parsing
         """
         if not self._initialized:
-            await self.initialize()
+            if not await self.initialize():
+                raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_incident(text)
 
@@ -189,7 +197,8 @@ class ParserService:
             - coverage_ratio: Text coverage
         """
         if not self._initialized:
-            await self.initialize()
+            if not await self.initialize():
+                raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_log(text)
 
@@ -204,7 +213,8 @@ class ParserService:
             Structured host query parsing result.
         """
         if not self._initialized:
-            await self.initialize()
+            if not await self.initialize():
+                raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_host_query(text)
 
@@ -219,7 +229,8 @@ class ParserService:
             Structured command parsing result.
         """
         if not self._initialized:
-            await self.initialize()
+            if not await self.initialize():
+                raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_command(text)
 
@@ -234,7 +245,8 @@ class ParserService:
             Dictionary mapping entity types to values.
         """
         if not self._initialized:
-            await self.initialize()
+            if not await self.initialize():
+                raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.extract_entities(text)
 
