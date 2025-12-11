@@ -20,12 +20,13 @@ def init_commands() -> None:
         hosts,
         mcp,
         model,
+        skill,
         ssh,
         system,
         variables,
     )
 
     # Prevent unused import warnings
-    _ = (core, hosts, ssh, variables, model, conversations, system, mcp)
+    _ = (core, hosts, ssh, variables, model, conversations, system, mcp, skill)
 
     logger.debug("✅ Commands initialized")

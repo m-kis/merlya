@@ -19,7 +19,10 @@ from loguru import logger
 
 from merlya.core.types import CheckStatus, HealthCheck
 from merlya.i18n import t
+from merlya.parser.service import ParserService
 from merlya.router.intent_classifier import IntentClassifier
+from merlya.session.manager import SessionManager
+from merlya.skills.registry import get_registry as get_skills_registry
 
 
 @dataclass
@@ -556,6 +559,128 @@ def check_onnx_model(tier: str | None = None) -> HealthCheck:
     )
 
 
+def check_parser_service(tier: str | None = None) -> HealthCheck:
+    """Check if Parser service is properly initialized."""
+    try:
+        parser = ParserService.get_instance()
+        backend_name = type(parser._backend).__name__
+
+        return HealthCheck(
+            name="parser",
+            status=CheckStatus.OK,
+            message=f"✅ Parser service ready ({backend_name})",
+            details={
+                "backend": backend_name,
+                "tier": tier or "auto",
+            },
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="parser",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ Parser not initialized: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
+def check_session_manager() -> HealthCheck:
+    """Check if Session manager is available."""
+    try:
+        manager = SessionManager.get_instance()
+        tier = manager.current_tier.value if manager.current_tier else "auto"
+
+        return HealthCheck(
+            name="session",
+            status=CheckStatus.OK,
+            message=f"✅ Session manager ready (tier={tier})",
+            details={
+                "tier": tier,
+                "max_tokens": manager.max_tokens,
+            },
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="session",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ Session manager not initialized: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
+def check_skills_registry() -> HealthCheck:
+    """Check if Skills registry has loaded skills."""
+    try:
+        registry = get_skills_registry()
+        stats = registry.get_stats()
+
+        if stats["total"] == 0:
+            return HealthCheck(
+                name="skills",
+                status=CheckStatus.WARNING,
+                message="⚠️ No skills loaded (use /skill reload)",
+                details=stats,
+            )
+
+        return HealthCheck(
+            name="skills",
+            status=CheckStatus.OK,
+            message=f"✅ Skills loaded ({stats['builtin']} builtin, {stats['user']} user)",
+            details=stats,
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="skills",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ Skills registry error: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
+async def check_mcp_servers() -> HealthCheck:
+    """Check if MCP servers are configured and running."""
+    try:
+        from merlya.mcp.manager import MCPManager
+
+        manager = MCPManager.get_instance()
+        servers = manager.list_servers()
+
+        if not servers:
+            return HealthCheck(
+                name="mcp",
+                status=CheckStatus.DISABLED,
+                message="ℹ️ No MCP servers configured",
+                details={"servers": []},
+            )
+
+        # Count running vs total
+        running = sum(1 for s in servers if s.get("status") == "running")
+        total = len(servers)
+
+        if running == 0:
+            status = CheckStatus.WARNING
+            message = f"⚠️ MCP: 0/{total} servers running"
+        elif running < total:
+            status = CheckStatus.WARNING
+            message = f"⚠️ MCP: {running}/{total} servers running"
+        else:
+            status = CheckStatus.OK
+            message = f"✅ MCP: {running} server(s) running"
+
+        return HealthCheck(
+            name="mcp",
+            status=status,
+            message=message,
+            details={"servers": servers, "running": running, "total": total},
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="mcp",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ MCP check failed: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
 async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     """
     Run all startup health checks.
@@ -628,6 +753,26 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
         onnx_check.status == CheckStatus.WARNING and details.get("can_download", False)
     )
     health.capabilities["onnx_router"] = can_use_onnx
+
+    # Parser service
+    parser_check = check_parser_service(tier=tier)
+    health.checks.append(parser_check)
+    health.capabilities["parser"] = parser_check.status == CheckStatus.OK
+
+    # Session manager
+    session_check = check_session_manager()
+    health.checks.append(session_check)
+    health.capabilities["session"] = session_check.status == CheckStatus.OK
+
+    # Skills registry
+    skills_check = check_skills_registry()
+    health.checks.append(skills_check)
+    health.capabilities["skills"] = skills_check.status == CheckStatus.OK
+
+    # MCP servers
+    mcp_check = await check_mcp_servers()
+    health.checks.append(mcp_check)
+    health.capabilities["mcp"] = mcp_check.status == CheckStatus.OK
 
     logger.debug(
         f"✅ Health checks complete: {len(health.checks)} checks, can_start={health.can_start}"
