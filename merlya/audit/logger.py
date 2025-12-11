@@ -2,12 +2,16 @@
 Merlya Audit - Logger implementation.
 
 Logs security-sensitive operations to SQLite for audit trail.
+Supports OpenTelemetry/Logfire for observability when configured.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
+import re
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15,6 +19,15 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+
+# Optional logfire integration (PydanticAI's observability)
+try:
+    import logfire as _logfire
+
+    LOGFIRE_AVAILABLE = True
+except ImportError:
+    _logfire = None  # type: ignore[assignment]
+    LOGFIRE_AVAILABLE = False
 
 if TYPE_CHECKING:
     from merlya.persistence.database import Database
@@ -96,18 +109,40 @@ class AuditLogger:
     """
 
     _instance: AuditLogger | None = None
-    _lock: asyncio.Lock = asyncio.Lock()
+    _lock: asyncio.Lock | None = None
+    _init_lock: threading.Lock = threading.Lock()
 
-    def __init__(self, enabled: bool = True) -> None:
+    def __init__(self, enabled: bool = True, logfire_enabled: bool | None = None) -> None:
         """
         Initialize the audit logger.
 
         Args:
             enabled: Whether audit logging is enabled.
+            logfire_enabled: Whether to send events to Logfire/OpenTelemetry.
+                           None = auto-detect from LOGFIRE_TOKEN env var.
         """
         self.enabled = enabled
         self._db: Database | None = None
         self._initialized = False
+
+        # Logfire/OpenTelemetry integration
+        self._logfire_enabled = False
+        if logfire_enabled is None:
+            # Auto-detect: enable if LOGFIRE_TOKEN is set
+            logfire_enabled = bool(os.getenv("LOGFIRE_TOKEN"))
+
+        if logfire_enabled and LOGFIRE_AVAILABLE and _logfire:
+            try:
+                # Configure logfire if not already configured
+                if not _logfire.DEFAULT_LOGFIRE_INSTANCE._initialized:
+                    _logfire.configure(
+                        service_name="merlya",
+                        send_to_logfire="if-token-present",
+                    )
+                self._logfire_enabled = True
+                logger.debug("Logfire observability enabled for audit logging")
+            except Exception as e:
+                logger.debug(f"Logfire not configured: {e}")
 
     async def initialize(self, db: Database | None = None) -> None:
         """
@@ -167,6 +202,26 @@ class AuditLogger:
         # Log to loguru (always)
         log_func = logger.info if event.success else logger.warning
         log_func(f"AUDIT: {event.to_log_line()}")
+
+        # Log to Logfire/OpenTelemetry (if enabled)
+        if self._logfire_enabled and _logfire:
+            try:
+                # Create a span with structured attributes
+                level = "info" if event.success else "warn"
+                _logfire.log(
+                    level,
+                    f"audit.{event.event_type.value}",
+                    event_id=event.event_id,
+                    event_type=event.event_type.value,
+                    action=event.action,
+                    target=event.target,
+                    user=event.user,
+                    success=event.success,
+                    **{f"details.{k}": v for k, v in (event.details or {}).items()
+                       if isinstance(v, (str, int, float, bool))},  # Only primitive types
+                )
+            except Exception as e:
+                logger.debug(f"Logfire logging failed: {e}")
 
         # Log to database (if available)
         if self._db and self._initialized:
@@ -245,24 +300,79 @@ class AuditLogger:
             )
         )
 
-    # Patterns for detecting sensitive keys (case-insensitive)
+    # Patterns for detecting sensitive keys (case-insensitive substring match)
     _SENSITIVE_KEY_PATTERNS: tuple[str, ...] = (
+        # Passwords
         "password",
         "passwd",
+        "pwd",
+        # Secrets and keys
         "secret",
         "key",
         "token",
         "api_key",
         "apikey",
+        "access_key",
+        "accesskey",
+        "private_key",
+        "privatekey",
+        # Authentication
         "auth",
         "credential",
-        "private",
         "bearer",
         "jwt",
+        "oauth",
+        # Session and identity
         "session",
         "cookie",
+        "csrf",
+        "nonce",
+        # Certificates
         "cert",
         "certificate",
+        "pem",
+        # Connection strings and DSNs
+        "connection_string",
+        "connectionstring",
+        "dsn",
+        "database_url",
+        "db_url",
+        # Cloud provider specific
+        "aws_secret",
+        "azure_key",
+        "gcp_key",
+        # SSH
+        "ssh_key",
+        "id_rsa",
+        "id_ed25519",
+        # Encryption
+        "encrypt",
+        "decrypt",
+        "salt",
+        "iv",
+        "hmac",
+    )
+
+    # Regex patterns for detecting sensitive values (regardless of key name)
+    _SENSITIVE_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
+        # AWS access key IDs (start with AKIA, ABIA, ACCA, ASIA)
+        re.compile(r"^A[KBS]IA[A-Z0-9]{16}$"),
+        # AWS secret access keys (40 char base64-ish)
+        re.compile(r"^[A-Za-z0-9/+=]{40}$"),
+        # GitHub tokens (ghp_, gho_, ghu_, ghs_, ghr_)
+        re.compile(r"^gh[pousr]_[A-Za-z0-9_]{36,}$"),
+        # Generic API keys (long alphanumeric strings, 32+ chars)
+        re.compile(r"^[A-Za-z0-9_-]{32,}$"),
+        # JWT tokens (three base64 parts separated by dots)
+        re.compile(r"^eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*$"),
+        # Bearer tokens
+        re.compile(r"^Bearer\s+.{20,}$", re.IGNORECASE),
+        # Basic auth (base64 encoded user:pass)
+        re.compile(r"^Basic\s+[A-Za-z0-9+/=]{10,}$", re.IGNORECASE),
+        # Private keys (PEM format indicators)
+        re.compile(r"-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----"),
+        # Hex-encoded secrets (32+ hex chars, likely hashes or keys)
+        re.compile(r"^[a-fA-F0-9]{32,}$"),
     )
 
     @classmethod
@@ -272,8 +382,28 @@ class AuditLogger:
         return any(pattern in key_lower for pattern in cls._SENSITIVE_KEY_PATTERNS)
 
     @classmethod
+    def _is_sensitive_value(cls, value: str) -> bool:
+        """Check if a string value looks like sensitive data."""
+        if not isinstance(value, str) or len(value) < 16:
+            # Short strings are unlikely to be secrets
+            return False
+        return any(pattern.search(value) for pattern in cls._SENSITIVE_VALUE_PATTERNS)
+
+    @classmethod
+    def _sanitize_value(cls, value: Any) -> Any:
+        """Sanitize a single value, checking if it looks like sensitive data."""
+        if isinstance(value, str) and cls._is_sensitive_value(value):
+            return "[REDACTED]"
+        return value
+
+    @classmethod
     def _sanitize_args(cls, args: dict[str, Any]) -> dict[str, Any]:
-        """Recursively sanitize sensitive data from args dictionary."""
+        """Recursively sanitize sensitive data from args dictionary.
+
+        Sanitizes based on:
+        1. Key names that match sensitive patterns (case-insensitive)
+        2. String values that look like secrets (API keys, tokens, etc.)
+        """
         sanitized: dict[str, Any] = {}
         for k, v in args.items():
             if cls._is_sensitive_key(k):
@@ -282,9 +412,13 @@ class AuditLogger:
                 sanitized[k] = cls._sanitize_args(v)
             elif isinstance(v, list):
                 sanitized[k] = [
-                    cls._sanitize_args(item) if isinstance(item, dict) else item
+                    cls._sanitize_args(item)
+                    if isinstance(item, dict)
+                    else cls._sanitize_value(item)
                     for item in v
                 ]
+            elif isinstance(v, str):
+                sanitized[k] = cls._sanitize_value(v)
             else:
                 sanitized[k] = v
         return sanitized
@@ -409,9 +543,82 @@ class AuditLogger:
             logger.warning(f"Failed to get audit logs: {e}")
             return []
 
+    async def export_json(
+        self,
+        limit: int = 100,
+        event_type: AuditEventType | None = None,
+        since: datetime | None = None,
+    ) -> str:
+        """
+        Export audit logs as JSON (SIEM-compatible format).
+
+        Args:
+            limit: Maximum events to export (1-1000).
+            event_type: Filter by event type.
+            since: Only export events after this timestamp.
+
+        Returns:
+            JSON string with audit events in SIEM-friendly format.
+        """
+        if not self._db:
+            return json.dumps({"events": [], "count": 0})
+
+        query = "SELECT * FROM audit_logs"
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if event_type:
+            conditions.append("event_type = ?")
+            params.append(event_type.value)
+
+        if since:
+            conditions.append("created_at >= ?")
+            params.append(since.isoformat())
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(min(limit, self.MAX_RECENT_LIMIT))
+
+        try:
+            cursor = await self._db.execute(query, tuple(params))
+            rows = await cursor.fetchall()
+
+            events = []
+            for row in rows:
+                # Format for SIEM compatibility (CEF-like structure)
+                event = {
+                    "timestamp": row["created_at"],
+                    "event_id": row["id"],
+                    "event_type": row["event_type"],
+                    "action": row["action"],
+                    "target": row["target"],
+                    "user": row["user"] or os.getenv("USER", "unknown"),
+                    "success": bool(row["success"]),
+                    "severity": "INFO" if row["success"] else "WARNING",
+                    "source": "merlya",
+                    "details": json.loads(row["details"]) if row["details"] else {},
+                }
+                events.append(event)
+
+            return json.dumps({
+                "events": events,
+                "count": len(events),
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+            }, indent=2)
+
+        except Exception as e:
+            logger.warning(f"Failed to export audit logs: {e}")
+            return json.dumps({"events": [], "count": 0, "error": str(e)})
+
     @classmethod
     async def get_instance(cls, enabled: bool = True) -> AuditLogger:
         """Get singleton instance (thread-safe)."""
+        if cls._lock is None:
+            with cls._init_lock:
+                if cls._lock is None:
+                    cls._lock = asyncio.Lock()
         async with cls._lock:
             if cls._instance is None:
                 cls._instance = cls(enabled=enabled)
@@ -421,11 +628,11 @@ class AuditLogger:
     def reset_instance(cls) -> None:
         """Reset instance (for tests).
 
-        Also recreates the lock to ensure correctness when the event loop
-        changes between test runs.
+        Also resets the lock to None so it will be lazily recreated
+        when get_instance is next called with an active event loop.
         """
         cls._instance = None
-        cls._lock = asyncio.Lock()
+        cls._lock = None
 
 
 async def get_audit_logger(enabled: bool = True) -> AuditLogger:
