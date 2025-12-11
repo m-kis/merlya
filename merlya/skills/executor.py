@@ -18,6 +18,8 @@ from merlya.skills.models import HostResult, SkillConfig, SkillResult, SkillStat
 
 if TYPE_CHECKING:
     from merlya.config.policies import PolicyManager
+    from merlya.core.context import SharedContext
+    from merlya.subagents.orchestrator import SubagentOrchestrator
 
 
 class SkillExecutor:
@@ -28,15 +30,17 @@ class SkillExecutor:
     - Timeout enforcement
     - Result aggregation
     - Confirmation for destructive operations
+    - Integration with SubagentOrchestrator for real execution
 
     Example:
-        >>> executor = SkillExecutor(policy_manager)
+        >>> executor = SkillExecutor(context, policy_manager)
         >>> result = await executor.execute(skill, hosts=["web-01", "web-02"], task="check disk")
         >>> print(result.to_summary())
     """
 
     def __init__(
         self,
+        context: SharedContext | None = None,
         policy_manager: PolicyManager | None = None,
         max_concurrent: int | None = None,
     ) -> None:
@@ -44,11 +48,14 @@ class SkillExecutor:
         Initialize the executor.
 
         Args:
+            context: Shared context for subagent creation.
             policy_manager: Policy manager for limits and confirmations.
             max_concurrent: Override max concurrent hosts (uses policy if None).
         """
+        self.context = context
         self.policy_manager = policy_manager
         self._max_concurrent = max_concurrent
+        self._orchestrator: SubagentOrchestrator | None = None
         logger.debug("🎬 SkillExecutor initialized")
 
     @property
@@ -59,6 +66,23 @@ class SkillExecutor:
         if self.policy_manager:
             return self.policy_manager.config.max_hosts_per_skill
         return 5  # Default
+
+    @property
+    def orchestrator(self) -> SubagentOrchestrator | None:
+        """Get or create the subagent orchestrator (lazy initialization)."""
+        if self._orchestrator is None and self.context is not None:
+            from merlya.subagents.orchestrator import SubagentOrchestrator
+
+            self._orchestrator = SubagentOrchestrator(
+                context=self.context,
+                max_concurrent=self.max_concurrent,
+            )
+        return self._orchestrator
+
+    @property
+    def has_real_execution(self) -> bool:
+        """Check if real subagent execution is available."""
+        return self.context is not None
 
     async def execute(
         self,
@@ -179,6 +203,9 @@ class SkillExecutor:
         """
         Execute skill on a single host.
 
+        Uses SubagentOrchestrator if context is available,
+        otherwise falls back to simulation mode.
+
         Args:
             skill: Skill configuration.
             host: Host identifier.
@@ -195,10 +222,26 @@ class SkillExecutor:
         try:
             # Apply timeout
             async with asyncio.timeout(skill.timeout_seconds):
-                # TODO: Integrate with actual subagent execution
-                # For now, this is a placeholder that simulates execution
-                output = await self._simulate_execution(skill, host, task)
-                tool_calls = 1  # Placeholder
+                # Use real subagent execution if orchestrator is available
+                if self.orchestrator is not None:
+                    result = await self.orchestrator.run_on_host(
+                        host=host,
+                        task=task,
+                        skill=skill,
+                        timeout=skill.timeout_seconds,
+                    )
+                    return HostResult(
+                        host=host,
+                        success=result.success,
+                        output=result.output,
+                        error=result.error,
+                        duration_ms=result.duration_ms,
+                        tool_calls=result.tool_calls,
+                    )
+                else:
+                    # Fallback to simulation mode (for testing)
+                    output = await self._simulate_execution(skill, host, task)
+                    tool_calls = 1
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -239,12 +282,9 @@ class SkillExecutor:
         task: str,
     ) -> str:
         """
-        Simulate skill execution (placeholder).
+        Simulate skill execution (fallback for testing).
 
-        In real implementation, this would:
-        1. Create a subagent with filtered tools
-        2. Execute the task with the skill's system prompt
-        3. Return the result
+        Used when no SharedContext is provided (e.g., in unit tests).
 
         Args:
             skill: Skill configuration.

@@ -1,0 +1,365 @@
+"""
+Merlya Subagents - Orchestrator.
+
+Manages parallel execution of subagents across multiple hosts.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
+from loguru import logger
+
+from merlya.subagents.factory import SubagentFactory
+from merlya.subagents.results import AggregatedResults, SubagentResult, SubagentStatus
+
+if TYPE_CHECKING:
+    from merlya.core.context import SharedContext
+    from merlya.skills.models import SkillConfig
+
+# Constants
+DEFAULT_MAX_CONCURRENT = 5
+MIN_MAX_CONCURRENT = 1
+MAX_MAX_CONCURRENT = 20
+DEFAULT_TIMEOUT_SECONDS = 120
+
+
+class SubagentOrchestrator:
+    """Orchestrates parallel execution of subagents across hosts.
+
+    Uses asyncio.gather with semaphore-based concurrency control
+    to execute tasks on multiple hosts in parallel.
+
+    Example:
+        >>> orchestrator = SubagentOrchestrator(context, max_concurrent=5)
+        >>> results = await orchestrator.run_on_hosts(
+        ...     hosts=["web-01", "web-02", "web-03"],
+        ...     task="check disk usage",
+        ...     skill=disk_audit_skill,
+        ... )
+        >>> print(results.to_summary())
+    """
+
+    def __init__(
+        self,
+        context: SharedContext,
+        max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+        model: str | None = None,
+    ) -> None:
+        """
+        Initialize the orchestrator.
+
+        Args:
+            context: Shared context with config and repositories.
+            max_concurrent: Maximum concurrent subagent executions.
+            model: Model to use for subagents.
+
+        Raises:
+            ValueError: If max_concurrent is out of valid range.
+        """
+        if not MIN_MAX_CONCURRENT <= max_concurrent <= MAX_MAX_CONCURRENT:
+            raise ValueError(
+                f"max_concurrent must be between {MIN_MAX_CONCURRENT} and {MAX_MAX_CONCURRENT}"
+            )
+
+        self.context = context
+        self.max_concurrent = max_concurrent
+        self.model = model
+
+        # Create factory
+        self.factory = SubagentFactory(context, model=model)
+
+        # Concurrency control
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+
+        # Tracking
+        self._active_executions: dict[str, str] = {}  # execution_id -> status
+
+        logger.debug(
+            f"🎼 SubagentOrchestrator initialized (max_concurrent={max_concurrent})"
+        )
+
+    async def run_on_hosts(
+        self,
+        hosts: list[str],
+        task: str,
+        skill: SkillConfig | None = None,
+        timeout: int | None = None,
+        on_progress: Any | None = None,
+    ) -> AggregatedResults:
+        """
+        Execute a task in parallel on multiple hosts.
+
+        Args:
+            hosts: List of host identifiers.
+            task: Task description to execute.
+            skill: Optional skill configuration for system prompt and tools.
+            timeout: Timeout per host in seconds (default from skill or 120s).
+            on_progress: Optional async callback(host, status, result) for progress.
+
+        Returns:
+            AggregatedResults with outcomes from all hosts.
+        """
+        if not hosts:
+            logger.warning("🎼 No hosts provided for execution")
+            return AggregatedResults(results=[])
+
+        execution_id = str(uuid.uuid4())[:8]
+        started_at = datetime.now(timezone.utc)
+
+        # Determine timeout
+        effective_timeout = timeout
+        if effective_timeout is None:
+            effective_timeout = skill.timeout_seconds if skill else DEFAULT_TIMEOUT_SECONDS
+
+        logger.info(
+            f"🎼 Starting parallel execution {execution_id} on {len(hosts)} hosts "
+            f"(concurrent={self.max_concurrent}, timeout={effective_timeout}s)"
+        )
+
+        self._active_executions[execution_id] = "running"
+
+        # Execute on all hosts in parallel
+        async def run_one(host: str) -> SubagentResult:
+            async with self._semaphore:
+                return await self._execute_on_host(
+                    host=host,
+                    task=task,
+                    skill=skill,
+                    timeout=effective_timeout,
+                    execution_id=execution_id,
+                    on_progress=on_progress,
+                )
+
+        start_time = time.perf_counter()
+
+        # Gather results (return_exceptions=True to capture all outcomes)
+        raw_results = await asyncio.gather(
+            *[run_one(h) for h in hosts],
+            return_exceptions=True,
+        )
+
+        total_duration_ms = int((time.perf_counter() - start_time) * 1000)
+        completed_at = datetime.now(timezone.utc)
+
+        # Process results
+        results: list[SubagentResult] = []
+        for i, result in enumerate(raw_results):
+            if isinstance(result, Exception):
+                # Convert exception to SubagentResult
+                results.append(
+                    SubagentResult(
+                        host=hosts[i],
+                        success=False,
+                        status=SubagentStatus.FAILED,
+                        error=str(result),
+                    )
+                )
+            else:
+                results.append(result)
+
+        self._active_executions[execution_id] = "completed"
+
+        # Create aggregated results
+        aggregated = AggregatedResults(
+            results=results,
+            execution_id=execution_id,
+            skill_name=skill.name if skill else None,
+            task=task,
+            started_at=started_at,
+            completed_at=completed_at,
+            total_duration_ms=total_duration_ms,
+        )
+
+        # Compute totals
+        aggregated.compute_totals()
+
+        logger.info(f"🎼 Execution {execution_id} completed: {aggregated.to_summary()}")
+
+        return aggregated
+
+    async def _execute_on_host(
+        self,
+        host: str,
+        task: str,
+        skill: SkillConfig | None,
+        timeout: int,
+        execution_id: str,
+        on_progress: Any | None = None,
+    ) -> SubagentResult:
+        """
+        Execute task on a single host.
+
+        Args:
+            host: Host identifier.
+            task: Task to execute.
+            skill: Skill configuration.
+            timeout: Timeout in seconds.
+            execution_id: Parent execution ID.
+            on_progress: Progress callback.
+
+        Returns:
+            SubagentResult for this host.
+        """
+        started_at = datetime.now(timezone.utc)
+        start_time = time.perf_counter()
+
+        # Notify progress: starting
+        if on_progress:
+            try:
+                await on_progress(host, "starting", None)
+            except Exception as e:
+                logger.debug(f"Progress callback error: {e}")
+
+        try:
+            # Create subagent for this host
+            subagent = self.factory.create(
+                host=host,
+                skill=skill,
+                task=task,
+            )
+
+            # Execute with timeout
+            async with asyncio.timeout(timeout):
+                run_result = await subagent.run(task)
+
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            completed_at = datetime.now(timezone.utc)
+
+            result = SubagentResult(
+                host=host,
+                subagent_id=subagent.subagent_id,
+                success=run_result.success,
+                status=SubagentStatus.SUCCESS if run_result.success else SubagentStatus.FAILED,
+                output=run_result.output,
+                error=run_result.error,
+                started_at=started_at,
+                completed_at=completed_at,
+                duration_ms=duration_ms,
+                raw_output=run_result.to_dict(),
+            )
+
+            # Notify progress: completed
+            if on_progress:
+                try:
+                    await on_progress(host, "completed", result)
+                except Exception as e:
+                    logger.debug(f"Progress callback error: {e}")
+
+            logger.debug(f"🎼 Host {host} completed in {duration_ms}ms")
+            return result
+
+        except TimeoutError:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            logger.warning(f"⏱️ Host {host} timed out after {timeout}s")
+
+            result = SubagentResult(
+                host=host,
+                success=False,
+                status=SubagentStatus.TIMEOUT,
+                error=f"Execution timed out after {timeout}s",
+                started_at=started_at,
+                completed_at=datetime.now(timezone.utc),
+                duration_ms=duration_ms,
+            )
+
+            # Notify progress: timeout
+            if on_progress:
+                try:
+                    await on_progress(host, "timeout", result)
+                except Exception as e:
+                    logger.debug(f"Progress callback error: {e}")
+
+            return result
+
+        except asyncio.CancelledError:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            logger.info(f"🚫 Host {host} execution cancelled")
+
+            result = SubagentResult(
+                host=host,
+                success=False,
+                status=SubagentStatus.CANCELLED,
+                error="Execution cancelled",
+                started_at=started_at,
+                completed_at=datetime.now(timezone.utc),
+                duration_ms=duration_ms,
+            )
+
+            # Notify progress: cancelled
+            if on_progress:
+                try:
+                    await on_progress(host, "cancelled", result)
+                except Exception as e:
+                    logger.debug(f"Progress callback error: {e}")
+
+            return result
+
+        except Exception as e:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            logger.error(f"❌ Host {host} failed: {e}")
+
+            result = SubagentResult(
+                host=host,
+                success=False,
+                status=SubagentStatus.FAILED,
+                error=str(e),
+                started_at=started_at,
+                completed_at=datetime.now(timezone.utc),
+                duration_ms=duration_ms,
+            )
+
+            # Notify progress: failed
+            if on_progress:
+                try:
+                    await on_progress(host, "failed", result)
+                except Exception as e2:
+                    logger.debug(f"Progress callback error: {e2}")
+
+            return result
+
+    async def run_on_host(
+        self,
+        host: str,
+        task: str,
+        skill: SkillConfig | None = None,
+        timeout: int | None = None,
+    ) -> SubagentResult:
+        """
+        Execute a task on a single host.
+
+        Convenience method for single-host execution.
+
+        Args:
+            host: Host identifier.
+            task: Task description.
+            skill: Optional skill configuration.
+            timeout: Timeout in seconds.
+
+        Returns:
+            SubagentResult for the host.
+        """
+        results = await self.run_on_hosts(
+            hosts=[host],
+            task=task,
+            skill=skill,
+            timeout=timeout,
+        )
+        return results.results[0] if results.results else SubagentResult(
+            host=host,
+            success=False,
+            status=SubagentStatus.FAILED,
+            error="No result returned",
+        )
+
+    def get_active_executions(self) -> dict[str, str]:
+        """Get currently active execution IDs and their status."""
+        return dict(self._active_executions)
+
+    def clear_execution_history(self) -> None:
+        """Clear execution history."""
+        self._active_executions.clear()
