@@ -72,6 +72,7 @@ class MCPManager:
     """Manage MCP server lifecycle and tool discovery."""
 
     _instance: "MCPManager | None" = None
+    _instance_lock: asyncio.Lock | None = None  # Created lazily
 
     def __init__(self, config: Config, secrets: SecretStore) -> None:
         self.config = config
@@ -79,19 +80,43 @@ class MCPManager:
         self._group: ClientSessionGroup | None = None
         self._connected: set[str] = set()
         self._component_prefix: str | None = None
-        self._lock = asyncio.Lock()
-        # Store as singleton
-        MCPManager._instance = self
+        self._lock: asyncio.Lock | None = None  # Created lazily to avoid event loop issues
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Get or create the instance lock (lazily, requires event loop)."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    @classmethod
+    def _get_instance_lock(cls) -> asyncio.Lock:
+        """Get or create the class-level instance lock."""
+        if cls._instance_lock is None:
+            cls._instance_lock = asyncio.Lock()
+        return cls._instance_lock
+
+    @classmethod
+    async def create(cls, config: Config, secrets: SecretStore) -> "MCPManager":
+        """
+        Create or get singleton instance (async-safe).
+
+        Use this instead of __init__ for proper async safety.
+        """
+        async with cls._get_instance_lock():
+            if cls._instance is None:
+                cls._instance = cls(config, secrets)
+            return cls._instance
 
     @classmethod
     def get_instance(cls) -> "MCPManager | None":
-        """Get the singleton instance."""
+        """Get the singleton instance (may be None if not created)."""
         return cls._instance
 
     @classmethod
     def reset_instance(cls) -> None:
         """Reset the singleton instance (for testing)."""
         cls._instance = None
+        cls._instance_lock = None
 
     async def close(self) -> None:
         """Close all MCP sessions."""
@@ -181,30 +206,49 @@ class MCPManager:
 
         tools: list[MCPToolInfo] = []
         for name, tool in group.tools.items():
-            server_prefix = name.split(".", 1)[0] if "." in name else None
+            # Tool names should be prefixed as "server.tool_name"
+            if "." in name:
+                server_prefix = name.split(".", 1)[0]
+            else:
+                # Unprefixed tool - should not happen with our hook, but handle it
+                server_prefix = "unknown"
+                logger.warning(f"⚠️ MCP tool without server prefix: {name}")
+
+            # Filter by server if specified
             if server and server_prefix != server:
                 continue
+
             tools.append(
                 MCPToolInfo(
                     name=name,
                     description=tool.description,
-                    server=server_prefix or server or "unknown",
+                    server=server_prefix,
                 )
             )
         return sorted(tools, key=lambda t: t.name)
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Call a tool by aggregated name (server.tool)."""
+        """
+        Call a tool by aggregated name (server.tool).
+
+        Args:
+            tool_name: Tool name in format "server.tool_name".
+            arguments: Optional arguments for the tool.
+
+        Raises:
+            ValueError: If tool_name is empty or missing server prefix.
+        """
         if not tool_name:
             raise ValueError("Tool name is required")
 
-        server_prefix = tool_name.split(".", 1)[0] if "." in tool_name else None
-        if server_prefix:
-            await self._ensure_connected(server_prefix)
-        else:
-            # Best effort: connect all servers to resolve mapping
-            for srv in self.config.mcp.servers:
-                await self._ensure_connected(srv)
+        if "." not in tool_name:
+            raise ValueError(
+                f"Tool name '{tool_name}' must include server prefix (e.g., 'server.tool_name'). "
+                "Use /mcp tools to list available tools."
+            )
+
+        server_prefix = tool_name.split(".", 1)[0]
+        await self._ensure_connected(server_prefix)
 
         group = await self._ensure_group()
         result = await group.call_tool(tool_name, arguments=arguments or {})
@@ -215,7 +259,7 @@ class MCPManager:
         if self._group is not None:
             return self._group
 
-        async with self._lock:
+        async with self._get_lock():
             # Double-check after acquiring lock
             if self._group is None:
                 group = ClientSessionGroup(component_name_hook=self._component_name_hook)
@@ -234,7 +278,7 @@ class MCPManager:
         if name in self._connected:
             return await self._ensure_group()
 
-        async with self._lock:
+        async with self._get_lock():
             if name in self._connected:
                 return await self._ensure_group()
 
@@ -266,10 +310,15 @@ class MCPManager:
         Resolve environment values, pulling from OS or secret store when templated.
 
         Supports two syntaxes:
-        - ${VAR} - Required variable, logs warning if missing
+        - ${VAR} - Required variable, raises ValueError if missing
         - ${VAR:-default} - Variable with default value if not found
+
+        Raises:
+            ValueError: If a required variable (without default) is missing.
         """
         resolved: dict[str, str] = {}
+        missing_vars: list[str] = []
+
         for key, value in env.items():
             if value.startswith("${") and value.endswith("}"):
                 inner = value[2:-1]
@@ -289,11 +338,20 @@ class MCPManager:
                         resolved[key] = default
                         logger.debug(f"📋 Using default value for '{ref}' in MCP env {key}")
                     else:
-                        logger.warning(f"⚠️ Missing environment or secret for '{ref}' (used in MCP env {key})")
-                    continue
-                resolved[key] = resolved_value
+                        # Track missing required variables
+                        missing_vars.append(f"{key} (needs ${{{ref}}})")
+                else:
+                    resolved[key] = resolved_value
             else:
                 resolved[key] = value
+
+        # Raise error if any required variables are missing
+        if missing_vars:
+            raise ValueError(
+                f"Missing required environment variables for MCP server: {', '.join(missing_vars)}. "
+                "Set them in your environment or use /secret set <name> <value>."
+            )
+
         return resolved
 
     def _component_name_hook(self, component_name: str, server_info: Implementation) -> str:
