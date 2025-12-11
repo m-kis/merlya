@@ -71,6 +71,9 @@ async def is_incident_text(text: str, threshold: float = 0.4) -> bool:
         True if text looks like an incident.
     """
     service = ParserService.get_instance()
+    if not service.is_initialized:
+        await service.initialize()
+
     result = await service.parse_incident(text)
 
     # Check for incident indicators
@@ -78,4 +81,13 @@ async def is_incident_text(text: str, threshold: float = 0.4) -> bool:
     has_symptoms = len(result.incident.symptoms) > 0
     has_hosts = len(result.incident.affected_hosts) > 0
 
-    return (result.confidence >= threshold) or has_errors or (has_symptoms and has_hosts)
+    # Require minimum confidence even when indicators are present
+    # Indicators can lower the threshold but not bypass it entirely
+    min_confidence = threshold * 0.5  # Allow half the threshold if strong indicators
+    has_strong_indicators = has_errors or (has_symptoms and has_hosts)
+
+    if result.confidence >= threshold:
+        return True
+    if has_strong_indicators and result.confidence >= min_confidence:
+        return True
+    return False

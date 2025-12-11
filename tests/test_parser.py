@@ -383,6 +383,26 @@ class TestEntityExtraction:
         assert "192.168.1.100" in entities.get("hosts", [])
 
     @pytest.mark.asyncio
+    async def test_invalid_ip_address_rejected(self, backend: HeuristicBackend) -> None:
+        """Test that invalid IP addresses with octets > 255 are rejected."""
+        text = "Invalid IP 999.999.999.999 should not be extracted"
+        entities = await backend.extract_entities(text)
+
+        hosts = entities.get("hosts", [])
+        assert "999.999.999.999" not in hosts
+
+    @pytest.mark.asyncio
+    async def test_mixed_valid_invalid_ips(self, backend: HeuristicBackend) -> None:
+        """Test that valid IPs are extracted while invalid ones are rejected."""
+        text = "Valid 10.0.0.1 and invalid 256.1.2.3 and valid 255.255.255.255"
+        entities = await backend.extract_entities(text)
+
+        hosts = entities.get("hosts", [])
+        assert "10.0.0.1" in hosts
+        assert "255.255.255.255" in hosts
+        assert "256.1.2.3" not in hosts
+
+    @pytest.mark.asyncio
     async def test_extract_timestamps(self, backend: HeuristicBackend) -> None:
         """Test timestamp extraction."""
         text = "Error occurred at 2024-01-15T10:30:45Z"

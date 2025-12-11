@@ -45,7 +45,7 @@ async def extract_host_query(
     return result.query, result
 
 
-async def is_host_query(text: str) -> bool:
+def is_host_query(text: str) -> bool:
     """
     Quick check if text appears to be a host query.
 

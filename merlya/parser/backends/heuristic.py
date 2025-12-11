@@ -141,6 +141,17 @@ DESTRUCTIVE_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
+def _is_valid_ipv4(ip: str) -> bool:
+    """Validate that an IPv4 address has all octets in range 0-255."""
+    try:
+        octets = ip.split(".")
+        if len(octets) != 4:
+            return False
+        return all(0 <= int(octet) <= 255 for octet in octets)
+    except (ValueError, AttributeError):
+        return False
+
+
 class HeuristicBackend(ParserBackend):
     """
     Heuristic parser backend using regex and patterns.
@@ -441,7 +452,15 @@ class HeuristicBackend(ParserBackend):
                 found.update(matches)
 
             if found:
-                entities[entity_type] = list(found)
+                # Validate IPv4 addresses in hosts (reject octets > 255)
+                if entity_type == "hosts":
+                    found = {
+                        h for h in found
+                        if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", h)
+                        or _is_valid_ipv4(h)
+                    }
+                if found:
+                    entities[entity_type] = list(found)
 
         return entities
 
