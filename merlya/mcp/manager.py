@@ -9,9 +9,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -21,6 +23,10 @@ from mcp.client.stdio import StdioServerParameters
 from merlya.config.models import MCPServerConfig
 
 
+# MCP-related logger names to suppress during connection
+_MCP_LOGGERS = ("mcp", "mcp.client", "mcp.server", "httpx", "httpcore")
+
+
 @contextmanager
 def suppress_mcp_capability_warnings() -> Iterator[None]:
     """
@@ -28,31 +34,27 @@ def suppress_mcp_capability_warnings() -> Iterator[None]:
 
     MCP servers may not implement optional features (prompts, resources).
     These warnings are expected and should not clutter the output.
+    Only suppresses MCP-related loggers, not the root logger.
     """
     # Suppress Python warnings
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*Method not found.*")
         warnings.filterwarnings("ignore", message=".*Could not fetch.*")
 
-        # Also suppress root logger warnings for MCP
-        root_logger = logging.getLogger()
-        mcp_logger = logging.getLogger("mcp")
-        original_root_level = root_logger.level
-        original_mcp_level = mcp_logger.level
-
-        # Temporarily raise log levels to suppress warnings
-        root_logger.setLevel(logging.ERROR)
-        mcp_logger.setLevel(logging.ERROR)
+        # Suppress only MCP-related loggers, not the root logger
+        original_levels: dict[str, int] = {}
+        for logger_name in _MCP_LOGGERS:
+            log = logging.getLogger(logger_name)
+            original_levels[logger_name] = log.level
+            log.setLevel(logging.ERROR)
 
         try:
             yield
         finally:
-            root_logger.setLevel(original_root_level)
-            mcp_logger.setLevel(original_mcp_level)
+            for logger_name, level in original_levels.items():
+                logging.getLogger(logger_name).setLevel(level)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from mcp.types import CallToolResult, Implementation
 
     from merlya.config.loader import Config
@@ -72,7 +74,8 @@ class MCPManager:
     """Manage MCP server lifecycle and tool discovery."""
 
     _instance: "MCPManager | None" = None
-    _instance_lock: asyncio.Lock | None = None  # Created lazily
+    _instance_lock: asyncio.Lock | None = None
+    _instance_lock_guard = threading.Lock()  # Guards lazy creation of _instance_lock
 
     def __init__(self, config: Config, secrets: SecretStore) -> None:
         self.config = config
@@ -80,19 +83,24 @@ class MCPManager:
         self._group: ClientSessionGroup | None = None
         self._connected: set[str] = set()
         self._component_prefix: str | None = None
-        self._lock: asyncio.Lock | None = None  # Created lazily to avoid event loop issues
+        self._lock: asyncio.Lock | None = None
+        self._lock_guard = threading.Lock()  # Guards lazy creation of _lock
 
     def _get_lock(self) -> asyncio.Lock:
         """Get or create the instance lock (lazily, requires event loop)."""
         if self._lock is None:
-            self._lock = asyncio.Lock()
+            with self._lock_guard:
+                if self._lock is None:
+                    self._lock = asyncio.Lock()
         return self._lock
 
     @classmethod
     def _get_instance_lock(cls) -> asyncio.Lock:
         """Get or create the class-level instance lock."""
         if cls._instance_lock is None:
-            cls._instance_lock = asyncio.Lock()
+            with cls._instance_lock_guard:
+                if cls._instance_lock is None:
+                    cls._instance_lock = asyncio.Lock()
         return cls._instance_lock
 
     @classmethod
