@@ -37,6 +37,7 @@ async def test_mcp_add_parses_env_and_args(monkeypatch: pytest.MonkeyPatch, regi
     manager = SimpleNamespace(
         add_server=AsyncMock(),
         list_servers=AsyncMock(return_value=[]),
+        show_server=AsyncMock(return_value=None),  # Server doesn't exist yet
     )
     monkeypatch.setattr(mcp_module, "_manager", AsyncMock(return_value=manager))
 
