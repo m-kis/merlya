@@ -124,6 +124,193 @@ async def cmd_variable_delete(ctx: SharedContext, args: list[str]) -> CommandRes
     )
 
 
+@subcommand(
+    "variable",
+    "import",
+    "Import variables from file",
+    "/variable import <file> [--merge|--replace] [--dry-run]",
+)
+async def cmd_variable_import(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Import variables from a file (YAML, JSON, or .env format)."""
+    from pathlib import Path
+
+    from merlya.commands.handlers.variables_io import (
+        check_file_size,
+        detect_import_format,
+        import_variables,
+        validate_file_path,
+    )
+
+    if not args:
+        return CommandResult(
+            success=False,
+            message="Usage: `/variable import <file> [--merge|--replace] [--dry-run]`",
+        )
+
+    file_path = Path(args[0]).expanduser()
+    merge = "--replace" not in args
+    dry_run = "--dry-run" in args
+
+    # Validate file path
+    is_valid, error = validate_file_path(file_path)
+    if not is_valid:
+        return CommandResult(success=False, message=f"❌ {error}")
+
+    # Check file exists
+    if not file_path.exists():
+        return CommandResult(success=False, message=f"❌ File not found: {file_path}")
+
+    # Check file size
+    is_valid, error = check_file_size(file_path)
+    if not is_valid:
+        return CommandResult(success=False, message=f"❌ {error}")
+
+    # Detect format
+    file_format = detect_import_format(file_path)
+
+    try:
+        var_count, secret_count, host_count, secrets, errors = await import_variables(
+            ctx, file_path, file_format, merge, dry_run
+        )
+    except Exception as e:
+        return CommandResult(success=False, message=f"❌ Import failed: {e}")
+
+    # Build result message
+    lines = []
+    if dry_run:
+        lines.append("**Dry run** - no changes made\n")
+
+    if var_count > 0:
+        lines.append(f"✅ {var_count} variable(s) {'would be ' if dry_run else ''}imported")
+    if host_count > 0:
+        lines.append(f"✅ {host_count} host(s) {'would be ' if dry_run else ''}imported")
+
+    # Prompt for secrets
+    if secrets and not dry_run:
+        lines.append(f"\n🔐 **{len(secrets)} secret(s) to set:**")
+        for secret_name in secrets:
+            lines.append(f"  - `{secret_name}`")
+            value = await ctx.ui.prompt_secret(f"Enter {secret_name}")
+            if value:
+                ctx.secrets.set(secret_name, value)
+                lines.append(f"    ✅ Set")
+            else:
+                lines.append(f"    ⏭️ Skipped")
+    elif secrets and dry_run:
+        lines.append(f"\n🔐 {len(secrets)} secret(s) would be prompted")
+
+    if errors:
+        lines.append(f"\n⚠️ **{len(errors)} warning(s):**")
+        for error in errors[:5]:  # Limit to 5 errors
+            lines.append(f"  - {error}")
+        if len(errors) > 5:
+            lines.append(f"  - ... and {len(errors) - 5} more")
+
+    if not lines:
+        lines.append("No variables found in file")
+
+    return CommandResult(success=var_count > 0 or host_count > 0, message="\n".join(lines))
+
+
+@subcommand(
+    "variable",
+    "export",
+    "Export variables to file",
+    "/variable export <file> [--include-secrets]",
+)
+async def cmd_variable_export(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Export variables to a file (YAML, JSON, or .env format)."""
+    from pathlib import Path
+
+    from merlya.commands.handlers.variables_io import (
+        detect_export_format,
+        export_variables,
+        validate_file_path,
+    )
+
+    if not args:
+        return CommandResult(
+            success=False,
+            message="Usage: `/variable export <file> [--include-secrets]`",
+        )
+
+    file_path = Path(args[0]).expanduser()
+    include_secrets = "--include-secrets" in args
+
+    # Validate file path
+    is_valid, error = validate_file_path(file_path)
+    if not is_valid:
+        return CommandResult(success=False, message=f"❌ {error}")
+
+    # Detect format
+    file_format = detect_export_format(file_path)
+
+    try:
+        content = await export_variables(ctx, file_format, include_secrets)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content)
+    except Exception as e:
+        return CommandResult(success=False, message=f"❌ Export failed: {e}")
+
+    return CommandResult(
+        success=True,
+        message=f"✅ Variables exported to `{file_path}` ({file_format} format)",
+    )
+
+
+@subcommand(
+    "variable",
+    "template",
+    "Generate a template file",
+    "/variable template <file>",
+)
+async def cmd_variable_template(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Generate a template file for variable import."""
+    from pathlib import Path
+
+    from merlya.commands.handlers.variables_io import (
+        detect_export_format,
+        generate_template,
+        validate_file_path,
+    )
+
+    if not args:
+        return CommandResult(
+            success=False,
+            message="Usage: `/variable template <file>`",
+        )
+
+    file_path = Path(args[0]).expanduser()
+
+    # Validate file path
+    is_valid, error = validate_file_path(file_path)
+    if not is_valid:
+        return CommandResult(success=False, message=f"❌ {error}")
+
+    # Check if file exists
+    if file_path.exists():
+        return CommandResult(
+            success=False,
+            message=f"❌ File already exists: {file_path}",
+        )
+
+    # Detect format
+    file_format = detect_export_format(file_path)
+
+    try:
+        content = generate_template(file_format)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content)
+    except Exception as e:
+        return CommandResult(success=False, message=f"❌ Template generation failed: {e}")
+
+    return CommandResult(
+        success=True,
+        message=f"✅ Template created at `{file_path}` ({file_format} format)\n\n"
+        f"Edit the file and import with: `/variable import {file_path}`",
+    )
+
+
 # =============================================================================
 # Secret Commands
 # =============================================================================
