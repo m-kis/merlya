@@ -161,12 +161,15 @@ def run_repl_mode(verbose: bool = False) -> None:
             # Ensure cleanup happens
             from merlya.core.context import SharedContext
 
-            ctx = SharedContext.get_instance()
-            if ctx:
-                try:
+            try:
+                ctx = SharedContext.get_instance()
+                if ctx:
                     await ctx.close()
-                except Exception as e:
-                    logger.debug(f"Cleanup error: {e}")
+            except RuntimeError:
+                # Context already closed or never initialized
+                pass
+            except Exception as e:
+                logger.debug(f"Cleanup error: {e}")
 
     try:
         loop = asyncio.new_event_loop()
