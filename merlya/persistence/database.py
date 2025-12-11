@@ -178,7 +178,8 @@ class Database:
                 byte_size INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMP,
-                FOREIGN KEY (host_id) REFERENCES hosts(id)
+                -- ON DELETE SET NULL: Keep logs even if host is deleted
+                FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE SET NULL
             );
 
             -- Sessions table (for context management)
@@ -191,7 +192,8 @@ class Database:
                 context_tier TEXT DEFAULT 'STANDARD',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+                -- ON DELETE CASCADE: Delete sessions when conversation is deleted
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             );
 
             -- Config table (for internal state)
