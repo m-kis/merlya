@@ -259,7 +259,14 @@ class IntentRouter:
             user_input = user_input.strip()[1:].strip()  # Remove "!" prefix
             logger.debug("🚫 Skill matching bypassed (! prefix)")
 
-        if check_skills and not skip_skills:
+        # SKILL AUTO-MATCHING DISABLED
+        # Skills caused too many false positives (e.g., "config cloudflared" -> service_check at 0.88)
+        # The main LLM agent handles all requests better with full tool access.
+        # Skills are still available via explicit invocation: /skill run <name> @hosts
+        #
+        # To re-enable, set check_skills=True and uncomment below:
+        _ = check_skills  # Suppress unused variable warning
+        if False and check_skills and not skip_skills:  # noqa: SIM223
             try:
                 # Only use semantic embeddings for skill matching
                 # Regex fallback is DISABLED - it causes too many false positives
