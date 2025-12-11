@@ -120,14 +120,35 @@ class TestAuditLogger:
         )
 
     @pytest.mark.asyncio
-    async def test_log_tool_sanitizes_sensitive(self, logger: AuditLogger) -> None:
+    async def test_log_tool_sanitizes_sensitive(self, database) -> None:
         """Test that sensitive args are not logged."""
-        await logger.initialize()
+        AuditLogger.reset_instance()
+        logger = AuditLogger(enabled=True)
+        await logger.initialize(db=database)
         # This should not store password in details
         await logger.log_tool(
             tool_name="test",
             args={"command": "test", "password": "secret123"},
         )
+
+        # Retrieve stored event and verify sanitization
+        events = await logger.get_recent(limit=1)
+        assert len(events) == 1
+        event = events[0]
+        details = event["details"]
+
+        # Verify the raw secret is not present anywhere in details
+        import json
+        details_str = json.dumps(details)
+        assert "secret123" not in details_str, "Raw secret should not be in stored details"
+
+        # Verify password key exists but is redacted
+        assert "args" in details
+        assert "password" in details["args"]
+        assert details["args"]["password"] == "[REDACTED]"
+
+        # Verify non-sensitive args are preserved
+        assert details["args"]["command"] == "test"
 
     @pytest.mark.asyncio
     async def test_log_destructive(self, logger: AuditLogger) -> None:
@@ -208,3 +229,49 @@ class TestAuditLoggerWithDatabase:
         events = await logger.get_recent(event_type=AuditEventType.COMMAND_EXECUTED)
         assert len(events) == 2
         assert all(e["event_type"] == "command_executed" for e in events)
+
+
+class TestAuditLoggerLimitValidation:
+    """Tests for limit validation in get_recent()."""
+
+    @pytest.mark.asyncio
+    async def test_get_recent_negative_limit_raises(self, database) -> None:
+        """Test that negative limit raises ValueError."""
+        AuditLogger.reset_instance()
+        logger = AuditLogger(enabled=True)
+        await logger.initialize(db=database)
+
+        with pytest.raises(ValueError, match="limit must be at least 1"):
+            await logger.get_recent(limit=-1)
+
+    @pytest.mark.asyncio
+    async def test_get_recent_zero_limit_raises(self, database) -> None:
+        """Test that zero limit raises ValueError."""
+        AuditLogger.reset_instance()
+        logger = AuditLogger(enabled=True)
+        await logger.initialize(db=database)
+
+        with pytest.raises(ValueError, match="limit must be at least 1"):
+            await logger.get_recent(limit=0)
+
+    @pytest.mark.asyncio
+    async def test_get_recent_excessive_limit_raises(self, database) -> None:
+        """Test that excessive limit raises ValueError."""
+        AuditLogger.reset_instance()
+        logger = AuditLogger(enabled=True)
+        await logger.initialize(db=database)
+
+        with pytest.raises(ValueError, match="limit must be at most"):
+            await logger.get_recent(limit=10000)
+
+    @pytest.mark.asyncio
+    async def test_get_recent_valid_limits(self, database) -> None:
+        """Test that valid limits work correctly."""
+        AuditLogger.reset_instance()
+        logger = AuditLogger(enabled=True)
+        await logger.initialize(db=database)
+
+        # Valid limits should not raise
+        await logger.get_recent(limit=1)
+        await logger.get_recent(limit=50)
+        await logger.get_recent(limit=1000)

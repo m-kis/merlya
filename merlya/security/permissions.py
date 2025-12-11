@@ -64,6 +64,36 @@ class PermissionManager:
         self._consent_cache: dict[str, bool] = {}  # host -> user consented
         self._password_cache: dict[str, CachedPassword] = {}  # host -> password with TTL
         self._detection_locks: dict[str, asyncio.Lock] = {}  # Per-host lock for detection
+        self._locks_lock = asyncio.Lock()  # Protects _detection_locks dict creation
+
+    async def _get_host_lock(self, host: str) -> asyncio.Lock:
+        """Get or create a lock for a specific host (thread-safe)."""
+        async with self._locks_lock:
+            if host not in self._detection_locks:
+                self._detection_locks[host] = asyncio.Lock()
+            return self._detection_locks[host]
+
+    def _get_cached_password(self, host: str) -> str | None:
+        """Get cached password if not expired, atomically cleaning up expired entries.
+
+        Uses pop() for atomic cleanup to prevent race conditions between
+        concurrent coroutines accessing the same password cache entry.
+
+        Args:
+            host: Host name to look up.
+
+        Returns:
+            Password string if cached and not expired, None otherwise.
+        """
+        cached_pwd = self._password_cache.get(host)
+        if cached_pwd is None:
+            return None
+        if cached_pwd.is_expired():
+            # Use pop for atomic cleanup (handles concurrent access safely)
+            self._password_cache.pop(host, None)
+            logger.debug(f"🔒 Password cache expired for {host}")
+            return None
+        return cached_pwd.password
 
     async def detect_capabilities(self, host: str, force_refresh: bool = False) -> dict[str, Any]:
         """Detect elevation capabilities on a host.
@@ -79,11 +109,10 @@ class PermissionManager:
             host: Host name from inventory.
             force_refresh: If True, bypass cache and re-detect.
         """
-        # Get or create lock for this host to prevent race conditions
-        if host not in self._detection_locks:
-            self._detection_locks[host] = asyncio.Lock()
+        # Get or create lock for this host atomically
+        host_lock = await self._get_host_lock(host)
 
-        async with self._detection_locks[host]:
+        async with host_lock:
             # Layer 1: In-memory cache (check inside lock)
             if not force_refresh and host in self._cache:
                 logger.debug(f"🔍 Using in-memory cached capabilities for {host}")
@@ -342,14 +371,7 @@ class PermissionManager:
                 )
 
         # Check if we have cached password (with TTL check)
-        cached_pwd = self._password_cache.get(host)
-        password = None
-        if cached_pwd and not cached_pwd.is_expired():
-            password = cached_pwd.password
-        elif cached_pwd:
-            # Expired - remove from cache
-            del self._password_cache[host]
-            logger.debug(f"🔒 Password cache expired for {host}")
+        password = self._get_cached_password(host)
 
         if password:
             # Use cached password

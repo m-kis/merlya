@@ -57,7 +57,7 @@ class AuditEvent:
     details: dict[str, Any] = field(default_factory=dict)
     success: bool = True
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    event_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -73,10 +73,15 @@ class AuditEvent:
         }
 
     def to_log_line(self) -> str:
-        """Format as a log line."""
+        """Format as a log line.
+
+        Uses truncated event_id (first 8 chars) for display while
+        the full UUID is stored internally for global uniqueness.
+        """
         status = "OK" if self.success else "FAIL"
         target_str = f" on {self.target}" if self.target else ""
-        return f"[{self.event_type.value}] {status}: {self.action}{target_str}"
+        short_id = self.event_id[:8]
+        return f"[{short_id}] [{self.event_type.value}] {status}: {self.action}{target_str}"
 
 
 class AuditLogger:
@@ -91,7 +96,7 @@ class AuditLogger:
     """
 
     _instance: AuditLogger | None = None
-    _lock: asyncio.Lock | None = None
+    _lock: asyncio.Lock = asyncio.Lock()
 
     def __init__(self, enabled: bool = True) -> None:
         """
@@ -240,6 +245,50 @@ class AuditLogger:
             )
         )
 
+    # Patterns for detecting sensitive keys (case-insensitive)
+    _SENSITIVE_KEY_PATTERNS: tuple[str, ...] = (
+        "password",
+        "passwd",
+        "secret",
+        "key",
+        "token",
+        "api_key",
+        "apikey",
+        "auth",
+        "credential",
+        "private",
+        "bearer",
+        "jwt",
+        "session",
+        "cookie",
+        "cert",
+        "certificate",
+    )
+
+    @classmethod
+    def _is_sensitive_key(cls, key: str) -> bool:
+        """Check if a key name indicates sensitive data."""
+        key_lower = key.lower()
+        return any(pattern in key_lower for pattern in cls._SENSITIVE_KEY_PATTERNS)
+
+    @classmethod
+    def _sanitize_args(cls, args: dict[str, Any]) -> dict[str, Any]:
+        """Recursively sanitize sensitive data from args dictionary."""
+        sanitized: dict[str, Any] = {}
+        for k, v in args.items():
+            if cls._is_sensitive_key(k):
+                sanitized[k] = "[REDACTED]"
+            elif isinstance(v, dict):
+                sanitized[k] = cls._sanitize_args(v)
+            elif isinstance(v, list):
+                sanitized[k] = [
+                    cls._sanitize_args(item) if isinstance(item, dict) else item
+                    for item in v
+                ]
+            else:
+                sanitized[k] = v
+        return sanitized
+
     async def log_tool(
         self,
         tool_name: str,
@@ -251,10 +300,7 @@ class AuditLogger:
         details: dict[str, Any] = {}
         if args:
             # Sanitize args (remove sensitive data)
-            safe_args = {
-                k: v for k, v in args.items() if k not in ("password", "secret", "key", "token")
-            }
-            details["args"] = safe_args
+            details["args"] = self._sanitize_args(args)
 
         await self.log(
             AuditEvent(
@@ -303,6 +349,9 @@ class AuditLogger:
                 )
             )
 
+    # Maximum allowed limit for get_recent queries (prevent excessive memory usage)
+    MAX_RECENT_LIMIT = 1000
+
     async def get_recent(
         self,
         limit: int = 50,
@@ -312,12 +361,21 @@ class AuditLogger:
         Get recent audit events.
 
         Args:
-            limit: Maximum number of events to return.
+            limit: Maximum number of events to return (1-1000, default 50).
             event_type: Filter by event type.
 
         Returns:
             List of audit event dictionaries.
+
+        Raises:
+            ValueError: If limit is invalid (< 1 or > MAX_RECENT_LIMIT).
         """
+        # Validate limit to prevent negative values or excessive queries
+        if limit < 1:
+            raise ValueError(f"limit must be at least 1, got {limit}")
+        if limit > self.MAX_RECENT_LIMIT:
+            raise ValueError(f"limit must be at most {self.MAX_RECENT_LIMIT}, got {limit}")
+
         if not self._db:
             return []
 
@@ -354,9 +412,6 @@ class AuditLogger:
     @classmethod
     async def get_instance(cls, enabled: bool = True) -> AuditLogger:
         """Get singleton instance (thread-safe)."""
-        if cls._lock is None:
-            cls._lock = asyncio.Lock()
-
         async with cls._lock:
             if cls._instance is None:
                 cls._instance = cls(enabled=enabled)
@@ -366,7 +421,6 @@ class AuditLogger:
     def reset_instance(cls) -> None:
         """Reset instance (for tests)."""
         cls._instance = None
-        cls._lock = None
 
 
 async def get_audit_logger(enabled: bool = True) -> AuditLogger:
