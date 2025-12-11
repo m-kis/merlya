@@ -193,7 +193,7 @@ class IntentRouter:
         )
         self._llm_model: str | None = None
         self._initialized = False
-        self._init_lock: asyncio.Lock | None = None  # Lazy init for async lock
+        self._init_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize the router (load embedding model)."""
@@ -229,10 +229,7 @@ class IntentRouter:
         Returns:
             RouterResult with classification.
         """
-        # P1: Thread-safe initialization with double-checked locking
         if not self._initialized:
-            if self._init_lock is None:
-                self._init_lock = asyncio.Lock()
             async with self._init_lock:
                 if not self._initialized:
                     await self.initialize()
@@ -255,14 +252,37 @@ class IntentRouter:
         # 2. Classify input using embeddings/patterns
         result = await self._classify(user_input)
 
-        # 3. Check for skill matches (P1: with exception handling)
-        if check_skills:
+        # 3. Check for skill matches using semantic embeddings (preferred)
+        # Skip skill matching if user prefixes with "!" (forces agent mode)
+        skip_skills = user_input.strip().startswith("!")
+        if skip_skills:
+            user_input = user_input.strip()[1:].strip()  # Remove "!" prefix
+            logger.debug("🚫 Skill matching bypassed (! prefix)")
+
+        if check_skills and not skip_skills:
             try:
-                skill_match, skill_confidence = self._match_skill(user_input)
-                if skill_match and skill_confidence >= 0.5:
-                    result.skill_match = skill_match
-                    result.skill_confidence = skill_confidence
-                    logger.debug(f"🎯 Skill match: {skill_match} ({skill_confidence:.2f})")
+                # Only use semantic embeddings for skill matching
+                # Regex fallback is DISABLED - it causes too many false positives
+                if self.classifier.model_loaded:
+                    skill_match, skill_confidence = await self._match_skill_embeddings(user_input)
+
+                    # Require higher confidence (0.7) to avoid false positives
+                    if skill_match and skill_confidence >= 0.7:
+                        result.skill_match = skill_match
+                        result.skill_confidence = skill_confidence
+                        logger.debug(f"🎯 Skill match: {skill_match} ({skill_confidence:.2f})")
+                elif self._llm_model:
+                    # ONNX not loaded but LLM fallback is configured
+                    # Use LLM to match skills (slower but accurate)
+                    skill_match, skill_confidence = await self._match_skill_with_llm(user_input)
+                    if skill_match and skill_confidence >= 0.7:
+                        result.skill_match = skill_match
+                        result.skill_confidence = skill_confidence
+                        logger.debug(f"🎯 Skill match (LLM): {skill_match} ({skill_confidence:.2f})")
+                else:
+                    # ONNX not loaded and no LLM fallback - skip skill matching entirely
+                    # This prevents regex patterns from causing false matches
+                    logger.debug("⚠️ Skill matching disabled - ONNX not loaded, no LLM fallback")
             except Exception as e:
                 logger.warning(f"⚠️ Skill matching failed: {e}")
 
@@ -333,9 +353,113 @@ class IntentRouter:
 
         return None, {}
 
+    async def _match_skill_embeddings(self, user_input: str) -> tuple[str | None, float]:
+        """
+        Match user input against registered skills using semantic embeddings.
+
+        This is the preferred method - uses ONNX embeddings for semantic understanding.
+
+        Args:
+            user_input: User input text.
+
+        Returns:
+            Tuple of (skill_name, confidence) or (None, 0.0).
+        """
+        if self.classifier.model_loaded:
+            skill_name, confidence = await self.classifier.get_best_skill_match(user_input)
+            if skill_name:
+                return skill_name, confidence
+        return None, 0.0
+
+    async def _match_skill_with_llm(self, user_input: str) -> tuple[str | None, float]:
+        """
+        Match user input against registered skills using LLM.
+
+        This is the fallback method when ONNX is not available.
+        Slower but accurate for skill matching.
+
+        Args:
+            user_input: User input text.
+
+        Returns:
+            Tuple of (skill_name, confidence) or (None, 0.0).
+        """
+        if not self._llm_model:
+            return None, 0.0
+
+        try:
+            from merlya.skills.registry import get_registry
+            from pydantic_ai import Agent
+
+            registry = get_registry()
+            skills = registry.get_all()
+
+            if not skills:
+                return None, 0.0
+
+            # Build skills description for LLM
+            skills_info = []
+            for skill in skills:
+                skills_info.append(f"- {skill.name}: {skill.description}")
+
+            skills_list = "\n".join(skills_info)
+
+            system_prompt = f"""You are a skill matcher. Given a user request and a list of available skills,
+determine if any skill matches the request.
+
+Available skills:
+{skills_list}
+
+Respond in JSON format:
+{{"skill": "skill_name or null", "confidence": 0.0-1.0, "reason": "brief explanation"}}
+
+Rules:
+- Only match if the request clearly fits the skill's purpose
+- Return null if no skill matches or if it's a general question
+- Confidence should be 0.7+ only for clear matches
+- Don't match skills for questions about configuration or setup"""
+
+            agent = Agent(
+                self._llm_model,
+                system_prompt=system_prompt,
+            )
+
+            response = await agent.run(f"Does any skill match this request? '{user_input}'")
+
+            # Parse response
+            raw = getattr(response, "data", None)
+            if raw is None and hasattr(response, "output"):
+                raw = response.output
+            if raw is None:
+                raw = str(response)
+
+            import json
+            data = json.loads(str(raw))
+
+            skill_name = data.get("skill")
+            confidence = float(data.get("confidence", 0.0))
+
+            if skill_name and confidence >= 0.5:
+                # Verify skill exists
+                if registry.get(skill_name):
+                    logger.debug(f"🎯 LLM skill match: {skill_name} ({confidence:.2f}) - {data.get('reason', '')}")
+                    return skill_name, confidence
+                else:
+                    logger.warning(f"⚠️ LLM matched non-existent skill: {skill_name}")
+
+        except json.JSONDecodeError as e:
+            logger.debug(f"LLM skill match parse error: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ LLM skill matching failed: {e}")
+
+        return None, 0.0
+
     def _match_skill(self, user_input: str) -> tuple[str | None, float]:
         """
-        Match user input against registered skills.
+        Match user input against registered skills (regex fallback - DEPRECATED).
+
+        NOTE: This method is deprecated. Use _match_skill_embeddings() instead.
+        Kept for backward compatibility when ONNX model is not loaded.
 
         Args:
             user_input: User input text.
