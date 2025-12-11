@@ -96,6 +96,8 @@ class SessionManager:
     - Persist session state to database
     """
 
+    _instance: "SessionManager | None" = None
+
     def __init__(
         self,
         db: Database | None = None,
@@ -125,7 +127,27 @@ class SessionManager:
         # Lock for concurrent access (M3)
         self._lock = asyncio.Lock()
 
+        # Store as singleton
+        SessionManager._instance = self
+
         logger.debug(f"📋 SessionManager initialized (model={model})")
+
+    @classmethod
+    def get_instance(cls) -> "SessionManager | None":
+        """Get the singleton instance."""
+        return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset the singleton instance (for testing)."""
+        cls._instance = None
+
+    @property
+    def current_tier(self) -> ContextTier | None:
+        """Get current context tier."""
+        if self._session:
+            return self._session.tier
+        return self.default_tier
 
     @property
     def session(self) -> SessionState | None:

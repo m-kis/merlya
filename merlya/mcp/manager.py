@@ -71,6 +71,8 @@ class MCPToolInfo:
 class MCPManager:
     """Manage MCP server lifecycle and tool discovery."""
 
+    _instance: "MCPManager | None" = None
+
     def __init__(self, config: Config, secrets: SecretStore) -> None:
         self.config = config
         self.secrets = secrets
@@ -78,6 +80,18 @@ class MCPManager:
         self._connected: set[str] = set()
         self._component_prefix: str | None = None
         self._lock = asyncio.Lock()
+        # Store as singleton
+        MCPManager._instance = self
+
+    @classmethod
+    def get_instance(cls) -> "MCPManager | None":
+        """Get the singleton instance."""
+        return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset the singleton instance (for testing)."""
+        cls._instance = None
 
     async def close(self) -> None:
         """Close all MCP sessions."""
@@ -197,10 +211,16 @@ class MCPManager:
         return self._format_tool_result(result)
 
     async def _ensure_group(self) -> ClientSessionGroup:
-        """Initialize the session group if needed."""
-        if self._group is None:
-            self._group = ClientSessionGroup(component_name_hook=self._component_name_hook)
-            await self._group.__aenter__()
+        """Initialize the session group if needed (thread-safe)."""
+        if self._group is not None:
+            return self._group
+
+        async with self._lock:
+            # Double-check after acquiring lock
+            if self._group is None:
+                group = ClientSessionGroup(component_name_hook=self._component_name_hook)
+                await group.__aenter__()
+                self._group = group
         return self._group
 
     async def _ensure_connected(self, name: str) -> ClientSessionGroup:

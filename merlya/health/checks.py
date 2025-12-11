@@ -587,7 +587,16 @@ def check_session_manager() -> HealthCheck:
     """Check if Session manager is available."""
     try:
         manager = SessionManager.get_instance()
+        if manager is None:
+            return HealthCheck(
+                name="session",
+                status=CheckStatus.WARNING,
+                message="⚠️ Session manager not initialized",
+                details={"error": "No instance created yet"},
+            )
+
         tier = manager.current_tier.value if manager.current_tier else "auto"
+        max_tokens = getattr(manager, "max_tokens", None) or manager.limits.max_tokens
 
         return HealthCheck(
             name="session",
@@ -595,7 +604,7 @@ def check_session_manager() -> HealthCheck:
             message=f"✅ Session manager ready (tier={tier})",
             details={
                 "tier": tier,
-                "max_tokens": manager.max_tokens,
+                "max_tokens": max_tokens,
             },
         )
     except Exception as e:
@@ -642,7 +651,15 @@ async def check_mcp_servers() -> HealthCheck:
         from merlya.mcp.manager import MCPManager
 
         manager = MCPManager.get_instance()
-        servers = manager.list_servers()
+        if manager is None:
+            return HealthCheck(
+                name="mcp",
+                status=CheckStatus.DISABLED,
+                message="ℹ️ MCP manager not initialized",
+                details={"error": "No instance created yet"},
+            )
+
+        servers = await manager.list_servers()
 
         if not servers:
             return HealthCheck(
