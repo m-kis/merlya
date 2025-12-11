@@ -364,22 +364,19 @@ class IntentClassifier:
         logger.debug("No external ONNX data sidecar found for {}", model_id)
 
     def _select_model_id(self, model_id: str | None, tier: str | None) -> str:
-        """Select embedding model based on tier."""
+        """Select embedding model based on tier using centralized config."""
+        from merlya.config.tiers import get_router_model_id
+
         if model_id:
             return model_id
 
-        tier_normalized = (tier or "").lower()
-        if tier_normalized == "performance":
-            return "Xenova/bge-m3"
-        if tier_normalized == "balanced":
-            return "Xenova/gte-multilingual-base"
-        # lightweight / fallback
-        return "Xenova/all-MiniLM-L6-v2"
+        return get_router_model_id(tier)
 
     def _resolve_model_path(self, model_id: str) -> Path:
-        """Resolve model path based on model id."""
-        slug = model_id.replace("/", "__").replace(":", "__")
-        return Path.home() / ".merlya" / "models" / slug / "model.onnx"
+        """Resolve model path based on model id using centralized config."""
+        from merlya.config.tiers import resolve_model_path
+
+        return resolve_model_path(model_id)
 
     @property
     def model_id(self) -> str | None:

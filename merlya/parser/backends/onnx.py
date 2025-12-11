@@ -15,7 +15,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from huggingface_hub import hf_hub_download
 from loguru import logger
 
 from merlya.parser.backends.base import ParserBackend
@@ -30,15 +29,18 @@ from merlya.parser.models import (
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-# Model configurations by tier
+# Import centralized tier configuration
+from merlya.config.tiers import PARSER_MODELS, ModelTier, get_parser_model_id
+
+# Legacy alias for backwards compatibility (used in tests)
 ONNX_MODELS = {
     "performance": {
-        "model_id": "Xenova/bert-base-NER",
-        "description": "BERT base NER model (more accurate)",
+        "model_id": PARSER_MODELS[ModelTier.PERFORMANCE].model_id,
+        "description": PARSER_MODELS[ModelTier.PERFORMANCE].description,
     },
     "balanced": {
-        "model_id": "Xenova/distilbert-NER",
-        "description": "DistilBERT NER model (faster)",
+        "model_id": PARSER_MODELS[ModelTier.BALANCED].model_id,
+        "description": PARSER_MODELS[ModelTier.BALANCED].description,
     },
 }
 
@@ -100,14 +102,12 @@ class ONNXParserBackend(ParserBackend):
         return self._loaded
 
     def _select_model_id(self, tier: str) -> str:
-        """Select model ID based on tier."""
-        tier_normalized = (tier or "").lower()
-        if tier_normalized == "performance":
-            return ONNX_MODELS["performance"]["model_id"]
-        return ONNX_MODELS["balanced"]["model_id"]
+        """Select model ID based on tier using centralized config."""
+        return get_parser_model_id(tier)
 
     def _resolve_model_path(self, model_id: str) -> Path:
         """Resolve local model path."""
+        # Parser models use a different directory structure
         slug = model_id.replace("/", "__").replace(":", "__")
         return Path.home() / ".merlya" / "models" / "parser" / slug / "model.onnx"
 
@@ -167,7 +167,11 @@ class ONNXParserBackend(ParserBackend):
 
     async def _download_model(self, model_path: Path, tokenizer_path: Path) -> None:
         """Download ONNX model and tokenizer."""
-        try:
+
+        def _do_download() -> None:
+            """Blocking download and file copy operations."""
+            from huggingface_hub import hf_hub_download
+
             target_dir = model_path.parent
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -196,6 +200,8 @@ class ONNXParserBackend(ParserBackend):
 
             logger.info(f"✅ Downloaded parser model to {model_path}")
 
+        try:
+            await asyncio.to_thread(_do_download)
         except Exception as e:
             logger.warning(f"⚠️ Could not download ONNX model: {e}")
 
@@ -350,7 +356,7 @@ class ONNXParserBackend(ParserBackend):
 
                 elif label.startswith("I-") and label[2:] == current_type:
                     # Continue current entity
-                    current_entity += self._clean_token(token)
+                    current_entity += self._clean_token(token, is_continuation=True)
 
                 else:
                     # End of entity
@@ -373,14 +379,22 @@ class ONNXParserBackend(ParserBackend):
             logger.debug(f"NER inference error: {e}")
             return {}
 
-    def _clean_token(self, token: str) -> str:
-        """Clean a token from subword markers."""
-        # Remove ## prefix (BERT subword)
+    def _clean_token(self, token: str, is_continuation: bool = False) -> str:
+        """Clean a token from subword markers.
+
+        Args:
+            token: The token to clean.
+            is_continuation: Whether this token continues a previous entity.
+        """
+        # Remove ## prefix (BERT subword) - no space needed
         if token.startswith("##"):
             return token[2:]
-        # Remove Ġ prefix (GPT-style)
+        # Remove Ġ prefix (GPT-style) - space already included
         if token.startswith("Ġ"):
             return " " + token[1:]
+        # Non-subword token: add space if continuing an entity
+        if is_continuation:
+            return " " + token
         return token
 
     def _enhance_incident_result(
@@ -404,7 +418,8 @@ class ONNXParserBackend(ParserBackend):
         if "LOC" in ner_entities:
             for loc in ner_entities["LOC"]:
                 # Locations might be datacenter names or regions
-                result.incident.keywords.append(loc.lower())
+                if loc.lower() not in result.incident.keywords:
+                    result.incident.keywords.append(loc.lower())
 
         # Add miscellaneous as keywords
         if "MISC" in ner_entities:
