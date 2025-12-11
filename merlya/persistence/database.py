@@ -48,7 +48,9 @@ sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 DEFAULT_DB_PATH = Path.home() / ".merlya" / "merlya.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 1
+# v1: Initial schema
+# v2: Added ON DELETE SET NULL/CASCADE to foreign keys
+SCHEMA_VERSION = 2
 
 
 class DatabaseError(Exception):
@@ -218,7 +220,7 @@ class Database:
         )
         await conn.commit()
 
-        # Check schema version
+        # Check schema version and run migrations if needed
         async with conn.execute("SELECT value FROM config WHERE key = 'schema_version'") as cursor:
             row = await cursor.fetchone()
             if not row:
@@ -227,6 +229,126 @@ class Database:
                     ("schema_version", str(SCHEMA_VERSION)),
                 )
                 await conn.commit()
+            else:
+                current_version = int(row["value"])
+                if current_version < SCHEMA_VERSION:
+                    await self._run_migrations(current_version)
+
+    async def _run_migrations(self, from_version: int) -> None:
+        """Run database migrations from version to SCHEMA_VERSION."""
+        conn = self.connection
+
+        # Migration v1 -> v2: Add ON DELETE clauses to foreign keys
+        if from_version < 2:
+            logger.info("📦 Running database migration v1 -> v2...")
+
+            # SQLite doesn't support ALTER CONSTRAINT, need to recreate tables
+            # Only migrate if tables exist and have data
+            try:
+                # Check if raw_logs table exists
+                async with conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='raw_logs'"
+                ) as cursor:
+                    if await cursor.fetchone():
+                        await self._migrate_raw_logs_v2()
+
+                # Check if sessions table exists
+                async with conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
+                ) as cursor:
+                    if await cursor.fetchone():
+                        await self._migrate_sessions_v2()
+
+                logger.info("✅ Migration v2 complete")
+            except Exception as e:
+                logger.warning(f"⚠️ Migration v2 partial failure (non-critical): {e}")
+
+        # Update schema version
+        await conn.execute(
+            "UPDATE config SET value = ? WHERE key = 'schema_version'",
+            (str(SCHEMA_VERSION),),
+        )
+        await conn.commit()
+
+    async def _migrate_raw_logs_v2(self) -> None:
+        """Migrate raw_logs table to add ON DELETE SET NULL."""
+        conn = self.connection
+
+        await conn.executescript(
+            """
+            -- Create new table with ON DELETE SET NULL
+            CREATE TABLE IF NOT EXISTS raw_logs_new (
+                id TEXT PRIMARY KEY,
+                host_id TEXT,
+                command TEXT NOT NULL,
+                output TEXT NOT NULL,
+                exit_code INTEGER,
+                line_count INTEGER NOT NULL,
+                byte_size INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE SET NULL
+            );
+
+            -- Copy data
+            INSERT OR IGNORE INTO raw_logs_new
+            SELECT id, host_id, command, output, exit_code, line_count, byte_size,
+                   created_at, expires_at
+            FROM raw_logs;
+
+            -- Drop old table
+            DROP TABLE IF EXISTS raw_logs;
+
+            -- Rename new table
+            ALTER TABLE raw_logs_new RENAME TO raw_logs;
+
+            -- Recreate indexes
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON raw_logs(host_id);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_created ON raw_logs(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_expires ON raw_logs(expires_at);
+            """
+        )
+        await conn.commit()
+        logger.debug("  → raw_logs table migrated")
+
+    async def _migrate_sessions_v2(self) -> None:
+        """Migrate sessions table to add ON DELETE CASCADE."""
+        conn = self.connection
+
+        await conn.executescript(
+            """
+            -- Create new table with ON DELETE CASCADE
+            CREATE TABLE IF NOT EXISTS sessions_new (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                summary TEXT,
+                token_count INTEGER DEFAULT 0,
+                message_count INTEGER DEFAULT 0,
+                context_tier TEXT DEFAULT 'STANDARD',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            );
+
+            -- Copy data
+            INSERT OR IGNORE INTO sessions_new
+            SELECT id, conversation_id, summary, token_count, message_count,
+                   context_tier, created_at, updated_at
+            FROM sessions;
+
+            -- Drop old table
+            DROP TABLE IF EXISTS sessions;
+
+            -- Rename new table
+            ALTER TABLE sessions_new RENAME TO sessions;
+
+            -- Recreate indexes
+            CREATE INDEX IF NOT EXISTS idx_sessions_conversation ON sessions(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
+            """
+        )
+        await conn.commit()
+        logger.debug("  → sessions table migrated")
 
     async def execute(self, query: str, params: tuple[Any, ...] | None = None) -> aiosqlite.Cursor:
         """Execute a query."""
