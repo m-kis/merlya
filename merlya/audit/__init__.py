@@ -8,6 +8,11 @@ Provides audit logging for security-sensitive operations:
 - Configuration changes
 """
 
-from merlya.audit.logger import AuditEvent, AuditLogger, get_audit_logger
+from merlya.audit.logger import (
+    AuditEvent,
+    AuditLogger,
+    ObservabilityStatus,
+    get_audit_logger,
+)
 
-__all__ = ["AuditEvent", "AuditLogger", "get_audit_logger"]
+__all__ = ["AuditEvent", "AuditLogger", "ObservabilityStatus", "get_audit_logger"]

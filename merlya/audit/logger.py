@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from loguru import logger
 
@@ -31,6 +31,18 @@ except ImportError:
 
 if TYPE_CHECKING:
     from merlya.persistence.database import Database
+
+
+class ObservabilityStatus(NamedTuple):
+    """Status of observability backends.
+
+    Attributes:
+        logfire_enabled: Whether Logfire/OpenTelemetry is enabled.
+        sqlite_enabled: Whether SQLite persistence is enabled.
+    """
+
+    logfire_enabled: bool
+    sqlite_enabled: bool
 
 
 class AuditEventType(str, Enum):
@@ -483,6 +495,17 @@ class AuditLogger:
                 )
             )
 
+    def get_observability_status(self) -> ObservabilityStatus:
+        """Get the status of observability backends.
+
+        Returns:
+            ObservabilityStatus with logfire_enabled and sqlite_enabled booleans.
+        """
+        return ObservabilityStatus(
+            logfire_enabled=self._logfire_enabled,
+            sqlite_enabled=self._db is not None and self._initialized,
+        )
+
     # Maximum allowed limit for get_recent queries (prevent excessive memory usage)
     MAX_RECENT_LIMIT = 1000
 
@@ -594,7 +617,7 @@ class AuditLogger:
                     "event_type": row["event_type"],
                     "action": row["action"],
                     "target": row["target"],
-                    "user": row["user"] or os.getenv("USER", "unknown"),
+                    "user": row["user"],
                     "success": bool(row["success"]),
                     "severity": "INFO" if row["success"] else "WARNING",
                     "source": "merlya",
