@@ -1,0 +1,41 @@
+# Merlya Builtin Skill: Service Check
+# Check and manage system services
+
+name: service_check
+version: "1.0"
+description: "Check service status and health across hosts"
+
+intent_patterns:
+  - "service.*"
+  - "systemctl.*"
+  - "status.*"
+  - "is.*running"
+  - "check.*service"
+
+tools_allowed:
+  - ssh_execute
+  - check_service_status
+
+max_hosts: 10
+timeout_seconds: 60
+
+require_confirmation_for:
+  - restart
+  - stop
+  - kill
+
+system_prompt: |
+  You are a service management expert.
+
+  For service checks:
+  1. Check if the service exists
+  2. Get current status (running, stopped, failed)
+  3. If failed, get recent logs with journalctl -u <service> -n 20
+  4. Report uptime if running
+
+  Provide clear status summary with recommendations.
+
+tags:
+  - services
+  - monitoring
+  - systemd
