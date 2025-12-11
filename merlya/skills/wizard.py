@@ -130,6 +130,15 @@ class SkillWizard:
         # Step 7: System prompt (optional)
         system_prompt = await self._prompt_system_prompt(name, description)
 
+        # Normalize optional values to avoid None/invalid entries in validators
+        patterns = [p.strip() for p in (patterns or []) if isinstance(p, str) and p.strip()] or [r".*"]
+        tools = [t.strip() for t in (tools or []) if isinstance(t, str) and t.strip()]
+        confirm_ops = [
+            c.strip() for c in (confirm_ops or []) if isinstance(c, str) and c.strip()
+        ]
+        description = description or ""
+        system_prompt = system_prompt or None
+
         # Create config
         skill = SkillConfig(
             name=name,
@@ -206,15 +215,36 @@ class SkillWizard:
             if category and category != "custom":
                 patterns = COMMON_PATTERNS.get(category, [])
 
-        if self.prompt and not patterns:
-            input_str = await self.prompt(
-                "🎯 Intent patterns (comma-separated regex):",
-                None,
-            )
-            if input_str:
-                patterns = [p.strip() for p in input_str.split(",") if p.strip()]
+        # Patterns that are too generic and not allowed
+        forbidden = {".*", ".+", "^.*$", "^.+$", r"[\s\S]*", r"[\s\S]+"}
 
-        return patterns or [r".*"]  # Default: match anything
+        if self.prompt and not patterns:
+            while True:
+                input_str = await self.prompt(
+                    "🎯 Intent patterns (comma-separated, e.g., 'git.*', 'deploy.*'):",
+                    None,
+                )
+                if not input_str:
+                    logger.info("ℹ️ No patterns specified - skill won't auto-match (manual invocation only)")
+                    break
+
+                raw_patterns = [p.strip() for p in input_str.split(",") if p.strip()]
+                valid = [p for p in raw_patterns if p not in forbidden]
+                rejected = [p for p in raw_patterns if p in forbidden]
+
+                if rejected:
+                    logger.warning(f"⚠️ Catch-all patterns rejected: {rejected}")
+                    logger.info("💡 Use specific patterns like 'git.*' or 'deploy.*web' instead")
+                    if valid:
+                        patterns = valid
+                        break
+                    # Loop to ask again
+                    continue
+                else:
+                    patterns = valid
+                    break
+
+        return patterns  # Empty = no auto-match (agent handles)
 
     async def _prompt_tools(self) -> list[str]:
         """Prompt for allowed tools."""
@@ -227,10 +257,29 @@ class SkillWizard:
                 DEFAULT_TOOLS + ["all"],
             )
 
-            if selected == "all":
+            # Handle None explicitly - treat as "all"
+            if selected is None:
                 tools = []  # Empty means all allowed
-            elif selected:
-                tools = [selected] if isinstance(selected, str) else list(selected)
+            elif isinstance(selected, str):
+                # Handle string: "all" or single tool name
+                if selected == "all":
+                    tools = []  # Empty means all allowed
+                elif selected.strip():
+                    tools = [selected.strip()]
+            elif isinstance(selected, (list, tuple, set)):
+                # Handle iterables: filter for valid string entries
+                tools = [
+                    s.strip()
+                    for s in selected
+                    if isinstance(s, str) and s.strip()
+                ]
+            else:
+                # Unexpected type (int, float, etc.) - log and treat as "all"
+                logger.warning(
+                    f"Unexpected type from select callback: {type(selected).__name__}, "
+                    "treating as 'all tools allowed'"
+                )
+                tools = []
 
         if self.prompt and not tools:
             input_str = await self.prompt(
@@ -336,6 +385,34 @@ class SkillWizard:
             logger.error(f"❌ Skill not found: {name}")
             return None
 
+        # Validate new_name
+        if not new_name or not new_name.strip():
+            logger.error("❌ New skill name cannot be empty")
+            return None
+
+        new_name = new_name.strip().lower().replace(" ", "_")
+
+        if len(new_name) < 2:
+            logger.error("❌ New skill name too short (min 2 characters)")
+            return None
+
+        if len(new_name) > 50:
+            logger.error("❌ New skill name too long (max 50 characters)")
+            return None
+
+        # Check if new_name already exists
+        if get_registry().has(new_name):
+            if self.confirm:
+                confirmed = await self.confirm(
+                    f"Skill '{new_name}' already exists. Overwrite?"
+                )
+                if not confirmed:
+                    logger.info("🚫 Skill duplication cancelled")
+                    return None
+            else:
+                logger.error(f"❌ Skill '{new_name}' already exists")
+                return None
+
         # Create copy with new name
         new_skill = SkillConfig(
             name=new_name,
@@ -350,9 +427,16 @@ class SkillWizard:
             tags=skill.tags.copy(),
         )
 
-        # Save
-        path = self.loader.save_user_skill(new_skill)
-        logger.info(f"✅ Skill '{new_name}' created at {path}")
+        # Save with error handling
+        try:
+            path = self.loader.save_user_skill(new_skill)
+            logger.info(f"✅ Skill '{new_name}' created at {path}")
+        except OSError as e:
+            logger.error(f"❌ Failed to save skill '{new_name}': {e}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Unexpected error saving skill '{new_name}': {e}")
+            return None
 
         return new_skill
 
@@ -368,6 +452,8 @@ def generate_skill_template(name: str, description: str = "") -> str:
     Returns:
         YAML string template.
     """
+    # Generate specific patterns based on name
+    name_pattern = name.replace("_", ".*")  # disk_audit -> disk.*audit
     return f"""# Merlya Skill: {name}
 # Edit this file to customize the skill behavior
 
@@ -376,8 +462,10 @@ version: "1.0"
 description: "{description or 'Custom skill'}"
 
 # Intent patterns (regex) - when should this skill be triggered?
+# IMPORTANT: Don't use catch-all patterns like '.*' - be specific!
+# Examples: 'disk.*audit', 'git.*push', 'deploy.*prod'
 intent_patterns:
-  - "{name}.*"
+  - "{name_pattern}"
 
 # Allowed tools - empty list means all tools
 tools_allowed:

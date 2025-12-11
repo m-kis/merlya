@@ -62,45 +62,44 @@ class SkillLoader:
         Load all skills from builtin and user directories.
 
         Returns:
-            Number of skills loaded.
+            Total number of unique skills loaded.
         """
-        count = 0
-
         # Load builtin skills first
-        count += self.load_builtin()
+        builtin_new, _ = self.load_builtin()
 
         # Load user skills (can override builtin)
-        count += self.load_user()
+        user_new, user_overwritten = self.load_user()
 
-        return count
+        # Return unique skill count (builtin + new user skills, not counting overwrites)
+        return builtin_new + user_new
 
-    def load_builtin(self) -> int:
+    def load_builtin(self) -> tuple[int, int]:
         """
         Load builtin skills.
 
         Returns:
-            Number of skills loaded.
+            Tuple of (new_count, overwritten_count).
         """
         if not self.builtin_dir.exists():
             logger.debug(f"📁 Builtin skills directory not found: {self.builtin_dir}")
-            return 0
+            return 0, 0
 
         return self._load_from_directory(self.builtin_dir, builtin=True)
 
-    def load_user(self) -> int:
+    def load_user(self) -> tuple[int, int]:
         """
         Load user-defined skills.
 
         Returns:
-            Number of skills loaded.
+            Tuple of (new_count, overwritten_count).
         """
         if not self.user_dir.exists():
             logger.debug(f"📁 User skills directory not found: {self.user_dir}")
-            return 0
+            return 0, 0
 
         return self._load_from_directory(self.user_dir, builtin=False)
 
-    def _load_from_directory(self, directory: Path, builtin: bool = False) -> int:
+    def _load_from_directory(self, directory: Path, builtin: bool = False) -> tuple[int, int]:
         """
         Load skills from a directory.
 
@@ -109,18 +108,31 @@ class SkillLoader:
             builtin: Whether these are builtin skills.
 
         Returns:
-            Number of skills loaded.
+            Tuple of (new_skills_count, overwritten_count).
         """
-        count = 0
+        new_count = 0
+        overwritten = 0
 
         for extension in YAML_EXTENSIONS:
             for skill_file in directory.glob(extension):
+                # Check if skill already exists before loading
+                try:
+                    with skill_file.open(encoding="utf-8", errors="replace") as f:
+                        data = yaml.safe_load(f)
+                    skill_name = data.get("name", "").lower() if data else None
+                    existed = skill_name and self.registry.has(skill_name)
+                except Exception:
+                    existed = False
+
                 skill = self.load_file(skill_file, builtin=builtin)
                 if skill:
-                    count += 1
+                    if existed:
+                        overwritten += 1
+                    else:
+                        new_count += 1
 
-        logger.debug(f"📁 Loaded {count} skills from {directory}")
-        return count
+        logger.debug(f"📁 Loaded {new_count} new skills from {directory} ({overwritten} overwritten)")
+        return new_count, overwritten
 
     def _is_safe_path(self, path: Path, allowed_dir: Path) -> bool:
         """Check if path is within allowed directory (path traversal protection)."""

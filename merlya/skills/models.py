@@ -138,13 +138,25 @@ class SkillConfig(BaseModel):
     @field_validator("intent_patterns")
     @classmethod
     def validate_intent_patterns(cls, v: list[str]) -> list[str]:
-        """Validate intent patterns count and length."""
-        if len(v) > MAX_INTENT_PATTERNS:
-            raise ValueError(f"Too many intent patterns (max {MAX_INTENT_PATTERNS})")
+        """Validate intent patterns count, length, and specificity."""
+        if v is None:
+            return []  # Empty means skill won't auto-match
+
+        # Reject catch-all patterns
+        forbidden = {".*", ".+", "^.*$", "^.+$", r"[\s\S]*", r"[\s\S]+"}
+        filtered = []
         for pattern in v:
+            if pattern in forbidden:
+                # Skip catch-all patterns silently (warning logged in registry)
+                continue
             if len(pattern) > MAX_PATTERN_LENGTH:
                 raise ValueError(f"Pattern too long (max {MAX_PATTERN_LENGTH} chars)")
-        return v
+            filtered.append(pattern)
+
+        if len(filtered) > MAX_INTENT_PATTERNS:
+            raise ValueError(f"Too many intent patterns (max {MAX_INTENT_PATTERNS})")
+
+        return filtered
 
     @field_validator("name")
     @classmethod
@@ -164,6 +176,8 @@ class SkillConfig(BaseModel):
     @classmethod
     def validate_description(cls, v: str) -> str:
         """Validate description length."""
+        if v is None:
+            return ""
         if len(v) > MAX_DESCRIPTION_LENGTH:
             raise ValueError(f"Description too long (max {MAX_DESCRIPTION_LENGTH} chars)")
         return v
@@ -172,6 +186,8 @@ class SkillConfig(BaseModel):
     @classmethod
     def validate_system_prompt(cls, v: str | None) -> str | None:
         """Validate system prompt length."""
+        if v is None:
+            return None
         if v and len(v) > MAX_SYSTEM_PROMPT_LENGTH:
             raise ValueError(f"System prompt too long (max {MAX_SYSTEM_PROMPT_LENGTH} chars)")
         return v

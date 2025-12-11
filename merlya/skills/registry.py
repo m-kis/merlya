@@ -19,6 +19,17 @@ if TYPE_CHECKING:
 MAX_USER_INPUT_LENGTH = 10_000  # 10KB max for intent matching
 CONFIDENCE_BOOST = 0.3  # Boost for longer pattern matches
 LOG_TRUNCATE_LENGTH = 100  # Max chars in log messages
+MIN_PATTERN_SPECIFICITY = 3  # Minimum characters a pattern must match to be useful
+
+# Patterns that are too generic and should be rejected
+FORBIDDEN_PATTERNS = frozenset({
+    r".*",
+    r".+",
+    r"^.*$",
+    r"^.+$",
+    r"[\s\S]*",
+    r"[\s\S]+",
+})
 
 # Singleton instance with thread-safety
 _registry_instance: SkillRegistry | None = None
@@ -70,6 +81,14 @@ class SkillRegistry:
             # Compile intent patterns with safety limits
             patterns: list[re.Pattern[str]] = []
             for pattern in skill.intent_patterns:
+                # Reject catch-all patterns that would match everything
+                if pattern in FORBIDDEN_PATTERNS:
+                    logger.warning(
+                        f"⚠️ Rejecting catch-all pattern '{pattern}' in skill '{skill.name}' - "
+                        "use specific patterns like 'git.*flow' instead of '.*'"
+                    )
+                    continue
+
                 try:
                     compiled = re.compile(pattern, re.IGNORECASE)
                     patterns.append(compiled)
@@ -177,8 +196,12 @@ class SkillRegistry:
                 try:
                     match = pattern.search(safe_input)
                     if match:
-                        # Calculate confidence based on match length relative to input
                         match_len = len(match.group())
+                        # Reject matches that are too short/generic
+                        if match_len < MIN_PATTERN_SPECIFICITY:
+                            continue
+
+                        # Calculate confidence based on match length relative to input
                         input_len = len(safe_input.strip())
                         if input_len > 0:
                             confidence = min(match_len / input_len, 1.0)
