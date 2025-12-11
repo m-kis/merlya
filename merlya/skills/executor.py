@@ -14,9 +14,17 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from merlya.skills.models import HostResult, SkillConfig, SkillResult, SkillStatus
+from merlya.skills.models import (
+    DEFAULT_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    HostResult,
+    SkillConfig,
+    SkillResult,
+    SkillStatus,
+)
 
 if TYPE_CHECKING:
+    from merlya.audit.logger import AuditLogger
     from merlya.config.policies import PolicyManager
     from merlya.core.context import SharedContext
     from merlya.subagents.orchestrator import SubagentOrchestrator
@@ -43,6 +51,7 @@ class SkillExecutor:
         context: SharedContext | None = None,
         policy_manager: PolicyManager | None = None,
         max_concurrent: int | None = None,
+        audit_logger: AuditLogger | None = None,
     ) -> None:
         """
         Initialize the executor.
@@ -51,11 +60,13 @@ class SkillExecutor:
             context: Shared context for subagent creation.
             policy_manager: Policy manager for limits and confirmations.
             max_concurrent: Override max concurrent hosts (uses policy if None).
+            audit_logger: Optional audit logger for operation logging.
         """
         self.context = context
         self.policy_manager = policy_manager
         self._max_concurrent = max_concurrent
         self._orchestrator: SubagentOrchestrator | None = None
+        self._audit_logger = audit_logger
         logger.debug("🎬 SkillExecutor initialized")
 
     @property
@@ -190,6 +201,17 @@ class SkillExecutor:
         )
 
         logger.info(f"🎬 Skill '{skill.name}' completed: {result.to_summary()}")
+
+        # Audit logging
+        if self._audit_logger:
+            await self._audit_logger.log_skill(
+                skill_name=skill.name,
+                hosts=effective_hosts,
+                task=task,
+                success=(status != SkillStatus.FAILED),
+                duration_ms=duration_ms,
+            )
+
         return result
 
     async def _execute_single(
@@ -219,16 +241,25 @@ class SkillExecutor:
         start_time = time.perf_counter()
         tool_calls = 0
 
+        # Validate timeout: must be a positive number for asyncio.timeout
+        raw_timeout = getattr(skill, 'timeout_seconds', None)
+        if raw_timeout is None or not isinstance(raw_timeout, (int, float)) or raw_timeout < MIN_TIMEOUT_SECONDS:
+            timeout = DEFAULT_TIMEOUT_SECONDS
+            if raw_timeout is not None:
+                logger.warning(f"⚠️ Invalid timeout_seconds={raw_timeout} for skill {skill.name}, using default {timeout}s")
+        else:
+            timeout = float(raw_timeout)
+
         try:
             # Apply timeout
-            async with asyncio.timeout(skill.timeout_seconds):
+            async with asyncio.timeout(timeout):
                 # Use real subagent execution if orchestrator is available
                 if self.orchestrator is not None:
                     result = await self.orchestrator.run_on_host(
                         host=host,
                         task=task,
                         skill=skill,
-                        timeout=skill.timeout_seconds,
+                        timeout=timeout,
                     )
                     return HostResult(
                         host=host,
@@ -255,11 +286,11 @@ class SkillExecutor:
 
         except TimeoutError:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            logger.warning(f"⏱️ Timeout on host '{host}' after {skill.timeout_seconds}s")
+            logger.warning(f"⏱️ Timeout on host '{host}' after {timeout}s")
             return HostResult(
                 host=host,
                 success=False,
-                error=f"Timeout after {skill.timeout_seconds}s",
+                error=f"Timeout after {timeout}s",
                 duration_ms=duration_ms,
                 tool_calls=tool_calls,
             )
