@@ -15,8 +15,6 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from merlya.skills.models import (
-    DEFAULT_TIMEOUT_SECONDS,
-    MIN_TIMEOUT_SECONDS,
     HostResult,
     SkillConfig,
     SkillResult,
@@ -204,13 +202,19 @@ class SkillExecutor:
 
         # Audit logging
         if self._audit_logger:
-            await self._audit_logger.log_skill(
-                skill_name=skill.name,
-                hosts=effective_hosts,
-                task=task,
-                success=(status != SkillStatus.FAILED),
-                duration_ms=duration_ms,
-            )
+            try:
+                await self._audit_logger.log_skill(
+                    skill_name=skill.name,
+                    hosts=effective_hosts,
+                    task=task,
+                    success=(status != SkillStatus.FAILED),
+                    duration_ms=duration_ms,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Audit logging failed for skill '{skill.name}' "
+                    f"(hosts={effective_hosts}, task={task!r}): {e}"
+                )
 
         return result
 
@@ -228,6 +232,9 @@ class SkillExecutor:
         Uses SubagentOrchestrator if context is available,
         otherwise falls back to simulation mode.
 
+        Note: Timeout is now handled by the orchestrator using ActivityTimeout,
+        which provides idle-based timeout detection (not just absolute time).
+
         Args:
             skill: Skill configuration.
             host: Host identifier.
@@ -241,38 +248,28 @@ class SkillExecutor:
         start_time = time.perf_counter()
         tool_calls = 0
 
-        # Validate timeout: must be a positive number for asyncio.timeout
-        raw_timeout = getattr(skill, 'timeout_seconds', None)
-        if raw_timeout is None or not isinstance(raw_timeout, (int, float)) or raw_timeout < MIN_TIMEOUT_SECONDS:
-            timeout = DEFAULT_TIMEOUT_SECONDS
-            if raw_timeout is not None:
-                logger.warning(f"⚠️ Invalid timeout_seconds={raw_timeout} for skill {skill.name}, using default {timeout}s")
-        else:
-            timeout = float(raw_timeout)
-
         try:
-            # Apply timeout
-            async with asyncio.timeout(timeout):
-                # Use real subagent execution if orchestrator is available
-                if self.orchestrator is not None:
-                    result = await self.orchestrator.run_on_host(
-                        host=host,
-                        task=task,
-                        skill=skill,
-                        timeout=timeout,
-                    )
-                    return HostResult(
-                        host=host,
-                        success=result.success,
-                        output=result.output,
-                        error=result.error,
-                        duration_ms=result.duration_ms,
-                        tool_calls=result.tool_calls,
-                    )
-                else:
-                    # Fallback to simulation mode (for testing)
-                    output = await self._simulate_execution(skill, host, task)
-                    tool_calls = 1
+            # Use real subagent execution if orchestrator is available
+            # Timeout is handled by orchestrator with ActivityTimeout
+            if self.orchestrator is not None:
+                result = await self.orchestrator.run_on_host(
+                    host=host,
+                    task=task,
+                    skill=skill,
+                    # timeout is now determined by orchestrator based on skill config
+                )
+                return HostResult(
+                    host=host,
+                    success=result.success,
+                    output=result.output,
+                    error=result.error,
+                    duration_ms=result.duration_ms,
+                    tool_calls=result.tool_calls,
+                )
+            else:
+                # Fallback to simulation mode (for testing)
+                output = await self._simulate_execution(skill, host, task)
+                tool_calls = 1
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -284,13 +281,15 @@ class SkillExecutor:
                 tool_calls=tool_calls,
             )
 
-        except TimeoutError:
+        except TimeoutError as e:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            logger.warning(f"⏱️ Timeout on host '{host}' after {timeout}s")
+            # Timeout message now includes reason (idle vs max)
+            timeout_msg = str(e) if str(e) else "unknown timeout"
+            logger.warning(f"⏱️ Timeout on host '{host}': {timeout_msg}")
             return HostResult(
                 host=host,
                 success=False,
-                error=f"Timeout after {timeout}s",
+                error=f"Timeout: {timeout_msg}",
                 duration_ms=duration_ms,
                 tool_calls=tool_calls,
             )

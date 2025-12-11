@@ -16,6 +16,7 @@ from loguru import logger
 
 from merlya.subagents.factory import SubagentFactory
 from merlya.subagents.results import AggregatedResults, SubagentResult, SubagentStatus
+from merlya.subagents.timeout import ActivityTimeout
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -25,9 +26,16 @@ if TYPE_CHECKING:
 DEFAULT_MAX_CONCURRENT = 5
 MIN_MAX_CONCURRENT = 1
 MAX_MAX_CONCURRENT = 20
-DEFAULT_TIMEOUT_SECONDS = 120
-MIN_TIMEOUT_SECONDS = 1
+
+# Timeout configuration
+# Max timeout: absolute maximum execution time (10 minutes)
+DEFAULT_MAX_TIMEOUT_SECONDS = 600
+MIN_TIMEOUT_SECONDS = 30
 MAX_TIMEOUT_SECONDS = 3600  # 1 hour max
+
+# Idle timeout: no activity for this long = stuck (60 seconds)
+DEFAULT_IDLE_TIMEOUT_SECONDS = 60
+IDLE_TIMEOUT_RATIO = 0.5  # idle = max * ratio (if max < default idle)
 
 
 class SubagentOrchestrator:
@@ -114,13 +122,14 @@ class SubagentOrchestrator:
         execution_id = str(uuid.uuid4())[:8]
         started_at = datetime.now(timezone.utc)
 
-        # Determine and validate timeout
+        # Determine and validate max timeout
         effective_timeout = timeout
         if effective_timeout is None:
-            effective_timeout = skill.timeout_seconds if skill else DEFAULT_TIMEOUT_SECONDS
+            skill_timeout = getattr(skill, 'timeout_seconds', None) if skill else None
+            effective_timeout = skill_timeout if isinstance(skill_timeout, (int, float)) else DEFAULT_MAX_TIMEOUT_SECONDS
 
-        # Clamp timeout to valid range
-        if effective_timeout < MIN_TIMEOUT_SECONDS:
+        # Clamp timeout to valid range (also handles None/invalid values from above)
+        if not isinstance(effective_timeout, (int, float)) or effective_timeout < MIN_TIMEOUT_SECONDS:
             logger.warning(
                 f"Timeout {effective_timeout}s too low, using minimum {MIN_TIMEOUT_SECONDS}s"
             )
@@ -131,9 +140,15 @@ class SubagentOrchestrator:
             )
             effective_timeout = MAX_TIMEOUT_SECONDS
 
+        # Calculate idle timeout (proportional to max, but capped at default)
+        idle_timeout = min(
+            max(effective_timeout * IDLE_TIMEOUT_RATIO, MIN_TIMEOUT_SECONDS),
+            DEFAULT_IDLE_TIMEOUT_SECONDS,
+        )
+
         logger.info(
             f"🎼 Starting parallel execution {execution_id} on {len(hosts)} hosts "
-            f"(concurrent={self.max_concurrent}, timeout={effective_timeout}s)"
+            f"(concurrent={self.max_concurrent}, max={effective_timeout}s, idle={idle_timeout}s)"
         )
 
         async with self._executions_lock:
@@ -146,7 +161,8 @@ class SubagentOrchestrator:
                     host=host,
                     task=task,
                     skill=skill,
-                    timeout=effective_timeout,
+                    max_timeout=effective_timeout,
+                    idle_timeout=idle_timeout,
                     execution_id=execution_id,
                     on_progress=on_progress,
                 )
@@ -204,18 +220,24 @@ class SubagentOrchestrator:
         host: str,
         task: str,
         skill: SkillConfig | None,
-        timeout: int,
+        max_timeout: float,
+        idle_timeout: float,
         execution_id: str,
         on_progress: Any | None = None,
     ) -> SubagentResult:
         """
-        Execute task on a single host.
+        Execute task on a single host with activity-based timeout.
+
+        Uses ActivityTimeout to distinguish between:
+        - Idle timeout: No activity for X seconds (stuck)
+        - Max timeout: Absolute maximum runtime (safety limit)
 
         Args:
             host: Host identifier.
             task: Task to execute.
             skill: Skill configuration.
-            timeout: Timeout in seconds.
+            max_timeout: Absolute maximum timeout in seconds.
+            idle_timeout: Idle timeout in seconds (no activity = stuck).
             execution_id: Parent execution ID.
             on_progress: Progress callback.
 
@@ -240,9 +262,15 @@ class SubagentOrchestrator:
                 task=task,
             )
 
-            # Execute with timeout
-            async with asyncio.timeout(timeout):
+            # Execute with activity-based timeout
+            # The timeout monitors both idle time (no activity) and max runtime
+            async with ActivityTimeout(
+                idle_timeout=idle_timeout,
+                max_timeout=max_timeout,
+            ) as tracker:
                 run_result = await subagent.run(task)
+                # Touch after completion to prevent false timeout on slow final response
+                tracker.touch()
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
             completed_at = datetime.now(timezone.utc)
@@ -270,15 +298,17 @@ class SubagentOrchestrator:
             logger.debug(f"🎼 Host {host} completed in {duration_ms}ms")
             return result
 
-        except TimeoutError:
+        except TimeoutError as e:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            logger.warning(f"⏱️ Host {host} timed out after {timeout}s")
+            # Extract timeout reason from exception message
+            timeout_reason = str(e) if str(e) else f"after {max_timeout}s"
+            logger.warning(f"⏱️ Host {host} timed out: {timeout_reason}")
 
             result = SubagentResult(
                 host=host,
                 success=False,
                 status=SubagentStatus.TIMEOUT,
-                error=f"Execution timed out after {timeout}s",
+                error=f"Execution timed out: {timeout_reason}",
                 started_at=started_at,
                 completed_at=datetime.now(timezone.utc),
                 duration_ms=duration_ms,

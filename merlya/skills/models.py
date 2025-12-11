@@ -16,9 +16,13 @@ from pydantic import BaseModel, Field, field_validator
 DEFAULT_MAX_HOSTS = 5
 MIN_MAX_HOSTS = 1
 MAX_MAX_HOSTS = 100
-DEFAULT_TIMEOUT_SECONDS = 120
-MIN_TIMEOUT_SECONDS = 10
-MAX_TIMEOUT_SECONDS = 600
+
+# Timeout configuration
+# With activity-based timeout, we can allow longer max timeouts safely
+# The idle timeout (default 60s) catches truly stuck executions
+DEFAULT_TIMEOUT_SECONDS = 300  # 5 minutes default (activity timeout protects us)
+MIN_TIMEOUT_SECONDS = 30  # Minimum 30s to allow LLM response time
+MAX_TIMEOUT_SECONDS = 1800  # 30 minutes max for complex operations
 
 # Limits for validation
 MAX_INTENT_PATTERNS = 50
@@ -74,12 +78,22 @@ class SkillConfig(BaseModel):
     # Identity
     name: str = Field(description="Unique skill name")
     version: str = Field(default="1.0", description="Skill version")
-    description: str = Field(default="", description="Human-readable description")
+    # IMPORTANT: description is used for semantic matching via ONNX embeddings
+    # Write a clear, descriptive text that explains what this skill does
+    # Example: "Audit disk usage and storage capacity across servers"
+    description: str = Field(
+        default="",
+        description="Skill description - used for semantic intent matching",
+    )
 
     # Intent matching
+    # NOTE: intent_patterns is DEPRECATED - use description for semantic matching
+    # The description field is now used by the ONNX embedding model to understand
+    # when this skill should be triggered. Regex patterns are kept for backward
+    # compatibility but semantic matching is preferred.
     intent_patterns: list[str] = Field(
         default_factory=list,
-        description="Regex patterns to match user intents",
+        description="DEPRECATED: Regex patterns for fallback matching. Use description instead.",
     )
 
     # Input/Output schemas (optional)

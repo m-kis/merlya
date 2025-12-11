@@ -23,8 +23,38 @@ if TYPE_CHECKING:
 # Set to 0.6 to balance precision (avoid false positives) with recall.
 SKILL_CONFIDENCE_THRESHOLD = 0.6
 
-# Default timeout for skill execution if not specified by skill
-DEFAULT_SKILL_TIMEOUT_SECONDS = 120
+# Note: Timeout is now handled by SubagentOrchestrator with ActivityTimeout
+# which provides intelligent idle-based timeout detection
+
+# Patterns indicating sensitive variable names (case-insensitive)
+SENSITIVE_NAME_PATTERNS = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "auth",
+    "credential",
+    "private",
+    "key",
+)
+
+# Redacted placeholder for sensitive values
+REDACTED_PLACEHOLDER = "********"
+
+
+def _is_sensitive_variable(name: str) -> bool:
+    """Check if a variable name suggests sensitive content."""
+    name_lower = name.lower()
+    return any(pattern in name_lower for pattern in SENSITIVE_NAME_PATTERNS)
+
+
+def _mask_value(value: str, reveal_chars: int = 4) -> str:
+    """Mask a value, optionally revealing a few characters."""
+    if len(value) <= reveal_chars:
+        return REDACTED_PLACEHOLDER
+    return value[:reveal_chars] + REDACTED_PLACEHOLDER
 
 
 @dataclass
@@ -214,21 +244,20 @@ async def handle_skill_flow(
             policy_manager=policy_manager,
         )
 
-        # P1: Execute skill with explicit timeout enforcement
-        timeout = skill.timeout_seconds if hasattr(skill, 'timeout_seconds') else DEFAULT_SKILL_TIMEOUT_SECONDS
+        # Execute skill - timeout is handled by SubagentOrchestrator with ActivityTimeout
+        # which provides intelligent idle-based timeout detection (not just absolute time)
         try:
-            result = await asyncio.wait_for(
-                executor.execute(
-                    skill=skill,
-                    hosts=hosts or ["localhost"],  # Default to localhost for single-host skills
-                    task=user_input,
-                ),
-                timeout=timeout,
+            result = await executor.execute(
+                skill=skill,
+                hosts=hosts or ["localhost"],  # Default to localhost for single-host skills
+                task=user_input,
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Skill execution timeout: {skill.name} after {timeout}s")
+        except TimeoutError as e:
+            # Timeout message now includes reason (idle vs max)
+            timeout_msg = str(e) if str(e) else "unknown timeout"
+            logger.error(f"❌ Skill execution timeout: {skill.name} - {timeout_msg}")
             return HandlerResponse(
-                message=f"**Skill: {skill.name}**\n\n❌ Execution timed out after {timeout}s.",
+                message=f"**Skill: {skill.name}**\n\n❌ Execution timed out: {timeout_msg}",
                 handled_by="skill",
                 actions_taken=[f"skill:{skill.name}:timeout"],
             )
@@ -488,9 +517,14 @@ async def _handle_var_list(ctx: SharedContext) -> HandlerResponse:
     lines = ["## Variables", ""]
 
     for var in variables:
-        # Don't show full values for potentially sensitive data
-        value_preview = var.value[:30] + "..." if len(var.value) > 30 else var.value
-        lines.append(f"- **@{var.name}**: `{value_preview}`")
+        is_sensitive = _is_sensitive_variable(var.name)
+        if is_sensitive:
+            value_preview = _mask_value(var.value)
+            lines.append(f"- **@{var.name}**: `{value_preview}` _(sensitive)_")
+        else:
+            # Truncate long values for display
+            value_preview = var.value[:30] + "..." if len(var.value) > 30 else var.value
+            lines.append(f"- **@{var.name}**: `{value_preview}`")
 
     lines.append("")
     lines.append(f"**Total: {len(variables)} variables**")
@@ -513,8 +547,18 @@ async def _handle_var_get(ctx: SharedContext, name: str) -> HandlerResponse:
             suggestions=[f"/var set {name} <value>"],
         )
 
+    is_sensitive = _is_sensitive_variable(var.name)
+
+    if is_sensitive:
+        display_value = _mask_value(var.value)
+        message = f"**@{var.name}** = `{display_value}` _(sensitive)_"
+        raw_data: dict[str, Any] = {"name": var.name, "sensitive": True}
+    else:
+        message = f"**@{var.name}** = `{var.value}`"
+        raw_data = {"name": var.name, "value": var.value, "sensitive": False}
+
     return HandlerResponse(
-        message=f"**@{var.name}** = `{var.value}`",
+        message=message,
         handled_by="fast_path",
-        raw_data={"name": var.name, "value": var.value},
+        raw_data=raw_data,
     )

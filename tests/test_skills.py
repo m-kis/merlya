@@ -30,7 +30,7 @@ class TestSkillConfig:
         assert config.version == "1.0"
         assert config.description == ""
         assert config.max_hosts == 5
-        assert config.timeout_seconds == 120
+        assert config.timeout_seconds == 300  # New default with activity-based timeout
         assert config.tools_allowed == []
         assert config.builtin is False
 
@@ -66,11 +66,13 @@ class TestSkillConfig:
         """Test validation of timeout_seconds."""
         from pydantic import ValidationError
 
+        # Min is now 30s (was 10s)
         with pytest.raises(ValidationError):
             SkillConfig(name="test", timeout_seconds=5)
 
+        # Max is now 1800s (was 600s) to allow longer activity-tracked executions
         with pytest.raises(ValidationError):
-            SkillConfig(name="test", timeout_seconds=1000)
+            SkillConfig(name="test", timeout_seconds=2000)
 
     def test_intent_patterns(self):
         """Test intent patterns."""
