@@ -7,7 +7,9 @@ Import and export variables from/to various file formats.
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
 # Constants
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
-ALLOWED_IMPORT_DIRS = [Path.home(), Path("/etc"), Path("/tmp")]
+ALLOWED_IMPORT_DIRS = [Path.home(), Path("/etc")]
 
 # Patterns for detecting potentially sensitive values in files
 # These should NEVER be imported - secrets must be prompted
@@ -33,21 +35,46 @@ SENSITIVE_VALUE_PATTERNS = [
 
 def validate_file_path(file_path: Path) -> tuple[bool, str]:
     """
-    Validate file path for security (prevent path traversal attacks).
+    Validate file path for security (prevent path traversal and unsafe file access).
 
     Returns (is_valid, error_message).
     """
     try:
         resolved = file_path.resolve()
+
+        # Reject symlinks to prevent symlink-based attacks
+        if file_path.is_symlink():
+            return False, "Access denied: Symlinks are not allowed for security reasons"
+
+        # Check if path is within allowed directories
         is_allowed = any(
             resolved.is_relative_to(allowed.resolve()) for allowed in ALLOWED_IMPORT_DIRS
         )
         if not is_allowed:
-            return False, "Access denied: Path must be within home directory, /etc, or /tmp"
+            return False, "Access denied: Path must be within home directory or /etc"
 
-        path_str = str(file_path)
-        if ".." in path_str or path_str.startswith("/proc") or path_str.startswith("/sys"):
-            return False, "Access denied: Invalid path pattern"
+        # Reject special filesystem paths
+        resolved_str = str(resolved)
+        if resolved_str.startswith("/proc") or resolved_str.startswith("/sys"):
+            return False, "Access denied: Special filesystem paths not allowed"
+
+        # If file exists, perform ownership and permission checks
+        if resolved.exists():
+            file_stat = resolved.stat()
+
+            # Reject world-writable files
+            if file_stat.st_mode & stat.S_IWOTH:
+                return False, "Access denied: File is world-writable"
+
+            # Reject files not owned by current user or root
+            current_uid = os.getuid()
+            if file_stat.st_uid != current_uid and file_stat.st_uid != 0:
+                return False, "Access denied: File must be owned by current user or root"
+
+            # Check parent directory is not world-writable
+            parent_stat = resolved.parent.stat()
+            if parent_stat.st_mode & stat.S_IWOTH:
+                return False, "Access denied: Parent directory is world-writable"
 
         return True, ""
     except Exception as e:
@@ -67,28 +94,30 @@ def check_file_size(file_path: Path) -> tuple[bool, str]:
         return False, f"Cannot read file: {e}"
 
 
-def detect_import_format(file_path: Path) -> str:
-    """Detect file format from file extension."""
-    ext = file_path.suffix.lower()
-    if ext in (".yml", ".yaml"):
-        return "yaml"
-    elif ext == ".json":
-        return "json"
-    elif ext in (".env", ""):
-        return "env"
-    return "yaml"  # Default
-
-
-def detect_export_format(file_path: Path) -> str:
-    """Detect export format from file extension."""
-    ext = file_path.suffix.lower()
+def _format_from_extension(ext: str, default: str = "yaml") -> str:
+    """Map file extension to format name."""
+    ext = ext.lower()
     if ext in (".yml", ".yaml"):
         return "yaml"
     elif ext == ".json":
         return "json"
     elif ext == ".env":
         return "env"
-    return "yaml"
+    return default
+
+
+def detect_import_format(file_path: Path) -> str:
+    """Detect file format from file extension for import."""
+    return _format_from_extension(file_path.suffix, default="yaml")
+
+
+def detect_export_format(file_path: Path) -> str:
+    """Detect export format from file extension."""
+    ext = file_path.suffix
+    # Empty extension defaults to env for export
+    if ext == "":
+        return "env"
+    return _format_from_extension(ext, default="yaml")
 
 
 def _looks_like_secret(value: str) -> bool:
@@ -111,7 +140,16 @@ async def import_variables(
     Returns:
         Tuple of (variables_imported, secrets_to_set, hosts_imported, secrets_names, errors)
     """
-    content = file_path.read_text()
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return 0, 0, 0, [], [f"File not found: {file_path}"]
+    except PermissionError:
+        return 0, 0, 0, [], [f"Permission denied reading file: {file_path}"]
+    except UnicodeDecodeError as e:
+        return 0, 0, 0, [], [f"File encoding error (expected UTF-8): {e}"]
+    except OSError as e:
+        return 0, 0, 0, [], [f"Error reading file: {e}"]
 
     if file_format == "json":
         return await _import_json(ctx, content, merge, dry_run)
@@ -130,7 +168,10 @@ async def _import_json(
     dry_run: bool,
 ) -> tuple[int, int, int, list[str], list[str]]:
     """Import from JSON content."""
-    data = json.loads(content)
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        return 0, 0, 0, [], [f"Invalid JSON: {e}"]
     return await _process_import_data(ctx, data, merge, dry_run)
 
 
@@ -143,7 +184,10 @@ async def _import_yaml(
     """Import from YAML content."""
     import yaml
 
-    data = yaml.safe_load(content) or {}
+    try:
+        data = yaml.safe_load(content) or {}
+    except yaml.YAMLError as e:
+        return 0, 0, 0, [], [f"Invalid YAML: {e}"]
     return await _process_import_data(ctx, data, merge, dry_run)
 
 
@@ -270,6 +314,10 @@ async def _process_import_data(
             for v in await ctx.variables.get_all():
                 await ctx.variables.delete(v.name)
 
+            # Clear existing hosts
+            for h in await ctx.hosts.get_all():
+                await ctx.hosts.delete(h.id)
+
         # Import variables
         for name, value in safe_variables.items():
             try:
@@ -352,9 +400,11 @@ async def export_variables(
         for name, value in var_dict.items():
             # Convert name-with-dashes to NAME_WITH_UNDERSCORES
             env_name = name.upper().replace("-", "_")
-            # Escape special characters
-            if " " in value or '"' in value or "'" in value:
-                value = f'"{value}"'
+            # Escape special characters for .env format
+            # Escape backslashes first, then double quotes, then wrap in quotes if needed
+            if '"' in value or "'" in value or " " in value or "\\" in value or "\n" in value:
+                escaped_value = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+                value = f'"{escaped_value}"'
             lines.append(f"{env_name}={value}")
 
         if include_secrets and secret_names:

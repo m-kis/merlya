@@ -6,6 +6,7 @@ Manage MCP servers, discovery, and tool listings.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -84,10 +85,9 @@ async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
     command = remaining[0]
     cmd_args = remaining[1:]
 
-    if name in ctx.config.mcp.servers:
-        return CommandResult(success=False, message=f"❌ MCP server '{name}' already exists.")
-
     manager = await _manager(ctx)
+    if await manager.show_server(name) is not None:
+        return CommandResult(success=False, message=f"❌ MCP server '{name}' already exists.")
     await manager.add_server(name, command, cmd_args, env, cwd=cwd)
     return CommandResult(
         success=True,
@@ -143,7 +143,11 @@ async def cmd_mcp_test(ctx: SharedContext, args: list[str]) -> CommandResult:
     name = args[0]
     manager = await _manager(ctx)
     try:
-        result = await manager.test_server(name)
+        with ctx.ui.spinner(f"Testing MCP server '{name}'..."):
+            result = await asyncio.wait_for(manager.test_server(name), timeout=15)
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ MCP test timed out for {name}")
+        return CommandResult(success=False, message=f"❌ Timeout connecting to '{name}' (15s)")
     except Exception as e:
         logger.error(f"❌ MCP test failed for {name}: {e}")
         return CommandResult(success=False, message=f"❌ Failed to connect to '{name}': {e}")
@@ -241,5 +245,8 @@ def _extract_env_and_cwd(args: list[str]) -> tuple[dict[str, str], str | None, l
 async def _manager(ctx: SharedContext) -> MCPManager:
     """Helper to get MCP manager with correct type."""
     manager = await ctx.get_mcp_manager()
-    assert isinstance(manager, MCPManager)
+    if manager is None or not isinstance(manager, MCPManager):
+        raise TypeError(
+            f"Expected MCPManager instance, got {type(manager).__name__}"
+        )
     return manager

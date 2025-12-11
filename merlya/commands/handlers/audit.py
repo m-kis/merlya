@@ -69,39 +69,77 @@ async def cmd_audit_recent(ctx: SharedContext, args: list[str]) -> CommandResult
 @subcommand("audit", "export", "Export audit logs to JSON", "/audit export [file]")
 async def cmd_audit_export(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Export audit logs to JSON file."""
-    # Determine output path
-    if args:
-        output_path = Path(args[0]).expanduser()
+    # Default filter values
+    limit = 1000
+    since = None
+    positional_args: list[str] = []
+
+    # Parse flags first, then collect remaining positional arguments
+    args = args or []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--since":
+            if i + 1 >= len(args):
+                return CommandResult(
+                    success=False,
+                    message="Missing value for `--since` flag. Usage: `--since <hours>`",
+                )
+            try:
+                hours = int(args[i + 1])
+                since = datetime.now(timezone.utc) - timedelta(hours=hours)
+            except ValueError:
+                return CommandResult(
+                    success=False,
+                    message=f"Invalid value for `--since`: `{args[i + 1]}`. Expected an integer (hours).",
+                )
+            i += 2
+        elif arg == "--limit":
+            if i + 1 >= len(args):
+                return CommandResult(
+                    success=False,
+                    message="Missing value for `--limit` flag. Usage: `--limit <n>`",
+                )
+            try:
+                limit = int(args[i + 1])
+            except ValueError:
+                return CommandResult(
+                    success=False,
+                    message=f"Invalid value for `--limit`: `{args[i + 1]}`. Expected an integer.",
+                )
+            i += 2
+        else:
+            # Not a recognized flag, treat as positional argument
+            positional_args.append(arg)
+            i += 1
+
+    # Determine output path from first positional arg or use default
+    if positional_args:
+        output_path = Path(positional_args[0]).expanduser()
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = Path.home() / ".merlya" / "exports" / f"audit_{timestamp}.json"
 
     # Ensure parent directory exists
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Get optional filters
-    limit = 1000
-    since = None
-
-    # Check for --since flag
-    for i, arg in enumerate(args):
-        if arg == "--since" and i + 1 < len(args):
-            try:
-                hours = int(args[i + 1])
-                since = datetime.now(timezone.utc) - timedelta(hours=hours)
-            except ValueError:
-                pass
-        elif arg == "--limit" and i + 1 < len(args):
-            try:
-                limit = int(args[i + 1])
-            except ValueError:
-                pass
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return CommandResult(
+            success=False,
+            message=f"Failed to create directory `{output_path.parent}`: {e}",
+        )
 
     audit = await get_audit_logger()
     json_data = await audit.export_json(limit=limit, since=since)
 
-    # Write to file
-    output_path.write_text(json_data)
+    # Write to file with error handling
+    try:
+        output_path.write_text(json_data)
+    except OSError as e:
+        return CommandResult(
+            success=False,
+            message=f"Failed to write audit logs to `{output_path}`: {e}",
+        )
 
     return CommandResult(
         success=True,
@@ -199,13 +237,15 @@ async def cmd_audit_stats(ctx: SharedContext, _args: list[str]) -> CommandResult
     for event_type, count in sorted(type_counts.items(), key=lambda x: -x[1]):
         lines.append(f"  - {event_type}: `{count}`")
 
-    # Logfire status
-    logfire_status = "enabled" if audit._logfire_enabled else "disabled"
+    # Observability status
+    obs_status = audit.get_observability_status()
+    logfire_status = "enabled" if obs_status.logfire_enabled else "disabled"
+    sqlite_status = "enabled" if obs_status.sqlite_enabled else "disabled"
     lines.extend([
         "",
         "**Observability:**",
         f"  - Logfire/OTEL: `{logfire_status}`",
-        f"  - SQLite: `{'enabled' if audit._db else 'disabled'}`",
+        f"  - SQLite: `{sqlite_status}`",
     ])
 
     return CommandResult(

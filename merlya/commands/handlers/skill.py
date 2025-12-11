@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+import yaml
 from loguru import logger
 
 from merlya.commands.registry import CommandResult, command, subcommand
@@ -174,17 +175,34 @@ async def cmd_skill_create(ctx: SharedContext, _args: list[str]) -> CommandResul
         return await ctx.ui.prompt(message, default)
 
     async def confirm_callback(message: str) -> bool:
-        return await ctx.ui.confirm(message)
+        ui = ctx.ui
+        if hasattr(ui, "confirm"):
+            return await ui.confirm(message)
+        return await ui.prompt_confirm(message)
 
     wizard = SkillWizard(
         prompt_callback=prompt_callback,
         confirm_callback=confirm_callback,
     )
 
-    skill = await wizard.create_skill()
+    try:
+        skill = await wizard.create_skill()
+    except Exception as e:
+        logger.exception(f"Skill creation failed: {e}")
+        return CommandResult(
+            success=False,
+            message=f"❌ Skill creation failed: {e}",
+        )
 
     if skill:
-        # Register the new skill
+        # Enhance skill with LLM (full YAML generation with details)
+        llm_skill = await _generate_skill_with_llm(ctx, skill)
+        if llm_skill:
+            skill = llm_skill
+        else:
+            ctx.ui.warning("LLM generation failed; using local configuration.")
+
+        # Register the skill
         get_registry().register(skill)
         return CommandResult(
             success=True,
@@ -196,6 +214,82 @@ async def cmd_skill_create(ctx: SharedContext, _args: list[str]) -> CommandResul
             success=False,
             message="Skill creation cancelled.",
         )
+
+
+async def _generate_skill_with_llm(ctx: "SharedContext", skill) -> object | None:
+    """
+    Ask the LLM to enhance the skill YAML with detailed configuration.
+
+    Patterns are already generated locally; LLM adds system_prompt, tools, etc.
+
+    Returns:
+        SkillConfig or None on failure.
+    """
+    try:
+        from pydantic_ai import Agent
+        from merlya.skills.loader import SkillLoader
+
+        # Keep locally-generated patterns
+        local_patterns = skill.intent_patterns
+
+        base_yaml = yaml.safe_dump(
+            skill.model_dump(exclude_none=True, exclude={"source_path", "builtin"}),
+            sort_keys=False,
+        )
+
+        system_prompt = (
+            "You are a Merlya skill generator for infrastructure automation. "
+            "Given a skill template, enhance it with appropriate configuration. "
+            "Output ONLY valid YAML, no markdown fences or explanations. "
+            "IMPORTANT: Keep the intent_patterns exactly as provided - do not modify them. "
+            "Focus on:\n"
+            "- Writing a detailed system_prompt that guides the LLM on how to execute this skill\n"
+            "- Selecting appropriate tools_allowed from: ssh_execute, read_file, write_file, "
+            "check_service_status, get_raw_log, list_hosts, run_local_command\n"
+            "- Setting sensible max_hosts and timeout_seconds\n"
+            "- Adding relevant tags for categorization"
+        )
+
+        user_prompt = (
+            f"Enhance this Merlya skill YAML:\n\n{base_yaml}\n\n"
+            "Keep intent_patterns unchanged. Add detailed system_prompt and configuration."
+        )
+
+        model_id = f"{ctx.config.model.provider}:{ctx.config.model.model}"
+        agent = Agent(model_id, system_prompt=system_prompt)
+
+        with ctx.ui.spinner("Generating skill details with LLM..."):
+            result = await agent.run(user_prompt)
+
+        # pydantic_ai Agent result has .output attribute (not .data)
+        yaml_text = getattr(result, "output", None) or getattr(result, "data", None)
+        if not yaml_text:
+            logger.warning("LLM returned empty output")
+            return None
+
+        # Clean up potential markdown fences
+        yaml_text = str(yaml_text).strip()
+        if yaml_text.startswith("```"):
+            lines = yaml_text.split("\n")
+            yaml_text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+
+        loader = SkillLoader()
+        llm_skill = loader.load_from_string(yaml_text, builtin=False)
+
+        if not llm_skill:
+            logger.warning("LLM returned unusable skill YAML")
+            return None
+
+        # Preserve locally-generated patterns (don't let LLM override)
+        llm_skill.intent_patterns = local_patterns
+
+        return llm_skill
+    except ImportError:
+        logger.debug("pydantic_ai not available, skipping LLM enhancement")
+        return None
+    except Exception as e:
+        logger.warning(f"LLM skill generation failed: {e}")
+        return None
 
 
 @subcommand("skill", "template", "Generate a skill template file", "/skill template <name>")
@@ -343,27 +437,31 @@ async def cmd_skill_run(ctx: SharedContext, args: list[str]) -> CommandResult:
     # Execute skill
     from merlya.skills.executor import SkillExecutor
 
-    executor = SkillExecutor()
+    executor = SkillExecutor(context=ctx)
 
     ctx.ui.info(f"Running skill `{name}` on {len(hosts)} host(s)...")
 
     with ctx.ui.spinner(f"Executing {name}..."):
         result = await executor.execute(
             skill=skill,
-            ctx=ctx,
             hosts=[h.name for h in hosts],
-            user_input=f"Run {name} skill",
+            task=f"Run {name} skill",
         )
 
-    if result.success:
+    if result.is_success:
         return CommandResult(
             success=True,
-            message=f"✅ Skill `{name}` completed!\n\n{result.summary}",
+            message=f"✅ Skill `{name}` completed!\n\n{result.to_summary()}",
             data=result,
         )
-    else:
+    if result.is_partial:
         return CommandResult(
             success=False,
-            message=f"❌ Skill `{name}` failed:\n\n{result.error or 'Unknown error'}",
+            message=f"⚠️ Skill `{name}` partially succeeded:\n\n{result.to_summary()}",
             data=result,
         )
+    return CommandResult(
+        success=False,
+        message=f"❌ Skill `{name}` failed:\n\n{result.to_summary()}",
+        data=result,
+    )
