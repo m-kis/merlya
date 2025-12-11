@@ -329,7 +329,7 @@ class TestListHostsSummary:
     @pytest.mark.asyncio
     async def test_list_hosts_summary_basic(self, mock_context, mock_hosts):
         """Test basic host summary listing."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=mock_hosts)
 
@@ -345,7 +345,7 @@ class TestListHostsSummary:
         """Test host summary with tag filter."""
         production_hosts = [h for h in mock_hosts if "production" in h.tags]
 
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_by_tag = AsyncMock(return_value=production_hosts)
 
@@ -357,7 +357,7 @@ class TestListHostsSummary:
     @pytest.mark.asyncio
     async def test_list_hosts_summary_with_status_filter(self, mock_context, mock_hosts):
         """Test host summary with status filter."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=mock_hosts)
 
@@ -369,7 +369,7 @@ class TestListHostsSummary:
     @pytest.mark.asyncio
     async def test_list_hosts_summary_empty(self, mock_context):
         """Test host summary with no hosts."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=[])
 
@@ -411,7 +411,7 @@ class TestGetHostDetails:
     @pytest.mark.asyncio
     async def test_get_host_details_found(self, mock_context, mock_host):
         """Test getting details for existing host."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_by_name = AsyncMock(return_value=mock_host)
 
@@ -424,7 +424,7 @@ class TestGetHostDetails:
     @pytest.mark.asyncio
     async def test_get_host_details_not_found_by_name(self, mock_context, mock_host):
         """Test fallback to ID lookup when name not found."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_by_name = AsyncMock(return_value=None)
             mock_repo.get_by_id = AsyncMock(return_value=mock_host)
@@ -437,7 +437,7 @@ class TestGetHostDetails:
     @pytest.mark.asyncio
     async def test_get_host_details_not_found(self, mock_context):
         """Test host not found."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_by_name = AsyncMock(return_value=None)
             mock_repo.get_by_id = AsyncMock(return_value=None)
@@ -451,7 +451,7 @@ class TestGetHostDetails:
         """Test host without OS info."""
         mock_host.os_info = None
 
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_by_name = AsyncMock(return_value=mock_host)
 
@@ -491,7 +491,7 @@ class TestListGroups:
     @pytest.mark.asyncio
     async def test_list_groups_basic(self, mock_context, mock_hosts_with_tags):
         """Test basic group listing."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=mock_hosts_with_tags)
 
@@ -505,7 +505,7 @@ class TestListGroups:
     @pytest.mark.asyncio
     async def test_list_groups_sorted_by_count(self, mock_context, mock_hosts_with_tags):
         """Test groups are sorted by host count (descending)."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=mock_hosts_with_tags)
 
@@ -518,7 +518,7 @@ class TestListGroups:
     @pytest.mark.asyncio
     async def test_list_groups_empty(self, mock_context):
         """Test with no hosts."""
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=[])
 
@@ -545,7 +545,7 @@ class TestGetInfrastructureContext:
         mock_host.health_status = "healthy"
         mock_host.tags = ["production"]
 
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=[mock_host])
 
@@ -562,7 +562,7 @@ class TestGetInfrastructureContext:
         mock_host.health_status = "healthy"
         mock_host.tags = ["production"]
 
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=[mock_host])
 
@@ -578,7 +578,7 @@ class TestGetInfrastructureContext:
         mock_host.health_status = "healthy"
         mock_host.tags = []
 
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=[mock_host])
 
@@ -597,7 +597,7 @@ class TestGetInfrastructureContext:
             host.tags = [f"tag-{i}"]  # Each host has unique tag
             hosts.append(host)
 
-        with patch("merlya.tools.context.tools.HostRepository") as MockRepo:
+        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_all = AsyncMock(return_value=hosts)
 
