@@ -562,7 +562,13 @@ def check_onnx_model(tier: str | None = None) -> HealthCheck:
 def check_parser_service(tier: str | None = None) -> HealthCheck:
     """Check if Parser service is properly initialized."""
     try:
-        parser = ParserService.get_instance()
+        # Reset if instance exists with different tier to ensure correct backend
+        existing = ParserService._instance
+        if existing and tier and existing._tier != tier:
+            ParserService.reset_instance()
+
+        # Pass tier to ensure correct backend selection
+        parser = ParserService.get_instance(tier=tier)
         backend_name = type(parser._backend).__name__
 
         return HealthCheck(

@@ -603,11 +603,20 @@ async def run_repl() -> None:
     # 1. Initialize SessionManager
     try:
         from merlya.session import SessionManager
+        from merlya.session.context_tier import ContextTier
 
-        SessionManager(
-            default_tier=ctx.config.policy.context_tier,
-            max_tokens=ctx.config.policy.max_tokens_per_call,
-        )
+        # Convert string tier to enum, default to STANDARD if invalid/auto
+        tier_str = ctx.config.policy.context_tier
+        if tier_str and tier_str != "auto":
+            try:
+                tier = ContextTier(tier_str.upper())
+            except ValueError:
+                tier = ContextTier.STANDARD
+        else:
+            tier = ContextTier.STANDARD
+
+        model = f"{ctx.config.model.provider}:{ctx.config.model.model}"
+        SessionManager(model=model, default_tier=tier)
         logger.debug("SessionManager initialized")
     except Exception as e:
         logger.debug(f"SessionManager init skipped: {e}")
