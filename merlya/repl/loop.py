@@ -396,9 +396,13 @@ class REPL:
 
         SECURITY: Secrets are NEVER expanded here to prevent leaking to LLM.
         The LLM sees @secret-name, and resolution happens in ssh_execute.
+
+        NEW: If a @mention is not found as variable, secret, or host,
+        prompt the user to define it inline (issue #40).
         """
         # Find all @ mentions
         mentions = re.findall(r"@(\w[\w.-]*)", text)
+        undefined_mentions: list[str] = []
 
         for mention in mentions:
             # Try as variable first (variables are non-sensitive, OK to expand)
@@ -407,12 +411,72 @@ class REPL:
                 text = text.replace(f"@{mention}", var.value)
                 continue
 
-            # SECURITY: Do NOT expand secrets here!
-            # Secrets are resolved only in ssh_execute at execution time.
-            # This prevents secret values from leaking to the LLM.
-            # The LLM will see @secret-name and use it in commands.
+            # Check if it's a known secret
+            if self.ctx.secrets.has(mention):
+                # SECURITY: Do NOT expand secrets here!
+                # Secrets are resolved only in ssh_execute at execution time.
+                continue
 
-            # Keep as host reference or secret reference (agent will handle)
+            # Check if it's a known host
+            host = await self.ctx.hosts.get_by_name(mention)
+            if host:
+                # Keep as host reference (agent will handle)
+                continue
+
+            # Unknown mention - track for prompting
+            undefined_mentions.append(mention)
+
+        # Prompt for undefined mentions (issue #40)
+        if undefined_mentions:
+            text = await self._prompt_for_undefined_mentions(text, undefined_mentions)
+
+        return text
+
+    async def _prompt_for_undefined_mentions(
+        self, text: str, undefined: list[str]
+    ) -> str:
+        """
+        Prompt user to define undefined @ mentions inline.
+
+        For each undefined mention, ask if it should be a variable or secret,
+        then prompt for the value.
+        """
+        for mention in undefined:
+            self.ctx.ui.warning(f"@{mention} is not defined as a variable, secret, or host.")
+
+            # Ask what type it should be
+            choice = await self.ctx.ui.prompt(
+                f"Define @{mention} as (v)ariable, (s)ecret, or (i)gnore? [v/s/i]",
+            )
+
+            if not choice:
+                choice = "i"
+
+            choice = choice.lower().strip()
+
+            if choice.startswith("v"):
+                # Define as variable
+                value = await self.ctx.ui.prompt(f"Enter value for @{mention}:")
+                if value:
+                    await self.ctx.variables.set(mention, value)
+                    text = text.replace(f"@{mention}", value)
+                    self.ctx.ui.success(f"Variable @{mention} set.")
+                else:
+                    self.ctx.ui.muted(f"Skipped @{mention}")
+
+            elif choice.startswith("s"):
+                # Define as secret
+                value = await self.ctx.ui.prompt_secret(f"Enter secret value for @{mention}:")
+                if value:
+                    self.ctx.secrets.set(mention, value)
+                    # Don't expand secrets - keep @mention in text
+                    self.ctx.ui.success(f"Secret @{mention} set.")
+                else:
+                    self.ctx.ui.muted(f"Skipped @{mention}")
+
+            else:
+                # Ignore - keep as-is
+                self.ctx.ui.muted(f"Keeping @{mention} as-is")
 
         return text
 
