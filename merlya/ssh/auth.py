@@ -436,44 +436,81 @@ class SSHAuthManager:
     async def _load_key_directly(
         self, key_path: Path, passphrase: str | None, options: SSHAuthOptions, host_id: str = ""
     ) -> None:
-        """Load a key directly for asyncssh with passphrase retry support."""
+        """Load a key directly for asyncssh with passphrase retry support (max 3 attempts)."""
         import asyncssh
 
-        try:
-            key = asyncssh.read_private_key(str(key_path), passphrase)
-            options.client_keys = [key]
-            logger.debug(f"Loaded key directly: {key_path}")
-        except asyncssh.KeyEncryptionError:
-            # Key is encrypted and we don't have the right passphrase
-            logger.debug(f"Key {key_path} requires passphrase")
-            new_passphrase = await self.ui.prompt_secret(f"🔐 Passphrase for {key_path.name}")
-            if new_passphrase:
-                try:
-                    key = asyncssh.read_private_key(str(key_path), new_passphrase)
-                    options.client_keys = [key]
-                    logger.debug(f"Loaded encrypted key: {key_path}")
-                    # Store successful passphrase in keyring
-                    await self._store_passphrase(key_path, host_id, new_passphrase)
-                except Exception as e:
-                    logger.error(f"❌ Failed to load key with passphrase: {e}")
-            else:
-                logger.warning(f"⚠️ No passphrase provided for encrypted key {key_path}")
-        except asyncssh.KeyImportError as e:
-            if "passphrase" in str(e).lower():
-                # Some key formats report passphrase requirement via KeyImportError
-                logger.debug(f"Key {key_path} requires passphrase (KeyImportError)")
-                new_passphrase = await self.ui.prompt_secret(f"🔐 Passphrase for {key_path.name}")
-                if new_passphrase:
-                    try:
-                        key = asyncssh.read_private_key(str(key_path), new_passphrase)
-                        options.client_keys = [key]
-                        await self._store_passphrase(key_path, host_id, new_passphrase)
-                    except Exception as retry_e:
-                        logger.error(f"❌ Failed to load key: {retry_e}")
-            else:
-                logger.error(f"❌ Invalid key format {key_path}: {e}")
-        except Exception as e:
-            logger.error(f"❌ Failed to load key {key_path}: {e}")
+        max_attempts = 3
+        current_passphrase = passphrase
+
+        for attempt in range(max_attempts):
+            try:
+                key = asyncssh.read_private_key(str(key_path), current_passphrase)
+                options.client_keys = [key]
+                logger.debug(f"Loaded key directly: {key_path}")
+
+                # Store successful passphrase in keyring (only if we prompted for it)
+                if current_passphrase and current_passphrase != passphrase:
+                    await self._store_passphrase(key_path, host_id, current_passphrase)
+                return
+
+            except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError) as e:
+                error_msg = str(e).lower()
+                is_passphrase_error = self._is_passphrase_error(error_msg)
+
+                if not is_passphrase_error:
+                    # Invalid key format - no point retrying
+                    logger.error(f"❌ Invalid key format {key_path}: {e}")
+                    return
+
+                # Wrong or missing passphrase
+                remaining = max_attempts - attempt - 1
+                if remaining > 0:
+                    if current_passphrase:
+                        self.ui.error(f"Wrong passphrase. {remaining} attempt(s) remaining.")
+                        # Clear wrong cached passphrase
+                        await self._clear_cached_passphrase(key_path, host_id)
+                    else:
+                        logger.debug(f"Key {key_path} requires passphrase")
+
+                    current_passphrase = await self.ui.prompt_secret(
+                        f"🔐 Passphrase for {key_path.name}"
+                    )
+                    if not current_passphrase:
+                        logger.warning(f"⚠️ No passphrase provided for encrypted key {key_path}")
+                        return
+                else:
+                    self.ui.error(f"❌ Max attempts reached for {key_path.name}")
+                    # Clear wrong cached passphrase
+                    await self._clear_cached_passphrase(key_path, host_id)
+                    return
+
+            except Exception as e:
+                logger.error(f"❌ Failed to load key {key_path}: {e}")
+                return
+
+    def _is_passphrase_error(self, error_msg: str) -> bool:
+        """Check if an error message indicates a passphrase problem."""
+        passphrase_indicators = [
+            "passphrase",
+            "decrypt",
+            "encrypted",
+            "bad decrypt",
+            "unable to decrypt",
+            "wrong password",
+            "mac check",
+        ]
+        return any(indicator in error_msg for indicator in passphrase_indicators)
+
+    async def _clear_cached_passphrase(self, key_path: Path, host_id: str) -> None:
+        """Clear wrong passphrase from cache."""
+        cache_keys = [
+            f"ssh:passphrase:{host_id}" if host_id else None,
+            f"ssh:passphrase:{key_path.name}",
+            f"ssh:passphrase:{key_path}",
+        ]
+        for cache_key in filter(None, cache_keys):
+            with contextlib.suppress(Exception):
+                self.secrets.delete(cache_key)
 
     async def _store_passphrase(self, key_path: Path, host_id: str, passphrase: str) -> None:
         """Store passphrase in keyring for future use."""
@@ -490,7 +527,11 @@ class SSHAuthManager:
         logger.info("✅ Passphrase stored in keyring")
 
     async def _get_passphrase(self, key_path: Path, host_id: str) -> str | None:
-        """Get passphrase for a key (from cache or prompt)."""
+        """Get passphrase for a key (from cache only, no prompt).
+
+        Note: Passphrase is only stored after successful key loading in _load_key_directly.
+        This method only retrieves cached passphrases.
+        """
         # Check if key needs passphrase
         if not self._key_is_encrypted(key_path):
             return None
@@ -508,19 +549,8 @@ class SSHAuthManager:
                 logger.debug(f"Found cached passphrase for {key_path.name}")
                 return passphrase
 
-        # Prompt user
-        passphrase = await self.ui.prompt_secret(f"Passphrase for {key_path}")
-
-        if passphrase:
-            # Cache for future use
-            for cache_key in cache_keys:
-                try:
-                    self.secrets.set(cache_key, passphrase)
-                except Exception as e:
-                    logger.debug(f"Failed to cache passphrase: {e}")
-            logger.debug("Passphrase cached successfully")
-
-        return passphrase
+        # No cached passphrase - will be prompted in _load_key_directly
+        return None
 
     def _key_is_encrypted(self, key_path: Path) -> bool:
         """Check if a private key is encrypted."""

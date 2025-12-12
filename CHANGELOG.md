@@ -46,6 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **SSH key passphrase retry** (`merlya/ssh/auth.py`)
+  - Wrong passphrase no longer stored in keyring
+  - User gets 3 attempts before failing
+  - Better detection of "wrong passphrase" vs "invalid key format" errors
+  - Wrong cached passphrase is cleared on failure
+
 ### Added
 
 - **Session Message Persistence**
