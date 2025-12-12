@@ -34,7 +34,7 @@ def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
         loop.add_signal_handler(signal.SIGTERM, lambda: handle_signal(signal.SIGTERM))
 
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 
 def create_parser() -> argparse.ArgumentParser:
