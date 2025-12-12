@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from merlya.tools.core.tools import (
+from merlya.tools.core import (
     ToolResult,
     ask_user,
     detect_unsafe_password,
@@ -144,7 +144,7 @@ class TestResolveHostReferences:
     @pytest.mark.asyncio
     async def test_resolve_from_inventory(self) -> None:
         """Test resolving @hostname from inventory."""
-        from merlya.tools.core.tools import resolve_host_references
+        from merlya.tools.core import resolve_host_references
 
         # Create mock hosts
         host = MagicMock()
@@ -159,7 +159,7 @@ class TestResolveHostReferences:
     @pytest.mark.asyncio
     async def test_resolve_from_inventory_case_insensitive(self) -> None:
         """Test that host resolution is case-insensitive."""
-        from merlya.tools.core.tools import resolve_host_references
+        from merlya.tools.core import resolve_host_references
 
         host = MagicMock()
         host.name = "Pine64"
@@ -173,7 +173,7 @@ class TestResolveHostReferences:
     @pytest.mark.asyncio
     async def test_resolve_via_dns(self) -> None:
         """Test resolving @hostname via DNS when not in inventory."""
-        from merlya.tools.core.tools import resolve_host_references
+        from merlya.tools.core import resolve_host_references
 
         # Empty inventory, but google.com resolves via DNS
         result = await resolve_host_references("ping @google.com", [])
@@ -184,7 +184,7 @@ class TestResolveHostReferences:
     @pytest.mark.asyncio
     async def test_resolve_with_user_prompt(self) -> None:
         """Test asking user when inventory and DNS both fail."""
-        from merlya.tools.core.tools import resolve_host_references
+        from merlya.tools.core import resolve_host_references
 
         ui = MagicMock()
         ui.prompt = AsyncMock(return_value="10.0.0.50")
@@ -198,7 +198,7 @@ class TestResolveHostReferences:
     @pytest.mark.asyncio
     async def test_no_resolution_keeps_original(self) -> None:
         """Test that unresolved hosts stay as @hostname."""
-        from merlya.tools.core.tools import resolve_host_references
+        from merlya.tools.core import resolve_host_references
 
         ui = MagicMock()
         ui.prompt = AsyncMock(return_value="")  # User provides nothing
@@ -211,7 +211,7 @@ class TestResolveHostReferences:
     @pytest.mark.asyncio
     async def test_skip_structured_references(self) -> None:
         """Test that structured refs like @sudo:host:password are skipped."""
-        from merlya.tools.core.tools import resolve_host_references
+        from merlya.tools.core import resolve_host_references
 
         result = await resolve_host_references("echo @sudo:host:password", [])
 
@@ -280,7 +280,7 @@ class TestIsIP:
 
     def test_valid_ipv4(self) -> None:
         """Test valid IPv4 address."""
-        from merlya.tools.core.tools import _is_ip
+        from merlya.tools.core.ssh import _is_ip
 
         assert _is_ip("192.168.1.1") is True
         assert _is_ip("10.0.0.1") is True
@@ -288,14 +288,14 @@ class TestIsIP:
 
     def test_valid_ipv6(self) -> None:
         """Test valid IPv6 address."""
-        from merlya.tools.core.tools import _is_ip
+        from merlya.tools.core.ssh import _is_ip
 
         assert _is_ip("::1") is True
         assert _is_ip("2001:db8::1") is True
 
     def test_invalid_ip(self) -> None:
         """Test invalid IP addresses."""
-        from merlya.tools.core.tools import _is_ip
+        from merlya.tools.core.ssh import _is_ip
 
         assert _is_ip("hostname.example.com") is False
         assert _is_ip("192.168.1.256") is False
@@ -312,7 +312,7 @@ class TestExplainSSHError:
 
     def test_timeout_error_errno_60(self) -> None:
         """Test explanation for timeout error (errno 60)."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Connection timed out errno 60")
         result = _explain_ssh_error(error, "host1")
@@ -322,7 +322,7 @@ class TestExplainSSHError:
 
     def test_timeout_error_errno_110(self) -> None:
         """Test explanation for timeout error (errno 110)."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("errno 110 connection timed out")
         result = _explain_ssh_error(error, "host1")
@@ -331,7 +331,7 @@ class TestExplainSSHError:
 
     def test_connection_refused(self) -> None:
         """Test explanation for connection refused."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Connection refused")
         result = _explain_ssh_error(error, "host1")
@@ -340,7 +340,7 @@ class TestExplainSSHError:
 
     def test_no_route_to_host(self) -> None:
         """Test explanation for no route to host."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("No route to host")
         result = _explain_ssh_error(error, "host1")
@@ -349,7 +349,7 @@ class TestExplainSSHError:
 
     def test_dns_resolution_failed(self) -> None:
         """Test explanation for DNS failure."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Name or service not known")
         result = _explain_ssh_error(error, "unknown-host")
@@ -358,7 +358,7 @@ class TestExplainSSHError:
 
     def test_authentication_failed(self) -> None:
         """Test explanation for auth failure."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Authentication failed")
         result = _explain_ssh_error(error, "host1")
@@ -367,7 +367,7 @@ class TestExplainSSHError:
 
     def test_host_key_verification_failed(self) -> None:
         """Test explanation for host key verification."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Host key verification failed")
         result = _explain_ssh_error(error, "host1")
@@ -376,7 +376,7 @@ class TestExplainSSHError:
 
     def test_via_jump_host_in_message(self) -> None:
         """Test that jump host is mentioned when provided."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Connection timed out")
         result = _explain_ssh_error(error, "host1", via="jump-host")
@@ -385,7 +385,7 @@ class TestExplainSSHError:
 
     def test_generic_error(self) -> None:
         """Test generic error fallback."""
-        from merlya.tools.core.tools import _explain_ssh_error
+        from merlya.tools.core.ssh import _explain_ssh_error
 
         error = Exception("Some unknown error")
         result = _explain_ssh_error(error, "host1")
@@ -886,7 +886,7 @@ class TestEnsureCallbacks:
 
     def test_sets_passphrase_callback(self, mock_shared_context: MagicMock) -> None:
         """Test that passphrase callback is set."""
-        from merlya.tools.core.tools import _ensure_callbacks
+        from merlya.tools.core.ssh import _ensure_callbacks
 
         mock_pool = MagicMock()
         mock_pool.has_passphrase_callback.return_value = False
@@ -898,7 +898,7 @@ class TestEnsureCallbacks:
 
     def test_sets_mfa_callback(self, mock_shared_context: MagicMock) -> None:
         """Test that MFA callback is set."""
-        from merlya.tools.core.tools import _ensure_callbacks
+        from merlya.tools.core.ssh import _ensure_callbacks
 
         mock_pool = MagicMock()
         mock_pool.has_passphrase_callback.return_value = True
@@ -910,7 +910,7 @@ class TestEnsureCallbacks:
 
     def test_skips_if_callbacks_already_set(self, mock_shared_context: MagicMock) -> None:
         """Test that callbacks are not set if already present."""
-        from merlya.tools.core.tools import _ensure_callbacks
+        from merlya.tools.core.ssh import _ensure_callbacks
 
         mock_pool = MagicMock()
         mock_pool.has_passphrase_callback.return_value = True
@@ -971,7 +971,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_success(self, mock_context: MagicMock) -> None:
         """Test successful local command execution."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         result = await bash_execute(mock_context, "echo 'hello world'", timeout=10)
 
@@ -982,7 +982,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_command_failure(self, mock_context: MagicMock) -> None:
         """Test command that returns non-zero exit code."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         result = await bash_execute(mock_context, "exit 1", timeout=10)
 
@@ -992,7 +992,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_empty_command(self, mock_context: MagicMock) -> None:
         """Test that empty command is rejected."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         result = await bash_execute(mock_context, "", timeout=10)
 
@@ -1002,7 +1002,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_invalid_timeout(self, mock_context: MagicMock) -> None:
         """Test that invalid timeout is rejected."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         result = await bash_execute(mock_context, "echo test", timeout=0)
 
@@ -1012,7 +1012,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_dangerous_command_blocked(self, mock_context: MagicMock) -> None:
         """Test that dangerous commands are blocked."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         result = await bash_execute(mock_context, "rm -rf /", timeout=10)
 
@@ -1022,7 +1022,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_with_secret(self, mock_context: MagicMock) -> None:
         """Test command with secret resolution."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         mock_context.secrets.get.return_value = "secret_value"
 
@@ -1035,7 +1035,7 @@ class TestBashExecute:
     @pytest.mark.asyncio
     async def test_bash_execute_captures_stderr(self, mock_context: MagicMock) -> None:
         """Test that stderr is captured."""
-        from merlya.tools.core.tools import bash_execute
+        from merlya.tools.core import bash_execute
 
         result = await bash_execute(mock_context, "echo 'error' >&2", timeout=10)
 
