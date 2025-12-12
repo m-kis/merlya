@@ -298,7 +298,7 @@
     "step_inventory": "🖥️ **Étape 2 : Détection des inventaires**",
     "llm_config": {
       "title": "📡 Configuration du Provider LLM",
-      "providers": "Providers disponibles :\n  1. OpenRouter (recommandé - multi-modèles)\n  2. Anthropic (Claude direct)\n  3. OpenAI (modèles GPT)\n  4. Ollama (modèles locaux)",
+      "providers": "Providers disponibles :\n  1. OpenRouter (recommandé - multi-modèles)\n  2. Anthropic (Claude direct)\n  3. OpenAI (modèles GPT)\n  4. Mistral (Mistral AI)\n  5. Groq (inférence rapide)\n  6. Ollama (modèles locaux)",
       "select_provider": "Sélectionnez un provider",
       "enter_api_key": "Entrez votre {api_key}",
       "select_model": "Modèle par défaut",

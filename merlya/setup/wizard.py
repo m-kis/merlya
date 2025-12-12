@@ -67,7 +67,9 @@ PROVIDERS = {
         "anthropic:claude-3-haiku-20240307",
     ),
     "3": ("openai", "OPENAI_API_KEY", "gpt-4o", "openai:gpt-4o-mini"),
-    "4": ("ollama", None, "llama3.2", "ollama:llama3.2"),
+    "4": ("mistral", "MISTRAL_API_KEY", "mistral-large-latest", "mistral:mistral-small-latest"),
+    "5": ("groq", "GROQ_API_KEY", "llama-3.3-70b-versatile", "groq:llama-3.1-8b-instant"),
+    "6": ("ollama", None, "llama3.2", "ollama:llama3.2"),
 }
 
 
@@ -97,7 +99,7 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
 
     choice = await ui.prompt_choice(
         t("setup.llm_config.select_provider"),
-        choices=["1", "2", "3", "4"],
+        choices=["1", "2", "3", "4", "5", "6"],
         default="1",
     )
 
