@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">Lire en Francais</a>
+  <a href="https://github.com/m-kis/merlya/blob/main/README.md">Lire en Français</a>
 </p>
 
 ---
