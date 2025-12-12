@@ -355,7 +355,7 @@ async def ssh_execute(
             password_prompted = False
             try:
                 permissions = await ctx.get_permissions()
-                elevation_result = await permissions.prepare_command(host, base_command)
+                elevation_result = await permissions.prepare_command(host, base_command)  # type: ignore[attr-defined]
 
                 if elevation_result.method:
                     elevated_cmd = elevation_result.command
@@ -363,7 +363,7 @@ async def ssh_execute(
                     elevation_used = elevation_result.method
 
                     # Get cached capabilities for elevate_command calls
-                    capabilities = await permissions.detect_capabilities(host)
+                    capabilities = await permissions.detect_capabilities(host)  # type: ignore[attr-defined]
 
                     # If elevation needs password and we don't have input, prompt
                     if elevation_result.needs_password and not elevated_input:
@@ -371,8 +371,8 @@ async def ssh_execute(
                         password_prompted = True
                         if password:
                             # Cache password for reuse in this session
-                            permissions.cache_password(host, password)
-                            elevated_cmd, elevated_input = permissions.elevate_command(
+                            permissions.cache_password(host, password)  # type: ignore[attr-defined]
+                            elevated_cmd, elevated_input = permissions.elevate_command(  # type: ignore[attr-defined]
                                 base_command, capabilities, elevation_used, password
                             )
 
@@ -403,8 +403,8 @@ async def ssh_execute(
                             f"🔑 {elevation_used} password required"
                         )
                         if password:
-                            permissions.cache_password(host, password)
-                            elevated_cmd, elevated_input = permissions.elevate_command(
+                            permissions.cache_password(host, password)  # type: ignore[attr-defined]
+                            elevated_cmd, elevated_input = permissions.elevate_command(  # type: ignore[attr-defined]
                                 base_command, capabilities, elevation_used, password
                             )
                             result = await _run(elevated_cmd, elevated_input)

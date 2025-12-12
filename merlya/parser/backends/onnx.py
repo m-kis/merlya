@@ -330,17 +330,21 @@ class ONNXParserBackend(ParserBackend):
             attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
 
             # Build inputs
+            assert self._session is not None  # Already checked above
             model_inputs = {i.name for i in self._session.get_inputs()}
-            run_inputs: dict[str, NDArray] = {"input_ids": input_ids}
+            run_inputs: dict[str, NDArray[Any]] = {"input_ids": input_ids}
             if "attention_mask" in model_inputs:
                 run_inputs["attention_mask"] = attention_mask
             if "token_type_ids" in model_inputs:
                 run_inputs["token_type_ids"] = np.zeros_like(input_ids, dtype=np.int64)
 
-            # Run inference in thread
-            def _infer() -> NDArray:
-                outputs = self._session.run(None, run_inputs)
-                return outputs[0]  # logits
+            # Run inference in thread (capture session reference for closure)
+            session = self._session
+
+            def _infer() -> NDArray[Any]:
+                outputs = session.run(None, run_inputs)
+                logits: NDArray[Any] = outputs[0]
+                return logits
 
             logits = await asyncio.to_thread(_infer)
 
@@ -421,7 +425,7 @@ class ONNXParserBackend(ParserBackend):
             "." in value
             or "-" in value
             or value.endswith(("-server", "-db", "-api", "-app", "-host", "-node"))
-            or re.match(r"^[a-z0-9]+-[a-z0-9]+$", value.lower())  # e.g., web-01
+            or bool(re.match(r"^[a-z0-9]+-[a-z0-9]+$", value.lower()))  # e.g., web-01
         )
 
         # Reject if it looks like a generic organization name

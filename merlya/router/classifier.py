@@ -379,7 +379,7 @@ class IntentRouter:
             Tuple of (skill_name, confidence) or (None, 0.0).
         """
         if self.classifier.model_loaded:
-            skill_name, confidence = await self.classifier.get_best_skill_match(user_input)
+            skill_name, confidence = await self.classifier.get_best_skill_match(user_input)  # type: ignore[attr-defined]
             if skill_name:
                 return skill_name, confidence
         return None, 0.0

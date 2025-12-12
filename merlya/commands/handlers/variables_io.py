@@ -380,7 +380,7 @@ async def export_variables(
     if include_secrets:
         secret_names = ctx.secrets.list_keys()
 
-    data = {
+    data: dict[str, dict[str, str] | list[str]] = {
         "variables": var_dict,
     }
 

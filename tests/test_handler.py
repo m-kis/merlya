@@ -27,14 +27,14 @@ class MockHost:
     """Mock host for testing."""
 
     name: str
-    address: str
+    hostname: str
     port: int = 22
-    user: str = "admin"
-    status: str = "online"
+    username: str = "admin"
+    health_status: str = "healthy"
     tags: list[str] | None = None
     os_info: str | None = None
     last_seen: str | None = None
-    notes: str | None = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.tags is None:
@@ -43,10 +43,10 @@ class MockHost:
     def model_dump(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "address": self.address,
+            "hostname": self.hostname,
             "port": self.port,
-            "user": self.user,
-            "status": self.status,
+            "username": self.username,
+            "health_status": self.health_status,
             "tags": self.tags,
         }
 
@@ -68,10 +68,10 @@ def mock_context() -> MagicMock:
     ctx.hosts = AsyncMock()
     ctx.hosts.get_all = AsyncMock(
         return_value=[
-            MockHost(name="web-01", address="10.0.0.1", status="online", tags=["web", "prod"]),
-            MockHost(name="web-02", address="10.0.0.2", status="online", tags=["web", "prod"]),
-            MockHost(name="db-01", address="10.0.0.10", status="online", tags=["db", "prod"]),
-            MockHost(name="backup", address="10.0.0.100", status="offline"),
+            MockHost(name="web-01", hostname="10.0.0.1", health_status="healthy", tags=["web", "prod"]),
+            MockHost(name="web-02", hostname="10.0.0.2", health_status="healthy", tags=["web", "prod"]),
+            MockHost(name="db-01", hostname="10.0.0.10", health_status="healthy", tags=["db", "prod"]),
+            MockHost(name="backup", hostname="10.0.0.100", health_status="unreachable"),
         ]
     )
 

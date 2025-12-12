@@ -14,6 +14,7 @@ import hashlib
 import json
 from collections import Counter
 from collections.abc import Callable
+from typing import Any
 
 from loguru import logger
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse
@@ -53,7 +54,7 @@ def validate_tool_pairing(messages: list[ModelMessage]) -> bool:
                 if isinstance(part, ToolCallPart) and part.tool_call_id:
                     call_ids.add(part.tool_call_id)
         elif isinstance(msg, ModelRequest):
-            for part in msg.parts:
+            for part in msg.parts:  # type: ignore[assignment]
                 if isinstance(part, ToolReturnPart) and part.tool_call_id:
                     return_ids.add(part.tool_call_id)
 
@@ -101,7 +102,7 @@ def find_safe_truncation_point(
                 if isinstance(part, ToolCallPart) and part.tool_call_id:
                     calls_before.add(part.tool_call_id)
         elif isinstance(msg, ModelRequest):
-            for part in msg.parts:
+            for part in msg.parts:  # type: ignore[assignment]
                 if isinstance(part, ToolReturnPart) and part.tool_call_id:
                     # Return also before truncation, remove from tracking
                     calls_before.discard(part.tool_call_id)
@@ -111,7 +112,7 @@ def find_safe_truncation_point(
     for i in range(start_idx, len(messages)):
         msg = messages[i]
         if isinstance(msg, ModelRequest):
-            for part in msg.parts:
+            for part in msg.parts:  # type: ignore[assignment]
                 if isinstance(part, ToolReturnPart) and part.tool_call_id:
                     returns_after.add(part.tool_call_id)
 
@@ -133,6 +134,7 @@ def find_safe_truncation_point(
                     and part.tool_call_id in orphaned_calls
                 )
                 if is_orphaned_call:
+                    assert isinstance(part, ToolCallPart)
                     orphaned_calls.discard(part.tool_call_id)
                     if not orphaned_calls:
                         return i
@@ -239,7 +241,7 @@ def get_user_message_count(messages: list[ModelMessage]) -> int:
     return count
 
 
-def _compute_tool_signature(tool_name: str, args: dict | str | None) -> str:
+def _compute_tool_signature(tool_name: str, args: dict[str, Any] | str | None) -> str:
     """
     Compute a signature for a tool call (name + args hash).
 

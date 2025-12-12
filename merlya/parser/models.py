@@ -96,6 +96,7 @@ class IncidentInput(BaseModel):
     """
 
     description: str = Field(
+        default="",
         description="Main incident description",
     )
     severity: Severity = Field(
@@ -140,7 +141,7 @@ class IncidentParsingResult(ParsingResult):
     """Result of parsing an incident description."""
 
     incident: IncidentInput = Field(
-        default_factory=IncidentInput,
+        default_factory=lambda: IncidentInput(),
         description="Structured incident data",
     )
 

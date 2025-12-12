@@ -179,6 +179,7 @@ class ParserService:
         if not self._initialized and not await self.initialize():
             raise RuntimeError("Failed to initialize ParserService")
 
+        assert self._backend is not None  # Guaranteed after initialization
         return await self._backend.parse_incident(text)
 
     async def parse_log(self, text: str) -> LogParsingResult:
@@ -197,6 +198,7 @@ class ParserService:
         if not self._initialized and not await self.initialize():
             raise RuntimeError("Failed to initialize ParserService")
 
+        assert self._backend is not None  # Guaranteed after initialization
         return await self._backend.parse_log(text)
 
     async def parse_host_query(self, text: str) -> HostQueryParsingResult:
@@ -212,6 +214,7 @@ class ParserService:
         if not self._initialized and not await self.initialize():
             raise RuntimeError("Failed to initialize ParserService")
 
+        assert self._backend is not None  # Guaranteed after initialization
         return await self._backend.parse_host_query(text)
 
     async def parse_command(self, text: str) -> CommandParsingResult:
@@ -227,6 +230,7 @@ class ParserService:
         if not self._initialized and not await self.initialize():
             raise RuntimeError("Failed to initialize ParserService")
 
+        assert self._backend is not None  # Guaranteed after initialization
         return await self._backend.parse_command(text)
 
     async def extract_entities(self, text: str) -> dict[str, list[str]]:
@@ -242,6 +246,7 @@ class ParserService:
         if not self._initialized and not await self.initialize():
             raise RuntimeError("Failed to initialize ParserService")
 
+        assert self._backend is not None  # Guaranteed after initialization
         return await self._backend.extract_entities(text)
 
 

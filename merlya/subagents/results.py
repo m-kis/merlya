@@ -238,25 +238,25 @@ class AggregatedResults(BaseModel):
         description="Sum of tokens used across all subagents",
     )
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_hosts(self) -> int:
         """Total number of hosts targeted."""
         return len(self.results)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def succeeded_hosts(self) -> int:
         """Number of hosts that succeeded."""
         return sum(1 for r in self.results if r.success)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def failed_hosts(self) -> int:
         """Number of hosts that failed."""
         return sum(1 for r in self.results if not r.success)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def success_rate(self) -> float:
         """Success rate as a percentage (0.0-100.0)."""

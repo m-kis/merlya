@@ -352,10 +352,10 @@ async def _handle_host_list(ctx: SharedContext) -> HandlerResponse:
             suggestions=["/scan", "/host add <name> --address <ip>"],
         )
 
-    # Group by status
-    online = [h for h in hosts if h.status == "online"]
-    offline = [h for h in hosts if h.status == "offline"]
-    unknown = [h for h in hosts if h.status not in ("online", "offline")]
+    # Group by health_status
+    online = [h for h in hosts if h.health_status == "healthy"]
+    offline = [h for h in hosts if h.health_status == "unreachable"]
+    unknown = [h for h in hosts if h.health_status not in ("healthy", "unreachable")]
 
     lines = ["## Host Inventory", ""]
 
@@ -363,7 +363,7 @@ async def _handle_host_list(ctx: SharedContext) -> HandlerResponse:
         lines.append(f"### Online ({len(online)})")
         for h in online[:20]:  # Limit display
             tags = f" `{', '.join(h.tags)}`" if h.tags else ""
-            lines.append(f"- ✅ **@{h.name}** ({h.address}){tags}")
+            lines.append(f"- ✅ **@{h.name}** ({h.hostname}){tags}")
         if len(online) > 20:
             lines.append(f"  ... and {len(online) - 20} more")
         lines.append("")
@@ -371,7 +371,7 @@ async def _handle_host_list(ctx: SharedContext) -> HandlerResponse:
     if offline:
         lines.append(f"### Offline ({len(offline)})")
         for h in offline[:10]:
-            lines.append(f"- ❌ **@{h.name}** ({h.address})")
+            lines.append(f"- ❌ **@{h.name}** ({h.hostname})")
         if len(offline) > 10:
             lines.append(f"  ... and {len(offline) - 10} more")
         lines.append("")
@@ -379,7 +379,7 @@ async def _handle_host_list(ctx: SharedContext) -> HandlerResponse:
     if unknown:
         lines.append(f"### Unknown ({len(unknown)})")
         for h in unknown[:5]:
-            lines.append(f"- ❓ **@{h.name}** ({h.address})")
+            lines.append(f"- ❓ **@{h.name}** ({h.hostname})")
         if len(unknown) > 5:
             lines.append(f"  ... and {len(unknown) - 5} more")
 
@@ -414,13 +414,14 @@ async def _handle_host_details(ctx: SharedContext, hostname: str) -> HandlerResp
         )
 
     # Format details
+    status_icon = "✅ Online" if host.health_status == "healthy" else "❌ Offline" if host.health_status == "unreachable" else "❓ Unknown"
     lines = [
         f"## Host: @{host.name}",
         "",
-        f"- **Address**: {host.address}",
+        f"- **Address**: {host.hostname}",
         f"- **Port**: {host.port or 22}",
-        f"- **User**: {host.user or 'default'}",
-        f"- **Status**: {'✅ Online' if host.status == 'online' else '❌ Offline' if host.status == 'offline' else '❓ Unknown'}",
+        f"- **User**: {host.username or 'default'}",
+        f"- **Status**: {status_icon}",
     ]
 
     if host.tags:
@@ -432,10 +433,10 @@ async def _handle_host_details(ctx: SharedContext, hostname: str) -> HandlerResp
     if host.last_seen:
         lines.append(f"- **Last Seen**: {host.last_seen}")
 
-    if host.notes:
+    if host.metadata and host.metadata.get("notes"):
         lines.append("")
         lines.append("### Notes")
-        lines.append(host.notes)
+        lines.append(str(host.metadata["notes"]))
 
     return HandlerResponse(
         message="\n".join(lines),

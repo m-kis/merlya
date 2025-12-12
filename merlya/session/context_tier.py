@@ -226,8 +226,8 @@ class ContextTierPredictor:
         if router_result:
             router_confidence = getattr(router_result, "confidence", 0.5)
             mode = getattr(router_result, "mode", None)
-            is_incident = mode and "diagnostic" in str(mode).lower()
-            is_remediation = mode and "remediation" in str(mode).lower()
+            is_incident = bool(mode and "diagnostic" in str(mode).lower())
+            is_remediation = bool(mode and "remediation" in str(mode).lower())
 
             entities = getattr(router_result, "entities", {})
             if isinstance(entities, dict):

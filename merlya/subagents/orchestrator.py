@@ -121,14 +121,11 @@ class SubagentOrchestrator:
         started_at = datetime.now(UTC)
 
         # Determine and validate max timeout
-        effective_timeout = timeout
-        if effective_timeout is None:
-            skill_timeout = getattr(skill, "timeout_seconds", None) if skill else None
-            effective_timeout = (
-                skill_timeout
-                if isinstance(skill_timeout, (int, float))
-                else DEFAULT_MAX_TIMEOUT_SECONDS
-            )
+        effective_timeout: int | float = timeout if timeout is not None else DEFAULT_MAX_TIMEOUT_SECONDS
+        if timeout is None and skill:
+            skill_timeout = getattr(skill, "timeout_seconds", None)
+            if isinstance(skill_timeout, (int, float)):
+                effective_timeout = skill_timeout
 
         # Clamp timeout to valid range (also handles None/invalid values from above)
         if (
@@ -185,19 +182,21 @@ class SubagentOrchestrator:
 
         # Process results
         results: list[SubagentResult] = []
-        for i, result in enumerate(raw_results):
-            if isinstance(result, Exception):
+        for i, raw_result in enumerate(raw_results):
+            if isinstance(raw_result, Exception):
                 # Convert exception to SubagentResult
                 results.append(
                     SubagentResult(
                         host=hosts[i],
                         success=False,
                         status=SubagentStatus.FAILED,
-                        error=str(result),
+                        error=str(raw_result),
                     )
                 )
             else:
-                results.append(result)
+                # raw_result is SubagentResult (not an exception)
+                assert isinstance(raw_result, SubagentResult)
+                results.append(raw_result)
 
         async with self._executions_lock:
             self._active_executions[execution_id] = "completed"

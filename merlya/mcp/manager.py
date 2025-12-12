@@ -164,11 +164,13 @@ class MCPManager:
         cwd: str | None = None,
     ) -> None:
         """Add a new MCP server configuration and persist it."""
+        from pathlib import Path
+
         self.config.mcp.servers[name] = MCPServerConfig(
             command=command,
             args=args,
             env=env,
-            cwd=cwd,
+            cwd=Path(cwd) if cwd else None,
             enabled=True,
         )
         self.config.save()

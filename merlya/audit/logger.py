@@ -146,7 +146,7 @@ class AuditLogger:
         if logfire_enabled and LOGFIRE_AVAILABLE and _logfire:
             try:
                 # Configure logfire if not already configured
-                if not _logfire.DEFAULT_LOGFIRE_INSTANCE._initialized:
+                if not _logfire.DEFAULT_LOGFIRE_INSTANCE._initialized:  # type: ignore[attr-defined]
                     _logfire.configure(
                         service_name="merlya",
                         send_to_logfire="if-token-present",
@@ -220,8 +220,8 @@ class AuditLogger:
             try:
                 # Create a span with structured attributes
                 level = "info" if event.success else "warn"
-                _logfire.log(
-                    level,
+                _logfire.log(  # type: ignore[call-arg]
+                    level,  # type: ignore[arg-type]
                     f"audit.{event.event_type.value}",
                     event_id=event.event_id,
                     event_type=event.event_type.value,
@@ -229,7 +229,7 @@ class AuditLogger:
                     target=event.target,
                     user=event.user,
                     success=event.success,
-                    **{
+                    **{  # type: ignore[arg-type]
                         f"details.{k}": v
                         for k, v in (event.details or {}).items()
                         if isinstance(v, (str, int, float, bool))

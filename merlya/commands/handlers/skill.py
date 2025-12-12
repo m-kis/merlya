@@ -14,6 +14,7 @@ from loguru import logger
 
 from merlya.commands.registry import CommandResult, command, subcommand
 from merlya.skills.loader import SkillLoader
+from merlya.skills.models import SkillConfig
 from merlya.skills.registry import get_registry
 from merlya.skills.wizard import SkillWizard, generate_skill_template
 
@@ -219,7 +220,7 @@ async def cmd_skill_create(ctx: SharedContext, _args: list[str]) -> CommandResul
         )
 
 
-async def _generate_skill_with_llm(ctx: SharedContext, skill) -> object | None:
+async def _generate_skill_with_llm(ctx: SharedContext, skill: SkillConfig) -> SkillConfig | None:
     """
     Ask the LLM to enhance the skill YAML with detailed configuration.
 

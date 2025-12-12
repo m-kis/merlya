@@ -199,7 +199,7 @@ class SkillWizard:
                 if self.confirm and not await self.confirm("Overwrite existing skill?"):
                     continue
 
-            return name
+            return str(name)
 
     async def _prompt_description(self) -> str:
         """Prompt for description."""
@@ -383,7 +383,7 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
                 None,
             )
             if prompt and prompt.strip():
-                return prompt.strip()
+                return str(prompt).strip()
 
         # Generate a default
         return f"You are executing the '{name}' skill. {description}"

@@ -227,7 +227,7 @@ async def cleanup_expired_logs(db: Database) -> int:
         "DELETE FROM raw_logs WHERE expires_at < ?",
         (now,),
     ) as cursor:
-        deleted = cursor.rowcount
+        deleted = int(cursor.rowcount or 0)
 
     await db.connection.commit()
 

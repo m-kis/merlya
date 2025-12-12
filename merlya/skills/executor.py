@@ -156,17 +156,19 @@ class SkillExecutor:
 
         # Process results
         processed_results: list[HostResult] = []
-        for i, result in enumerate(host_results):
-            if isinstance(result, Exception):
+        for i, raw_host_result in enumerate(host_results):
+            if isinstance(raw_host_result, Exception):
                 processed_results.append(
                     HostResult(
                         host=effective_hosts[i],
                         success=False,
-                        error=str(result),
+                        error=str(raw_host_result),
                     )
                 )
             else:
-                processed_results.append(result)
+                # raw_host_result is HostResult (not an exception)
+                assert isinstance(raw_host_result, HostResult)
+                processed_results.append(raw_host_result)
 
         completed_at = datetime.now(UTC)
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -183,7 +185,7 @@ class SkillExecutor:
         else:
             status = SkillStatus.PARTIAL
 
-        result = SkillResult(
+        skill_result = SkillResult(
             skill_name=skill.name,
             execution_id=execution_id,
             status=status,
@@ -196,7 +198,7 @@ class SkillExecutor:
             failed_hosts=failed,
         )
 
-        logger.info(f"🎬 Skill '{skill.name}' completed: {result.to_summary()}")
+        logger.info(f"🎬 Skill '{skill.name}' completed: {skill_result.to_summary()}")
 
         # Audit logging
         if self._audit_logger:
@@ -214,7 +216,7 @@ class SkillExecutor:
                     f"(hosts={effective_hosts}, task={task!r}): {e}"
                 )
 
-        return result
+        return skill_result
 
     async def _execute_single(
         self,
@@ -378,7 +380,7 @@ class SkillExecutor:
 
         # Need confirmation
         if confirm_callback:
-            return await confirm_callback(f"Confirm {operation}?")
+            return bool(await confirm_callback(f"Confirm {operation}?"))
 
         logger.warning(f"⚠️ Operation '{operation}' requires confirmation but no callback provided")
         return False

@@ -112,7 +112,7 @@ def _to_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
         return value.value
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return {k: _to_json_safe(v, _seen) for k, v in asdict(value).items()}
     if isinstance(value, dict):
         return {k: _to_json_safe(v, _seen) for k, v in value.items()}
