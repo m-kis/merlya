@@ -593,14 +593,37 @@ class TestSSHExecute:
         assert result.data["stdout"] == "output"
 
     @pytest.mark.asyncio
-    async def test_ssh_execute_host_not_found(self, mock_shared_context: MagicMock) -> None:
-        """Test SSH execute with host not in inventory."""
+    async def test_ssh_execute_host_not_in_inventory_tries_direct(
+        self, mock_shared_context: MagicMock
+    ) -> None:
+        """Test SSH execute with host not in inventory attempts direct connection.
+
+        PROACTIVE MODE: Hosts not in inventory should be tried directly,
+        not rejected. The connection may fail, but we should attempt it.
+        """
+        from merlya.ssh.pool import SSHResult
+
         mock_shared_context.hosts.get_by_name = AsyncMock(return_value=None)
+
+        mock_pool = MagicMock()
+        mock_pool.execute = AsyncMock(
+            return_value=SSHResult(
+                stdout="connected",
+                stderr="",
+                exit_code=0,
+            )
+        )
+        mock_pool.has_passphrase_callback = MagicMock(return_value=True)
+        mock_pool.has_mfa_callback = MagicMock(return_value=True)
+        mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)
 
         result = await ssh_execute(mock_shared_context, "unknown-host", "ls")
 
-        assert result.success is False
-        assert "not found" in result.error
+        # Proactive mode: should attempt connection, not fail immediately
+        assert result.success is True
+        assert result.data["stdout"] == "connected"
+        # Verify the pool.execute was called with the hostname directly
+        mock_pool.execute.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ssh_execute_direct_ip(self, mock_shared_context: MagicMock) -> None:

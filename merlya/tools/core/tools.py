@@ -253,19 +253,18 @@ async def ssh_execute(
         # Resolve secrets in command (@secret-name -> actual value)
         resolved_command, safe_command = resolve_secrets(command, ctx.secrets)
 
-        # Resolve host from inventory
+        # Resolve host from inventory (optional - inventory is a convenience, not a requirement)
         host_entry = await ctx.hosts.get_by_name(host)
 
         if not host_entry:
-            # Allow direct IP usage without inventory
+            # PROACTIVE MODE: Allow any hostname, not just inventory or IPs
+            # The SSH connection will fail if the host is unreachable, but that's OK -
+            # the agent can then discover alternatives using bash commands.
             if _is_ip(host):
                 logger.debug(f"Using direct IP (no inventory) for SSH: {host}")
             else:
-                return ToolResult(
-                    success=False,
-                    error=f"Host '{host}' not found in inventory. Use /hosts add {host} first.",
-                    data={"host": host, "command": safe_command[:50]},
-                )
+                # Treat as hostname - try to connect directly
+                logger.debug(f"Host '{host}' not in inventory, attempting direct connection")
 
         # Apply prepared elevation (brain-driven only)
         input_data = None
