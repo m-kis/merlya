@@ -139,10 +139,26 @@ class TestProviders:
 
     def test_ollama_no_api_key(self):
         """Test Ollama has no API key requirement."""
-        provider, env_key, _model, _fallback = PROVIDERS["4"]
+        provider, env_key, _model, _fallback = PROVIDERS["6"]
 
         assert provider == "ollama"
         assert env_key is None
+
+    def test_mistral_provider(self):
+        """Test Mistral provider configuration."""
+        provider, env_key, model, _fallback = PROVIDERS["4"]
+
+        assert provider == "mistral"
+        assert env_key == "MISTRAL_API_KEY"
+        assert "mistral" in model
+
+    def test_groq_provider(self):
+        """Test Groq provider configuration."""
+        provider, env_key, model, _fallback = PROVIDERS["5"]
+
+        assert provider == "groq"
+        assert env_key == "GROQ_API_KEY"
+        assert "llama" in model
 
 
 class TestMergeFields:
@@ -667,7 +683,7 @@ class TestRunLLMSetupMocked:
     async def test_llm_setup_ollama_no_api_key(self):
         """Test LLM setup with Ollama (no API key needed)."""
         mock_ui = MagicMock()
-        mock_ui.prompt_choice = AsyncMock(return_value="4")  # Ollama
+        mock_ui.prompt_choice = AsyncMock(return_value="6")  # Ollama (now option 6)
         mock_ui.prompt = AsyncMock(return_value="llama3.2")
         mock_ui.panel = MagicMock()
         mock_ui.success = MagicMock()

@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dangerous command blocklist for safety
   - Proper timeout and secret handling
 
+- **Mistral and Groq in Setup Wizard** (`merlya/setup/wizard.py`)
+  - Added Mistral (mistral-large-latest) as option 4
+  - Added Groq (llama-3.3-70b-versatile) as option 5
+  - Ollama moved to option 6
+
 ### Fixed
 
 - **Ctrl+C handling in prompts** (`merlya/ui/console.py`)
