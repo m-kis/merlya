@@ -784,7 +784,7 @@ async def bash_execute(
                 process.communicate(),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             logger.warning(f"⏱️ Command timed out after {timeout}s")
             return ToolResult(
