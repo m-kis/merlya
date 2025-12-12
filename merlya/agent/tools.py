@@ -108,7 +108,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
             bash(command="docker ps")
         """
         from merlya.subagents.timeout import touch_activity
-        from merlya.tools.core.tools import bash_execute as _bash_execute
+        from merlya.tools.core import bash_execute as _bash_execute
 
         logger.info(f"🖥️ Running locally: {command[:60]}...")
 
