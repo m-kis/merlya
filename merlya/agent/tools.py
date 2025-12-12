@@ -79,6 +79,51 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         raise ModelRetry(f"Host not found: {result.error}")
 
     @agent.tool
+    async def bash(
+        ctx: RunContext[AgentDependencies],
+        command: str,
+        timeout: int = 60,
+    ) -> dict[str, Any]:
+        """
+        Execute a command locally on your machine.
+
+        Use this tool for local operations:
+        - kubectl, aws, gcloud, az CLI commands
+        - docker commands
+        - Local file checks
+        - Any CLI tool installed locally
+
+        This is your UNIVERSAL FALLBACK when no specific tool exists.
+
+        Args:
+            command: Command to execute (e.g., "kubectl get pods", "aws s3 ls").
+            timeout: Command timeout in seconds (default: 60).
+
+        Returns:
+            Command output with stdout, stderr, and exit_code.
+
+        Example:
+            bash(command="kubectl get pods -n production")
+            bash(command="aws eks list-clusters")
+            bash(command="docker ps")
+        """
+        from merlya.subagents.timeout import touch_activity
+        from merlya.tools.core.tools import bash_execute as _bash_execute
+
+        logger.info(f"🖥️ Running locally: {command[:60]}...")
+
+        touch_activity()
+        result = await _bash_execute(ctx.deps.context, command, timeout)
+        touch_activity()
+
+        return {
+            "success": result.success,
+            "stdout": result.data.get("stdout", "") if result.data else "",
+            "stderr": result.data.get("stderr", "") if result.data else "",
+            "exit_code": result.data.get("exit_code", -1) if result.data else -1,
+        }
+
+    @agent.tool
     async def ssh_execute(
         ctx: RunContext[AgentDependencies],
         host: str,
