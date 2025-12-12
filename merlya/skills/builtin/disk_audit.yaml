@@ -1,0 +1,47 @@
+# Merlya Builtin Skill: Disk Audit
+# Check disk usage across infrastructure
+
+name: disk_audit
+version: "1.0"
+description: "Audit disk usage and identify storage issues"
+
+intent_patterns:
+  # Specific disk-related patterns (avoid matching French words like "du")
+  - "disk.*usage"
+  - "disk.*space"
+  - "disk.*full"
+  - "storage.*audit"
+  - "storage.*check"
+  - "espace.*disque"
+  - "stockage.*"
+  - "full.*disk"
+  - "low.*space"
+  - "manque.*espace"
+  # Command patterns with word boundaries
+  - "\\bdf\\s+-"
+  - "\\bdu\\s+-"
+
+tools_allowed:
+  - ssh_execute
+  - read_file
+
+max_hosts: 10
+timeout_seconds: 60
+
+require_confirmation_for:
+  - ssh_execute  # Require explicit user approval before running remote commands
+
+system_prompt: |
+  You are a storage expert analyzing disk usage.
+
+  For each host:
+  1. Check overall disk usage with df -h
+  2. Identify partitions above 80% usage
+  3. If requested, find large files/directories
+
+  Report findings clearly with actionable recommendations.
+
+tags:
+  - monitoring
+  - storage
+  - diagnostic

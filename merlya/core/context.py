@@ -21,6 +21,7 @@ from merlya.secrets import SecretStore, get_secret_store
 
 if TYPE_CHECKING:
     from merlya.health import StartupHealth
+    from merlya.mcp import MCPManager
     from merlya.persistence import (
         ConversationRepository,
         Database,
@@ -66,6 +67,9 @@ class SharedContext:
 
     # Intent Router (lazy init)
     _router: IntentRouter | None = field(default=None, repr=False)
+
+    # MCP Manager
+    _mcp_manager: MCPManager | None = field(default=None, repr=False)
 
     # Console UI
     _ui: ConsoleUI | None = field(default=None, repr=False)
@@ -183,6 +187,14 @@ class SharedContext:
 
         logger.debug("✅ SharedContext async components initialized")
 
+    async def get_mcp_manager(self) -> MCPManager:
+        """Get MCP manager (lazy, async-safe singleton)."""
+        if self._mcp_manager is None:
+            from merlya.mcp import MCPManager
+
+            self._mcp_manager = await MCPManager.create(self.config, self.secrets)
+        return self._mcp_manager
+
     async def init_router(self, tier: str | None = None) -> None:
         """
         Initialize intent router.
@@ -234,12 +246,31 @@ class SharedContext:
         self._router = router
 
     async def close(self) -> None:
-        """Close all connections and cleanup."""
+        """Close all connections and cleanup (idempotent)."""
+        # Guard against multiple close calls
+        if SharedContext._instance is None:
+            return
+
         if self._db:
-            await self._db.close()
+            try:
+                await self._db.close()
+            except Exception as e:
+                logger.debug(f"DB close error: {e}")
+            self._db = None
 
         if self._ssh_pool:
-            await self._ssh_pool.disconnect_all()
+            try:
+                await self._ssh_pool.disconnect_all()
+            except Exception as e:
+                logger.debug(f"SSH pool close error: {e}")
+            self._ssh_pool = None
+
+        if self._mcp_manager:
+            try:
+                await self._mcp_manager.close()
+            except Exception as e:
+                logger.debug(f"MCP manager close error: {e}")
+            self._mcp_manager = None
 
         # Clear singleton reference
         SharedContext._instance = None

@@ -79,3 +79,107 @@ class LoggingConfig(BaseModel):
     max_size_mb: int = Field(default=10, ge=1, le=100, description="Max log file size in MB")
     max_files: int = Field(default=5, ge=1, le=20, description="Max number of log files")
     retention_days: int = Field(default=7, ge=1, le=90, description="Log retention in days")
+
+
+class MCPServerConfig(BaseModel):
+    """Configuration for an MCP server."""
+
+    command: str = Field(description="Executable to start the MCP server")
+    args: list[str] = Field(default_factory=list, description="Arguments for the server command")
+    env: dict[str, str] = Field(
+        default_factory=dict, description="Environment variables for server"
+    )
+    cwd: Path | None = Field(default=None, description="Working directory for the server")
+    enabled: bool = Field(default=True, description="Whether this server should be used")
+
+
+class MCPConfig(BaseModel):
+    """MCP integration configuration."""
+
+    servers: dict[str, MCPServerConfig] = Field(default_factory=dict, description="MCP servers")
+    default_timeout: int = Field(
+        default=30, ge=5, le=300, description="Default timeout (seconds) for MCP requests"
+    )
+
+
+class PolicyConfig(BaseModel):
+    """Policy configuration for context and execution limits.
+
+    Controls context tier selection, token budgets, and execution guardrails.
+    """
+
+    # Context tier: auto (ContextTierPredictor) or manual override
+    context_tier: Literal["auto", "minimal", "standard", "extended"] = Field(
+        default="auto",
+        description="Context tier: auto (predicted) or manual override",
+    )
+
+    # Token limits
+    max_tokens_per_call: int = Field(
+        default=8000,
+        ge=1000,
+        le=200000,
+        description="Maximum tokens per LLM call",
+    )
+
+    # Parser settings
+    parser_confidence_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence for parser results",
+    )
+
+    # Execution limits
+    max_hosts_per_skill: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum hosts per skill execution",
+    )
+
+    max_parallel_subagents: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum parallel subagents",
+    )
+
+    subagent_timeout: int = Field(
+        default=120,
+        ge=10,
+        le=600,
+        description="Subagent timeout in seconds",
+    )
+
+    # Safety guardrails
+    require_confirmation_for_write: bool = Field(
+        default=True,
+        description="Require confirmation for write/destructive operations",
+    )
+
+    audit_logging: bool = Field(
+        default=True,
+        description="Enable audit logging for executed commands",
+    )
+
+    # Memory limits
+    max_messages_in_memory: int = Field(
+        default=1000,
+        ge=100,
+        le=10000,
+        description="Maximum messages to keep in memory before forced summarization",
+    )
+
+    # Summarization
+    auto_summarize: bool = Field(
+        default=True,
+        description="Enable automatic context summarization",
+    )
+
+    summarize_threshold: float = Field(
+        default=0.75,
+        ge=0.5,
+        le=0.95,
+        description="Threshold (% of max) to trigger summarization",
+    )

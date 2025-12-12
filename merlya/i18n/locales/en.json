@@ -45,7 +45,6 @@
     "warning_body": "This tool is in early development. Use for debugging/testing only, NOT production.",
     "warning_tips_title": "Tips for best results:"
   },
-
   "startup": {
     "health_checks": "Health Checks",
     "router_init": "Router: {model} ({dims} dims)",
@@ -53,7 +52,6 @@
     "ready_time": "Ready in {time}s",
     "first_run": "First run detected - starting setup wizard"
   },
-
   "health": {
     "ram": {
       "ok": "RAM: {available}GB available (tier: {tier})",
@@ -84,7 +82,6 @@
       "disabled": "duckduckgo-search not installed - web search disabled"
     }
   },
-
   "commands": {
     "help": {
       "title": "Available Commands",
@@ -143,10 +140,13 @@
       "new": "New conversation started"
     },
     "model": {
-      "current": "Current model: {provider}/{model}",
-      "changed": "Model changed to {provider}/{model}",
-      "test_ok": "Model test successful (latency: {latency}ms)",
-      "test_failed": "Model test failed: {error}"
+      "provider_changed": "✅ Provider changed to `{provider}`",
+      "model_changed": "✅ Model changed to `{model}`",
+      "ollama_cli_missing": "❌ Ollama CLI not installed or not in PATH",
+      "ollama_pull_start": "📥 Pulling Ollama model `{model}`...",
+      "ollama_pull_ready": "✅ Ollama model `{model}` ready",
+      "ollama_pull_not_found": "❌ Ollama model `{model}` does not exist on this Ollama server",
+      "ollama_pull_failed": "❌ Failed to pull Ollama model `{model}` ({error})"
     },
     "log": {
       "level_set": "Log level set to: {level}",
@@ -170,17 +170,29 @@
     "new": {
       "started": "New conversation started"
     },
-    "model": {
-      "provider_changed": "✅ Provider changed to `{provider}`",
-      "model_changed": "✅ Model changed to `{model}`",
-      "ollama_cli_missing": "❌ Ollama CLI not installed or not in PATH",
-      "ollama_pull_start": "📥 Pulling Ollama model `{model}`...",
-      "ollama_pull_ready": "✅ Ollama model `{model}` ready",
-      "ollama_pull_not_found": "❌ Ollama model `{model}` does not exist on this Ollama server",
-      "ollama_pull_failed": "❌ Failed to pull Ollama model `{model}` ({error})"
+    "mcp": {
+      "list_title": "MCP Servers",
+      "status_title": "MCP Server Status",
+      "status_running": "Running",
+      "status_stopped": "Stopped",
+      "status_error": "Error",
+      "started": "MCP server '{name}' started",
+      "stopped": "MCP server '{name}' stopped",
+      "restarted": "MCP server '{name}' restarted",
+      "already_running": "MCP server '{name}' is already running",
+      "already_stopped": "MCP server '{name}' is already stopped",
+      "not_found": "MCP server '{name}' not found",
+      "not_configured": "No MCP servers configured",
+      "invalid_config": "Invalid MCP server configuration: {error}",
+      "connection_failed": "Failed to connect to MCP server '{name}': {error}",
+      "permission_denied": "Permission denied for MCP server '{name}'",
+      "tools_loaded": "Loaded {count} tool(s) from '{name}'",
+      "no_tools": "No tools available from '{name}'",
+      "tool_not_found": "Tool '{tool}' not found in MCP server '{name}'",
+      "usage": "Usage: /mcp <list|status|start|stop|restart> [server_name]",
+      "help": "Manage MCP (Model Context Protocol) servers:\n  /mcp list           - List all configured MCP servers\n  /mcp status [name]  - Show status of MCP server(s)\n  /mcp start <name>   - Start an MCP server\n  /mcp stop <name>    - Stop an MCP server\n  /mcp restart <name> - Restart an MCP server"
     }
   },
-
   "commands_meta": {
     "help": {
       "description": "Show help for commands",
@@ -210,6 +222,10 @@
       "description": "SSH connection management",
       "usage": "/ssh <subcommand>"
     },
+    "mcp": {
+      "description": "Manage MCP servers and tools",
+      "usage": "/mcp <subcommand>"
+    },
     "model": {
       "description": "Manage LLM provider and router",
       "usage": "/model <subcommand>"
@@ -235,7 +251,6 @@
       "usage": "/secret <subcommand>"
     }
   },
-
   "errors": {
     "validation": {
       "required": "'{field}' is required",
@@ -265,14 +280,12 @@
       "no_provider": "No LLM provider configured"
     }
   },
-
   "prompts": {
     "confirm_action": "Are you sure you want to {action}?",
     "enter_value": "Enter value for {field}",
     "select_option": "Select an option",
     "add_host": "Do you want to add '{name}' to inventory?"
   },
-
   "setup": {
     "title": "⚙️ Merlya Setup",
     "welcome": "👋 Welcome to Merlya!\n\nThis wizard will guide you through:\n  1. Language selection\n  2. LLM provider setup\n  3. Host import",
@@ -314,7 +327,6 @@
       "summary": "- LLM Provider: {provider}\n- Hosts imported: {hosts}\n\nUse /help to see available commands."
     }
   },
-
   "agent": {
     "thinking": "Thinking...",
     "executing_tool": "Executing: {tool}",

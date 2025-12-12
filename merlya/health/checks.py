@@ -19,7 +19,10 @@ from loguru import logger
 
 from merlya.core.types import CheckStatus, HealthCheck
 from merlya.i18n import t
+from merlya.parser.service import ParserService
 from merlya.router.intent_classifier import IntentClassifier
+from merlya.session.manager import SessionManager
+from merlya.skills.registry import get_registry as get_skills_registry
 
 
 @dataclass
@@ -556,6 +559,240 @@ def check_onnx_model(tier: str | None = None) -> HealthCheck:
     )
 
 
+async def check_onnx_for_skills(tier: str | None = None) -> HealthCheck:
+    """
+    Check if ONNX model loads correctly when skills are enabled.
+
+    This is a CRITICAL check: if skills are registered and ONNX fails to load,
+    Merlya should not start (unless LLM fallback is configured for skill matching).
+
+    Args:
+        tier: Model tier for ONNX model selection.
+
+    Returns:
+        HealthCheck with critical=True if ONNX required but unavailable.
+    """
+    from merlya.config import get_config
+
+    config = get_config()
+
+    # Check if skills are enabled
+    try:
+        registry = get_skills_registry()
+        stats = registry.get_stats()
+        skills_count = stats.get("total", 0)
+    except Exception:
+        skills_count = 0
+
+    if skills_count == 0:
+        return HealthCheck(
+            name="onnx_skills",
+            status=CheckStatus.OK,
+            message="ℹ️ No skills loaded - ONNX not required",
+            details={"skills_count": 0, "onnx_required": False},
+        )
+
+    # Check if LLM fallback is configured for skill matching
+    llm_fallback = config.router.llm_fallback
+    has_llm_fallback = bool(llm_fallback)
+
+    # Try to actually load the ONNX model
+    try:
+        classifier = IntentClassifier(use_embeddings=True, tier=tier)
+        loaded = await classifier.load_model()
+
+        if loaded and classifier.model_loaded:
+            return HealthCheck(
+                name="onnx_skills",
+                status=CheckStatus.OK,
+                message=f"✅ ONNX model loaded for skill matching ({skills_count} skills)",
+                details={
+                    "skills_count": skills_count,
+                    "onnx_loaded": True,
+                    "llm_fallback": has_llm_fallback,
+                },
+            )
+    except Exception as e:
+        logger.warning(f"⚠️ ONNX load failed: {e}")
+
+    # ONNX failed to load
+    if has_llm_fallback:
+        # LLM fallback available - warning only
+        return HealthCheck(
+            name="onnx_skills",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ ONNX failed, using LLM fallback for {skills_count} skills",
+            details={
+                "skills_count": skills_count,
+                "onnx_loaded": False,
+                "llm_fallback": llm_fallback,
+            },
+        )
+    else:
+        # No fallback - CRITICAL ERROR
+        return HealthCheck(
+            name="onnx_skills",
+            status=CheckStatus.ERROR,
+            message=f"❌ ONNX required for skills but failed to load ({skills_count} skills)",
+            critical=True,
+            details={
+                "skills_count": skills_count,
+                "onnx_loaded": False,
+                "llm_fallback": None,
+                "fix": "Configure router.llm_fallback or fix ONNX installation",
+            },
+        )
+
+
+async def check_parser_service(tier: str | None = None) -> HealthCheck:
+    """Check if Parser service is properly initialized."""
+    try:
+        # Reset if instance exists with different tier to ensure correct backend
+        existing = ParserService._instance
+        if existing and tier and existing._tier != tier:
+            ParserService.reset_instance()
+
+        # Pass tier to ensure correct backend selection
+        parser = ParserService.get_instance(tier=tier)
+
+        # Initialize the backend (required before use)
+        await parser.initialize()
+
+        backend_name = type(parser._backend).__name__
+
+        return HealthCheck(
+            name="parser",
+            status=CheckStatus.OK,
+            message=f"✅ Parser service ready ({backend_name})",
+            details={
+                "backend": backend_name,
+                "tier": tier or "auto",
+            },
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="parser",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ Parser not initialized: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
+def check_session_manager() -> HealthCheck:
+    """Check if Session manager is available."""
+    try:
+        manager = SessionManager.get_instance()
+        if manager is None:
+            return HealthCheck(
+                name="session",
+                status=CheckStatus.WARNING,
+                message="⚠️ Session manager not initialized",
+                details={"error": "No instance created yet"},
+            )
+
+        tier = manager.current_tier.value if manager.current_tier else "auto"
+        max_tokens = getattr(manager, "max_tokens", None) or manager.limits.max_tokens
+
+        return HealthCheck(
+            name="session",
+            status=CheckStatus.OK,
+            message=f"✅ Session manager ready (tier={tier})",
+            details={
+                "tier": tier,
+                "max_tokens": max_tokens,
+            },
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="session",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ Session manager not initialized: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
+def check_skills_registry() -> HealthCheck:
+    """Check if Skills registry has loaded skills."""
+    try:
+        registry = get_skills_registry()
+        stats = registry.get_stats()
+
+        if stats["total"] == 0:
+            return HealthCheck(
+                name="skills",
+                status=CheckStatus.WARNING,
+                message="⚠️ No skills loaded (use /skill reload)",
+                details=stats,
+            )
+
+        return HealthCheck(
+            name="skills",
+            status=CheckStatus.OK,
+            message=f"✅ Skills loaded ({stats['builtin']} builtin, {stats['user']} user)",
+            details=stats,
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="skills",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ Skills registry error: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
+async def check_mcp_servers() -> HealthCheck:
+    """Check if MCP servers are configured and running."""
+    try:
+        from merlya.mcp.manager import MCPManager
+
+        manager = MCPManager.get_instance()
+        if manager is None:
+            return HealthCheck(
+                name="mcp",
+                status=CheckStatus.DISABLED,
+                message="ℹ️ MCP manager not initialized",
+                details={"error": "No instance created yet"},
+            )
+
+        servers = await manager.list_servers()
+
+        if not servers:
+            return HealthCheck(
+                name="mcp",
+                status=CheckStatus.DISABLED,
+                message="ℹ️ No MCP servers configured",
+                details={"servers": []},
+            )
+
+        # Count running vs total
+        running = sum(1 for s in servers if s.get("status") == "running")
+        total = len(servers)
+
+        if running == 0:
+            status = CheckStatus.WARNING
+            message = f"⚠️ MCP: 0/{total} servers running"
+        elif running < total:
+            status = CheckStatus.WARNING
+            message = f"⚠️ MCP: {running}/{total} servers running"
+        else:
+            status = CheckStatus.OK
+            message = f"✅ MCP: {running} server(s) running"
+
+        return HealthCheck(
+            name="mcp",
+            status=status,
+            message=message,
+            details={"servers": servers, "running": running, "total": total},
+        )
+    except Exception as e:
+        return HealthCheck(
+            name="mcp",
+            status=CheckStatus.WARNING,
+            message=f"⚠️ MCP check failed: {str(e)[:50]}",
+            details={"error": str(e)},
+        )
+
+
 async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
     """
     Run all startup health checks.
@@ -628,6 +865,31 @@ async def run_startup_checks(skip_llm_ping: bool = False) -> StartupHealth:
         onnx_check.status == CheckStatus.WARNING and details.get("can_download", False)
     )
     health.capabilities["onnx_router"] = can_use_onnx
+
+    # Parser service
+    parser_check = await check_parser_service(tier=tier)
+    health.checks.append(parser_check)
+    health.capabilities["parser"] = parser_check.status == CheckStatus.OK
+
+    # Session manager
+    session_check = check_session_manager()
+    health.checks.append(session_check)
+    health.capabilities["session"] = session_check.status == CheckStatus.OK
+
+    # Skills registry
+    skills_check = check_skills_registry()
+    health.checks.append(skills_check)
+    health.capabilities["skills"] = skills_check.status == CheckStatus.OK
+
+    # ONNX for skills (critical check if skills are enabled)
+    onnx_skills_check = await check_onnx_for_skills(tier=tier)
+    health.checks.append(onnx_skills_check)
+    health.capabilities["onnx_skills"] = onnx_skills_check.status == CheckStatus.OK
+
+    # MCP servers
+    mcp_check = await check_mcp_servers()
+    health.checks.append(mcp_check)
+    health.capabilities["mcp"] = mcp_check.status == CheckStatus.OK
 
     logger.debug(
         f"✅ Health checks complete: {len(health.checks)} checks, can_start={health.can_start}"

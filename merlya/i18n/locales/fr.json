@@ -20,7 +20,6 @@
       "agent": "⚡ Exécution du plan..."
     }
   },
-
   "welcome_screen": {
     "title": "Bienvenue",
     "warning_title": "⚠️  Avertissement",
@@ -46,7 +45,6 @@
     "warning_body": "Cet outil est en développement. À utiliser pour debug/test uniquement, pas en production.",
     "warning_tips_title": "Conseils pour de meilleurs résultats :"
   },
-
   "startup": {
     "health_checks": "Vérifications",
     "router_init": "Router : {model} ({dims} dims)",
@@ -54,7 +52,6 @@
     "ready_time": "Prêt en {time}s",
     "first_run": "Premier démarrage détecté - lancement de l'assistant de configuration"
   },
-
   "health": {
     "ram": {
       "ok": "RAM : {available}Go disponibles (tier : {tier})",
@@ -85,7 +82,6 @@
       "disabled": "duckduckgo-search non installé - recherche web désactivée"
     }
   },
-
   "commands": {
     "help": {
       "title": "Commandes disponibles",
@@ -144,10 +140,13 @@
       "new": "Nouvelle conversation démarrée"
     },
     "model": {
-      "current": "Modèle actuel : {provider}/{model}",
-      "changed": "Modèle changé pour {provider}/{model}",
-      "test_ok": "Test du modèle réussi (latence : {latency}ms)",
-      "test_failed": "Échec du test : {error}"
+      "provider_changed": "✅ Provider changé pour `{provider}`",
+      "model_changed": "✅ Modèle changé pour `{model}`",
+      "ollama_cli_missing": "❌ Le binaire Ollama n'est pas installé ou introuvable dans le PATH",
+      "ollama_pull_start": "📥 Téléchargement du modèle Ollama `{model}`...",
+      "ollama_pull_ready": "✅ Modèle Ollama `{model}` prêt",
+      "ollama_pull_not_found": "❌ Le modèle Ollama `{model}` n'existe pas sur ce serveur Ollama",
+      "ollama_pull_failed": "❌ Échec du téléchargement du modèle Ollama `{model}` ({error})"
     },
     "log": {
       "level_set": "Niveau de log défini à : {level}",
@@ -171,17 +170,29 @@
     "new": {
       "started": "Nouvelle conversation démarrée"
     },
-    "model": {
-      "provider_changed": "✅ Provider changé pour `{provider}`",
-      "model_changed": "✅ Modèle changé pour `{model}`",
-      "ollama_cli_missing": "❌ Le binaire Ollama n'est pas installé ou introuvable dans le PATH",
-      "ollama_pull_start": "📥 Téléchargement du modèle Ollama `{model}`...",
-      "ollama_pull_ready": "✅ Modèle Ollama `{model}` prêt",
-      "ollama_pull_not_found": "❌ Le modèle Ollama `{model}` n'existe pas sur ce serveur Ollama",
-      "ollama_pull_failed": "❌ Échec du téléchargement du modèle Ollama `{model}` ({error})"
+    "mcp": {
+      "list_title": "Serveurs MCP",
+      "status_title": "État des serveurs MCP",
+      "status_running": "En cours",
+      "status_stopped": "Arrêté",
+      "status_error": "Erreur",
+      "started": "Serveur MCP '{name}' démarré",
+      "stopped": "Serveur MCP '{name}' arrêté",
+      "restarted": "Serveur MCP '{name}' redémarré",
+      "already_running": "Le serveur MCP '{name}' est déjà en cours d'exécution",
+      "already_stopped": "Le serveur MCP '{name}' est déjà arrêté",
+      "not_found": "Serveur MCP '{name}' introuvable",
+      "not_configured": "Aucun serveur MCP configuré",
+      "invalid_config": "Configuration du serveur MCP invalide : {error}",
+      "connection_failed": "Échec de connexion au serveur MCP '{name}' : {error}",
+      "permission_denied": "Permission refusée pour le serveur MCP '{name}'",
+      "tools_loaded": "{count} outil(s) chargé(s) depuis '{name}'",
+      "no_tools": "Aucun outil disponible depuis '{name}'",
+      "tool_not_found": "Outil '{tool}' introuvable dans le serveur MCP '{name}'",
+      "usage": "Usage : /mcp <list|status|start|stop|restart> [nom_serveur]",
+      "help": "Gérer les serveurs MCP (Model Context Protocol) :\n  /mcp list           - Lister tous les serveurs MCP configurés\n  /mcp status [nom]   - Afficher l'état du/des serveur(s) MCP\n  /mcp start <nom>    - Démarrer un serveur MCP\n  /mcp stop <nom>     - Arrêter un serveur MCP\n  /mcp restart <nom>  - Redémarrer un serveur MCP"
     }
   },
-
   "commands_meta": {
     "help": {
       "description": "Afficher l'aide des commandes",
@@ -211,6 +222,10 @@
       "description": "Gestion des connexions SSH",
       "usage": "/ssh <sous-commande>"
     },
+    "mcp": {
+      "description": "Gérer les serveurs et outils MCP",
+      "usage": "/mcp <subcommand>"
+    },
     "model": {
       "description": "Gérer le provider LLM et le router",
       "usage": "/model <sous-commande>"
@@ -236,7 +251,6 @@
       "usage": "/secret <sous-commande>"
     }
   },
-
   "errors": {
     "validation": {
       "required": "'{field}' est requis",
@@ -266,14 +280,12 @@
       "no_provider": "Aucun provider LLM configuré"
     }
   },
-
   "prompts": {
     "confirm_action": "Êtes-vous sûr de vouloir {action} ?",
     "enter_value": "Entrez la valeur pour {field}",
     "select_option": "Sélectionnez une option",
     "add_host": "Voulez-vous ajouter '{name}' à l'inventaire ?"
   },
-
   "setup": {
     "title": "⚙️ Configuration de Merlya",
     "welcome": "👋 Bienvenue dans Merlya !\n\nCet assistant va vous guider pour configurer :\n  1. Le choix de la langue\n  2. Le provider LLM\n  3. L'import des hôtes",
@@ -315,7 +327,6 @@
       "summary": "- Provider LLM : {provider}\n- Hôtes importés : {hosts}\n\nUtilisez /help pour voir les commandes disponibles."
     }
   },
-
   "agent": {
     "thinking": "Réflexion...",
     "executing_tool": "Exécution : {tool}",

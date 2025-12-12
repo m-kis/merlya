@@ -329,6 +329,89 @@ async def test_backup_command(ctx):
     assert result.success
 ```
 
+## Using MCP Servers
+
+MCP (Model Context Protocol) lets Merlya bridge external services like GitHub, Slack, or custom APIs. Unlike custom commands which are built into the codebase, MCP servers are external processes that expose tools dynamically.
+
+### Step 1: Add Server to Configuration
+
+Define the MCP server in `config.yaml`:
+
+```yaml
+mcp:
+  servers:
+    github:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      env:
+        GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    slack:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-slack"]
+      env:
+        SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+```
+
+### Step 2: Test the Connection
+
+Use the `/mcp` command to verify the server is working:
+
+```bash
+/mcp list              # List configured servers
+/mcp test github       # Test connection to GitHub server
+/mcp tools github      # List available tools from server
+```
+
+### Step 3: Use MCP Tools in Agent
+
+MCP tools are automatically exposed to the agent as `server.tool` (e.g., `github.create_issue`). The agent can call them via the `call_mcp_tool` function:
+
+```python
+# Agent can call MCP tools directly
+result = await call_mcp_tool(
+    ctx,
+    server="github",
+    tool="create_issue",
+    arguments={"repo": "org/repo", "title": "Bug report"}
+)
+```
+
+For programmatic access in custom code:
+
+```python
+from merlya.mcp.manager import MCPManager
+
+# Get or create the singleton (async-safe)
+manager = await MCPManager.create(config, secrets)
+
+# Or get existing instance (may be None)
+manager = MCPManager.get_instance()
+
+# Call a tool (must include server prefix)
+result = await manager.call_tool("github.create_issue", {
+    "repo": "org/repo",
+    "title": "Bug report",
+    "body": "Description here"
+})
+```
+
+**Important:** Tool names must include the server prefix (e.g., `github.create_issue`, not just `create_issue`).
+
+### Environment Variable Handling
+
+MCP servers can reference environment variables:
+
+```yaml
+mcp:
+  servers:
+    github:
+      env:
+        GITHUB_TOKEN: "${GITHUB_TOKEN}"        # Required - raises error if missing
+        CACHE_DIR: "${CACHE_DIR:-/tmp/cache}"  # Optional with default
+```
+
+Missing required variables will raise a clear error message listing all missing variables.
+
 ## Best Practices
 
 ### Tool Design

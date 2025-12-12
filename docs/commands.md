@@ -199,6 +199,62 @@ Show current LLM configuration.
 ### `/model set <provider:model>`
 Change the LLM model.
 
+## MCP (Model Context Protocol)
+
+Extend Merlya with external MCP servers (e.g., GitHub, Slack, custom).
+
+### `/mcp list`
+List configured MCP servers.
+
+```bash
+/mcp list
+```
+
+### `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]`
+Add a server (env values can reference `${ENV_VAR}` and will pull from env or keyring).
+
+```bash
+/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${GITHUB_TOKEN}
+/mcp add slack node slack-server.js --env=SLACK_TOKEN=keyring:slack_token --cwd=/opt/mcp-servers
+/mcp add filesystem npx -y @modelcontextprotocol/server-filesystem /home/user/projects
+```
+
+### `/mcp remove <name>`
+Remove a server from configuration.
+
+```bash
+/mcp remove github
+```
+
+### `/mcp show <name>`
+Show server configuration.
+
+```bash
+/mcp show github
+```
+
+### `/mcp test <name>`
+Start/connect and list exposed tools.
+
+```bash
+/mcp test github
+```
+
+### `/mcp tools [name]`
+List available MCP tools (optionally filter by server).
+
+```bash
+/mcp tools
+/mcp tools github
+```
+
+### `/mcp examples`
+Show sample configuration snippets.
+
+```bash
+/mcp examples
+```
+
 ```bash
 /model set openrouter:anthropic/claude-3.5-sonnet
 /model set ollama:llama3.2
@@ -245,6 +301,61 @@ Show log directory location.
 
 ### `/log clear`
 Clear old log files.
+
+## Skills
+
+### `/skill list`
+List all available skills (builtin and user-defined).
+
+```bash
+/skill list
+```
+
+### `/skill show <name>`
+Show details of a specific skill.
+
+```bash
+/skill show incident_triage
+```
+
+### `/skill reload`
+Reload skills from disk.
+
+```bash
+/skill reload
+```
+
+### `/skill create`
+Interactive wizard to create a new skill.
+
+```bash
+/skill create
+# Prompts for:
+# - Skill name
+# - Description
+# - Intent patterns
+# - Tools allowed
+# - Max hosts, timeout
+# - System prompt
+```
+
+## Audit
+
+### `/audit list [--limit N] [--host HOST]`
+List recent command executions.
+
+```bash
+/audit list
+/audit list --limit 50
+/audit list --host web01
+```
+
+### `/audit show <id>`
+Show details of a specific audit entry.
+
+```bash
+/audit show abc123
+```
 
 ## Using @ Mentions
 

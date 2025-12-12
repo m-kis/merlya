@@ -64,11 +64,13 @@ async def cmd_model_show(ctx: SharedContext, _args: list[str]) -> CommandResult:
 @subcommand("model", "provider", "Change LLM provider", "/model provider <name>")
 async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Change the LLM provider."""
-    providers = ["openrouter", "anthropic", "openai", "ollama", "litellm"]
+    providers = ["openrouter", "anthropic", "openai", "mistral", "groq", "ollama", "litellm"]
     default_models = {
         "openrouter": "amazon/nova-2-lite-v1:free",
         "anthropic": "claude-3-5-sonnet-20241022",
         "openai": "gpt-4o",
+        "mistral": "mistral-large-latest",
+        "groq": "llama-3.1-70b-versatile",
         "ollama": "llama3.2",
         "litellm": "gpt-4o",
     }
@@ -76,6 +78,8 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
         "openrouter": "openrouter:openrouter/auto",
         "anthropic": "anthropic:claude-3-haiku-20240307",
         "openai": "openai:gpt-4o-mini",
+        "mistral": "mistral:mistral-small-latest",
+        "groq": "groq:llama-3.1-8b-instant",
         "litellm": "litellm:gpt-4o-mini",
         "ollama": "ollama:llama3.2",
     }
@@ -97,6 +101,8 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
         "openrouter": "OPENROUTER_API_KEY",
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+        "groq": "GROQ_API_KEY",
         "litellm": "LITELLM_API_KEY",
         "ollama": None,
     }
@@ -145,6 +151,8 @@ async def cmd_model_model(ctx: SharedContext, args: list[str]) -> CommandResult:
             "openrouter": "amazon/nova-2-lite-v1:free",
             "anthropic": "claude-3-5-sonnet-20241022",
             "openai": "gpt-4o",
+            "mistral": "mistral-large-latest",
+            "groq": "llama-3.1-70b-versatile",
             "ollama": "llama3.2",
             "litellm": "gpt-4o",
         }

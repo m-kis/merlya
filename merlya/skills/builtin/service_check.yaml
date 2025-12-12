@@ -1,0 +1,45 @@
+# Merlya Builtin Skill: Service Check
+# Check and manage system services
+
+name: service_check
+version: "1.1"
+description: "Check systemd service status (running/stopped/failed), restart services, or view service logs via journalctl. NOT for configuration viewing."
+
+intent_patterns:
+  # NOTE: Patterns are DEPRECATED - use description for semantic matching
+  # These are only used as fallback when ONNX model is not loaded
+  # Keep patterns VERY specific to avoid false matches
+  - "\\bservice\\s+status\\b"
+  - "\\bsystemctl\\s+status\\b"
+  - "\\bcheck\\s+.*\\s+service\\b"
+  - "\\bservice\\s+.*\\s+running\\b"
+  - "\\brestart\\s+service\\b"
+  - "\\bstop\\s+service\\b"
+
+tools_allowed:
+  - ssh_execute
+  - check_service_status
+
+max_hosts: 10
+timeout_seconds: 60
+
+require_confirmation_for:
+  - restart
+  - stop
+  - kill
+
+system_prompt: |
+  You are a service management expert.
+
+  For service checks:
+  1. Check if the service exists
+  2. Get current status (running, stopped, failed)
+  3. If failed, get recent logs with journalctl -u <service> -n 20
+  4. Report uptime if running
+
+  Provide clear status summary with recommendations.
+
+tags:
+  - services
+  - monitoring
+  - systemd

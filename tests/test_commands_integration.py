@@ -237,7 +237,7 @@ class TestVariableCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_variables_repo: MagicMock,  # noqa: ARG002
+        mock_variables_repo: MagicMock,
     ):
         """Test /variable list."""
         result = await registry.execute(mock_context, "/variable list")
@@ -250,7 +250,7 @@ class TestVariableCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_variables_repo: MagicMock,  # noqa: ARG002
+        mock_variables_repo: MagicMock,
     ):
         """Test /variable without args defaults to list."""
         result = await registry.execute(mock_context, "/variable")
@@ -279,7 +279,7 @@ class TestVariableCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_variables_repo: MagicMock,  # noqa: ARG002
+        mock_variables_repo: MagicMock,
     ):
         """Test /variable get name."""
         result = await registry.execute(mock_context, "/variable get test_var")
@@ -291,7 +291,7 @@ class TestVariableCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_variables_repo: MagicMock,  # noqa: ARG002
+        mock_variables_repo: MagicMock,
     ):
         """Test /variable delete name."""
         result = await registry.execute(mock_context, "/variable delete test_var")
@@ -340,7 +340,7 @@ class TestHostsCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts list."""
         result = await registry.execute(mock_context, "/hosts list")
@@ -362,7 +362,7 @@ class TestHostsCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts show name."""
         result = await registry.execute(mock_context, "/hosts show test-host")
@@ -413,7 +413,7 @@ class TestHostsCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts untag name tag."""
         result = await registry.execute(mock_context, "/hosts untag test-host web")
@@ -433,7 +433,7 @@ class TestConversationCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv list."""
         result = await registry.execute(mock_context, "/conv list")
@@ -454,7 +454,7 @@ class TestConversationCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv show id."""
         result = await registry.execute(mock_context, "/conv show conv-123")
@@ -466,7 +466,7 @@ class TestConversationCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv load id."""
         result = await registry.execute(mock_context, "/conv load conv-123")
@@ -478,7 +478,7 @@ class TestConversationCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv search query."""
         result = await registry.execute(mock_context, "/conv search hello")
@@ -546,7 +546,7 @@ class TestScanCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /scan without args shows usage."""
         result = await registry.execute(mock_context, "/scan")
@@ -678,7 +678,7 @@ class TestEdgeCases:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts tag with invalid tag format."""
         result = await registry.execute(mock_context, "/hosts tag test-host invalid@tag!")

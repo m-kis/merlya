@@ -1,0 +1,75 @@
+# Merlya Docker Compose configuration
+# Usage: docker compose up -d
+#
+# SSH Configuration:
+#   Set SSH_DIR to the path of your SSH directory (defaults to ~/.ssh).
+#   In CI/CD environments where HOME may be unset, you must explicitly set SSH_DIR.
+#   Example: SSH_DIR=/root/.ssh docker compose up -d
+#   See .env.example for configuration details.
+
+services:
+  merlya:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: merlya
+    stdin_open: true
+    tty: true
+    environment:
+      # LLM Provider (choose one)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      # Model configuration
+      - MERLYA_MODEL=${MERLYA_MODEL:-}
+      - MERLYA_ROUTER_MODEL=${MERLYA_ROUTER_MODEL:-}
+      # Logging
+      - MERLYA_LOG_LEVEL=${MERLYA_LOG_LEVEL:-INFO}
+    volumes:
+      # Persist configuration
+      - merlya-config:/home/merlya/.merlya
+      # Mount SSH keys (read-only for security)
+      # SSH_DIR defaults to $HOME/.ssh, but can be overridden for CI/CD environments
+      - ${SSH_DIR:-${HOME}/.ssh}:/home/merlya/.ssh:ro
+      # Optional: mount hosts file
+      # - ./hosts.yaml:/home/merlya/.merlya/hosts.yaml:ro
+    # Run in interactive mode by default
+    command: ["run"]
+    # Restart policy
+    restart: unless-stopped
+
+  # Development variant with source code mounted
+  merlya-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: merlya-dev
+    stdin_open: true
+    tty: true
+    environment:
+      # LLM Provider (choose one)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      # Model configuration
+      - MERLYA_MODEL=${MERLYA_MODEL:-}
+      - MERLYA_ROUTER_MODEL=${MERLYA_ROUTER_MODEL:-}
+      # Logging
+      - MERLYA_LOG_LEVEL=DEBUG
+    volumes:
+      - merlya-config:/home/merlya/.merlya
+      # Mount SSH keys (read-only for security)
+      # SSH_DIR defaults to $HOME/.ssh, but can be overridden for CI/CD environments
+      - ${SSH_DIR:-${HOME}/.ssh}:/home/merlya/.ssh:ro
+      # Mount source code for development
+      - ./merlya:/app/merlya:ro
+    command: ["run"]
+    profiles:
+      - dev
+
+volumes:
+  merlya-config:
+    driver: local

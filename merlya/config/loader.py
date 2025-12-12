@@ -6,6 +6,7 @@ Loads and saves configuration from YAML file.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,8 @@ from merlya.config.models import (
     GeneralConfig,
     LLMConfig,
     LoggingConfig,
+    MCPConfig,
+    PolicyConfig,
     RouterConfig,
     SSHConfig,
     UIConfig,
@@ -37,6 +40,8 @@ class Config(BaseModel):
     ssh: SSHConfig = Field(default_factory=SSHConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
+    policy: PolicyConfig = Field(default_factory=PolicyConfig)
 
     # Internal state
     _path: Path | None = None
@@ -58,8 +63,9 @@ class Config(BaseModel):
         save_config(self, save_path)
 
 
-# Singleton instance
+# Singleton instance with thread-safety
 _config_instance: Config | None = None
+_config_lock = threading.Lock()
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -142,7 +148,7 @@ def save_config(config: Config, path: Path | None = None) -> None:
 
 def get_config(path: Path | None = None) -> Config:
     """
-    Get configuration singleton.
+    Get configuration singleton (thread-safe).
 
     Args:
         path: Optional path for first load.
@@ -152,16 +158,20 @@ def get_config(path: Path | None = None) -> Config:
     """
     global _config_instance
 
+    # Double-checked locking pattern for thread safety
     if _config_instance is None:
-        _config_instance = load_config(path)
+        with _config_lock:
+            if _config_instance is None:
+                _config_instance = load_config(path)
 
     return _config_instance
 
 
 def reset_config() -> None:
-    """Reset configuration singleton (for tests)."""
+    """Reset configuration singleton (for tests, thread-safe)."""
     global _config_instance
-    _config_instance = None
+    with _config_lock:
+        _config_instance = None
 
 
 def merge_config(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

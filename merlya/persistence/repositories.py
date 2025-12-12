@@ -145,6 +145,30 @@ class HostRepository:
         logger.debug(f"🖥️ Host updated: {host.name}")
         return host
 
+    async def update_metadata(self, host_id: str, metadata: dict[str, Any]) -> bool:
+        """Update only the metadata field for a host.
+
+        This is more efficient than full update when only metadata changes.
+
+        Args:
+            host_id: Host ID.
+            metadata: New metadata dict.
+
+        Returns:
+            True if updated, False if host not found.
+        """
+        async with (
+            self.db.transaction(),
+            await self.db.execute(
+                "UPDATE hosts SET metadata = ?, updated_at = ? WHERE id = ?",
+                (to_json(metadata), datetime.now(), host_id),
+            ) as cursor,
+        ):
+            updated = bool(cursor.rowcount and cursor.rowcount > 0)
+            if updated:
+                logger.debug(f"🖥️ Host metadata updated: {host_id}")
+            return updated
+
     async def delete(self, host_id: str) -> bool:
         """Delete a host."""
         async with (

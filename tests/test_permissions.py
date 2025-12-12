@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -15,8 +15,8 @@ class _StubUI:
 
     async def prompt_confirm(
         self,
-        message: str,  # noqa: ARG002
-        default: bool = False,  # noqa: ARG002
+        message: str,
+        default: bool = False,
     ) -> bool:
         return self.confirm
 
@@ -40,15 +40,37 @@ class _StubResult:
         self.exit_code = exit_code
 
 
+class _StubSecrets:
+    """In-memory secret store stub."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self._data.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self._data[key] = value
+
+    def remove(self, key: str) -> None:
+        self._data.pop(key, None)
+
+    def list_names(self) -> list[str]:
+        return list(self._data.keys())
+
+
 def _make_ctx(ui: _StubUI) -> MagicMock:
     ctx = MagicMock()
     ctx.ui = ui
+    ctx.secrets = _StubSecrets()
+    ctx.hosts = AsyncMock()
+    ctx.hosts.get_by_name = AsyncMock(return_value=None)
     return ctx
 
 
 @pytest.mark.asyncio
 async def test_su_without_password_when_privileged_group() -> None:
-    """When sudo exists (no NOPASSWD) but su is available, prefer su over sudo_with_password."""
+    """When sudo exists but needs password, prefer sudo_with_password over su."""
 
     ui = _StubUI(confirm=True, secrets=["pw"])
     ctx = _make_ctx(ui)
@@ -69,14 +91,15 @@ async def test_su_without_password_when_privileged_group() -> None:
 
     result = await pm.prepare_command("host", "systemctl restart nginx")
 
-    assert result.method == "su"
-    assert result.input_data is None  # first attempt is passwordless
-    assert result.note == "password_optional"
+    assert result.method == "sudo_with_password"
+    assert result.needs_password is True
+    assert result.input_data is None
+    assert result.note == "password_needed"
 
 
 @pytest.mark.asyncio
 async def test_su_prompts_when_no_privileged_group() -> None:
-    """su is attempted passwordless first, marked as password_optional."""
+    """When only su is available, return needs_password prompt."""
 
     ui = _StubUI(confirm=True, secrets=["pw123"])
     ctx = _make_ctx(ui)
@@ -97,8 +120,9 @@ async def test_su_prompts_when_no_privileged_group() -> None:
     result = await pm.prepare_command("host", "systemctl restart nginx")
 
     assert result.method == "su"
-    assert result.input_data is None  # first attempt without password
-    assert result.note == "password_optional"
+    assert result.needs_password is True
+    assert result.input_data is None
+    assert result.note == "password_needed"
 
 
 @pytest.mark.asyncio
@@ -125,3 +149,87 @@ async def test_sudo_nopasswd_avoids_prompt() -> None:
     assert result.method == "sudo"
     assert result.input_data is None
     assert ui.secret_calls == []
+
+
+class TestPermissionManagerPasswordCache:
+    """Tests for PermissionManager password cache functionality."""
+
+    def test_get_cached_password_returns_valid(self) -> None:
+        """Test that _get_cached_password returns valid password."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        # Cache a password
+        pm.cache_password("host1", "secret123")
+
+        # Should return the password
+        result = pm._get_cached_password("host1")
+        assert result == "secret123"
+
+    def test_get_cached_password_returns_none_for_unknown(self) -> None:
+        """Test that _get_cached_password returns None for unknown host."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        result = pm._get_cached_password("unknown-host")
+        assert result is None
+
+    def test_clear_cache_single_host(self) -> None:
+        """Test clearing cache for a single host."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        pm.cache_password("host1", "pwd1")
+        pm.cache_password("host2", "pwd2")
+
+        pm.clear_cache("host1")
+
+        assert pm._get_cached_password("host1") is None
+        assert pm._get_cached_password("host2") == "pwd2"
+
+    def test_clear_cache_all(self) -> None:
+        """Test clearing cache for all hosts."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        pm.cache_password("host1", "pwd1")
+        pm.cache_password("host2", "pwd2")
+
+        pm.clear_cache()
+
+        assert pm._get_cached_password("host1") is None
+        assert pm._get_cached_password("host2") is None
+
+
+class TestPermissionManagerLocking:
+    """Tests for PermissionManager locking functionality."""
+
+    @pytest.mark.asyncio
+    async def test_get_host_lock_creates_lock(self) -> None:
+        """Test that _get_host_lock creates a lock for new host."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        lock = await pm._get_host_lock("host1")
+        assert lock is not None
+        assert "host1" in pm._detection_locks
+
+    @pytest.mark.asyncio
+    async def test_get_host_lock_returns_same_lock(self) -> None:
+        """Test that _get_host_lock returns the same lock for same host."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        lock1 = await pm._get_host_lock("host1")
+        lock2 = await pm._get_host_lock("host1")
+        assert lock1 is lock2
+
+    @pytest.mark.asyncio
+    async def test_get_host_lock_different_hosts(self) -> None:
+        """Test that _get_host_lock returns different locks for different hosts."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        lock1 = await pm._get_host_lock("host1")
+        lock2 = await pm._get_host_lock("host2")
+        assert lock1 is not lock2

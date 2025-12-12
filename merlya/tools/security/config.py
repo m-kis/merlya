@@ -136,11 +136,11 @@ async def _check_firewall(
 
     if result.stdout:
         stdout_lower = result.stdout.lower()
-        if "active" in stdout_lower:
-            firewall_status = "active"
-        elif "inactive" in stdout_lower or "not running" in stdout_lower:
+        if "inactive" in stdout_lower or "not running" in stdout_lower:
             firewall_status = "inactive"
             severity = "warning"
+        elif "active" in stdout_lower:
+            firewall_status = "active"
 
     return {
         "setting": "Firewall",

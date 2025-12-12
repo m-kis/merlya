@@ -38,6 +38,63 @@ Merlya is an autonomous CLI assistant that understands your infrastructure conte
 - Local-first router (gte/EmbeddingGemma/e5) with configurable LLM fallback
 - Security by design: secrets in keyring, Pydantic validation, consistent logging
 - Extensible (modular Docker/K8s/CI/CD agents) and i18n (fr/en)
+- MCP integration to consume external tools (GitHub, Slack, custom) via `/mcp`
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER INPUT                                      │
+│                    "Check disk on @web-01 via @bastion"                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           INTENT ROUTER                                      │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │ ONNX Local  │───▶│ LLM Fallback│───▶│  Pattern    │                      │
+│  │ Embeddings  │    │ (if <0.7)   │    │  Matching   │                      │
+│  └─────────────┘    └─────────────┘    └─────────────┘                      │
+│                              │                                               │
+│  Output: mode=DIAGNOSTIC, hosts=[@web-01], via=@bastion                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    ▼                 ▼                 ▼
+           ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+           │  FAST PATH   │  │    SKILL     │  │    AGENT     │
+           │ (DB queries) │  │  (workflows) │  │ (PydanticAI) │
+           └──────────────┘  └──────────────┘  └──────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SECURITY LAYER                                     │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │  Keyring    │    │  Elevation  │    │    Loop     │                      │
+│  │  Secrets    │    │  Detection  │    │  Detection  │                      │
+│  │ @secret-ref │    │ sudo/doas/su│    │ (3+ repeat) │                      │
+│  └─────────────┘    └─────────────┘    └─────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            SSH POOL                                          │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │ Connection  │    │  Jump Host  │    │    MFA      │                      │
+│  │   Reuse     │    │   Support   │    │   Support   │                      │
+│  └─────────────┘    └─────────────┘    └─────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          PERSISTENCE                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │  Hosts   │  │ Sessions │  │  Audit   │  │ Raw Logs │  │ Messages │       │
+│  │ Inventory│  │ Context  │  │   Logs   │  │  (TTL)   │  │ History  │       │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │
+│                         SQLite + Keyring                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Installation (End Users)
 
@@ -51,6 +108,40 @@ merlya
 ```
 
 > ONNX doesn't have Python 3.14 wheels yet: use Python <= 3.13 for `[router]`.
+
+### Docker Installation
+
+```bash
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your API keys
+
+# Start the container
+docker compose up -d
+
+# Development mode (source code mounted)
+docker compose --profile dev up -d
+```
+
+**SSH Configuration for Docker:**
+
+The container mounts your local SSH directory. By default, it uses `$HOME/.ssh`.
+
+In CI/CD environments where `$HOME` may be unset, you must explicitly set `SSH_DIR`:
+
+```bash
+# Via environment variable
+SSH_DIR=/root/.ssh docker compose up -d
+
+# Or in your .env file
+SSH_DIR=/home/jenkins/.ssh
+```
+
+**Required permissions:**
+- SSH directory: `700` (owner rwx only)
+- Private keys: `600` (owner rw only)
+
+See `.env.example` for complete variable documentation.
 
 ### First Launch
 
@@ -67,7 +158,35 @@ merlya
 > /ssh exec @db-01 "uptime"
 > /model router show
 > /variable set region eu-west-1
+> /mcp list
 ```
+
+## Security
+
+### Secrets and @secret references
+
+Secrets (passwords, tokens, API keys) are stored in the system keyring (macOS Keychain, Linux Secret Service) and referenced by `@secret-name` in commands:
+
+```bash
+> Connect to MongoDB with @db-password
+# Merlya resolves @db-password from keyring before execution
+# Logs show @db-password, never the actual value
+```
+
+### Privilege Elevation
+
+Merlya automatically detects elevation capabilities (sudo, doas, su) and handles passwords securely:
+
+1. **sudo NOPASSWD** - Best choice, no password needed
+2. **doas** - Often passwordless on BSD
+3. **sudo with password** - Standard fallback
+4. **su** - Last resort, requires root password
+
+Elevation passwords are stored in keyring and referenced by `@elevation:hostname:password`.
+
+### Loop Detection
+
+The agent detects repetitive patterns (same tool called 3+ times, A-B-A-B alternation) and injects a message to redirect to a different approach.
 
 ## Configuration
 
