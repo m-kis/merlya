@@ -6,6 +6,7 @@ Rich-based console with panels, tables, and markdown.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager, suppress
 from typing import Any
 
@@ -168,15 +169,22 @@ class ConsoleUI:
         session: PromptSession[str] = PromptSession()
         # prompt_toolkit Document cannot take None defaults
         safe_default = default if default is not None else ""
-        result = await session.prompt_async(f"{message}: ", default=safe_default)
-        return result.strip()
+        try:
+            result = await session.prompt_async(f"{message}: ", default=safe_default)
+            return result.strip()
+        except KeyboardInterrupt:
+            # Convert KeyboardInterrupt to CancelledError for proper async handling
+            raise asyncio.CancelledError() from None
 
     async def prompt_secret(self, message: str) -> str:
         """Prompt for secret input (hidden, async-safe)."""
         self._stop_spinner()
         session: PromptSession[str] = PromptSession()
-        result = await session.prompt_async(f"{message}: ", is_password=True)
-        return result.strip()
+        try:
+            result = await session.prompt_async(f"{message}: ", is_password=True)
+            return result.strip()
+        except KeyboardInterrupt:
+            raise asyncio.CancelledError() from None
 
     async def prompt_confirm(self, message: str, default: bool = False) -> bool:
         """Prompt for yes/no confirmation (async-safe)."""
@@ -188,13 +196,16 @@ class ConsoleUI:
         self._stop_spinner()
         suffix = " [Y/n]" if default else " [y/N]"
         session: PromptSession[str] = PromptSession()
-        result = await session.prompt_async(f"{message}{suffix}: ")
-        result = result.strip().lower()
+        try:
+            result = await session.prompt_async(f"{message}{suffix}: ")
+            result = result.strip().lower()
 
-        if not result:
-            return default
+            if not result:
+                return default
 
-        return result in ("y", "yes", "oui", "o")
+            return result in ("y", "yes", "oui", "o")
+        except KeyboardInterrupt:
+            raise asyncio.CancelledError() from None
 
     async def confirm(self, message: str, default: bool = False) -> bool:
         """Alias for prompt_confirm for compatibility."""
@@ -212,24 +223,27 @@ class ConsoleUI:
         choices_str = "/".join(choices)
         default_str = f" [{default}]" if default else ""
 
-        result = await session.prompt_async(f"{message} ({choices_str}){default_str}: ")
-        result = result.strip()
-
-        if not result and default:
-            return default
-
-        if result in choices:
-            return result
-
-        # Try numeric selection
         try:
-            idx = int(result) - 1
-            if 0 <= idx < len(choices):
-                return choices[idx]
-        except ValueError:
-            pass
+            result = await session.prompt_async(f"{message} ({choices_str}){default_str}: ")
+            result = result.strip()
 
-        return result
+            if not result and default:
+                return default
+
+            if result in choices:
+                return result
+
+            # Try numeric selection
+            try:
+                idx = int(result) - 1
+                if 0 <= idx < len(choices):
+                    return choices[idx]
+            except ValueError:
+                pass
+
+            return result
+        except KeyboardInterrupt:
+            raise asyncio.CancelledError() from None
 
     def _stop_spinner(self) -> None:
         """Stop any active spinner before prompting the user."""

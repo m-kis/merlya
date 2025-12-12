@@ -875,9 +875,7 @@ class TestBashExecute:
         assert "timeout" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_bash_execute_dangerous_command_blocked(
-        self, mock_context: MagicMock
-    ) -> None:
+    async def test_bash_execute_dangerous_command_blocked(self, mock_context: MagicMock) -> None:
         """Test that dangerous commands are blocked."""
         from merlya.tools.core.tools import bash_execute
 
