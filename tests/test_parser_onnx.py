@@ -461,19 +461,22 @@ class TestONNXParserBackendRealModel:
 
 
 class TestONNXParserBackendLabelConfig:
-    """Tests for label configuration loading."""
+    """Tests for label configuration loading.
+
+    Note: The backend no longer uses default labels when config is missing.
+    It returns empty dict and all predictions are treated as "O" (outside/no entity).
+    """
 
     @pytest.mark.asyncio
-    async def test_load_label_config_default(self):
-        """Test default label config when no config.json."""
+    async def test_load_label_config_missing_returns_empty(self):
+        """Test empty label config when no config.json exists."""
         backend = ONNXParserBackend()
 
         # Load with non-existent path
         await backend._load_label_config(Path("/nonexistent"))
 
-        # Should use default NER labels
-        assert len(backend._id2label) > 0
-        assert 0 in backend._id2label
+        # Without config.json, label mapping is empty (cannot assume ordering)
+        assert backend._id2label == {}
 
     @pytest.mark.asyncio
     async def test_load_label_config_from_file(self, tmp_path):
@@ -494,8 +497,8 @@ class TestONNXParserBackendLabelConfig:
         assert backend._id2label[2] == "I-PER"
 
     @pytest.mark.asyncio
-    async def test_load_label_config_invalid_json(self, tmp_path):
-        """Test handling invalid config JSON."""
+    async def test_load_label_config_invalid_json_returns_empty(self, tmp_path):
+        """Test empty label config when JSON is invalid."""
         backend = ONNXParserBackend()
 
         # Create invalid config file
@@ -504,5 +507,5 @@ class TestONNXParserBackendLabelConfig:
 
         await backend._load_label_config(tmp_path)
 
-        # Should fall back to defaults
-        assert len(backend._id2label) > 0
+        # Invalid JSON results in empty mapping (graceful degradation)
+        assert backend._id2label == {}

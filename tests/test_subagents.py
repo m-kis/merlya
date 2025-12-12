@@ -349,8 +349,10 @@ class TestSubagentFactory:
         """Create a mock SharedContext."""
         context = MagicMock()
         context.config = MagicMock()
-        context.config.llm = MagicMock()
-        context.config.llm.model_id = "anthropic:claude-3-5-sonnet-latest"
+        # SubagentFactory.model property looks for config.model.provider and config.model.model
+        context.config.model = MagicMock()
+        context.config.model.provider = "anthropic"
+        context.config.model.model = "claude-3-5-sonnet-latest"
         return context
 
     def test_factory_initialization(self, mock_context):

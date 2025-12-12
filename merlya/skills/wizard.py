@@ -352,7 +352,7 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
             timeout_str = await self.prompt("⏱️ Timeout seconds (default=120):", "120")
             if timeout_str:
                 with contextlib.suppress(ValueError):
-                    timeout = max(10, min(int(timeout_str), 600))
+                    timeout = max(30, min(int(timeout_str), 600))  # Min 30s per model
 
         return max_hosts, timeout
 

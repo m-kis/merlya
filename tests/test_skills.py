@@ -381,8 +381,8 @@ description: "From file"
         registry = SkillRegistry()
         loader = SkillLoader(registry=registry)
 
-        count = loader.load_builtin()
-        assert count >= 0  # May be 0 if no files yet
+        new_count, _overwritten = loader.load_builtin()
+        assert new_count >= 0  # May be 0 if no files yet
 
     def test_save_user_skill(self):
         """Test saving a user skill."""

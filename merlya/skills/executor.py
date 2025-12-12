@@ -144,8 +144,8 @@ class SkillExecutor:
                     skill=skill,
                     host=host,
                     task=task,
-                    context=context,
-                    confirm_callback=confirm_callback,
+                    _context=context,
+                    _confirm_callback=confirm_callback,
                 )
 
         # Gather results
