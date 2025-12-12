@@ -236,6 +236,9 @@ Key principles: DRY/KISS/YAGNI, SOLID, SoC, LoD, no files > ~600 lines, coverage
 
 ## Documentation
 
+📚 **Full documentation**: [https://m-kis.github.io/merlya-docs/](https://m-kis.github.io/merlya-docs/)
+
+Local files:
 - [docs/architecture.md](docs/architecture.md): architecture and decisions
 - [docs/commands.md](docs/commands.md): slash commands
 - [docs/configuration.md](docs/configuration.md): complete configuration
