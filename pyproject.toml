@@ -1,6 +1,6 @@
 [project]
 name = "merlya"
-version = "0.6.2"
+version = "0.7.0"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
     { name = "Cedric", email = "infra@merlya.fr" }
@@ -116,10 +116,15 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    "RUF001", # ambiguous Unicode (emojis used intentionally per CONTRIBUTING.md)
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["merlya"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files: allow unused args (mocks), nested with statements, pathlib in tests
+"tests/*" = ["ARG", "SIM117", "TC003"]
 
 [tool.mypy]
 python_version = "3.11"

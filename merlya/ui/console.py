@@ -162,11 +162,13 @@ class ConsoleUI:
             expand=True,
         )
 
-    async def prompt(self, message: str, default: str = "") -> str:
+    async def prompt(self, message: str, default: str | None = "") -> str:
         """Prompt for input (async-safe)."""
         self._stop_spinner()
         session: PromptSession[str] = PromptSession()
-        result = await session.prompt_async(f"{message}: ", default=default)
+        # prompt_toolkit Document cannot take None defaults
+        safe_default = default if default is not None else ""
+        result = await session.prompt_async(f"{message}: ", default=safe_default)
         return result.strip()
 
     async def prompt_secret(self, message: str) -> str:
@@ -193,6 +195,10 @@ class ConsoleUI:
             return default
 
         return result in ("y", "yes", "oui", "o")
+
+    async def confirm(self, message: str, default: bool = False) -> bool:
+        """Alias for prompt_confirm for compatibility."""
+        return await self.prompt_confirm(message, default)
 
     async def prompt_choice(
         self,

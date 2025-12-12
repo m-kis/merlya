@@ -158,3 +158,121 @@ class TestCommandInjectionPrevention:
         for service in malicious_services:
             error = _validate_service_name(service)
             assert error is not None, f"Service {service} should be rejected"
+
+
+class TestRouterSecurityValidation:
+    """Tests for router identifier validation."""
+
+    def test_validate_identifier_blocks_path_traversal(self) -> None:
+        """Test that path traversal attempts are blocked."""
+        from merlya.router.classifier import IntentRouter
+
+        router = IntentRouter(use_local=False)
+
+        # Path traversal attempts
+        assert router._validate_identifier("../etc/passwd") is False
+        assert router._validate_identifier("..\\windows\\system32") is False
+        assert router._validate_identifier("foo/../bar") is False
+        assert router._validate_identifier("foo..bar") is False
+
+    def test_validate_identifier_blocks_empty(self) -> None:
+        """Test that empty identifiers are blocked."""
+        from merlya.router.classifier import IntentRouter
+
+        router = IntentRouter(use_local=False)
+
+        assert router._validate_identifier("") is False
+        assert router._validate_identifier(None) is False  # type: ignore
+
+    def test_validate_identifier_blocks_too_long(self) -> None:
+        """Test that overly long identifiers are blocked."""
+        from merlya.router.classifier import IntentRouter
+
+        router = IntentRouter(use_local=False)
+
+        long_name = "a" * 300
+        assert router._validate_identifier(long_name) is False
+
+    def test_validate_identifier_allows_valid(self) -> None:
+        """Test that valid identifiers are allowed."""
+        from merlya.router.classifier import IntentRouter
+
+        router = IntentRouter(use_local=False)
+
+        assert router._validate_identifier("web-01") is True
+        assert router._validate_identifier("server_prod") is True
+        assert router._validate_identifier("db.primary") is True
+        assert router._validate_identifier("host123") is True
+
+
+class TestPoliciesSecurityValidation:
+    """Tests for policies destructive operation validation."""
+
+    def test_should_confirm_destructive_ops(self) -> None:
+        """Test that destructive operations require confirmation."""
+        from merlya.config.models import PolicyConfig
+        from merlya.config.policies import PolicyManager
+
+        config = PolicyConfig(require_confirmation_for_write=True)
+        manager = PolicyManager(config)
+
+        # Destructive ops should require confirmation
+        assert manager.should_confirm("delete") is True
+        assert manager.should_confirm("remove") is True
+        assert manager.should_confirm("restart") is True
+        assert manager.should_confirm("stop") is True
+        assert manager.should_confirm("kill") is True
+        assert manager.should_confirm("reboot") is True
+        assert manager.should_confirm("shutdown") is True
+
+    def test_should_not_confirm_safe_ops(self) -> None:
+        """Test that safe operations don't require confirmation."""
+        from merlya.config.models import PolicyConfig
+        from merlya.config.policies import PolicyManager
+
+        config = PolicyConfig(require_confirmation_for_write=True)
+        manager = PolicyManager(config)
+
+        # Safe ops should not require confirmation
+        assert manager.should_confirm("read") is False
+        assert manager.should_confirm("list") is False
+        assert manager.should_confirm("status") is False
+        assert manager.should_confirm("info") is False
+
+    def test_confirmation_can_be_disabled(self) -> None:
+        """Test that confirmation can be disabled in config."""
+        from merlya.config.models import PolicyConfig
+        from merlya.config.policies import PolicyManager
+
+        config = PolicyConfig(require_confirmation_for_write=False)
+        manager = PolicyManager(config)
+
+        # Even destructive ops should not require confirmation when disabled
+        assert manager.should_confirm("delete") is False
+        assert manager.should_confirm("restart") is False
+
+    def test_host_count_validation(self) -> None:
+        """Test host count validation for security."""
+        from merlya.config.models import PolicyConfig
+        from merlya.config.policies import PolicyManager
+
+        config = PolicyConfig(max_hosts_per_skill=10)
+        manager = PolicyManager(config)
+
+        # Valid counts
+        is_valid, error = manager.validate_hosts_count(5)
+        assert is_valid is True
+        assert error is None
+
+        # Too many hosts
+        is_valid, error = manager.validate_hosts_count(100)
+        assert is_valid is False
+        assert error is not None
+
+        # Zero hosts
+        is_valid, error = manager.validate_hosts_count(0)
+        assert is_valid is False
+
+        # Negative hosts
+        is_valid, error = manager.validate_hosts_count(-1)
+        assert is_valid is False

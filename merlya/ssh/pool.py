@@ -7,6 +7,7 @@ Manages SSH connections with reuse and timeout.
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -28,7 +29,8 @@ class SSHPool(SFTPOperations):
     SSH connection pool with reuse.
 
     Maintains connections for reuse and handles MFA prompts.
-    Thread-safe with asyncio.Lock.
+    Thread-safe singleton with threading.Lock for instance creation,
+    asyncio.Lock for connection pool operations.
     """
 
     DEFAULT_TIMEOUT = 600  # 10 minutes
@@ -36,7 +38,7 @@ class SSHPool(SFTPOperations):
     DEFAULT_MAX_CONNECTIONS = 50
 
     _instance: SSHPool | None = None
-    _instance_lock: asyncio.Lock | None = None
+    _instance_lock: threading.Lock = threading.Lock()
 
     def __init__(
         self,
@@ -544,10 +546,7 @@ class SSHPool(SFTPOperations):
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
     ) -> SSHPool:
         """Get singleton instance (thread-safe)."""
-        if cls._instance_lock is None:
-            cls._instance_lock = asyncio.Lock()
-
-        async with cls._instance_lock:
+        with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = cls(timeout, connect_timeout, max_connections)
             return cls._instance
@@ -556,7 +555,6 @@ class SSHPool(SFTPOperations):
     def reset_instance(cls) -> None:
         """Reset singleton (for tests)."""
         cls._instance = None
-        cls._instance_lock = None
 
     # =========================================================================
     # Key Validation

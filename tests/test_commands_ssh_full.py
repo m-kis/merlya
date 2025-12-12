@@ -129,7 +129,7 @@ class TestSSHConnectCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /ssh connect without args shows usage."""
         result = await registry.execute(mock_context, "/ssh connect")
@@ -151,7 +151,7 @@ class TestSSHConnectCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
         mock_ssh_pool: MagicMock,
     ):
         """Test /ssh connect with valid host."""
@@ -168,7 +168,7 @@ class TestSSHExecCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /ssh exec without args shows usage."""
         result = await registry.execute(mock_context, "/ssh exec")
@@ -180,7 +180,7 @@ class TestSSHExecCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /ssh exec with host but no command."""
         result = await registry.execute(mock_context, "/ssh exec test-host")
@@ -192,7 +192,7 @@ class TestSSHExecCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
         mock_ssh_pool: MagicMock,
     ):
         """Test /ssh exec with valid host and command."""
@@ -214,7 +214,7 @@ class TestSSHDisconnectCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
         mock_ssh_pool: MagicMock,
     ):
         """Test /ssh disconnect without args disconnects all."""
@@ -227,7 +227,7 @@ class TestSSHDisconnectCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
         mock_ssh_pool: MagicMock,
     ):
         """Test /ssh disconnect with valid host."""
@@ -244,7 +244,7 @@ class TestSSHConfigCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /ssh config without args shows usage."""
         result = await registry.execute(mock_context, "/ssh config")
@@ -270,7 +270,7 @@ class TestSSHTestCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /ssh test without args shows usage."""
         result = await registry.execute(mock_context, "/ssh test")
@@ -292,7 +292,7 @@ class TestSSHTestCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
         mock_ssh_pool: MagicMock,
     ):
         """Test /ssh test with successful connection."""
@@ -310,7 +310,7 @@ class TestSSHTestCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
         mock_ssh_pool: MagicMock,
     ):
         """Test /ssh test with failed connection."""

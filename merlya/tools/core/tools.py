@@ -7,6 +7,7 @@ Includes: list_hosts, get_host, ssh_execute, ask_user, request_confirmation.
 from __future__ import annotations
 
 import ipaddress
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +15,80 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+
+
+# Pattern to match @secret-name references in commands
+# Only match @ preceded by whitespace, start of string, or shell operators (not emails/URLs)
+# Examples matched: @api-key, --password @db-pass, echo @token, @sudo:hostname:password
+# Examples NOT matched: user@github.com, git@repo.com
+# Now supports colons for structured keys like @service:host:field
+SECRET_PATTERN = re.compile(r"(?:^|(?<=[\s;|&='\"]))\@([a-zA-Z][a-zA-Z0-9_:.-]*)")
+
+
+def resolve_secrets(command: str, secrets: Any) -> tuple[str, str]:
+    """
+    Resolve @secret-name references in a command.
+
+    Args:
+        command: Command string potentially containing @secret-name references.
+        secrets: SecretStore instance.
+
+    Returns:
+        Tuple of (resolved_command, safe_command_for_logging).
+        The safe_command replaces secret values with '***'.
+    """
+    resolved = command
+    safe = command
+
+    # Collect all matches and sort by start position in reverse order
+    # This ensures we replace from end to start, preserving span positions
+    # and avoiding corruption of overlapping names (e.g., @api vs @api_key)
+    matches = list(SECRET_PATTERN.finditer(command))
+    matches.sort(key=lambda m: m.start(), reverse=True)
+
+    for match in matches:
+        secret_name = match.group(1)
+        secret_value = secrets.get(secret_name)
+        start, end = match.span(0)
+        if secret_value is not None:  # Allow empty strings as valid secrets
+            # Replace exact span in resolved command with actual value
+            resolved = resolved[:start] + secret_value + resolved[end:]
+            # Replace exact span in safe command with mask
+            safe = safe[:start] + "***" + safe[end:]
+            logger.debug(f"🔐 Resolved secret @{secret_name}")
+        else:
+            # Log warning if secret reference found but not in store
+            logger.warning(f"⚠️ Secret @{secret_name} not found in store")
+
+    return resolved, safe
+
+
+# Patterns that likely contain plaintext passwords (security risk)
+# These patterns detect when a password is embedded directly instead of using @secret-name references
+UNSAFE_PASSWORD_PATTERNS = [
+    # echo 'pass' | sudo -S (but not echo '@secret' | sudo -S)
+    re.compile(r"echo\s+['\"]?(?!@)[^'\"]+['\"]?\s*\|\s*sudo\s+-S", re.IGNORECASE),
+    # -p'password' or -ppassword (but not -p@secret or -p'@secret')
+    re.compile(r"-p['\"]?(?!@)[^@\s'\"]+['\"]?(?:\s|$)", re.IGNORECASE),
+    # --password=pass (but not --password=@secret)
+    re.compile(r"--password[=\s]+['\"]?(?!@)[^@\s'\"]+['\"]?", re.IGNORECASE),
+]
+
+
+def detect_unsafe_password(command: str) -> str | None:
+    """
+    Detect if a command contains a potential plaintext password.
+
+    Returns a warning message if unsafe pattern detected, None otherwise.
+    Commands using @secret-name references are safe.
+    """
+    for pattern in UNSAFE_PASSWORD_PATTERNS:
+        if pattern.search(command):
+            return (
+                "⚠️ SECURITY: Command may contain a plaintext password. "
+                "Use @secret-name references instead (e.g., @sudo:host:password)."
+            )
+    return None
 
 
 @dataclass
@@ -137,25 +212,47 @@ async def ssh_execute(
     connect_timeout: int | None = None,
     elevation: dict[str, Any] | None = None,
     via: str | None = None,
+    auto_elevate: bool = True,
 ) -> ToolResult:
     """
     Execute a command on a host via SSH.
 
+    Features:
+    - Secret resolution: @secret-name in commands are resolved from keyring
+    - Auto-elevation: Permission denied errors trigger automatic elevation retry
+
     Args:
         ctx: Shared context.
         host: Host name or hostname.
-        command: Command to execute.
+        command: Command to execute. Can contain @secret-name references.
         timeout: Command timeout in seconds.
         connect_timeout: Optional connection timeout.
         elevation: Optional prepared elevation payload (from request_elevation).
         via: Optional jump host/bastion to use for this connection.
              Can be a host name from inventory or IP/hostname.
              Takes priority over any jump_host configured in the host entry.
+        auto_elevate: If True, automatically retry with elevation on permission errors.
 
     Returns:
         ToolResult with command output.
     """
     try:
+        # SECURITY: Check for plaintext passwords in command
+        unsafe_warning = detect_unsafe_password(command)
+        if unsafe_warning:
+            logger.warning(unsafe_warning)
+            return ToolResult(
+                success=False,
+                error=unsafe_warning,
+                data={"host": host, "command": command[:50] + "..."},
+            )
+
+        # Initialize safe_command early so it's always available in the except block
+        safe_command = command
+
+        # Resolve secrets in command (@secret-name -> actual value)
+        resolved_command, safe_command = resolve_secrets(command, ctx.secrets)
+
         # Resolve host from inventory
         host_entry = await ctx.hosts.get_by_name(host)
 
@@ -167,14 +264,13 @@ async def ssh_execute(
                 return ToolResult(
                     success=False,
                     error=f"Host '{host}' not found in inventory. Use /hosts add {host} first.",
-                    data={"host": host, "command": command[:50]},
+                    data={"host": host, "command": safe_command[:50]},
                 )
 
         # Apply prepared elevation (brain-driven only)
         input_data = None
         elevation_used = None
-        base_command = command
-        elevation_needs_password = False
+        base_command = resolved_command
 
         # Build SSH connection options from host inventory
         from merlya.ssh import SSHConnectionOptions
@@ -202,11 +298,10 @@ async def ssh_execute(
                 logger.debug(f"🔗 Using jump host '{jump_host_name}' (direct)")
 
         if elevation:
-            command = elevation.get("command", command)
-            base_command = elevation.get("base_command", command)
+            resolved_command = elevation.get("command", resolved_command)
+            base_command = elevation.get("base_command", resolved_command)
             input_data = elevation.get("input")
             elevation_used = elevation.get("method")
-            elevation_needs_password = bool(elevation.get("needs_password"))
 
         # Get SSH pool
         ssh_pool = await ctx.get_ssh_pool()
@@ -244,27 +339,80 @@ async def ssh_execute(
                 host_name=host,  # Pass inventory name for credential lookup
             )
 
-        result = await _run(command, input_data)
+        result = await _run(resolved_command, input_data)
 
-        # If elevation was password-optional and failed, retry with password
-        if result.exit_code != 0 and elevation_used and elevation_needs_password and not input_data:
+        # Auto-elevation: retry with elevation on permission errors
+        permission_errors = ("permission denied", "operation not permitted", "access denied")
+        needs_elevation = (
+            result.exit_code != 0
+            and not elevation_used
+            and auto_elevate
+            and any(err in result.stderr.lower() for err in permission_errors)
+        )
+
+        if needs_elevation:
+            logger.info(f"🔒 Permission denied on {host}, attempting elevation...")
+            password_prompted = False
             try:
                 permissions = await ctx.get_permissions()
-                password = await ctx.ui.prompt_secret("🔑 Elevation password required")
-                if password:
-                    if elevation_used == "sudo_with_password":
-                        command, input_data = permissions._elevate_command(  # type: ignore[attr-defined]
-                            base_command, {"is_root": False}, "sudo_with_password", password
+                elevation_result = await permissions.prepare_command(host, base_command)  # type: ignore[attr-defined]
+
+                if elevation_result.method:
+                    elevated_cmd = elevation_result.command
+                    elevated_input = elevation_result.input_data
+                    elevation_used = elevation_result.method
+
+                    # Get cached capabilities for elevate_command calls
+                    capabilities = await permissions.detect_capabilities(host)  # type: ignore[attr-defined]
+
+                    # If elevation needs password and we don't have input, prompt
+                    if elevation_result.needs_password and not elevated_input:
+                        password = await ctx.ui.prompt_secret("🔑 Elevation password required")
+                        password_prompted = True
+                        if password:
+                            # Cache password for reuse in this session
+                            permissions.cache_password(host, password)  # type: ignore[attr-defined]
+                            elevated_cmd, elevated_input = permissions.elevate_command(  # type: ignore[attr-defined]
+                                base_command, capabilities, elevation_used, password
+                            )
+
+                    result = await _run(elevated_cmd, elevated_input)
+                    logger.debug(
+                        f"🔒 Elevation with {elevation_used}: exit_code={result.exit_code}"
+                    )
+
+                    # If elevation failed due to needing password, retry with password
+                    # but only if we haven't already prompted for one
+                    auth_errors = (
+                        "authentication failure",
+                        "sorry",
+                        "incorrect password",
+                        "permission denied",
+                        "must be run from a terminal",
+                    )
+                    needs_password_retry = (
+                        result.exit_code != 0
+                        and not password_prompted
+                        and elevation_used in ("su", "sudo_with_password")
+                        and any(err in result.stderr.lower() for err in auth_errors)
+                    )
+
+                    if needs_password_retry:
+                        logger.debug(f"🔒 {elevation_used} requires password, prompting user...")
+                        password = await ctx.ui.prompt_secret(
+                            f"🔑 {elevation_used} password required"
                         )
-                    elif elevation_used == "su":
-                        command, input_data = permissions._elevate_command(  # type: ignore[attr-defined]
-                            base_command, {"is_root": False}, "su", password
-                        )
-                    result = await _run(command, input_data)
-                    elevation_used = f"{elevation_used}_retry"
-            except Exception as retry_exc:
-                # Don't log exception details to avoid leaking password in command/input
-                logger.debug(f"🔒 Elevation retry failed: {type(retry_exc).__name__}")
+                        if password:
+                            permissions.cache_password(host, password)  # type: ignore[attr-defined]
+                            elevated_cmd, elevated_input = permissions.elevate_command(  # type: ignore[attr-defined]
+                                base_command, capabilities, elevation_used, password
+                            )
+                            result = await _run(elevated_cmd, elevated_input)
+                            logger.debug(
+                                f"🔒 Elevation retry with password: exit_code={result.exit_code}"
+                            )
+            except Exception as elev_exc:
+                logger.warning(f"🔒 Auto-elevation failed: {type(elev_exc).__name__}: {elev_exc}")
 
         return ToolResult(
             success=result.exit_code == 0,
@@ -273,7 +421,7 @@ async def ssh_execute(
                 "stderr": result.stderr,
                 "exit_code": result.exit_code,
                 "host": host,
-                "command": command[:50] + "..." if len(command) > 50 else command,
+                "command": safe_command[:50] + "..." if len(safe_command) > 50 else safe_command,
                 "elevation": elevation_used,
                 "via": jump_host_name,
             },
@@ -281,11 +429,21 @@ async def ssh_execute(
         )
 
     except Exception as e:
-        logger.error(f"SSH execution failed: {e}")
+        # Parse error for human-readable explanation
+        error_info = _explain_ssh_error(e, host, via=via)
+        logger.error(f"SSH execution failed: {error_info['symptom']}")
+        logger.info(f"💡 {error_info['suggestion']}")
+
         return ToolResult(
             success=False,
-            data={"host": host, "command": command[:50]},
-            error=str(e),
+            data={
+                "host": host,
+                "command": safe_command[:50],
+                "symptom": error_info["symptom"],
+                "explanation": error_info["explanation"],
+                "suggestion": error_info["suggestion"],
+            },
+            error=f"{error_info['symptom']} - {error_info['explanation']}",
         )
 
 
@@ -296,6 +454,79 @@ def _is_ip(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _explain_ssh_error(error: Exception, host: str, via: str | None = None) -> dict[str, str]:
+    """Parse SSH error and return human-readable explanation with suggested solutions.
+
+    Returns dict with keys:
+    - symptom: What happened (technical)
+    - explanation: Why it happened (human-readable)
+    - suggestion: What to do about it
+    """
+    error_str = str(error).lower()
+    error_full = str(error)
+
+    # Connection timeout (Errno 60 on macOS, 110 on Linux)
+    if "errno 60" in error_str or "errno 110" in error_str or "timed out" in error_str:
+        target = via if via else host
+        return {
+            "symptom": f"Connection timeout to {target}",
+            "explanation": f"Could not establish TCP connection to {target}:22 within timeout",
+            "suggestion": (
+                f"Check: (1) VPN connected? (2) {target} reachable? (3) Port 22 open? "
+                f"Try: ping {target} or nc -zv {target} 22"
+            ),
+        }
+
+    # Connection refused (port closed or service down)
+    if "connection refused" in error_str or "errno 111" in error_str:
+        target = via if via else host
+        return {
+            "symptom": f"Connection refused by {target}",
+            "explanation": "TCP connection was actively refused (SSH service not running or port blocked)",
+            "suggestion": f"Check if SSH service is running on {target}: systemctl status sshd",
+        }
+
+    # Host unreachable
+    if "no route to host" in error_str or "network is unreachable" in error_str:
+        target = via if via else host
+        return {
+            "symptom": f"No route to host {target}",
+            "explanation": "Network path to host does not exist (routing issue)",
+            "suggestion": "Check: (1) VPN connected? (2) Network configuration (3) Firewall rules",
+        }
+
+    # DNS resolution failure
+    if "name or service not known" in error_str or "nodename nor servname provided" in error_str:
+        return {
+            "symptom": f"DNS resolution failed for {host}",
+            "explanation": "Could not resolve hostname to IP address",
+            "suggestion": "Check: (1) Hostname spelling (2) DNS configuration (3) /etc/hosts",
+        }
+
+    # Authentication failure
+    if "authentication failed" in error_str or "permission denied" in error_str:
+        return {
+            "symptom": f"Authentication failed for {host}",
+            "explanation": "SSH key or password rejected by server",
+            "suggestion": "Check: (1) SSH key exists and loaded (ssh-add -l) (2) Key authorized on server (3) Username correct",
+        }
+
+    # Host key verification
+    if "host key verification failed" in error_str:
+        return {
+            "symptom": f"Host key verification failed for {host}",
+            "explanation": "Server's SSH key doesn't match known_hosts (possible MITM or server reinstall)",
+            "suggestion": f"If expected: ssh-keygen -R {host} then reconnect to accept new key",
+        }
+
+    # Generic fallback
+    return {
+        "symptom": error_full,
+        "explanation": "SSH connection or execution error",
+        "suggestion": "Check SSH connectivity manually: ssh <user>@<host>",
+    }
 
 
 def _ensure_callbacks(ctx: SharedContext, ssh_pool: Any) -> None:

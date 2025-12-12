@@ -38,6 +38,63 @@ Merlya est un assistant CLI autonome qui comprend le contexte de votre infrastru
 - Router local-first (gte/EmbeddingGemma/e5) avec fallback LLM configurables
 - Sécurité by design : secrets dans le keyring, validation Pydantic, logs cohérents
 - Extensible (agents modulaires Docker/K8s/CI/CD) et i18n (fr/en)
+- Intégration MCP pour consommer des tools externes (GitHub, Slack, custom) via `/mcp`
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER INPUT                                      │
+│                    "Check disk on @web-01 via @bastion"                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           INTENT ROUTER                                      │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │ ONNX Local  │───▶│ LLM Fallback│───▶│  Pattern    │                      │
+│  │ Embeddings  │    │ (if <0.7)   │    │  Matching   │                      │
+│  └─────────────┘    └─────────────┘    └─────────────┘                      │
+│                              │                                               │
+│  Output: mode=DIAGNOSTIC, hosts=[@web-01], via=@bastion                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    ▼                 ▼                 ▼
+           ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+           │  FAST PATH   │  │    SKILL     │  │    AGENT     │
+           │ (DB queries) │  │  (workflows) │  │ (PydanticAI) │
+           └──────────────┘  └──────────────┘  └──────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SECURITY LAYER                                     │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │  Keyring    │    │  Elevation  │    │    Loop     │                      │
+│  │  Secrets    │    │  Detection  │    │  Detection  │                      │
+│  │ @secret-ref │    │ sudo/doas/su│    │ (3+ repeat) │                      │
+│  └─────────────┘    └─────────────┘    └─────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            SSH POOL                                          │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │ Connection  │    │  Jump Host  │    │    MFA      │                      │
+│  │   Reuse     │    │   Support   │    │   Support   │                      │
+│  └─────────────┘    └─────────────┘    └─────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          PERSISTENCE                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │  Hosts   │  │ Sessions │  │  Audit   │  │ Raw Logs │  │ Messages │       │
+│  │ Inventory│  │ Context  │  │   Logs   │  │  (TTL)   │  │ History  │       │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │
+│                         SQLite + Keyring                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Installation (utilisateurs finaux)
 
@@ -50,7 +107,41 @@ pip install merlya[all]     # Tous les extras
 merlya
 ```
 
-> ONNX n’a pas encore de roues Python 3.14 : utilisez Python ≤ 3.13 pour `[router]`.
+> ONNX n'a pas encore de roues Python 3.14 : utilisez Python ≤ 3.13 pour `[router]`.
+
+### Installation Docker
+
+```bash
+# Copier et configurer les variables d'environnement
+cp .env.example .env
+# Éditer .env avec vos clés API
+
+# Lancer le conteneur
+docker compose up -d
+
+# Mode développement (code source monté)
+docker compose --profile dev up -d
+```
+
+**Configuration SSH pour Docker :**
+
+Le conteneur monte votre répertoire SSH local. Par défaut, il utilise `$HOME/.ssh`.
+
+Dans les environnements CI/CD où `$HOME` peut ne pas être défini, vous devez explicitement définir `SSH_DIR` :
+
+```bash
+# Via variable d'environnement
+SSH_DIR=/root/.ssh docker compose up -d
+
+# Ou dans votre fichier .env
+SSH_DIR=/home/jenkins/.ssh
+```
+
+**Permissions requises :**
+- Répertoire SSH : `700` (rwx pour propriétaire uniquement)
+- Clés privées : `600` (rw pour propriétaire uniquement)
+
+Voir `.env.example` pour la documentation complète des variables.
 
 ### Premier démarrage
 
@@ -67,13 +158,41 @@ merlya
 > /ssh exec @db-01 "uptime"
 > /model router show
 > /variable set region eu-west-1
+> /mcp list
 ```
+
+## Sécurité
+
+### Secrets et références @secret
+
+Les secrets (mots de passe, tokens, clés API) sont stockés dans le keyring système (macOS Keychain, Linux Secret Service) et référencés par `@nom-secret` dans les commandes :
+
+```bash
+> Connect to MongoDB with @db-password
+# Merlya résout @db-password depuis le keyring avant exécution
+# Les logs affichent @db-password, jamais la vraie valeur
+```
+
+### Élévation de privilèges
+
+Merlya détecte automatiquement les capacités d'élévation (sudo, doas, su) et gère les mots de passe de manière sécurisée :
+
+1. **sudo NOPASSWD** - Meilleur choix, pas de mot de passe
+2. **doas** - Souvent sans mot de passe sur BSD
+3. **sudo avec mot de passe** - Fallback standard
+4. **su** - Dernier recours, nécessite le mot de passe root
+
+Les mots de passe d'élévation sont stockés dans le keyring et référencés par `@elevation:hostname:password`.
+
+### Détection de boucles
+
+L'agent détecte les patterns répétitifs (même outil appelé 3+ fois, alternance A-B-A-B) et injecte un message pour rediriger vers une approche différente.
 
 ## Configuration
 
 - Fichier utilisateur : `~/.merlya/config.yaml` (langue, modèle, timeouts SSH, UI).
 - Clés API : stockées dans le keyring. Fallback en mémoire avec avertissement.
-- Variables d’environnement utiles :
+- Variables d'environnement utiles :
 
 | Variable | Description |
 |----------|-------------|

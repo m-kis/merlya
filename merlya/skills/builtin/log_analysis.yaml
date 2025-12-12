@@ -1,0 +1,50 @@
+# Merlya Builtin Skill: Log Analysis
+# Analyze logs and identify issues
+
+name: log_analysis
+version: "1.0"
+description: "Analyze logs and identify errors or anomalies"
+
+intent_patterns:
+  # NOTE: Patterns are DEPRECATED - use description for semantic matching
+  # Keep patterns specific to avoid false matches
+  - "\\banalyze\\s+.*logs?\\b"
+  - "\\bcheck\\s+.*logs?\\b"
+  - "\\berrors?\\s+.*logs?\\b"
+  - "\\blog\\s+analysis\\b"
+  - "\\bjournalctl\\s+-[ue]"
+  - "\\btail\\s+-[fn]\\s+.*log"
+  - "\\bsyslog\\b"
+  - "\\bdmesg\\b"
+
+tools_allowed:
+  - ssh_execute
+  - read_file
+  - get_raw_log
+  - get_raw_log_slice
+
+max_hosts: 5
+timeout_seconds: 120
+
+require_confirmation_for:
+  - ssh_execute
+
+system_prompt: |
+  You are a log analysis expert.
+
+  When analyzing logs:
+  1. Look for ERROR, WARN, FATAL patterns
+  2. Identify timestamps and frequency of issues
+  3. Extract relevant context around errors
+  4. Summarize patterns and root causes
+
+  Provide clear analysis with:
+  - Number of errors found
+  - Time range of issues
+  - Most common error types
+  - Recommended next steps
+
+tags:
+  - logs
+  - diagnostic
+  - troubleshooting

@@ -181,7 +181,24 @@ async def request_credentials(
                 stored = True
                 ctx.ui.success("✅ Credentials stored securely")
 
-        bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
+        # SECURITY: Return secret references instead of raw values
+        # This prevents the LLM from seeing or logging actual passwords
+        # The references will be resolved at execution time by resolve_secrets()
+        safe_values = {}
+        for name, val in values.items():
+            if name.lower() in {"password", "token", "secret", "key", "passphrase", "api_key"}:
+                # Store the value and return a reference
+                secret_key = f"{key_prefix}:{name}"
+                if not stored:
+                    # Always store sensitive values so references work
+                    secret_store.set(secret_key, val)
+                # Return reference like @sudo:hostname:password
+                safe_values[name] = f"@{secret_key}"
+            else:
+                # Non-sensitive fields (like username) can be returned as-is
+                safe_values[name] = val
+
+        bundle = CredentialBundle(service=service, host=host, values=safe_values, stored=True)
         return CommandResult(success=True, message="✅ Credentials captured", data=bundle)
 
     except Exception as e:

@@ -48,7 +48,13 @@ sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 DEFAULT_DB_PATH = Path.home() / ".merlya" / "merlya.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 1
+# v1: Initial schema
+# v2: Added ON DELETE SET NULL/CASCADE to foreign keys
+# v3: Added session_messages table for message history persistence
+SCHEMA_VERSION = 3
+
+# Migration lock timeout in seconds
+MIGRATION_LOCK_TIMEOUT = 30
 
 
 class DatabaseError(Exception):
@@ -63,6 +69,12 @@ class IntegrityError(DatabaseError):
     pass
 
 
+class MigrationLockError(DatabaseError):
+    """Raised when migration lock cannot be acquired."""
+
+    pass
+
+
 class Database:
     """
     SQLite database connection manager.
@@ -72,7 +84,7 @@ class Database:
     """
 
     _instance: Database | None = None
-    _lock: asyncio.Lock | None = None
+    _lock: asyncio.Lock = asyncio.Lock()
 
     def __init__(self, path: Path | None = None) -> None:
         """
@@ -167,6 +179,47 @@ class Database:
                 PRIMARY KEY (host_id, scan_type)
             );
 
+            -- Raw logs table (for storing command outputs)
+            CREATE TABLE IF NOT EXISTS raw_logs (
+                id TEXT PRIMARY KEY,
+                host_id TEXT,
+                command TEXT NOT NULL,
+                output TEXT NOT NULL,
+                exit_code INTEGER,
+                line_count INTEGER NOT NULL,
+                byte_size INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                -- ON DELETE SET NULL: Keep logs even if host is deleted
+                FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE SET NULL
+            );
+
+            -- Sessions table (for context management)
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                summary TEXT,
+                token_count INTEGER DEFAULT 0,
+                message_count INTEGER DEFAULT 0,
+                context_tier TEXT DEFAULT 'STANDARD',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- ON DELETE CASCADE: Delete sessions when conversation is deleted
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            );
+
+            -- Session messages table (for message history persistence)
+            CREATE TABLE IF NOT EXISTS session_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                sequence_num INTEGER NOT NULL,
+                message_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- ON DELETE CASCADE: Delete messages when session is deleted
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+                UNIQUE (session_id, sequence_num)
+            );
+
             -- Config table (for internal state)
             CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY,
@@ -180,11 +233,18 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_scan_cache_expires ON scan_cache(expires_at);
             CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_variables_is_env ON variables(is_env);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON raw_logs(host_id);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_created ON raw_logs(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_raw_logs_expires ON raw_logs(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_sessions_conversation ON sessions(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id);
+            CREATE INDEX IF NOT EXISTS idx_session_messages_order ON session_messages(session_id, sequence_num);
             """
         )
         await conn.commit()
 
-        # Check schema version
+        # Check schema version and run migrations if needed
         async with conn.execute("SELECT value FROM config WHERE key = 'schema_version'") as cursor:
             row = await cursor.fetchone()
             if not row:
@@ -193,6 +253,276 @@ class Database:
                     ("schema_version", str(SCHEMA_VERSION)),
                 )
                 await conn.commit()
+            else:
+                current_version = int(row["value"])
+                if current_version < SCHEMA_VERSION:
+                    await self._run_migrations(current_version)
+
+    async def _acquire_migration_lock(self) -> bool:
+        """
+        Acquire migration lock using SQLite's application_id pragma.
+
+        Uses a two-phase approach:
+        1. Check if another process is migrating (migration_in_progress flag)
+        2. Set the flag atomically before starting migration
+
+        Returns:
+            True if lock acquired, False if another process is migrating.
+        """
+        conn = self.connection
+
+        try:
+            # Check if migration is already in progress
+            async with conn.execute(
+                "SELECT value FROM config WHERE key = 'migration_in_progress'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row and row["value"] == "1":
+                    # Check if lock is stale (older than timeout)
+                    async with conn.execute(
+                        "SELECT value FROM config WHERE key = 'migration_started_at'"
+                    ) as ts_cursor:
+                        ts_row = await ts_cursor.fetchone()
+                        if ts_row:
+                            started_at = datetime.fromisoformat(ts_row["value"])
+                            elapsed = (datetime.now() - started_at).total_seconds()
+                            if elapsed < MIGRATION_LOCK_TIMEOUT:
+                                logger.warning(
+                                    f"⏳ Migration in progress by another process "
+                                    f"(started {elapsed:.1f}s ago), waiting..."
+                                )
+                                return False
+                            else:
+                                logger.warning(
+                                    f"⚠️ Stale migration lock detected ({elapsed:.1f}s old), "
+                                    "taking over..."
+                                )
+
+            # Set migration lock
+            await conn.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                ("migration_in_progress", "1"),
+            )
+            await conn.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                ("migration_started_at", datetime.now().isoformat()),
+            )
+            await conn.commit()
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to acquire migration lock: {e}")
+            return False
+
+    async def _release_migration_lock(self) -> None:
+        """Release migration lock."""
+        conn = self.connection
+        try:
+            await conn.execute(
+                "DELETE FROM config WHERE key IN ('migration_in_progress', 'migration_started_at')"
+            )
+            await conn.commit()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to release migration lock: {e}")
+
+    async def _run_migrations(self, from_version: int) -> None:
+        """
+        Run database migrations from version to SCHEMA_VERSION.
+
+        Uses a single transaction for atomicity and a lock for multi-process safety.
+        """
+        conn = self.connection
+
+        # Acquire migration lock with retry
+        max_retries = 3
+        for attempt in range(max_retries):
+            if await self._acquire_migration_lock():
+                break
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)  # Wait before retry
+        else:
+            raise MigrationLockError(
+                "Could not acquire migration lock after multiple attempts. "
+                "Another process may be migrating the database."
+            )
+
+        try:
+            # Run all migrations in a single transaction for atomicity
+            await conn.execute("BEGIN IMMEDIATE TRANSACTION")
+
+            try:
+                # Migration v1 -> v2: Add ON DELETE clauses to foreign keys
+                if from_version < 2:
+                    logger.info("📦 Running database migration v1 -> v2...")
+                    await self._migrate_v1_to_v2_tables()
+                    from_version = 2  # Update for next check
+                    logger.info("✅ Migration v1 -> v2 complete")
+
+                # Migration v2 -> v3: Add session_messages table
+                if from_version < 3:
+                    logger.info("📦 Running database migration v2 -> v3...")
+                    await self._migrate_add_session_messages_v3_internal()
+                    logger.info("✅ Migration v2 -> v3 complete")
+
+                # Update schema version (within the same transaction)
+                await conn.execute(
+                    "UPDATE config SET value = ? WHERE key = 'schema_version'",
+                    (str(SCHEMA_VERSION),),
+                )
+
+                # Commit entire migration atomically
+                await conn.execute("COMMIT")
+                logger.info(f"✅ All migrations complete (schema v{SCHEMA_VERSION})")
+
+            except Exception as e:
+                # Rollback entire migration on any failure
+                await conn.execute("ROLLBACK")
+                logger.error(f"❌ Migration failed, rolled back: {e}")
+                raise DatabaseError(f"Migration failed: {e}") from e
+
+        finally:
+            # Always release the lock
+            await self._release_migration_lock()
+
+    async def _migrate_v1_to_v2_tables(self) -> None:
+        """Migrate tables for v1 -> v2 (within existing transaction)."""
+        conn = self.connection
+
+        # Check and migrate raw_logs table
+        async with conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='raw_logs'"
+        ) as cursor:
+            if await cursor.fetchone():
+                await self._migrate_raw_logs_v2_internal()
+
+        # Check and migrate sessions table
+        async with conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
+        ) as cursor:
+            if await cursor.fetchone():
+                await self._migrate_sessions_v2_internal()
+
+    async def _migrate_add_session_messages_v3_internal(self) -> None:
+        """Add session_messages table (called within transaction)."""
+        conn = self.connection
+
+        # Create session_messages table if it doesn't exist
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                sequence_num INTEGER NOT NULL,
+                message_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+                UNIQUE (session_id, sequence_num)
+            )
+            """
+        )
+
+        # Create indexes
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_messages_order ON session_messages(session_id, sequence_num)"
+        )
+        logger.debug("  → session_messages table created")
+
+    async def _migrate_raw_logs_v2_internal(self) -> None:
+        """Migrate raw_logs table (called within transaction)."""
+        conn = self.connection
+
+        # Create new table with ON DELETE SET NULL
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS raw_logs_new (
+                id TEXT PRIMARY KEY,
+                host_id TEXT,
+                command TEXT NOT NULL,
+                output TEXT NOT NULL,
+                exit_code INTEGER,
+                line_count INTEGER NOT NULL,
+                byte_size INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE SET NULL
+            )
+            """
+        )
+
+        # Copy data
+        await conn.execute(
+            """
+            INSERT OR IGNORE INTO raw_logs_new
+            SELECT id, host_id, command, output, exit_code, line_count, byte_size,
+                   created_at, expires_at
+            FROM raw_logs
+            """
+        )
+
+        # Drop old table
+        await conn.execute("DROP TABLE IF EXISTS raw_logs")
+
+        # Rename new table
+        await conn.execute("ALTER TABLE raw_logs_new RENAME TO raw_logs")
+
+        # Recreate indexes
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON raw_logs(host_id)")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_raw_logs_created ON raw_logs(created_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_raw_logs_expires ON raw_logs(expires_at)"
+        )
+        logger.debug("  → raw_logs table migrated")
+
+    async def _migrate_sessions_v2_internal(self) -> None:
+        """Migrate sessions table (called within transaction)."""
+        conn = self.connection
+
+        # Create new table with ON DELETE CASCADE
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions_new (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                summary TEXT,
+                token_count INTEGER DEFAULT 0,
+                message_count INTEGER DEFAULT 0,
+                context_tier TEXT DEFAULT 'STANDARD',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # Copy data
+        await conn.execute(
+            """
+            INSERT OR IGNORE INTO sessions_new
+            SELECT id, conversation_id, summary, token_count, message_count,
+                   context_tier, created_at, updated_at
+            FROM sessions
+            """
+        )
+
+        # Drop old table
+        await conn.execute("DROP TABLE IF EXISTS sessions")
+
+        # Rename new table
+        await conn.execute("ALTER TABLE sessions_new RENAME TO sessions")
+
+        # Recreate indexes
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_conversation ON sessions(conversation_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)"
+        )
+        logger.debug("  → sessions table migrated")
 
     async def execute(self, query: str, params: tuple[Any, ...] | None = None) -> aiosqlite.Cursor:
         """Execute a query."""
@@ -240,9 +570,6 @@ class Database:
     @classmethod
     async def get_instance(cls, path: Path | None = None) -> Database:
         """Get singleton instance (thread-safe)."""
-        if cls._lock is None:
-            cls._lock = asyncio.Lock()
-
         async with cls._lock:
             if cls._instance is None:
                 cls._instance = cls(path)
@@ -260,7 +587,6 @@ class Database:
     def reset_instance(cls) -> None:
         """Reset instance without closing (for tests)."""
         cls._instance = None
-        cls._lock = None
 
 
 async def get_database(path: Path | None = None) -> Database:

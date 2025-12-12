@@ -211,6 +211,92 @@ Host key verification failed
 - Add host to `~/.ssh/known_hosts`
 - Or enable auto-add (less secure)
 
+## Privilege Elevation
+
+Merlya automatically handles privilege elevation (sudo, doas, su) on remote hosts.
+
+### Automatic Detection
+
+When connecting to a host, Merlya detects available elevation methods:
+
+1. **sudo NOPASSWD** - Tests `sudo -n true` (non-interactive)
+2. **doas** - Common on BSD systems
+3. **sudo with password** - Standard sudo requiring password
+4. **su** - Last resort, requires root password
+
+### Method Priority
+
+```
+1. sudo (NOPASSWD)      - Best: no password needed
+2. doas (NOPASSWD)      - Common on BSD
+3. sudo_with_password   - Fallback with password
+4. su                   - Last resort
+```
+
+### Password Handling
+
+Elevation passwords are stored securely:
+
+1. **Keyring storage** - macOS Keychain, Linux Secret Service
+2. **Reference tokens** - Commands use `@elevation:hostname:password`
+3. **Safe logging** - Logs show `@elevation:...`, never actual passwords
+
+### Usage in Commands
+
+Merlya handles elevation automatically:
+
+```
+> Read /var/log/secure on @web01
+# Merlya detects "Permission denied"
+# Prompts for elevation if needed
+# Retries with sudo/doas/su
+```
+
+You can also explicitly request elevation:
+
+```
+> Run 'systemctl restart nginx' on @web01 with sudo
+> Execute 'cat /etc/shadow' on @db01 as root
+```
+
+### Secret References
+
+For commands requiring passwords, use secret references:
+
+```
+> Connect to MongoDB with password @db-prod-password on @db01
+```
+
+Secret references (`@name`) are:
+- Stored in system keyring
+- Resolved at execution time
+- Never appear in logs
+
+### Elevation Configuration
+
+Per-host elevation settings are cached in host metadata:
+
+```bash
+/hosts show @web01
+# Shows detected elevation method
+```
+
+### Troubleshooting
+
+#### "Permission denied" persists
+
+**Solutions:**
+- Check user has sudo/doas access on target
+- Verify `/etc/sudoers` configuration
+- Try explicit elevation: `run as root`
+
+#### Password prompt loops
+
+**Solutions:**
+- Clear cached password: `/secret delete elevation:hostname:password`
+- Check password is correct
+- Verify sudo doesn't require TTY (`requiretty` in sudoers)
+
 ## Security Best Practices
 
 1. **Use SSH keys** instead of passwords
@@ -218,3 +304,5 @@ Host key verification failed
 3. **Use jump hosts** for internal servers
 4. **Limit pool timeout** for sensitive environments
 5. **Audit SSH keys** regularly with `/scan --security`
+6. **Use NOPASSWD sudo** for automation accounts
+7. **Never embed passwords** in commands - use `@secret` references

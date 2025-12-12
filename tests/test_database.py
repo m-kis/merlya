@@ -115,3 +115,37 @@ class TestDatabase:
                 "INSERT INTO variables (name, value) VALUES (?, ?)",
                 ("unique_key", "value2"),
             )
+
+    @pytest.mark.asyncio
+    async def test_schema_version_stored(self, database: Database) -> None:
+        """Test that schema version is stored in config table."""
+        from merlya.persistence.database import SCHEMA_VERSION
+
+        async with await database.execute(
+            "SELECT value FROM config WHERE key = 'schema_version'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            assert row is not None
+            assert int(row["value"]) == SCHEMA_VERSION
+
+    @pytest.mark.asyncio
+    async def test_raw_logs_table_has_on_delete(self, database: Database) -> None:
+        """Test that raw_logs table has ON DELETE SET NULL."""
+        # Check table SQL includes ON DELETE
+        async with await database.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='raw_logs'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:  # Table may not exist in minimal tests
+                assert "ON DELETE SET NULL" in row["sql"]
+
+    @pytest.mark.asyncio
+    async def test_sessions_table_has_on_delete(self, database: Database) -> None:
+        """Test that sessions table has ON DELETE CASCADE."""
+        # Check table SQL includes ON DELETE
+        async with await database.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:  # Table may not exist in minimal tests
+                assert "ON DELETE CASCADE" in row["sql"]

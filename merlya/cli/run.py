@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, is_dataclass
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
 from loguru import logger
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -52,6 +55,17 @@ class TaskResult:
     data: Any = None  # Structured data for JSON output
     task_type: str = "agent"  # "agent" or "command"
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert task result to JSON-serializable dictionary."""
+        return {
+            "task": self.task,
+            "success": self.success,
+            "message": self.message,
+            "actions": list(self.actions),
+            "data": _to_json_safe(self.data),
+            "task_type": self.task_type,
+        }
+
 
 @dataclass
 class BatchResult:
@@ -62,6 +76,49 @@ class BatchResult:
     total: int
     passed: int
     failed: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert batch result to JSON-serializable dictionary."""
+        return {
+            "success": self.success,
+            "total": self.total,
+            "passed": self.passed,
+            "failed": self.failed,
+            "tasks": [task.to_dict() for task in self.tasks],
+        }
+
+
+def _to_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
+    """Convert common Merlya objects to JSON-serializable structures."""
+    if _seen is None:
+        _seen = set()
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    obj_id = id(value)
+    if obj_id in _seen:
+        return str(value)  # or raise an error, or return a sentinel
+
+    # Mark as seen for containers
+    if isinstance(value, (dict, list, tuple, set)) or is_dataclass(value):
+        _seen = _seen | {obj_id}
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if is_dataclass(value) and not isinstance(value, type):
+        return {k: _to_json_safe(v, _seen) for k, v in asdict(value).items()}
+    if isinstance(value, dict):
+        return {k: _to_json_safe(v, _seen) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_safe(v, _seen) for v in value]
+    return str(value)
 
 
 def _parse_slash_command(cmd: str) -> tuple[str, str, list[str]]:
@@ -215,6 +272,16 @@ async def run_batch(
     elif quiet:
         logger.disable("merlya")
 
+    # Load skills BEFORE health checks (required for skill matching)
+    try:
+        from merlya.skills import SkillLoader
+
+        loader = SkillLoader()
+        loader.load_all()
+        logger.debug("Skills loaded for batch mode")
+    except Exception as e:
+        logger.debug(f"Skills loading skipped: {e}")
+
     # Run health checks (minimal output in quiet mode)
     if not quiet:
         ctx.ui.info("Running health checks...")
@@ -308,14 +375,7 @@ async def run_batch(
 
     # Output final result
     if output_format == "json":
-        output = {
-            "success": batch_result.success,
-            "total": batch_result.total,
-            "passed": batch_result.passed,
-            "failed": batch_result.failed,
-            "tasks": [asdict(t) for t in batch_result.tasks],
-        }
-        print(json.dumps(output, indent=2))
+        print(json.dumps(batch_result.to_dict(), indent=2))
     elif not quiet:
         ctx.ui.newline()
         status = "success" if batch_result.success else "error"

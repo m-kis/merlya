@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import signal
 import sys
 
 from loguru import logger
@@ -16,7 +17,24 @@ from loguru import logger
 # Disable tokenizers parallelism warnings in forked processes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-__version__ = "0.6.1"
+
+def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
+    """Setup signal handlers for graceful shutdown."""
+
+    def handle_signal(sig: signal.Signals) -> None:
+        logger.debug(f"Received signal {sig.name}, initiating graceful shutdown...")
+        # Cancel all running tasks
+        for task in asyncio.all_tasks(loop):
+            if not task.done():
+                task.cancel()
+
+    # Only setup signal handlers on Unix-like systems
+    if sys.platform != "win32":
+        loop.add_signal_handler(signal.SIGINT, lambda: handle_signal(signal.SIGINT))
+        loop.add_signal_handler(signal.SIGTERM, lambda: handle_signal(signal.SIGTERM))
+
+
+__version__ = "0.7.0"
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -134,11 +152,51 @@ def run_repl_mode(verbose: bool = False) -> None:
 
     configure_logging(console_level="DEBUG" if verbose else "INFO")
 
+    async def _run_with_cleanup() -> None:
+        """Run REPL with proper cleanup on interruption."""
+        try:
+            await run_repl()
+        except asyncio.CancelledError:
+            logger.debug("REPL cancelled, cleaning up...")
+        finally:
+            # Ensure cleanup happens
+            from merlya.core.context import SharedContext
+
+            try:
+                ctx = SharedContext.get_instance()
+                if ctx:
+                    await ctx.close()
+            except RuntimeError:
+                # Context already closed or never initialized
+                pass
+            except Exception as e:
+                logger.debug(f"Cleanup error: {e}")
+
     try:
-        asyncio.run(run_repl())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        _setup_signal_handlers(loop)
+
+        try:
+            loop.run_until_complete(_run_with_cleanup())
+        finally:
+            # Cancel any remaining tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+
+            # Wait for tasks to complete cancellation
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+            loop.close()
+
     except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        sys.exit(0)
+        # This catches interrupts that happen before signal handlers are set
+        pass
+
+    logger.info("Goodbye!")
+    sys.exit(0)
 
 
 def run_batch_mode(args: argparse.Namespace) -> None:

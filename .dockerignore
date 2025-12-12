@@ -1,0 +1,66 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Documentation
+docs/_build/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Misc
+# Keep README.md for hatchling build
+LICENSE
+Makefile
+.env*
+*.log
+.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+conftest.py
+pytest.ini
+
+# Development
+*.bak
+*.tmp
+.mypy_cache/
+.ruff_cache/

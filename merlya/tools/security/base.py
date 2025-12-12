@@ -64,14 +64,41 @@ _ALLOWED_SSH_KEY_PATHS = (
 
 
 def _is_safe_ssh_key_path(path: str) -> bool:
-    """Check if path is a valid SSH key location."""
+    """Check if path is a valid SSH key location.
+
+    Uses path normalization to prevent path traversal attacks.
+    Only absolute paths that resolve to allowed directories are accepted.
+    """
+    import posixpath
+
     path = path.strip()
-    # Must start with one of the allowed prefixes
+
+    # Handle tilde expansion for ~ paths
+    if path.startswith("~"):
+        # For ~ paths, we check the pattern without resolving
+        # since we can't resolve ~ on remote systems
+        return path.startswith("~/.ssh/")
+
+    # SECURITY: Reject relative paths - SSH key paths must be absolute
+    # This prevents path traversal attacks like "../etc/passwd" which could
+    # resolve to allowed locations depending on CWD (e.g., /home/runner/../etc/passwd)
+    if not path.startswith("/"):
+        return False
+
+    # Normalize the path to eliminate .. segments
+    # Using posixpath.normpath for consistent cross-platform behavior
+    # (these paths are for remote Linux systems)
+    normalized = posixpath.normpath(path)
+
+    # Check if normalized path starts with an allowed prefix
     for allowed in _ALLOWED_SSH_KEY_PATHS:
-        if path.startswith(allowed):
+        if allowed.startswith("~"):
+            continue  # Skip ~ prefixes, handled above
+        if normalized.startswith(allowed):
             return True
-    # Also allow paths that look like home directories
-    return bool(re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", path))
+
+    # Also allow paths that look like home directories (after normalization)
+    return bool(re.match(r"^/home/[a-zA-Z0-9_-]+/\.ssh/", normalized))
 
 
 async def execute_security_command(
