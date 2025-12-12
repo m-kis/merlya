@@ -149,8 +149,9 @@ def resolve_secrets(
 UNSAFE_PASSWORD_PATTERNS = [
     # echo 'pass' | sudo -S (but not echo '@secret' | sudo -S)
     re.compile(r"echo\s+['\"]?(?!@)[^'\"]+['\"]?\s*\|\s*sudo\s+-S", re.IGNORECASE),
-    # -p'password' or -ppassword (but not -p@secret or -p'@secret')
-    re.compile(r"-p['\"]?(?!@)[^@\s'\"]+['\"]?(?:\s|$)", re.IGNORECASE),
+    # -p'password' or -p"password" with QUOTES only (not bare -pX which could be flags like -print)
+    # This avoids false positives on -pine64, -print-config, -path, etc.
+    re.compile(r"-p['\"][^'\"@]+['\"]", re.IGNORECASE),
     # --password=pass (but not --password=@secret)
     re.compile(r"--password[=\s]+['\"]?(?!@)[^@\s'\"]+['\"]?", re.IGNORECASE),
 ]
@@ -163,8 +164,10 @@ def detect_unsafe_password(command: str) -> str | None:
     Returns a warning message if unsafe pattern detected, None otherwise.
     Commands using @secret-name references are safe.
     """
-    for pattern in UNSAFE_PASSWORD_PATTERNS:
-        if pattern.search(command):
+    for i, pattern in enumerate(UNSAFE_PASSWORD_PATTERNS):
+        match = pattern.search(command)
+        if match:
+            logger.warning(f"🔒 Password pattern {i} matched in command: '{command}' at '{match.group()}'")
             return (
                 "⚠️ SECURITY: Command may contain a plaintext password. "
                 "Use @secret-name references instead (e.g., @sudo:host:password)."

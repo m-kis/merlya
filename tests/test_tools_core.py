@@ -235,8 +235,8 @@ class TestDetectUnsafePassword:
         assert "SECURITY" in result
 
     def test_detects_password_flag_pattern(self) -> None:
-        """Test detection of -p'password' pattern."""
-        result = detect_unsafe_password("mysql -pMySecret123")
+        """Test detection of -p'password' pattern (quoted only to avoid false positives)."""
+        result = detect_unsafe_password("mysql -p'MySecret123'")
 
         assert result is not None
         assert "SECURITY" in result
