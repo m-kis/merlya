@@ -252,7 +252,9 @@ class TestDetectSSHEnvironment:
 
         with (
             patch.dict("os.environ", {"SSH_AUTH_SOCK": str(sock_path)}),
-            patch("merlya.ssh.auth._list_agent_keys", new_callable=AsyncMock, return_value=mock_keys),
+            patch(
+                "merlya.ssh.auth._list_agent_keys", new_callable=AsyncMock, return_value=mock_keys
+            ),
         ):
             env = await detect_ssh_environment()
 
@@ -283,7 +285,9 @@ class TestListAgentKeys:
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(mock_output, b""))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             keys = await _list_agent_keys()
 
         assert len(keys) == 2
@@ -302,7 +306,9 @@ class TestListAgentKeys:
         mock_proc.returncode = 1
         mock_proc.communicate = AsyncMock(return_value=(b"", b"no identities"))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             keys = await _list_agent_keys()
 
         assert keys == []
@@ -312,7 +318,11 @@ class TestListAgentKeys:
         """Test returns empty list when ssh-add not found."""
         from merlya.ssh.auth import _list_agent_keys
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, side_effect=FileNotFoundError()):
+        with patch(
+            "asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            side_effect=FileNotFoundError(),
+        ):
             keys = await _list_agent_keys()
 
         assert keys == []
@@ -322,7 +332,9 @@ class TestListAgentKeys:
         """Test returns empty list on general error."""
         from merlya.ssh.auth import _list_agent_keys
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, side_effect=Exception("fail")):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, side_effect=Exception("fail")
+        ):
             keys = await _list_agent_keys()
 
         assert keys == []
@@ -417,7 +429,11 @@ class TestManagedSSHAgent:
             agent_keys=[],
         )
 
-        with patch("merlya.ssh.auth.detect_ssh_environment", new_callable=AsyncMock, return_value=existing_env):
+        with patch(
+            "merlya.ssh.auth.detect_ssh_environment",
+            new_callable=AsyncMock,
+            return_value=existing_env,
+        ):
             result = await agent.ensure_agent_running()
 
         assert result is True
@@ -439,7 +455,9 @@ class TestManagedSSHAgent:
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(mock_output, b""))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             result = await agent._start_agent()
 
         assert result is True
@@ -460,7 +478,9 @@ class TestManagedSSHAgent:
         mock_proc.returncode = 1
         mock_proc.communicate = AsyncMock(return_value=(b"", b"error"))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             result = await agent._start_agent()
 
         assert result is False
@@ -475,7 +495,11 @@ class TestManagedSSHAgent:
         ManagedSSHAgent._instance = None
         agent = await ManagedSSHAgent.get_instance()
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, side_effect=FileNotFoundError()):
+        with patch(
+            "asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            side_effect=FileNotFoundError(),
+        ):
             result = await agent._start_agent()
 
         assert result is False
@@ -511,7 +535,9 @@ class TestManagedSSHAgent:
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(b"Identity added", b""))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             result = await agent._add_key_direct(str(key_file))
 
         assert result is True
@@ -533,7 +559,9 @@ class TestManagedSSHAgent:
         mock_proc.returncode = 1
         mock_proc.communicate = AsyncMock(return_value=(b"", b"Enter passphrase"))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             result = await agent._add_key_direct(str(key_file))
 
         assert result is False
@@ -555,7 +583,9 @@ class TestManagedSSHAgent:
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(b"Identity added", b""))
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc
+        ):
             result = await agent._add_key_with_passphrase(str(key_file), "secret123")
 
         assert result is True
@@ -609,6 +639,7 @@ class TestManagedSSHAgent:
         agent._original_pid = "99999"
 
         import os
+
         os.environ["SSH_AUTH_SOCK"] = "/tmp/managed"
         os.environ["SSH_AGENT_PID"] = "12345"
 
@@ -637,6 +668,7 @@ class TestSSHAuthManagerMFA:
 
         def callback(prompt):
             return "123456"
+
         manager.set_mfa_callback(callback)
 
         assert manager._mfa_callback is callback
@@ -954,7 +986,9 @@ class TestSSHAuthManagerLoadKeyDirectly:
 
         options = SSHAuthOptions()
 
-        with patch("asyncssh.read_private_key", side_effect=asyncssh.KeyImportError("invalid format")):
+        with patch(
+            "asyncssh.read_private_key", side_effect=asyncssh.KeyImportError("invalid format")
+        ):
             await manager._load_key_directly(key_file, None, options)
 
         # Key should not be loaded
@@ -992,7 +1026,9 @@ class TestSSHAuthManagerLoadKeyDirectly:
 
         options = SSHAuthOptions()
 
-        with patch("asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("encrypted")):
+        with patch(
+            "asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("encrypted")
+        ):
             await manager._load_key_directly(key_file, None, options)
 
         assert options.client_keys is None
@@ -1039,7 +1075,11 @@ class TestSSHAuthManagerPrepareAuthEdgeCases:
             agent_socket=None,
         )
 
-        with patch("merlya.ssh.auth.detect_ssh_environment", new_callable=AsyncMock, return_value=no_agent_env):
+        with patch(
+            "merlya.ssh.auth.detect_ssh_environment",
+            new_callable=AsyncMock,
+            return_value=no_agent_env,
+        ):
             options = await manager.prepare_auth(
                 hostname="host.example.com",
                 username="user",
@@ -1066,7 +1106,11 @@ class TestSSHAuthManagerPrepareAuthEdgeCases:
             agent_socket=None,
         )
 
-        with patch("merlya.ssh.auth.detect_ssh_environment", new_callable=AsyncMock, return_value=no_agent_env):
+        with patch(
+            "merlya.ssh.auth.detect_ssh_environment",
+            new_callable=AsyncMock,
+            return_value=no_agent_env,
+        ):
             options = await manager.prepare_auth(
                 hostname="host.example.com",
                 username="user",
@@ -1093,7 +1137,11 @@ class TestSSHAuthManagerPrepareAuthEdgeCases:
         )
 
         with (
-            patch("merlya.ssh.auth.detect_ssh_environment", new_callable=AsyncMock, return_value=no_agent_env),
+            patch(
+                "merlya.ssh.auth.detect_ssh_environment",
+                new_callable=AsyncMock,
+                return_value=no_agent_env,
+            ),
             patch.object(manager, "_prompt_key_path", new_callable=AsyncMock, return_value=None),
             patch.dict("os.environ", {"SSH_AUTH_SOCK": "/fallback/agent.sock"}),
         ):

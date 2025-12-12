@@ -121,7 +121,9 @@ class SubagentOrchestrator:
         started_at = datetime.now(UTC)
 
         # Determine and validate max timeout
-        effective_timeout: int | float = timeout if timeout is not None else DEFAULT_MAX_TIMEOUT_SECONDS
+        effective_timeout: int | float = (
+            timeout if timeout is not None else DEFAULT_MAX_TIMEOUT_SECONDS
+        )
         if timeout is None and skill:
             skill_timeout = getattr(skill, "timeout_seconds", None)
             if isinstance(skill_timeout, (int, float)):

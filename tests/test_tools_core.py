@@ -285,10 +285,12 @@ class TestListHosts:
     @pytest.mark.asyncio
     async def test_list_hosts_by_tag(self, mock_shared_context: MagicMock) -> None:
         """Test listing hosts by tag."""
-        mock_shared_context.hosts.get_by_tag = AsyncMock(return_value=[
-            mock_shared_context.hosts.get_all.return_value[0],  # web-01
-            mock_shared_context.hosts.get_all.return_value[1],  # web-02
-        ])
+        mock_shared_context.hosts.get_by_tag = AsyncMock(
+            return_value=[
+                mock_shared_context.hosts.get_all.return_value[0],  # web-01
+                mock_shared_context.hosts.get_all.return_value[1],  # web-02
+            ]
+        )
 
         result = await list_hosts(mock_shared_context, tag="web")
 
@@ -574,11 +576,13 @@ class TestSSHExecute:
         from merlya.ssh.pool import SSHResult
 
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(return_value=SSHResult(
-            stdout="output",
-            stderr="",
-            exit_code=0,
-        ))
+        mock_pool.execute = AsyncMock(
+            return_value=SSHResult(
+                stdout="output",
+                stderr="",
+                exit_code=0,
+            )
+        )
         mock_pool.has_passphrase_callback = MagicMock(return_value=True)
         mock_pool.has_mfa_callback = MagicMock(return_value=True)
         mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)
@@ -606,11 +610,13 @@ class TestSSHExecute:
         mock_shared_context.hosts.get_by_name = AsyncMock(return_value=None)
 
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(return_value=SSHResult(
-            stdout="ok",
-            stderr="",
-            exit_code=0,
-        ))
+        mock_pool.execute = AsyncMock(
+            return_value=SSHResult(
+                stdout="ok",
+                stderr="",
+                exit_code=0,
+            )
+        )
         mock_pool.has_passphrase_callback = MagicMock(return_value=True)
         mock_pool.has_mfa_callback = MagicMock(return_value=True)
         mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)
@@ -627,22 +633,28 @@ class TestSSHExecute:
         mock_shared_context.secrets.get = MagicMock(return_value="api_key_value")
 
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(return_value=SSHResult(
-            stdout="authenticated",
-            stderr="",
-            exit_code=0,
-        ))
+        mock_pool.execute = AsyncMock(
+            return_value=SSHResult(
+                stdout="authenticated",
+                stderr="",
+                exit_code=0,
+            )
+        )
         mock_pool.has_passphrase_callback = MagicMock(return_value=True)
         mock_pool.has_mfa_callback = MagicMock(return_value=True)
         mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)
 
         # Use a command that won't trigger password detection
-        result = await ssh_execute(mock_shared_context, "web-01", "curl -H 'Auth: @api-key' https://api.example.com")
+        result = await ssh_execute(
+            mock_shared_context, "web-01", "curl -H 'Auth: @api-key' https://api.example.com"
+        )
 
         assert result.success is True
 
     @pytest.mark.asyncio
-    async def test_ssh_execute_unsafe_password_blocked(self, mock_shared_context: MagicMock) -> None:
+    async def test_ssh_execute_unsafe_password_blocked(
+        self, mock_shared_context: MagicMock
+    ) -> None:
         """Test that unsafe password patterns are blocked."""
         result = await ssh_execute(
             mock_shared_context,
@@ -659,11 +671,13 @@ class TestSSHExecute:
         from merlya.ssh.pool import SSHResult
 
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(return_value=SSHResult(
-            stdout="",
-            stderr="command not found",
-            exit_code=127,
-        ))
+        mock_pool.execute = AsyncMock(
+            return_value=SSHResult(
+                stdout="",
+                stderr="command not found",
+                exit_code=127,
+            )
+        )
         mock_pool.has_passphrase_callback = MagicMock(return_value=True)
         mock_pool.has_mfa_callback = MagicMock(return_value=True)
         mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)
@@ -693,11 +707,13 @@ class TestSSHExecute:
         from merlya.ssh.pool import SSHResult
 
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(return_value=SSHResult(
-            stdout="connected via jump",
-            stderr="",
-            exit_code=0,
-        ))
+        mock_pool.execute = AsyncMock(
+            return_value=SSHResult(
+                stdout="connected via jump",
+                stderr="",
+                exit_code=0,
+            )
+        )
         mock_pool.has_passphrase_callback = MagicMock(return_value=True)
         mock_pool.has_mfa_callback = MagicMock(return_value=True)
         mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)

@@ -453,9 +453,7 @@ class TestConsoleUIPromptSecret:
         with patch("merlya.ui.console.PromptSession", return_value=mock_session):
             result = await ui.prompt_secret("Enter password")
             assert result == "secret123"
-            mock_session.prompt_async.assert_called_once_with(
-                "Enter password: ", is_password=True
-            )
+            mock_session.prompt_async.assert_called_once_with("Enter password: ", is_password=True)
 
     @pytest.mark.asyncio
     async def test_prompt_secret_strips_whitespace(self) -> None:

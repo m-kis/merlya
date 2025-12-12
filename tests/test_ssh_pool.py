@@ -242,6 +242,7 @@ class TestSSHPoolCallbacks:
     async def test_set_mfa_callback(self) -> None:
         """Test setting MFA callback."""
         pool = await SSHPool.get_instance()
+
         def callback(prompt):
             return "123456"
 
@@ -260,6 +261,7 @@ class TestSSHPoolCallbacks:
     async def test_set_passphrase_callback(self) -> None:
         """Test setting passphrase callback."""
         pool = await SSHPool.get_instance()
+
         def callback(path):
             return "secret"
 
@@ -559,7 +561,9 @@ class TestSSHPoolJumpHost:
         key_file = tmp_path / "jump_key"
         key_file.write_text("encrypted key")
 
-        with patch("asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("Encrypted")):
+        with patch(
+            "asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("Encrypted")
+        ):
             key = await pool._load_jump_key(key_file)
 
         assert key is None
@@ -593,7 +597,9 @@ class TestSSHPoolPrivateKey:
         key_file = tmp_path / "id_rsa"
         key_file.write_text("encrypted key")
 
-        with patch("asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("Encrypted")):
+        with patch(
+            "asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("Encrypted")
+        ):
             with pytest.raises(asyncssh.KeyEncryptionError):
                 await pool._load_private_key(key_file)
 
@@ -605,7 +611,9 @@ class TestSSHPoolPrivateKey:
         key_file = tmp_path / "id_rsa"
         key_file.write_text("encrypted key")
 
-        with patch("asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("Encrypted")):
+        with patch(
+            "asyncssh.read_private_key", side_effect=asyncssh.KeyEncryptionError("Encrypted")
+        ):
             with pytest.raises(asyncssh.KeyEncryptionError, match="Passphrase required"):
                 await pool._load_private_key(key_file)
 
@@ -620,7 +628,9 @@ class TestSSHPoolValidateKey:
     @pytest.mark.asyncio
     async def test_validate_private_key_delegates(self) -> None:
         """Test validate_private_key delegates to validation module."""
-        with patch("merlya.ssh.pool._validate_private_key", new_callable=AsyncMock) as mock_validate:
+        with patch(
+            "merlya.ssh.pool._validate_private_key", new_callable=AsyncMock
+        ) as mock_validate:
             mock_validate.return_value = (True, "Key is valid")
 
             result = await SSHPool.validate_private_key("/path/to/key")
@@ -631,7 +641,9 @@ class TestSSHPoolValidateKey:
     @pytest.mark.asyncio
     async def test_validate_private_key_with_passphrase(self) -> None:
         """Test validate_private_key with passphrase."""
-        with patch("merlya.ssh.pool._validate_private_key", new_callable=AsyncMock) as mock_validate:
+        with patch(
+            "merlya.ssh.pool._validate_private_key", new_callable=AsyncMock
+        ) as mock_validate:
             mock_validate.return_value = (True, "Key is valid")
 
             await SSHPool.validate_private_key("/path/to/key", "secret")
@@ -737,7 +749,9 @@ class TestSSHPoolBuildSSHOptions:
         opts = SSHConnectionOptions()
 
         with patch.dict("os.environ", {}, clear=True):
-            with patch.object(pool, "_load_private_key", new_callable=AsyncMock, return_value=mock_key):
+            with patch.object(
+                pool, "_load_private_key", new_callable=AsyncMock, return_value=mock_key
+            ):
                 options = await pool._build_ssh_options("host1", "user", str(key_file), opts)
 
         assert options["client_keys"] == [mock_key]
@@ -764,10 +778,14 @@ class TestSSHPoolBuildSSHOptions:
         key_file.write_text("bad key")
 
         opts = SSHConnectionOptions()
-        with patch.dict("os.environ", {}, clear=True), patch.object(
-            pool, "_load_private_key",
-            new_callable=AsyncMock,
-            side_effect=Exception("Key load failed")
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch.object(
+                pool,
+                "_load_private_key",
+                new_callable=AsyncMock,
+                side_effect=Exception("Key load failed"),
+            ),
         ):
             options = await pool._build_ssh_options("host1", "user", str(key_file), opts)
 
@@ -833,7 +851,9 @@ class TestSSHPoolGetConnection:
 
         # Mock _create_connection to return new connection
         new_conn = SSHConnection(host="host1", connection=MagicMock())
-        with patch.object(pool, "_create_connection", new_callable=AsyncMock, return_value=new_conn):
+        with patch.object(
+            pool, "_create_connection", new_callable=AsyncMock, return_value=new_conn
+        ):
             result = await pool.get_connection("host1", username="user")
 
         assert result is new_conn
@@ -861,7 +881,9 @@ class TestSSHPoolGetConnection:
         pool._connections = {"user@host1:22": old_conn}
 
         new_conn = SSHConnection(host="host2", connection=MagicMock())
-        with patch.object(pool, "_create_connection", new_callable=AsyncMock, return_value=new_conn):
+        with patch.object(
+            pool, "_create_connection", new_callable=AsyncMock, return_value=new_conn
+        ):
             await pool.get_connection("host2", username="admin")
 
         assert "user@host1:22" not in pool._connections
@@ -927,7 +949,11 @@ class TestSSHPoolConnectWithOptions:
         """Test no retry on permission denied without client_keys."""
         pool = await SSHPool.get_instance()
 
-        with patch("asyncssh.connect", new_callable=AsyncMock, side_effect=asyncssh.PermissionDenied("Access denied")):
+        with patch(
+            "asyncssh.connect",
+            new_callable=AsyncMock,
+            side_effect=asyncssh.PermissionDenied("Access denied"),
+        ):
             with pytest.raises(asyncssh.PermissionDenied):
                 await pool._connect_with_options(
                     "host1",
@@ -941,11 +967,14 @@ class TestSSHPoolConnectWithOptions:
         """Test no retry on keyboard-interactive failure."""
         pool = await SSHPool.get_instance()
 
-        with patch(
-            "asyncssh.connect",
-            new_callable=AsyncMock,
-            side_effect=asyncssh.PermissionDenied("keyboard-interactive failed"),
-        ), pytest.raises(asyncssh.PermissionDenied):
+        with (
+            patch(
+                "asyncssh.connect",
+                new_callable=AsyncMock,
+                side_effect=asyncssh.PermissionDenied("keyboard-interactive failed"),
+            ),
+            pytest.raises(asyncssh.PermissionDenied),
+        ):
             await pool._connect_with_options(
                 "host1",
                 {"host": "host1", "port": 22, "client_keys": ["key"]},
@@ -1124,10 +1153,16 @@ class TestSSHPoolCreateConnection:
         mock_conn = MagicMock()
 
         with (
-            patch.object(pool, "_build_ssh_options", new_callable=AsyncMock, return_value={"host": "host1"}),
-            patch.object(pool, "_setup_jump_tunnel", new_callable=AsyncMock, return_value=mock_tunnel),
+            patch.object(
+                pool, "_build_ssh_options", new_callable=AsyncMock, return_value={"host": "host1"}
+            ),
+            patch.object(
+                pool, "_setup_jump_tunnel", new_callable=AsyncMock, return_value=mock_tunnel
+            ),
             patch.object(pool, "_create_mfa_client", return_value=None),
-            patch.object(pool, "_connect_with_options", new_callable=AsyncMock, return_value=mock_conn),
+            patch.object(
+                pool, "_connect_with_options", new_callable=AsyncMock, return_value=mock_conn
+            ),
         ):
             result = await pool._create_connection(
                 "host1",
@@ -1148,11 +1183,16 @@ class TestSSHPoolCreateConnection:
         mock_tunnel.wait_closed = AsyncMock()
 
         with (
-            patch.object(pool, "_build_ssh_options", new_callable=AsyncMock, return_value={"host": "host1"}),
-            patch.object(pool, "_setup_jump_tunnel", new_callable=AsyncMock, return_value=mock_tunnel),
+            patch.object(
+                pool, "_build_ssh_options", new_callable=AsyncMock, return_value={"host": "host1"}
+            ),
+            patch.object(
+                pool, "_setup_jump_tunnel", new_callable=AsyncMock, return_value=mock_tunnel
+            ),
             patch.object(pool, "_create_mfa_client", return_value=None),
             patch.object(
-                pool, "_connect_with_options",
+                pool,
+                "_connect_with_options",
                 new_callable=AsyncMock,
                 side_effect=asyncssh.ConnectionLost("Connection lost"),
             ),
@@ -1173,11 +1213,14 @@ class TestSSHPoolCreateConnection:
         pool = await SSHPool.get_instance()
 
         with (
-            patch.object(pool, "_build_ssh_options", new_callable=AsyncMock, return_value={"host": "host1"}),
+            patch.object(
+                pool, "_build_ssh_options", new_callable=AsyncMock, return_value={"host": "host1"}
+            ),
             patch.object(pool, "_setup_jump_tunnel", new_callable=AsyncMock, return_value=None),
             patch.object(pool, "_create_mfa_client", return_value=None),
             patch.object(
-                pool, "_connect_with_options",
+                pool,
+                "_connect_with_options",
                 new_callable=AsyncMock,
                 side_effect=TimeoutError(),
             ),
@@ -1218,7 +1261,9 @@ class TestSSHPoolSetupJumpTunnel:
 
         with (
             patch.object(pool, "_load_jump_key", new_callable=AsyncMock, return_value=mock_key),
-            patch("asyncssh.connect", new_callable=AsyncMock, return_value=mock_tunnel) as mock_connect,
+            patch(
+                "asyncssh.connect", new_callable=AsyncMock, return_value=mock_tunnel
+            ) as mock_connect,
         ):
             result = await pool._setup_jump_tunnel(opts)
 

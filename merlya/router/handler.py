@@ -414,7 +414,13 @@ async def _handle_host_details(ctx: SharedContext, hostname: str) -> HandlerResp
         )
 
     # Format details
-    status_icon = "✅ Online" if host.health_status == "healthy" else "❌ Offline" if host.health_status == "unreachable" else "❓ Unknown"
+    status_icon = (
+        "✅ Online"
+        if host.health_status == "healthy"
+        else "❌ Offline"
+        if host.health_status == "unreachable"
+        else "❓ Unknown"
+    )
     lines = [
         f"## Host: @{host.name}",
         "",

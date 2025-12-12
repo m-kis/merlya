@@ -68,9 +68,15 @@ def mock_context() -> MagicMock:
     ctx.hosts = AsyncMock()
     ctx.hosts.get_all = AsyncMock(
         return_value=[
-            MockHost(name="web-01", hostname="10.0.0.1", health_status="healthy", tags=["web", "prod"]),
-            MockHost(name="web-02", hostname="10.0.0.2", health_status="healthy", tags=["web", "prod"]),
-            MockHost(name="db-01", hostname="10.0.0.10", health_status="healthy", tags=["db", "prod"]),
+            MockHost(
+                name="web-01", hostname="10.0.0.1", health_status="healthy", tags=["web", "prod"]
+            ),
+            MockHost(
+                name="web-02", hostname="10.0.0.2", health_status="healthy", tags=["web", "prod"]
+            ),
+            MockHost(
+                name="db-01", hostname="10.0.0.10", health_status="healthy", tags=["db", "prod"]
+            ),
             MockHost(name="backup", hostname="10.0.0.100", health_status="unreachable"),
         ]
     )

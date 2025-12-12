@@ -446,9 +446,7 @@ class TestSharedContextClose:
         context_with_resources._test_mock_ssh_pool.disconnect_all = AsyncMock(
             side_effect=Exception("SSH error")
         )
-        context_with_resources._test_mock_mcp.close = AsyncMock(
-            side_effect=Exception("MCP error")
-        )
+        context_with_resources._test_mock_mcp.close = AsyncMock(side_effect=Exception("MCP error"))
 
         # Should not raise
         await context_with_resources.close()

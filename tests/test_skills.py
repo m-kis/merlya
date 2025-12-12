@@ -689,13 +689,15 @@ class TestSkillExecutorExtended:
 
         # Mock the orchestrator
         mock_orchestrator = MagicMock()
-        mock_orchestrator.run_on_host = AsyncMock(return_value=MagicMock(
-            success=True,
-            output="Task completed",
-            error=None,
-            duration_ms=100,
-            tool_calls=3,
-        ))
+        mock_orchestrator.run_on_host = AsyncMock(
+            return_value=MagicMock(
+                success=True,
+                output="Task completed",
+                error=None,
+                duration_ms=100,
+                tool_calls=3,
+            )
+        )
 
         executor._orchestrator = mock_orchestrator
 
@@ -746,9 +748,7 @@ class TestSkillExecutorExtended:
         callback = AsyncMock(return_value=True)
 
         # "delete files" matches "delete"
-        result = await executor.check_confirmation(
-            skill, "delete files", confirm_callback=callback
-        )
+        result = await executor.check_confirmation(skill, "delete files", confirm_callback=callback)
 
         assert result is True
         callback.assert_called_once()

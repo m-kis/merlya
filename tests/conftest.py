@@ -66,9 +66,7 @@ def mock_ssh_result_failure() -> SSHResult:
 def mock_ssh_pool() -> MagicMock:
     """Create mock SSH pool with execute method."""
     pool = MagicMock()
-    pool.execute = AsyncMock(
-        return_value=SSHResult(stdout="", stderr="", exit_code=0)
-    )
+    pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
     pool.has_passphrase_callback = MagicMock(return_value=False)
     pool.set_passphrase_callback = MagicMock()
     pool.disconnect = AsyncMock()
@@ -184,9 +182,7 @@ def mock_shared_context(
     ctx.hosts = AsyncMock()
     ctx.hosts.get_all = AsyncMock(return_value=mock_hosts_list)
     ctx.hosts.get_by_name = AsyncMock(
-        side_effect=lambda name: next(
-            (h for h in mock_hosts_list if h.name == name), None
-        )
+        side_effect=lambda name: next((h for h in mock_hosts_list if h.name == name), None)
     )
     ctx.hosts.create = AsyncMock()
     ctx.hosts.update = AsyncMock()

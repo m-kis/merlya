@@ -252,7 +252,9 @@ class TestCheckMemory:
     @pytest.mark.asyncio
     async def test_check_memory_success(self, mock_shared_context: MagicMock) -> None:
         """Test successful memory check."""
-        free_output = "Mem:           7982        2156        3421         256        2404        5289"
+        free_output = (
+            "Mem:           7982        2156        3421         256        2404        5289"
+        )
 
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:
             mock_ssh.return_value = ToolResult(success=True, data={"stdout": free_output})
@@ -268,7 +270,9 @@ class TestCheckMemory:
     async def test_check_memory_warning(self, mock_shared_context: MagicMock) -> None:
         """Test memory with warning threshold exceeded."""
         # High memory usage: ~95%
-        free_output = "Mem:           8000        7600         200         100          200         200"
+        free_output = (
+            "Mem:           8000        7600         200         100          200         200"
+        )
 
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:
             mock_ssh.return_value = ToolResult(success=True, data={"stdout": free_output})
@@ -538,9 +542,7 @@ Dec 12 10:00:02 web-01 nginx[1234]: Listening on port 80"""
         """Test log analysis with warn level filter."""
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:
             mock_ssh.return_value = ToolResult(success=True, data={"stdout": ""})
-            await analyze_logs(
-                mock_shared_context, "web-01", "/var/log/syslog", level="warn"
-            )
+            await analyze_logs(mock_shared_context, "web-01", "/var/log/syslog", level="warn")
             call_args = mock_ssh.call_args[0]
             assert "warn" in call_args[2].lower()
 
@@ -549,9 +551,7 @@ Dec 12 10:00:02 web-01 nginx[1234]: Listening on port 80"""
         """Test log analysis with info level filter."""
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:
             mock_ssh.return_value = ToolResult(success=True, data={"stdout": ""})
-            await analyze_logs(
-                mock_shared_context, "web-01", "/var/log/syslog", level="info"
-            )
+            await analyze_logs(mock_shared_context, "web-01", "/var/log/syslog", level="info")
             call_args = mock_ssh.call_args[0]
             assert "info" in call_args[2].lower()
 
@@ -560,9 +560,7 @@ Dec 12 10:00:02 web-01 nginx[1234]: Listening on port 80"""
         """Test log analysis with debug level filter."""
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:
             mock_ssh.return_value = ToolResult(success=True, data={"stdout": ""})
-            await analyze_logs(
-                mock_shared_context, "web-01", "/var/log/syslog", level="debug"
-            )
+            await analyze_logs(mock_shared_context, "web-01", "/var/log/syslog", level="debug")
             call_args = mock_ssh.call_args[0]
             assert "debug" in call_args[2].lower()
 
@@ -584,9 +582,7 @@ Dec 12 10:00:02 web-01 nginx[1234]: Listening on port 80"""
     @pytest.mark.asyncio
     async def test_analyze_logs_invalid_lines(self, mock_shared_context: MagicMock) -> None:
         """Test log analysis with invalid lines count."""
-        result = await analyze_logs(
-            mock_shared_context, "web-01", "/var/log/syslog", lines=0
-        )
+        result = await analyze_logs(mock_shared_context, "web-01", "/var/log/syslog", lines=0)
         assert result.success is False
         assert "1-10000" in result.error
 
@@ -717,7 +713,9 @@ redis:alpine|50MB"""
         assert result.data["status"] == "not-running"
 
     @pytest.mark.asyncio
-    async def test_check_docker_with_stopped_containers(self, mock_shared_context: MagicMock) -> None:
+    async def test_check_docker_with_stopped_containers(
+        self, mock_shared_context: MagicMock
+    ) -> None:
         """Test Docker check with mixed container states."""
         docker_output = """DOCKER:running
 CONTAINERS:

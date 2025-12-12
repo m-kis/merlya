@@ -1000,9 +1000,7 @@ class TestRouteWithSkipPrefix:
         from unittest.mock import patch
 
         with patch.object(router.classifier, "check_delegation", return_value="nonexistent_agent"):
-            result = await router.route(
-                "delegate this task", available_agents=["agent1", "agent2"]
-            )
+            result = await router.route("delegate this task", available_agents=["agent1", "agent2"])
 
             # Delegation should be cleared if agent not available
             assert result.delegate_to is None

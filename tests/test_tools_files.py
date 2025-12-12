@@ -301,9 +301,7 @@ class TestWriteFile:
     async def test_write_file_success(self, mock_shared_context: MagicMock) -> None:
         """Test successful file write."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -318,9 +316,7 @@ class TestWriteFile:
     async def test_write_file_with_backup(self, mock_shared_context: MagicMock) -> None:
         """Test write with backup."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -336,9 +332,7 @@ class TestWriteFile:
     async def test_write_file_without_backup(self, mock_shared_context: MagicMock) -> None:
         """Test write without backup."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -369,9 +363,7 @@ class TestWriteFile:
     async def test_write_file_custom_mode(self, mock_shared_context: MagicMock) -> None:
         """Test write with custom mode."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -459,9 +451,7 @@ drwxr-xr-x 2 root root 4096 Dec 12 00:00 dir1
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
-            result = await list_directory(
-                mock_shared_context, "web-01", "/tmp", long_format=True
-            )
+            result = await list_directory(mock_shared_context, "web-01", "/tmp", long_format=True)
 
         assert result.success is True
         assert isinstance(result.data, list)
@@ -471,7 +461,9 @@ drwxr-xr-x 2 root root 4096 Dec 12 00:00 dir1
         assert result.data[1]["name"] == "file1.txt"
 
     @pytest.mark.asyncio
-    async def test_list_directory_long_format_with_all(self, mock_shared_context: MagicMock) -> None:
+    async def test_list_directory_long_format_with_all(
+        self, mock_shared_context: MagicMock
+    ) -> None:
         """Test long format with all files."""
         mock_pool = MagicMock()
         mock_pool.execute = AsyncMock(
@@ -492,9 +484,7 @@ drwxr-xr-x 2 root root 4096 Dec 12 00:00 dir1
     async def test_list_directory_empty(self, mock_shared_context: MagicMock) -> None:
         """Test listing empty directory."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -551,9 +541,7 @@ class TestFileExists:
     async def test_file_exists_false(self, mock_shared_context: MagicMock) -> None:
         """Test file does not exist."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=1)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=1))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -657,9 +645,7 @@ class TestSearchFiles:
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
-            result = await search_files(
-                mock_shared_context, "web-01", "/var/log", "*.log*"
-            )
+            result = await search_files(mock_shared_context, "web-01", "/var/log", "*.log*")
 
         assert result.success is True
         assert len(result.data) == 3
@@ -686,15 +672,11 @@ class TestSearchFiles:
     async def test_search_files_with_max_depth(self, mock_shared_context: MagicMock) -> None:
         """Test search with max depth."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
-            result = await search_files(
-                mock_shared_context, "web-01", "/var", "*.log", max_depth=2
-            )
+            result = await search_files(mock_shared_context, "web-01", "/var", "*.log", max_depth=2)
 
         assert result.success is True
         call_args = mock_pool.execute.call_args[0]
@@ -704,15 +686,11 @@ class TestSearchFiles:
     async def test_search_files_no_results(self, mock_shared_context: MagicMock) -> None:
         """Test search with no results."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
-            result = await search_files(
-                mock_shared_context, "web-01", "/tmp", "*.nonexistent"
-            )
+            result = await search_files(mock_shared_context, "web-01", "/tmp", "*.nonexistent")
 
         assert result.success is True
         assert result.data == []
@@ -739,23 +717,17 @@ class TestSearchFiles:
     @pytest.mark.asyncio
     async def test_search_files_invalid_file_type(self, mock_shared_context: MagicMock) -> None:
         """Test search with invalid file type."""
-        result = await search_files(
-            mock_shared_context, "web-01", "/var", "*.log", file_type="x"
-        )
+        result = await search_files(mock_shared_context, "web-01", "/var", "*.log", file_type="x")
         assert result.success is False
         assert "file_type" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_search_files_invalid_max_depth(self, mock_shared_context: MagicMock) -> None:
         """Test search with invalid max depth."""
-        result = await search_files(
-            mock_shared_context, "web-01", "/var", "*.log", max_depth=0
-        )
+        result = await search_files(mock_shared_context, "web-01", "/var", "*.log", max_depth=0)
         assert result.success is False
 
-        result = await search_files(
-            mock_shared_context, "web-01", "/var", "*.log", max_depth=200
-        )
+        result = await search_files(mock_shared_context, "web-01", "/var", "*.log", max_depth=200)
         assert result.success is False
 
 
@@ -771,9 +743,7 @@ class TestDeleteFile:
     async def test_delete_file_success(self, mock_shared_context: MagicMock) -> None:
         """Test successful file deletion."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
@@ -786,15 +756,11 @@ class TestDeleteFile:
     async def test_delete_file_with_force(self, mock_shared_context: MagicMock) -> None:
         """Test deletion with force flag."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
-            result = await delete_file(
-                mock_shared_context, "web-01", "/tmp/test.txt", force=True
-            )
+            result = await delete_file(mock_shared_context, "web-01", "/tmp/test.txt", force=True)
 
         assert result.success is True
         call_args = mock_pool.execute.call_args[0]
@@ -804,9 +770,7 @@ class TestDeleteFile:
     async def test_delete_file_dangerous_path_etc(self, mock_shared_context: MagicMock) -> None:
         """Test refusing to delete /etc."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
             result = await delete_file(mock_shared_context, "web-01", "/etc")
@@ -817,21 +781,19 @@ class TestDeleteFile:
     async def test_delete_file_dangerous_path_var(self, mock_shared_context: MagicMock) -> None:
         """Test refusing to delete /var."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
             result = await delete_file(mock_shared_context, "web-01", "/var/")
             assert result.success is False
 
     @pytest.mark.asyncio
-    async def test_delete_file_dangerous_path_with_trailing_slash(self, mock_shared_context: MagicMock) -> None:
+    async def test_delete_file_dangerous_path_with_trailing_slash(
+        self, mock_shared_context: MagicMock
+    ) -> None:
         """Test refusing to delete /home/ (with trailing slash)."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
             result = await delete_file(mock_shared_context, "web-01", "/home/")
@@ -844,9 +806,7 @@ class TestDeleteFile:
         # Note: "/" alone is NOT blocked due to rstrip bug: "/".rstrip("/") = ""
         dangerous = ["/etc", "/var", "/usr", "/home", "/root", "/bin", "/sbin"]
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
             for path in dangerous:
@@ -917,9 +877,7 @@ class TestUploadFile:
     async def test_upload_file_not_a_file(self, mock_shared_context: MagicMock) -> None:
         """Test upload with directory instead of file."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = await upload_file(
-                mock_shared_context, "web-01", tmpdir, "/tmp/dest.txt"
-            )
+            result = await upload_file(mock_shared_context, "web-01", tmpdir, "/tmp/dest.txt")
             assert result.success is False
             assert "Not a file" in result.error
 
@@ -932,9 +890,7 @@ class TestUploadFile:
             local_path = f.name
 
         try:
-            result = await upload_file(
-                mock_shared_context, "web-01", local_path, "/tmp/large.txt"
-            )
+            result = await upload_file(mock_shared_context, "web-01", local_path, "/tmp/large.txt")
             assert result.success is False
             assert "too large" in result.error.lower()
         finally:
@@ -990,9 +946,7 @@ class TestUploadFile:
             mock_pool.upload_file = AsyncMock(side_effect=Exception("SFTP failed"))
             mock_shared_context.get_ssh_pool = AsyncMock(return_value=mock_pool)
 
-            result = await upload_file(
-                mock_shared_context, "web-01", local_path, "/tmp/dest.txt"
-            )
+            result = await upload_file(mock_shared_context, "web-01", local_path, "/tmp/dest.txt")
             assert result.success is False
             assert "SFTP failed" in result.error
         finally:
@@ -1038,9 +992,7 @@ class TestDownloadFile:
         with patch("pathlib.Path.stat") as mock_stat:
             mock_stat.return_value.st_size = 100
 
-            await download_file(
-                mock_shared_context, "web-01", "/remote/file.txt"
-            )
+            await download_file(mock_shared_context, "web-01", "/remote/file.txt")
 
             # Should use ./file.txt as local path
             call_args = mock_pool.download_file.call_args
@@ -1053,7 +1005,9 @@ class TestDownloadFile:
         assert result.success is False
 
     @pytest.mark.asyncio
-    async def test_download_file_invalid_remote_filename(self, mock_shared_context: MagicMock) -> None:
+    async def test_download_file_invalid_remote_filename(
+        self, mock_shared_context: MagicMock
+    ) -> None:
         """Test download with invalid remote filename (like root path)."""
         # Path("/").name returns empty string, which triggers "Invalid remote filename"
         result = await download_file(mock_shared_context, "web-01", "/")
@@ -1077,9 +1031,7 @@ class TestDownloadFile:
     async def test_download_file_invalid_local_path(self, mock_shared_context: MagicMock) -> None:
         """Test download with invalid local path (too long)."""
         long_path = "/tmp/" + "a" * 5000
-        result = await download_file(
-            mock_shared_context, "web-01", "/remote/file.txt", long_path
-        )
+        result = await download_file(mock_shared_context, "web-01", "/remote/file.txt", long_path)
         assert result.success is False
 
 
@@ -1095,9 +1047,7 @@ class TestFilesIntegration:
     async def test_read_write_cycle(self, mock_shared_context: MagicMock) -> None:
         """Test read/write cycle."""
         mock_pool = MagicMock()
-        mock_pool.execute = AsyncMock(
-            return_value=SSHResult(stdout="", stderr="", exit_code=0)
-        )
+        mock_pool.execute = AsyncMock(return_value=SSHResult(stdout="", stderr="", exit_code=0))
 
         with patch("merlya.ssh.SSHPool.get_instance", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_pool
