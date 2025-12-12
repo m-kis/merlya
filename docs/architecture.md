@@ -252,9 +252,80 @@ policy:
 
 **Guardrails:**
 - No destructive commands without confirmation
-- Password caching with 30-minute TTL
 - Per-host async locking for capability detection
 - Audit logging of all executed commands
+
+### 11. Security Layer (`merlya/security/`, `merlya/agent/history.py`)
+
+Comprehensive security controls for credential handling and agent behavior.
+
+#### Privilege Elevation (`merlya/security/permissions.py`)
+
+**Method Priority:**
+```python
+ELEVATION_PRIORITY = {
+    "sudo": 1,       # NOPASSWD sudo - best option
+    "doas": 2,       # Often NOPASSWD on BSD systems
+    "sudo_with_password": 3,  # Requires password prompt
+    "su": 4,         # Last resort - requires root password
+}
+```
+
+**Detection Flow:**
+1. Test `sudo -n true` (non-interactive)
+2. If success → `sudo` (NOPASSWD)
+3. If fail → check for `doas`, `su`
+4. Cache capability in host metadata
+
+**Password Security:**
+- Passwords stored in system keyring (macOS Keychain, Linux Secret Service)
+- Commands receive `@elevation:hostname:password` references, not raw values
+- `resolve_secrets()` expands references at execution time
+- Logs show `@secret` references, never actual values
+
+#### Secret References (`merlya/tools/core/tools.py`)
+
+**Pattern:** `@service:host:field` (e.g., `@elevation:web01:password`, `@db:prod:token`)
+
+```python
+SECRET_PATTERN = re.compile(r"(?:^|(?<=[\s;|&='\"]))\@([a-zA-Z][a-zA-Z0-9_:.-]*)")
+
+def resolve_secrets(command: str, secrets: SecretStore) -> tuple[str, str]:
+    """Returns (resolved_command, safe_command_for_logging)"""
+```
+
+**Unsafe Password Detection:**
+```python
+# Forbidden patterns (leaks password in logs):
+# - echo 'pass' | sudo -S
+# - -p'password'
+# - --password=pass
+detect_unsafe_password(command) -> str | None  # Returns warning if unsafe
+```
+
+#### Loop Detection (`merlya/agent/history.py`)
+
+Prevents agent from spinning on unproductive patterns.
+
+**Detection Modes:**
+1. **Same call repeated** - Same tool+args called 3+ times in window
+2. **Consecutive identical** - Last N calls are ALL identical
+3. **Alternating pattern** - A→B→A→B oscillation
+
+**Configuration:**
+```python
+LOOP_DETECTION_WINDOW = 10    # Messages to examine
+LOOP_THRESHOLD_SAME_CALL = 3  # Max identical calls
+```
+
+**Response:** Injects system message to redirect agent approach.
+
+#### Session Message Persistence
+
+Messages persisted to SQLite for session resumption:
+- `session_messages` table with sequence numbers
+- PydanticAI `ModelMessagesTypeAdapter` for serialization
+- Automatic trimming to `MAX_MESSAGES_IN_MEMORY` on load
 
 ## Request Flow
 
