@@ -861,12 +861,14 @@ class TestSSHAuthManagerGetPassphrase:
         assert result == "cached_passphrase"
 
     @pytest.mark.asyncio
-    async def test_get_passphrase_prompts_and_caches(self, tmp_path: Path) -> None:
-        """Test _get_passphrase prompts user and caches result."""
+    async def test_get_passphrase_returns_none_when_not_cached(self, tmp_path: Path) -> None:
+        """Test _get_passphrase returns None when no cached passphrase.
+
+        Note: Passphrase prompting now happens in _load_key_directly, not in _get_passphrase.
+        """
         secrets = MagicMock()
         secrets.get.return_value = None
         ui = MagicMock()
-        ui.prompt_secret = AsyncMock(return_value="new_passphrase")
         manager = SSHAuthManager(secrets, ui)
 
         key_file = tmp_path / "id_rsa"
@@ -875,8 +877,9 @@ class TestSSHAuthManagerGetPassphrase:
         with patch.object(manager, "_key_is_encrypted", return_value=True):
             result = await manager._get_passphrase(key_file, "host1")
 
-        assert result == "new_passphrase"
-        assert secrets.set.called
+        # No cached passphrase, returns None (prompting happens elsewhere)
+        assert result is None
+        assert not secrets.set.called
 
 
 class TestSSHAuthManagerCleanup:
@@ -1032,6 +1035,111 @@ class TestSSHAuthManagerLoadKeyDirectly:
             await manager._load_key_directly(key_file, None, options)
 
         assert options.client_keys is None
+
+    @pytest.mark.asyncio
+    async def test_load_key_directly_retries_on_wrong_passphrase(self, tmp_path: Path) -> None:
+        """Test _load_key_directly retries up to 3 times with wrong passphrase."""
+        import asyncssh
+
+        secrets = MagicMock()
+        secrets.delete = MagicMock()
+        ui = MagicMock()
+        ui.error = MagicMock()
+        # Provide 2 passphrases: wrong1, then correct
+        # Flow: attempt 0 (no pass) → prompt → wrong1
+        #       attempt 1 (wrong1) → error shown → prompt → correct
+        #       attempt 2 (correct) → success
+        ui.prompt_secret = AsyncMock(side_effect=["wrong1", "correct"])
+        manager = SSHAuthManager(secrets, ui)
+
+        key_file = tmp_path / "id_rsa"
+        key_file.write_text("encrypted")
+
+        mock_key = MagicMock()
+        options = SSHAuthOptions()
+
+        # 3 calls: fail on None, fail on wrong1, succeed on correct
+        with patch(
+            "asyncssh.read_private_key",
+            side_effect=[
+                asyncssh.KeyEncryptionError("Unable to decrypt"),  # No passphrase
+                asyncssh.KeyEncryptionError("Unable to decrypt"),  # wrong1
+                mock_key,  # correct
+            ],
+        ):
+            await manager._load_key_directly(key_file, None, options, "host1")
+
+        # Should have loaded the key after retry
+        assert options.client_keys == [mock_key]
+        # Error shown once for wrong passphrase (after wrong1)
+        assert ui.error.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_load_key_directly_max_retries_reached(self, tmp_path: Path) -> None:
+        """Test _load_key_directly fails after 3 attempts."""
+        import asyncssh
+
+        secrets = MagicMock()
+        secrets.delete = MagicMock()
+        ui = MagicMock()
+        ui.error = MagicMock()
+        # Provide passphrases that are always wrong
+        # Flow: attempt 0 (no pass) → prompt → wrong1
+        #       attempt 1 (wrong1) → error shown → prompt → wrong2
+        #       attempt 2 (wrong2) → error "max attempts reached"
+        ui.prompt_secret = AsyncMock(side_effect=["wrong1", "wrong2"])
+        manager = SSHAuthManager(secrets, ui)
+
+        key_file = tmp_path / "id_rsa"
+        key_file.write_text("encrypted")
+
+        options = SSHAuthOptions()
+
+        with patch(
+            "asyncssh.read_private_key",
+            side_effect=asyncssh.KeyEncryptionError("Unable to decrypt"),
+        ):
+            await manager._load_key_directly(key_file, None, options, "host1")
+
+        # Key should not be loaded
+        assert options.client_keys is None
+        # 2 errors: 1 "Wrong passphrase" (after wrong1), 1 "Max attempts reached" (after wrong2)
+        assert ui.error.call_count == 2
+        # Wrong passphrase should be cleared from cache
+        assert secrets.delete.called
+
+    @pytest.mark.asyncio
+    async def test_load_key_directly_clears_wrong_cached_passphrase(self, tmp_path: Path) -> None:
+        """Test _load_key_directly clears wrong cached passphrase."""
+        import asyncssh
+
+        secrets = MagicMock()
+        secrets.delete = MagicMock()
+        ui = MagicMock()
+        ui.error = MagicMock()
+        ui.prompt_secret = AsyncMock(return_value="correct")
+        manager = SSHAuthManager(secrets, ui)
+
+        key_file = tmp_path / "id_rsa"
+        key_file.write_text("encrypted")
+
+        mock_key = MagicMock()
+        options = SSHAuthOptions()
+
+        # First call with cached passphrase fails, then user provides correct one
+        with patch(
+            "asyncssh.read_private_key",
+            side_effect=[
+                asyncssh.KeyEncryptionError("Unable to decrypt"),  # wrong cached
+                mock_key,  # user's correct passphrase
+            ],
+        ):
+            await manager._load_key_directly(key_file, "wrong_cached", options, "host1")
+
+        # Key should be loaded
+        assert options.client_keys == [mock_key]
+        # Wrong cached passphrase should be cleared
+        assert secrets.delete.called
 
 
 class TestSSHAuthManagerPrepareAuthEdgeCases:
