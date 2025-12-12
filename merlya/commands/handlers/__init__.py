@@ -15,16 +15,19 @@ def init_commands() -> None:
     """
     # Import all handler modules to register commands
     from merlya.commands.handlers import (
+        audit,
         conversations,
         core,
         hosts,
+        mcp,
         model,
+        skill,
         ssh,
         system,
         variables,
     )
 
     # Prevent unused import warnings
-    _ = (core, hosts, ssh, variables, model, conversations, system)
+    _ = (core, hosts, ssh, variables, model, conversations, system, mcp, skill, audit)
 
     logger.debug("✅ Commands initialized")

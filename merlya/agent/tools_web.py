@@ -28,17 +28,19 @@ def register_web_tools(agent: Agent[Any, Any]) -> None:
         safesearch: str = "moderate",
     ) -> dict[str, Any]:
         """
-        Perform a web search (DuckDuckGo via ddgs).
+        Perform a web search using DuckDuckGo.
+
+        Use this tool to search the web for documentation, error messages,
+        or other information not available locally.
 
         Args:
-            ctx: Run context.
-            query: Search query string.
-            max_results: Maximum results (1-10).
-            region: Optional region code (e.g., "fr-fr", "us-en").
-            safesearch: DDG safesearch level ("off", "moderate", "strict").
+            query: Search query string (e.g., "nginx 502 bad gateway fix").
+            max_results: Maximum results to return (1-10, default: 5).
+            region: Region code for localized results (e.g., "fr-fr", "us-en").
+            safesearch: Content filter: "off", "moderate" (default), or "strict".
 
         Returns:
-            Dictionary with results, count, and cache flag.
+            Search results with titles, URLs, and snippets.
         """
         from merlya.tools.web import search_web as _search_web
 

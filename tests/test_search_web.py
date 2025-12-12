@@ -22,9 +22,9 @@ class FakeDDGS:
     def text(
         self,
         query: str,
-        max_results: int,  # noqa: ARG002
-        region: str | None,  # noqa: ARG002
-        safesearch: str,  # noqa: ARG002
+        max_results: int,
+        region: str | None,
+        safesearch: str,
     ):
         yield {
             "title": f"Result for {query}",

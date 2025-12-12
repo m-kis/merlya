@@ -7,6 +7,7 @@ Interactive console with autocompletion.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import re
 from dataclasses import dataclass
@@ -140,6 +141,7 @@ class MerlyaCompleter(Completer):
     - Slash commands (/help, /hosts, etc.)
     - Host mentions (@hostname)
     - Variable mentions (@variable)
+    - Secret mentions (@secret-name)
     """
 
     def __init__(self, ctx: SharedContext) -> None:
@@ -147,6 +149,7 @@ class MerlyaCompleter(Completer):
         self.ctx = ctx
         self._hosts_cache: list[str] = []
         self._variables_cache: list[str] = []
+        self._secrets_cache: list[str] = []
         self._last_cache_update: float = 0.0
 
     async def _update_cache(self) -> None:
@@ -163,6 +166,9 @@ class MerlyaCompleter(Completer):
 
             variables = await self.ctx.variables.get_all()
             self._variables_cache = [v.name for v in variables]
+
+            # Secrets from keyring
+            self._secrets_cache = self.ctx.secrets.list_names()
 
             self._last_cache_update = now
         except Exception as e:
@@ -210,6 +216,16 @@ class MerlyaCompleter(Completer):
                         start_position=-len(prefix),
                         display=f"@{var}",
                         display_meta="variable",
+                    )
+
+            # Complete secrets
+            for secret in self._secrets_cache:
+                if secret.lower().startswith(prefix.lower()):
+                    yield Completion(
+                        secret,
+                        start_position=-len(prefix),
+                        display=f"@{secret}",
+                        display_meta="secret",
                     )
 
 
@@ -313,13 +329,26 @@ class REPL:
                 with self.ctx.ui.spinner(self.ctx.t("ui.spinner.routing")):
                     route_result = await self.router.route(user_input)
 
-                # Expand @ mentions
-                expanded_input = await self._expand_mentions(user_input)
+                # Expand @ mentions (only for non-fast-path)
+                if not route_result.is_fast_path:
+                    expanded_input = await self._expand_mentions(user_input)
+                else:
+                    expanded_input = user_input
 
-                # Run agent
+                # Handle via fast path, skill, or agent
                 try:
-                    with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
-                        response = await self.agent.run(expanded_input, route_result)
+                    from merlya.router.handler import handle_user_message
+
+                    # Use spinner only for non-fast-path (fast path is instant)
+                    if route_result.is_fast_path:
+                        response = await handle_user_message(
+                            self.ctx, self.agent, expanded_input, route_result
+                        )
+                    else:
+                        with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
+                            response = await handle_user_message(
+                                self.ctx, self.agent, expanded_input, route_result
+                            )
                 except asyncio.CancelledError:
                     # Handle Ctrl+C during agent execution
                     self.ctx.ui.newline()
@@ -336,11 +365,24 @@ class REPL:
                 if response.suggestions:
                     self.ctx.ui.info(f"\nSuggestions: {', '.join(response.suggestions)}")
 
+                # Show handler info in debug mode
+                if response.handled_by != "agent":
+                    self.ctx.ui.muted(f"[{response.handled_by}]")
+
                 self.ctx.ui.newline()
 
             except KeyboardInterrupt:
+                # User interrupt: cancel current input/command but keep REPL alive
                 self.ctx.ui.newline()
+                self.ctx.ui.warning("Interrupted, command cancelled")
                 continue
+
+            except asyncio.CancelledError:
+                # Graceful shutdown initiated by signal handler
+                self.ctx.ui.newline()
+                self.ctx.ui.warning("Interrupted, shutting down...")
+                self.running = False
+                break
 
             except EOFError:
                 self.running = False
@@ -350,34 +392,135 @@ class REPL:
                 logger.error(f"REPL error: {e}")
                 self.ctx.ui.error(f"Error: {e}")
 
-        # Cleanup
-        await self.ctx.close()
+        # Cleanup (may be called again by CLI wrapper, but close() is idempotent)
+        try:
+            # Shield cleanup from cancellation so we can close resources cleanly
+            await asyncio.shield(self.ctx.close())
+        except asyncio.CancelledError:
+            logger.debug("Cleanup cancelled, retrying close without shield")
+            with contextlib.suppress(Exception):
+                await self.ctx.close()
         self.ctx.ui.info("Goodbye!")
 
     async def _expand_mentions(self, text: str) -> str:
         """
         Expand @ mentions in text.
 
-        @hostname -> resolved host info
-        @variable -> variable value
+        @hostname -> kept as-is (agent will resolve from inventory)
+        @variable -> variable value (non-sensitive, user-defined)
+        @secret   -> kept as-is (resolved only at execution time in ssh_execute)
+
+        SECURITY: Secrets are NEVER expanded here to prevent leaking to LLM.
+        The LLM sees @secret-name, and resolution happens in ssh_execute.
+
+        NEW: If a @mention is not found as variable, secret, or host,
+        prompt the user to define it inline (issue #40).
         """
-        # Find all @ mentions
-        mentions = re.findall(r"@(\w[\w.-]*)", text)
+        # Find all @ mentions (deduplicated, preserve order)
+        seen: set[str] = set()
+        mentions: list[str] = []
+        for m in re.findall(r"@(\w[\w.-]*)", text):
+            if m not in seen:
+                seen.add(m)
+                mentions.append(m)
+
+        undefined_mentions: list[str] = []
 
         for mention in mentions:
-            # Try as variable first
+            # Try as variable first (variables are non-sensitive, OK to expand)
             var = await self.ctx.variables.get(mention)
             if var:
                 text = text.replace(f"@{mention}", var.value)
                 continue
 
-            # Try as secret
-            secret = self.ctx.secrets.get(mention)
-            if secret:
-                text = text.replace(f"@{mention}", secret)
+            # Check if it's a known secret
+            if self.ctx.secrets.has(mention):
+                # SECURITY: Do NOT expand secrets here!
+                # Secrets are resolved only in ssh_execute at execution time.
                 continue
 
-            # Keep as host reference (agent will resolve)
+            # Check if it's a known host
+            host = await self.ctx.hosts.get_by_name(mention)
+            if host:
+                # Keep as host reference (agent will handle)
+                continue
+
+            # Unknown mention - track for prompting
+            undefined_mentions.append(mention)
+
+        # Prompt for undefined mentions (issue #40)
+        if undefined_mentions:
+            text = await self._prompt_for_undefined_mentions(text, undefined_mentions)
+
+        return text
+
+    # Valid pattern for variable/secret names (must start with letter)
+    _VALID_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+
+    async def _prompt_for_undefined_mentions(self, text: str, undefined: list[str]) -> str:
+        """
+        Prompt user to define undefined @ mentions inline.
+
+        For each undefined mention, ask if it should be a variable or secret,
+        then prompt for the value.
+        """
+        total = len(undefined)
+        for i, mention in enumerate(undefined, 1):
+            # Show progress for multiple mentions
+            progress = f"[{i}/{total}] " if total > 1 else ""
+            self.ctx.ui.warning(
+                f"{progress}@{mention} is not defined as a variable, secret, or host."
+            )
+
+            # Validate name format before allowing to set
+            if not self._VALID_NAME_PATTERN.match(mention):
+                self.ctx.ui.muted(
+                    f"@{mention} has invalid format (must start with letter, "
+                    "contain only letters, numbers, hyphens, underscores). Keeping as-is."
+                )
+                continue
+
+            # Ask what type it should be
+            choice = await self.ctx.ui.prompt(
+                f"Define @{mention} as (v)ariable, (s)ecret, or (i)gnore? [v/s/i]",
+            )
+
+            if not choice:
+                choice = "i"
+
+            choice = choice.lower().strip()
+
+            if choice.startswith("v"):
+                # Define as variable
+                value = await self.ctx.ui.prompt(f"Enter value for @{mention}:")
+                if value:
+                    try:
+                        await self.ctx.variables.set(mention, value)
+                        text = text.replace(f"@{mention}", value)
+                        self.ctx.ui.success(f"Variable @{mention} set.")
+                    except Exception as e:
+                        logger.error(f"Failed to set variable @{mention}: {e}")
+                        self.ctx.ui.error(f"Failed to set @{mention}: {e}")
+                else:
+                    self.ctx.ui.muted(f"Skipped @{mention}")
+
+            elif choice.startswith("s"):
+                # Define as secret
+                value = await self.ctx.ui.prompt_secret(f"Enter secret value for @{mention}:")
+                if value:
+                    try:
+                        self.ctx.secrets.set(mention, value)
+                        # Don't expand secrets - keep @mention in text
+                        self.ctx.ui.success(f"Secret @{mention} set.")
+                    except Exception as e:
+                        logger.error(f"Failed to set secret @{mention}: {e}")
+                        self.ctx.ui.error(f"Failed to set @{mention}: {e}")
+                else:
+                    self.ctx.ui.muted(f"Skipped @{mention}")
+
+            else:
+                # Ignore - keep as-is
+                self.ctx.ui.muted(f"Keeping @{mention} as-is")
 
         return text
 
@@ -469,6 +612,49 @@ async def run_repl() -> None:
 
     # Load API keys from keyring into environment
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
+
+    # Initialize components BEFORE health checks so they report correctly
+    # 1. Initialize SessionManager
+    try:
+        import psutil
+
+        from merlya.session import SessionManager
+        from merlya.session.context_tier import ContextTier
+
+        # Convert string tier to enum, use RAM-based detection when "auto"
+        tier_str = ctx.config.policy.context_tier
+        if tier_str and tier_str.lower() != "auto":
+            tier = ContextTier.from_string(tier_str)
+        else:
+            # Auto-detect based on available RAM
+            mem = psutil.virtual_memory()
+            available_gb = mem.available / (1024**3)
+            tier = ContextTier.from_ram_gb(available_gb)
+            logger.debug(f"Auto-detected context tier: {tier.value} (RAM: {available_gb:.1f}GB)")
+
+        model = f"{ctx.config.model.provider}:{ctx.config.model.model}"
+        SessionManager(model=model, default_tier=tier)
+        logger.debug(f"SessionManager initialized with tier={tier.value}")
+    except Exception as e:
+        logger.debug(f"SessionManager init skipped: {e}")
+
+    # 2. Load skills
+    try:
+        from merlya.skills import SkillLoader
+
+        loader = SkillLoader()
+        loader.load_all()
+        logger.debug("Skills loaded")
+    except Exception as e:
+        logger.debug(f"Skills loading skipped: {e}")
+
+    # 3. Initialize MCPManager (if configured)
+    try:
+        if ctx.config.mcp and ctx.config.mcp.servers:
+            await ctx.get_mcp_manager()
+            logger.debug("MCPManager initialized")
+    except Exception as e:
+        logger.debug(f"MCPManager init skipped: {e}")
 
     # Run health checks
     ctx.ui.info(ctx.t("startup.health_checks"))

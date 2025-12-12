@@ -1,0 +1,44 @@
+# Merlya Builtin Skill: Fleet Check
+# Check health across multiple hosts
+
+name: fleet_check
+version: "1.0"
+description: "Run health checks across the infrastructure fleet"
+
+intent_patterns:
+  - "fleet.*"
+  - "all.*hosts"
+  - "health.*check"
+  - "infrastructure.*status"
+  - "check.*everything"
+
+tools_allowed:
+  - ssh_execute
+  - list_hosts
+  - check_service_status
+
+max_hosts: 20
+timeout_seconds: 120
+
+require_confirmation_for: []
+
+system_prompt: |
+  You are performing a fleet-wide health check.
+
+  For each host, quickly assess:
+  1. Connectivity (can we reach it?)
+  2. Load average (is it overloaded?)
+  3. Disk usage (any partitions critical?)
+  4. Memory usage (is it swapping?)
+  5. Key services (are they running?)
+
+  Summarize findings in a clear table format:
+  | Host | Status | Issues |
+  |------|--------|--------|
+
+  Flag any hosts needing attention.
+
+tags:
+  - fleet
+  - monitoring
+  - health

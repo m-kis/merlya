@@ -28,6 +28,7 @@ def register_all_tools(agent: Agent[Any, Any]) -> None:
     _register_file_tools(agent)
     register_security_tools(agent)
     register_web_tools(agent)
+    _register_mcp_tools(agent)
 
 
 def _register_core_tools(agent: Agent[Any, Any]) -> None:
@@ -43,9 +44,8 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         List hosts from the inventory.
 
         Args:
-            ctx: Run context.
-            tag: Optional tag to filter hosts.
-            limit: Maximum number of hosts to return.
+            tag: Optional tag to filter hosts (e.g., "web", "database").
+            limit: Maximum number of hosts to return (default: 20).
 
         Returns:
             List of hosts with name, hostname, status, and tags.
@@ -66,8 +66,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         Get detailed information about a specific host.
 
         Args:
-            ctx: Run context.
-            name: Host name from inventory.
+            name: Host name from inventory (e.g., "myserver", "db-prod").
 
         Returns:
             Host details including hostname, port, tags, and metadata.
@@ -85,49 +84,53 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         host: str,
         command: str,
         timeout: int = 60,
-        elevation: dict[str, Any] | None = None,
         via: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a command on a host via SSH.
 
+        Features handled automatically by Merlya:
+        - Secret resolution: @secret-name in commands are resolved from keyring
+        - Auto-elevation: Permission denied errors trigger automatic elevation retry
+
         Args:
-            ctx: Run context.
             host: Host name or hostname (target machine).
-            command: Command to execute.
-            timeout: Command timeout in seconds.
-            elevation: Optional elevation payload (from request_elevation).
-            via: Optional jump host/bastion to reach the target.
-                 Use this when the target is not directly accessible.
-                 Can be a host name from inventory (e.g., "ansible", "bastion")
-                 or an IP/hostname. The connection will tunnel through this host.
+            command: Command to execute. Can contain @secret-name references.
+            timeout: Command timeout in seconds (default: 60).
+            via: Optional jump host/bastion to tunnel through (e.g., "bastion").
 
         Returns:
             Command output with stdout, stderr, and exit_code.
 
         Example:
-            To execute on a remote host via a bastion:
+            # Execute on a remote host via a bastion
             ssh_execute(host="db-server", command="df -h", via="bastion")
+
+            # Use secrets in commands (resolved automatically)
+            ssh_execute(host="db", command="mongosh -u admin -p @db-password")
         """
+        from merlya.subagents.timeout import touch_activity
         from merlya.tools.core import ssh_execute as _ssh_execute
 
-        router_result = getattr(ctx.deps, "router_result", None)
-        if router_result and router_result.elevation_required and elevation is None:
-            raise ModelRetry(
-                "Elevation flagged by router. Use request_elevation to prepare the command, "
-                "then pass the returned payload to ssh_execute via the 'elevation' argument."
-            )
-
         via_info = f" via {via}" if via else ""
+        # Note: command may contain @secret-name, resolved in _ssh_execute
+        # Logs will show @secret-name, not actual values
         logger.info(f"Executing on {host}{via_info}: {command[:50]}...")
-        result = await _ssh_execute(
-            ctx.deps.context, host, command, timeout, elevation=elevation, via=via
-        )
+
+        # Signal activity before and after SSH command
+        touch_activity()
+
+        result = await _ssh_execute(ctx.deps.context, host, command, timeout, via=via)
+
+        # Signal activity after command completes
+        touch_activity()
+
         return {
             "success": result.success,
             "stdout": result.data.get("stdout", "") if result.data else "",
             "stderr": result.data.get("stderr", "") if result.data else "",
             "exit_code": result.data.get("exit_code", -1) if result.data else -1,
+            "elevation": result.data.get("elevation") if result.data else None,
             "via": result.data.get("via") if result.data else None,
         }
 
@@ -138,15 +141,14 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         choices: list[str] | None = None,
     ) -> str:
         """
-        Ask the user a question.
+        Ask the user a question and wait for response.
 
         Args:
-            ctx: Run context.
-            question: Question to ask.
-            choices: Optional list of choices.
+            question: Question to ask the user.
+            choices: Optional list of choices to present (e.g., ["yes", "no"]).
 
         Returns:
-            User's response.
+            User's response as string.
         """
         from merlya.tools.core import ask_user as _ask_user
 
@@ -163,7 +165,21 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         fields: list[str] | None = None,
         format_hint: str | None = None,
     ) -> dict[str, Any]:
-        """Request credentials interactively (brain-driven)."""
+        """
+        Request credentials from the user interactively.
+
+        Use this tool when authentication fails and you need username/password
+        or API keys from the user.
+
+        Args:
+            service: Service name requiring credentials (e.g., "mongodb", "api").
+            host: Target host for these credentials (optional).
+            fields: List of field names to collect (default: ["username", "password"]).
+            format_hint: Hint about expected format (e.g., "JSON key file").
+
+        Returns:
+            Collected credentials with service, host, and values.
+        """
         from merlya.tools.interaction import request_credentials as _request_credentials
 
         result = await _request_credentials(
@@ -191,13 +207,63 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         command: str,
         host: str | None = None,
     ) -> dict[str, Any]:
-        """Request privilege elevation (brain-driven)."""
+        """
+        Request privilege elevation from the user.
+
+        Use this tool when a command fails with "Permission denied" and you need
+        sudo/su/doas access to retry.
+
+        Args:
+            command: Command that requires elevation.
+            host: Target host for elevation (optional).
+
+        Returns:
+            Elevation method approved by user (e.g., "sudo", "su").
+        """
         from merlya.tools.interaction import request_elevation as _request_elevation
 
         result = await _request_elevation(ctx.deps.context, command=command, host=host)
         if result.success:
             return cast("dict[str, Any]", result.data or {})
         raise ModelRetry(f"Failed to request elevation: {getattr(result, 'error', result.message)}")
+
+
+def _register_mcp_tools(agent: Agent[Any, Any]) -> None:
+    """Register MCP bridge tools."""
+
+    @agent.tool
+    async def list_mcp_tools(ctx: RunContext[AgentDependencies]) -> dict[str, Any]:
+        """
+        List available MCP tools from configured servers.
+
+        MCP (Model Context Protocol) tools are external capabilities
+        provided by configured MCP servers.
+
+        Returns:
+            List of available tool names and count.
+        """
+        manager = await ctx.deps.context.get_mcp_manager()
+        tools = await manager.list_tools()
+        return {"tools": [tool.name for tool in tools], "count": len(tools)}
+
+    @agent.tool
+    async def call_mcp_tool(
+        ctx: RunContext[AgentDependencies],
+        tool: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Call an MCP tool by name.
+
+        Args:
+            tool: Tool name in format "server.tool" (e.g., "github.list_repos").
+            arguments: Arguments to pass to the tool (optional).
+
+        Returns:
+            Tool execution result.
+        """
+        manager = await ctx.deps.context.get_mcp_manager()
+        return await manager.call_tool(tool, arguments or {})
 
     @agent.tool
     async def request_confirmation(
@@ -206,15 +272,16 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         risk_level: str = "moderate",
     ) -> bool:
         """
-        Request user confirmation before an action.
+        Request user confirmation before a destructive action.
+
+        Use this tool before restart, delete, stop, or other risky operations.
 
         Args:
-            ctx: Run context.
-            action: Description of the action to confirm.
-            risk_level: Risk level (low, moderate, high, critical).
+            action: Description of the action to confirm (e.g., "restart nginx service").
+            risk_level: Risk level: "low", "moderate", "high", or "critical".
 
         Returns:
-            True if user confirmed, False otherwise.
+            True if user confirmed, False if declined.
         """
         from merlya.tools.core import request_confirmation as _request_confirmation
 
@@ -238,8 +305,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
         Get system information from a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             System info including OS, kernel, uptime, and load.
@@ -261,9 +327,8 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
         Check disk usage on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            path: Filesystem path to check.
+            host: Host name from inventory.
+            path: Filesystem path to check (default: "/").
 
         Returns:
             Disk usage info with size, used, available, and percentage.
@@ -284,8 +349,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
         Check memory usage on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             Memory usage info with total, used, available, and percentage.
@@ -306,8 +370,7 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
         Check CPU usage on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
+            host: Host name from inventory.
 
         Returns:
             CPU info with load averages, CPU count, and usage percentage.
@@ -329,9 +392,8 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
         Check the status of a systemd service.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            service: Service name (e.g., nginx, docker, ssh).
+            host: Host name from inventory.
+            service: Service name (e.g., "nginx", "docker", "ssh").
 
         Returns:
             Service status info with active state and PID.
@@ -355,11 +417,10 @@ def _register_system_tools(agent: Agent[Any, Any]) -> None:
         List running processes on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            user: Filter by user.
-            filter_name: Filter by process name.
-            limit: Maximum processes to return.
+            host: Host name from inventory.
+            user: Filter by user name (optional).
+            filter_name: Filter by process name (optional).
+            limit: Maximum processes to return (default: 10).
 
         Returns:
             List of processes with user, PID, CPU, memory, and command.
@@ -393,14 +454,13 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
         Read file content from a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            path: File path to read.
-            lines: Number of lines to read (optional).
-            tail: If True, read from end of file.
+            host: Host name from inventory.
+            path: Absolute file path to read (e.g., "/etc/nginx/nginx.conf").
+            lines: Number of lines to read (optional, reads entire file if not set).
+            tail: If True, read from end of file (default: False).
 
         Returns:
-            File content.
+            File content as string.
         """
         from merlya.tools.files import read_file as _read_file
 
@@ -421,14 +481,13 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
         Write content to a file on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            path: File path.
-            content: Content to write.
-            backup: Create backup before writing.
+            host: Host name from inventory.
+            path: Absolute file path to write.
+            content: Content to write to the file.
+            backup: Create backup before writing (default: True).
 
         Returns:
-            Operation result.
+            Success status and message.
         """
         from merlya.tools.files import write_file as _write_file
 
@@ -449,14 +508,13 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
         List directory contents on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            path: Directory path.
-            all_files: Include hidden files.
-            long_format: Use detailed listing.
+            host: Host name from inventory.
+            path: Directory path to list (e.g., "/var/log").
+            all_files: Include hidden files (default: False).
+            long_format: Use detailed listing with permissions (default: False).
 
         Returns:
-            Directory listing.
+            List of directory entries.
         """
         from merlya.tools.files import list_directory as _list_directory
 
@@ -480,15 +538,14 @@ def _register_file_tools(agent: Agent[Any, Any]) -> None:
         Search for files on a host.
 
         Args:
-            ctx: Run context.
-            host: Host name.
-            path: Search path.
-            pattern: File name pattern (e.g., "*.log").
-            file_type: Type filter (f=file, d=directory).
-            max_depth: Maximum search depth.
+            host: Host name from inventory.
+            path: Starting directory for search (e.g., "/var/log").
+            pattern: File name pattern with wildcards (e.g., "*.log", "nginx*").
+            file_type: Type filter: "f" for files, "d" for directories (optional).
+            max_depth: Maximum directory depth to search (optional).
 
         Returns:
-            List of matching files.
+            List of matching file paths.
         """
         from merlya.tools.files import search_files as _search_files
 

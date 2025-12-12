@@ -7,6 +7,256 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Session Message Persistence**
+  - Messages now persisted to SQLite for session resumption
+  - Full conversation history restored on `/session load`
+  - Automatic trimming to MAX_MESSAGES_IN_MEMORY on load
+
+- **Loop Detection** (`merlya/agent/history.py`)
+  - Detects repetitive tool call patterns
+  - Three detection modes: same call repeated, consecutive identical calls, alternating patterns
+  - Injects "loop breaker" system message to redirect agent
+  - Configurable thresholds: LOOP_DETECTION_WINDOW=10, LOOP_THRESHOLD_SAME_CALL=3
+
+- **Secret References in Commands**
+  - Commands can contain `@secret-name` references (e.g., `@db-password`)
+  - Secrets auto-resolved from keyring at execution time
+  - Safe logging: actual values never appear in logs
+  - New SECRET_PATTERN for structured keys like `@service:host:field`
+
+- **Observability Status API** (`merlya/audit/`)
+  - `get_observability_status()` returns Logfire/SQLite backend status
+  - Used in `/audit stats` for cleaner status display
+
+- **Host Metadata Update** (`merlya/persistence/repositories.py`)
+  - `update_metadata()` for efficient partial host updates
+  - Used by elevation system to persist capabilities
+
+### Changed
+
+- **Elevation System Refactoring** (`merlya/security/permissions.py`)
+  - Priority-based method selection: sudo NOPASSWD > doas > sudo_with_password > su
+  - Passwords stored in system keyring (macOS Keychain, Linux Secret Service)
+  - Returns `@elevation:host:password` references instead of raw values
+  - Detection already determines if password needed; no retry logic
+  - Added `store_password()`, `clear_cache()` methods
+
+- **Agent System Prompt** (`merlya/agent/main.py`)
+  - BE DIRECT: Try most obvious path first
+  - TRUST USER HINTS: Use location hints immediately
+  - ONE COMMAND IS BETTER: Prefer direct commands over exploration
+  - Auto-elevation documented: no manual `request_elevation` needed
+  - Security: Forbidden plaintext password patterns documented
+
+- **Tool Call Limits** (`merlya/config/constants.py`)
+  - Raised limits as failsafes only (loop detection handles safety)
+  - TOOL_CALLS_LIMIT_DIAGNOSTIC: 200
+  - REQUEST_LIMIT_DIAGNOSTIC: 300
+
+### Fixed
+
+- **Thread-Safety** (`merlya/mcp/manager.py`, `merlya/ssh/pool.py`)
+  - SSHPool: Changed from asyncio.Lock to threading.Lock for singleton
+  - MCPManager: Added threading.Lock guard for lazy asyncio.Lock creation
+  - suppress_mcp_capability_warnings() now only suppresses MCP-related loggers
+
+- **Parser Improvements** (`merlya/parser/`)
+  - IPv4 validation: reject octets > 255
+  - Better incident detection with minimum confidence threshold
+  - Check initialize() return value before proceeding
+
+- **Security Improvements**
+  - Path canonicalization in SSH key audit (prevent traversal)
+  - Variables import: reject symlinks, world-writable files
+  - Removed /tmp from allowed import directories
+  - Case-insensitive health_status comparison
+
+- **PydanticAI Tool Docstrings**
+  - Removed `ctx: Run context.` from all tool docstrings
+  - Improves tool description extraction for LLM
+
+### Security
+
+- **Plaintext Password Detection**: `detect_unsafe_password()` warns about embedded passwords
+- **Credential References**: `request_credentials()` returns `@service:host:field` references
+- **Elevation Password Security**: Never stored in memory, always in keyring with `@` references
+
+## [0.7.0] - 2025-12-11
+
+### Added
+
+#### Advanced Architecture (Sprints 1-8)
+
+- **Parser Service** (`merlya/parser/`)
+  - Tier-based backend selection (lightweight/balanced/performance)
+  - HeuristicBackend: regex-based entity extraction (ReDoS protected)
+  - ONNXParserBackend: NER model-based extraction
+  - Parse incidents, logs, host queries, and commands
+  - Pre-compiled patterns at module level for performance
+
+- **Log Store** (`merlya/tools/logs/`)
+  - `store_raw_log()`: Store command outputs with TTL
+  - `get_raw_log()`: Retrieve complete log by ID
+  - `get_raw_log_slice()`: Extract specific line ranges
+  - `cleanup_expired_logs()`: Remove expired entries
+
+- **Context Tools** (`merlya/tools/context/`)
+  - `list_hosts_summary()`: Compact inventory overview
+  - `get_host_details()`: Detailed info for single host
+  - `list_groups()`: Tag-based host groupings
+  - `get_infrastructure_context()`: Combined context for LLM
+
+- **Session Manager** (`merlya/session/`)
+  - `TokenEstimator`: Accurate token counting per model
+  - `ContextTierPredictor`: ONNX-based complexity classification
+  - `SessionSummarizer`: Hybrid ONNX + LLM summarization
+  - `SessionManager`: Context window management
+
+- **Policy System** (`merlya/config/policies.py`)
+  - `PolicyConfig`: Configurable limits and safeguards
+  - `PolicyManager`: Runtime policy enforcement
+  - Auto context tier detection
+  - Host count and token validation
+
+- **Skills System** (`merlya/skills/`)
+  - YAML-based skill definitions
+  - `SkillRegistry`: Singleton for skill management
+  - `SkillLoader`: Load from files and directories
+  - `SkillExecutor`: Parallel execution with timeout
+  - `SkillWizard`: Interactive skill creation (`/skill create`)
+  - Built-in skills: incident_triage, disk_audit, log_analysis, fleet_check
+
+- **Subagents** (`merlya/subagents/`)
+  - `SubagentFactory`: Create ephemeral PydanticAI agents
+  - `SubagentOrchestrator`: Parallel execution via asyncio.gather
+  - Per-host result aggregation
+  - Semaphore-based concurrency control
+
+- **Fast Path Routing** (`merlya/router/handler.py`)
+  - Direct database queries without LLM for simple intents
+  - Fast path intents: host.list, host.details, group.list, skill.list, var.*
+  - Skill-based routing with confidence threshold (0.6)
+  - Automatic fallback to LLM agent
+
+- **Audit Logging** (`merlya/audit/`)
+  - `AuditLogger`: SQLite persistence + loguru output
+  - Event types: command, skill, tool, destructive ops
+  - Sensitive data sanitization (passwords, secrets)
+  - TTL-based log retrieval
+
+### Changed
+
+- Database schema version bumped to v2 (automatic migration)
+- `raw_logs` table: ON DELETE SET NULL for host_id
+- `sessions` table: ON DELETE CASCADE for conversation_id
+- SkillExecutor integrates with AuditLogger when enabled
+
+### Fixed
+
+- MCP test mock missing `show_server` method
+- Parser backend import name (ONNXParserBackend)
+
+### Security
+
+- **Password cache TTL**: Elevation passwords expire after 30 minutes
+- **Race condition protection**: Per-host asyncio.Lock in capability detection
+- **Router identifier validation**: Blocks path traversal, empty, and overly long names
+- **Input validation**: MAX_INPUT_SIZE limits for ReDoS protection
+- **Pre-compiled regex patterns**: All patterns compiled at module level
+
+## [0.6.3] - 2025-12-10
+
+### Added
+- **MCP (Model Context Protocol) integration** for external tool servers
+  - `/mcp add|remove|list|show|test|tools|examples` commands
+  - Stdio server support with environment variable templating
+  - Secret resolution via Merlya's keyring: `${GITHUB_TOKEN}` syntax
+  - Default value syntax: `${VAR:-default}` for optional env vars
+  - Tool discovery and invocation across multiple servers
+  - Warning suppression for optional MCP capabilities (prompts/resources)
+- **Mistral and Groq provider configuration**
+  - Full `/model provider mistral` support
+  - Full `/model provider groq` support
+  - API key handling via keyring (`MISTRAL_API_KEY`, `GROQ_API_KEY`)
+  - Router fallback configuration for both providers
+- **PydanticAI agent improvements**
+  - History processors for context window management
+  - Tool call/return pairing validation
+  - `@agent.system_prompt` for dynamic router context injection
+  - `@agent.output_validator` for response coherence validation
+  - `UsageLimits` for request/tool call limits
+- **Centralized agent constants** in `config/constants.py`
+
+### Changed
+- **Dynamic tool call limits** based on task mode from router
+  - Diagnostic: 100 calls (SSH investigation, log analysis)
+  - Remediation: 50 calls (fixing, configuring)
+  - Query: 30 calls (information gathering)
+  - Chat: 20 calls (simple conversations)
+- Improved error keyword detection with word boundaries (regex)
+- Persistence failure logs elevated to `warning` level
+- Hard fallback limit (100 messages) prevents unbounded history growth
+- **Smart elevation without upfront password prompt**:
+  - Try `su`/`sudo` without password first
+  - Only prompt for password if elevation fails with authentication error
+  - Consent cached per host (say "N" once, never asked again for that host)
+  - Password cached in memory for session (never persisted to disk)
+
+### Fixed
+- Missing `Implementation` type import in MCP manager
+- Type annotations for history processor (`HistoryProcessor` alias)
+- **Context loss on long conversations**: increased history limits (50 default, 200 hard max)
+- **Secret names not persisting**: `/secret list` now shows secrets after restart
+  - Secret names are stored in `~/.merlya/secrets.json`
+  - Keyring doesn't provide enumeration, so names must be tracked separately
+- **Random exploration behavior**: added "Task Focus" instructions to system prompt
+  - Clear DO/DON'T guidelines to prevent aimless directory exploration
+  - Explicit "continue" behavior: resume from last step, don't restart
+  - Examples of good vs bad behavior patterns
+- **Timeout during user interaction**: removed global 120s timeout that killed `ask_user`
+  - User interaction tools now wait indefinitely for user input
+  - LLM providers use their own request timeouts
+  - SSH commands use per-command timeout parameter
+- **Secret resolution not working in commands**: `@secret-name` was not resolved
+  - Fixed `SecretStore` singleton pattern (`_instance` was a dataclass field, not `ClassVar`)
+  - Different parts of the app were getting different instances
+  - Now properly uses `ClassVar` for true singleton behavior
+- **Secret autocompletion**: Typing `@` now suggests secrets (in addition to hosts/variables)
+- **Persistent SSH elevation capabilities**: Detected sudo/su/doas capabilities now persist
+  - Stored in host metadata with 24h TTL
+  - Avoids re-detection on every connection
+  - Three-layer caching: in-memory → database → SSH probes
+- **Better SSH error explanations**: Connection errors now include:
+  - Human-readable symptom (e.g., "Connection timeout to 164.132.77.97")
+  - Explanation of the cause
+  - Suggested solutions (e.g., "Check VPN, try ping...")
+
+### Security
+- **CRITICAL: Secret leak to LLM fixed** - `@secret-name` references were resolved
+  before sending to LLM, exposing passwords in plaintext
+  - Secrets are now resolved only at execution time in `ssh_execute`
+  - Logs show `@secret-name`, never actual values
+  - LLM never sees secret values, only references
+- **Secret resolution in commands** - `@secret-name` syntax in SSH commands
+  - Automatically resolved from keyring at execution time
+  - Safe logging with masked values
+- **Auto-elevation on permission errors** - Merlya handles elevation automatically
+  - Detects "Permission denied" errors and retries with elevation
+  - Uses correct method per host (su/sudo/doas)
+  - User confirmation before elevation
+  - Removed `ModelRetry` dependency for elevation (more reliable)
+- **Thread-safe SecretStore singleton** - Fixed race condition in multi-threaded scenarios
+  - Double-checked locking pattern prevents duplicate instances
+  - Atomic file writes for `~/.merlya/secrets.json` prevent data corruption
+- **Tighter secret pattern regex** - Now excludes emails and URLs
+  - `user@github.com` no longer matches as a secret reference
+  - Only matches `@secret-name` at start of string or after whitespace/operators
+- **Timezone-aware cache TTL** - Elevation capabilities cache uses UTC
+  - Prevents 1-hour errors during DST transitions
+  - Handles legacy naive timestamps gracefully
+
 ## [0.6.2] - 2025-12-10
 
 ### Added
@@ -86,4 +336,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy with vulnerability reporting process
 - Architecture Decision Records (ADR)
 
+[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/m-kis/merlya/releases/tag/v0.7.0
+[0.6.3]: https://github.com/m-kis/merlya/releases/tag/v0.6.3
+[0.6.2]: https://github.com/m-kis/merlya/releases/tag/v0.6.2
+[0.6.1]: https://github.com/m-kis/merlya/releases/tag/v0.6.1
+[0.6.0]: https://github.com/m-kis/merlya/releases/tag/v0.6.0
 [0.5.6]: https://github.com/m-kis/merlya/releases/tag/v0.5.6

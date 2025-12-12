@@ -1,0 +1,118 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'merlya/**'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'merlya/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+    inputs:
+      push:
+        description: 'Push to registry'
+        required: true
+        default: false
+        type: boolean
+
+# Prevent concurrent builds
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Branch builds
+            type=ref,event=branch
+            # PR builds
+            type=ref,event=pr
+            # Version tags
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Latest tag for default branch
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.push == 'true') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Test multi-platform build
+        if: github.event_name == 'pull_request'
+        run: |
+          # Build and test amd64
+          echo "🔨 Building and testing linux/amd64..."
+          docker buildx build --platform linux/amd64 --output=type=docker -t merlya-test:amd64 .
+          docker run --rm --platform linux/amd64 --entrypoint python merlya-test:amd64 -c "import merlya; print('amd64 OK')"
+          echo "✅ linux/amd64 build successful"
+
+          # Build and test arm64 (via QEMU emulation)
+          echo "🔨 Building and testing linux/arm64..."
+          docker buildx build --platform linux/arm64 --output=type=docker -t merlya-test:arm64 .
+          docker run --rm --platform linux/arm64 --entrypoint python merlya-test:arm64 -c "import merlya; print('arm64 OK')"
+          echo "✅ linux/arm64 build successful"
+
+          echo "✅ Multi-platform images built and tested successfully"
+
+      - name: Image size check
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        run: |
+          echo "📦 Image size check skipped for multi-platform builds (not available in local daemon)"
+          echo "To monitor image size, query the registry directly or implement a post-push size check"
