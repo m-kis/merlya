@@ -137,6 +137,7 @@ class TokenEstimator:
             chars_per_token = DEFAULT_CHARS_PER_TOKEN
 
         # Base estimate (content only, overhead added by estimate_messages)
+        base_tokens = len(text) / chars_per_token
         return int(base_tokens)
 
     def estimate_messages(self, messages: list[ModelMessage]) -> TokenEstimate:

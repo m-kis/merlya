@@ -126,6 +126,12 @@ class SkillConfig(BaseModel):
         description="Maximum execution time per host",
     )
 
+    # Localhost safety
+    localhost_safe: bool = Field(
+        default=False,
+        description="Whether this skill can safely default to localhost when no hosts specified and max_hosts == 1",
+    )
+
     # Confirmation requirements
     require_confirmation_for: list[str] = Field(
         default_factory=lambda: ["restart", "kill", "delete", "stop"],

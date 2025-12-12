@@ -88,10 +88,22 @@ class BatchResult:
         }
 
 
-def _to_json_safe(value: Any) -> Any:
+def _to_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
     """Convert common Merlya objects to JSON-serializable structures."""
+    if _seen is None:
+        _seen = set()
+    
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
+    
+    obj_id = id(value)
+    if obj_id in _seen:
+        return str(value)  # or raise an error, or return a sentinel
+    
+    # Mark as seen for containers
+    if isinstance(value, (dict, list, tuple, set)) or is_dataclass(value):
+        _seen = _seen | {obj_id}
+    
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, Path):
@@ -101,11 +113,11 @@ def _to_json_safe(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
     if is_dataclass(value):
-        return {k: _to_json_safe(v) for k, v in asdict(value).items()}
+        return {k: _to_json_safe(v, _seen) for k, v in asdict(value).items()}
     if isinstance(value, dict):
-        return {k: _to_json_safe(v) for k, v in value.items()}
+        return {k: _to_json_safe(v, _seen) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
-        return [_to_json_safe(v) for v in value]
+        return [_to_json_safe(v, _seen) for v in value]
     return str(value)
 
 

@@ -227,15 +227,30 @@ async def handle_skill_flow(
         # Get hosts from entities
         hosts = route_result.entities.get("hosts", [])
 
-        # If no hosts specified and skill requires hosts, inform user
+        # Host validation - enforce requirements before execution
+        # 1. If skill requires hosts (max_hosts > 0) and none provided:
+        #    - Allow localhost default only if max_hosts == 1 AND localhost_safe is True
+        #    - Otherwise, require explicit host specification
         if not hosts and skill.max_hosts > 0:
-            return HandlerResponse(
-                message=f"**Skill: {skill.name}**\n\n"
-                f"{skill.description or 'No description available.'}\n\n"
-                f"Please specify target hosts using @hostname syntax.",
-                handled_by="skill",
-                suggestions=[f"Try: @hostname {user_input}"],
-            )
+            # Only allow implicit localhost for single-host, localhost-safe skills
+            if skill.max_hosts == 1 and skill.localhost_safe:
+                hosts = ["localhost"]
+                logger.debug(f"🏠 Using localhost for localhost-safe skill: {skill.name}")
+            else:
+                # Require explicit hosts - explain why
+                if skill.max_hosts > 1:
+                    reason = "This skill supports multiple hosts and requires explicit target specification."
+                else:
+                    reason = "This skill is not marked as localhost-safe and requires explicit host specification."
+
+                return HandlerResponse(
+                    message=f"**Skill: {skill.name}**\n\n"
+                    f"{skill.description or 'No description available.'}\n\n"
+                    f"⚠️ {reason}\n\n"
+                    f"Please specify target hosts using @hostname syntax.",
+                    handled_by="skill",
+                    suggestions=[f"Try: @hostname {user_input}"],
+                )
 
         # Get policy manager if available
         policy_manager = getattr(ctx, "policy_manager", None)
@@ -251,7 +266,7 @@ async def handle_skill_flow(
         try:
             result = await executor.execute(
                 skill=skill,
-                hosts=hosts or ["localhost"],  # Default to localhost for single-host skills
+                hosts=hosts,
                 task=user_input,
             )
         except TimeoutError as e:
