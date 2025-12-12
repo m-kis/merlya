@@ -1,12 +1,54 @@
-.venv
-.coverage
-.dockerignore
-.claude
-.mypy_cache
-.ruff_cache
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+
+# Build artifacts
 *.egg-info/
 dist/
 build/
+*.egg
+*.whl
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Type checking / Linting
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Secrets / Environment
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Project specific
+.claude/
+.dockerignore
