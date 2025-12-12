@@ -89,6 +89,49 @@ class TestResolveSecrets:
         assert safe == "ls -la"
         secrets.get.assert_not_called()
 
+    def test_resolve_skips_known_hosts(self) -> None:
+        """Test that known host names are not treated as secrets."""
+        secrets = MagicMock()
+        secrets.get.return_value = "SHOULD_NOT_APPEAR"
+        known_hosts = {"pine64", "web-01", "db-server"}
+
+        resolved, safe = resolve_secrets("ping @pine64", secrets, known_hosts)
+
+        # pine64 should not be resolved as a secret
+        assert resolved == "ping @pine64"
+        assert safe == "ping @pine64"
+        # secrets.get should not be called for known hosts
+        secrets.get.assert_not_called()
+
+    def test_resolve_skips_known_hosts_case_insensitive(self) -> None:
+        """Test that known host names are matched case-insensitively.
+
+        In real usage, known_hosts is built with both original and lowercase versions:
+        known_host_names = {h.name for h in hosts} | {h.name.lower() for h in hosts}
+        """
+        secrets = MagicMock()
+        secrets.get.return_value = "SHOULD_NOT_APPEAR"
+        # Simulates real behavior: set contains both original and lowercase
+        known_hosts = {"Pine64", "pine64", "WEB-01", "web-01"}
+
+        resolved, safe = resolve_secrets("ping @pine64", secrets, known_hosts)
+
+        # pine64 should not be resolved
+        assert resolved == "ping @pine64"
+        assert safe == "ping @pine64"
+
+    def test_resolve_resolves_secrets_not_hosts(self) -> None:
+        """Test that secrets are resolved but host names are not."""
+        secrets = MagicMock()
+        secrets.get.side_effect = lambda name: "secret_value" if name == "api-key" else None
+        known_hosts = {"pine64", "web-01"}
+
+        resolved, safe = resolve_secrets("curl -H 'Auth: @api-key' @pine64", secrets, known_hosts)
+
+        # @api-key should be resolved, @pine64 should NOT
+        assert resolved == "curl -H 'Auth: secret_value' @pine64"
+        assert safe == "curl -H 'Auth: ***' @pine64"
+
 
 # ==============================================================================
 # Tests for detect_unsafe_password
@@ -831,6 +874,9 @@ class TestBashExecute:
         ctx = MagicMock()
         ctx.secrets = MagicMock()
         ctx.secrets.get.return_value = None  # No secrets by default
+        # Mock hosts.get_all() to return empty list (no hosts to confuse with secrets)
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[])
         return ctx
 
     @pytest.mark.asyncio
