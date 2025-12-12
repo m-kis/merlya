@@ -156,11 +156,12 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         """
         from merlya.subagents.timeout import touch_activity
         from merlya.tools.core import ssh_execute as _ssh_execute
+        from merlya.tools.core.security import mask_sensitive_command
 
         via_info = f" via {via}" if via else ""
-        # Note: command may contain @secret-name, resolved in _ssh_execute
-        # Logs will show @secret-name, not actual values
-        logger.info(f"Executing on {host}{via_info}: {command[:50]}...")
+        # SECURITY: Mask sensitive data before logging
+        safe_log_command = mask_sensitive_command(command)
+        logger.info(f"Executing on {host}{via_info}: {safe_log_command[:50]}...")
 
         # Signal activity before and after SSH command
         touch_activity()
