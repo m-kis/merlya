@@ -381,8 +381,24 @@ async def ssh_execute(
         if elevation:
             resolved_command = elevation.get("command", resolved_command)
             base_command = elevation.get("base_command", resolved_command)
-            input_data = elevation.get("input")
             elevation_used = elevation.get("method")
+
+            # SECURITY: Get password from elevation cache, not from the dict
+            # (prevents LLM from seeing/using password directly)
+            input_ref = elevation.get("input_ref")
+            if input_ref and hasattr(ctx, "_elevation_cache"):
+                cached = ctx._elevation_cache.get(input_ref)  # type: ignore[attr-defined]
+                if cached:
+                    input_data = cached.get("input_data")
+                    # Clean up after use
+                    del ctx._elevation_cache[input_ref]  # type: ignore[attr-defined]
+            # Fallback for backwards compatibility (but log warning)
+            elif elevation.get("input"):
+                logger.warning(
+                    "⚠️ SECURITY: Elevation data contains raw password. "
+                    "This is deprecated and will be removed."
+                )
+                input_data = elevation.get("input")
 
         # Get SSH pool and ensure callbacks
         ssh_pool = await ctx.get_ssh_pool()

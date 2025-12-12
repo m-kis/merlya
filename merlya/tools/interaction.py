@@ -211,6 +211,10 @@ async def request_elevation(
 ) -> CommandResult:
     """
     Request privilege elevation via PermissionManager (brain-driven).
+
+    SECURITY NOTE: This tool does NOT return the actual password to the LLM.
+    The password (if needed) is stored internally and applied automatically
+    when ssh_execute is called with the returned elevation data.
     """
     try:
         if not host:
@@ -221,12 +225,31 @@ async def request_elevation(
 
         permissions = await ctx.get_permissions()
         elevation = await permissions.prepare_command(host, command)  # type: ignore[attr-defined]
+
+        # SECURITY: Store input_data (password) in a secure cache, don't expose to LLM
+        # Generate a unique reference ID if there's sensitive input data
+        elevation_ref = None
+        if elevation.input_data:
+            import uuid
+
+            elevation_ref = f"elev_{uuid.uuid4().hex[:8]}"
+            # Store in session cache (accessible by ssh_execute)
+            if not hasattr(ctx, "_elevation_cache"):
+                ctx._elevation_cache = {}  # type: ignore[attr-defined]
+            ctx._elevation_cache[elevation_ref] = {  # type: ignore[attr-defined]
+                "input_data": elevation.input_data,
+                "host": host,
+                "command": command,
+            }
+
         return CommandResult(
             success=True,
             message="✅ Elevation prepared",
             data={
                 "command": elevation.command,
-                "input": elevation.input_data,
+                # SECURITY: Never expose password to LLM - use reference instead
+                "input_ref": elevation_ref,  # Reference ID, not actual password
+                "has_password": elevation.input_data is not None,
                 "method": elevation.method,
                 "note": elevation.note,
                 "needs_password": elevation.needs_password,
