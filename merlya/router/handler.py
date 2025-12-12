@@ -6,7 +6,6 @@ Handles user messages with fast path, skill, and LLM agent routing.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -218,6 +217,8 @@ async def handle_skill_flow(
         from merlya.skills.registry import get_registry
 
         registry = get_registry()
+        if not route_result.skill_match:
+            return None
         skill = registry.get(route_result.skill_match)
 
         if not skill:
@@ -292,13 +293,17 @@ async def handle_skill_flow(
             message_parts.append("### Details")
             for hr in result.host_results:
                 status_emoji = "✅" if hr.success else "❌"
-                message_parts.append(f"- {status_emoji} **{hr.host}**: {hr.output or hr.error or 'No output'}")
+                message_parts.append(
+                    f"- {status_emoji} **{hr.host}**: {hr.output or hr.error or 'No output'}"
+                )
 
         return HandlerResponse(
             message="\n".join(message_parts),
             actions_taken=[f"skill:{skill.name}"],
             handled_by="skill",
-            raw_data={"skill_result": result.model_dump() if hasattr(result, "model_dump") else None},
+            raw_data={
+                "skill_result": result.model_dump() if hasattr(result, "model_dump") else None
+            },
         )
 
     except ImportError as e:
@@ -402,7 +407,10 @@ async def _handle_host_details(ctx: SharedContext, hostname: str) -> HandlerResp
         return HandlerResponse(
             message=f"Host **@{hostname}** not found in inventory.",
             handled_by="fast_path",
-            suggestions=["Use `/hosts` to see all hosts", f"Try `/host add {hostname} --address <ip>`"],
+            suggestions=[
+                "Use `/hosts` to see all hosts",
+                f"Try `/host add {hostname} --address <ip>`",
+            ],
         )
 
     # Format details
@@ -494,14 +502,22 @@ async def _handle_skill_list(ctx: SharedContext) -> HandlerResponse:
         if builtin:
             lines.append(f"### Built-in ({len(builtin)})")
             for s in builtin:
-                desc = s.description[:50] + "..." if s.description and len(s.description) > 50 else s.description or ""
+                desc = (
+                    s.description[:50] + "..."
+                    if s.description and len(s.description) > 50
+                    else s.description or ""
+                )
                 lines.append(f"- **{s.name}** v{s.version}: {desc}")
             lines.append("")
 
         if user:
             lines.append(f"### User-defined ({len(user)})")
             for s in user:
-                desc = s.description[:50] + "..." if s.description and len(s.description) > 50 else s.description or ""
+                desc = (
+                    s.description[:50] + "..."
+                    if s.description and len(s.description) > 50
+                    else s.description or ""
+                )
                 lines.append(f"- **{s.name}** v{s.version}: {desc}")
             lines.append("")
 

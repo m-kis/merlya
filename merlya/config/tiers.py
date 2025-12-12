@@ -27,7 +27,7 @@ class ModelTier(Enum):
     PERFORMANCE = "performance"  # Larger models (bert-base)
 
     @classmethod
-    def from_string(cls, value: str | None) -> "ModelTier":
+    def from_string(cls, value: str | None) -> ModelTier:
         """
         Convert string to ModelTier, with sensible defaults.
 
@@ -49,7 +49,7 @@ class ModelTier(Enum):
             return cls.BALANCED
 
     @classmethod
-    def from_ram_gb(cls, available_gb: float) -> "ModelTier":
+    def from_ram_gb(cls, available_gb: float) -> ModelTier:
         """
         Select tier based on available RAM.
 

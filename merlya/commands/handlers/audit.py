@@ -6,7 +6,7 @@ Implements /audit command for viewing and exporting audit logs.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -61,7 +61,9 @@ async def cmd_audit_recent(ctx: SharedContext, args: list[str]) -> CommandResult
         status = "✓" if event["success"] else "✗"
         target = f" → {event['target']}" if event.get("target") else ""
         time_str = event["created_at"][:19] if event.get("created_at") else ""
-        lines.append(f"  {status} `{time_str}` **{event['event_type']}**: {event['action']}{target}")
+        lines.append(
+            f"  {status} `{time_str}` **{event['event_type']}**: {event['action']}{target}"
+        )
 
     return CommandResult(success=True, message="\n".join(lines), data=events)
 
@@ -87,7 +89,7 @@ async def cmd_audit_export(ctx: SharedContext, args: list[str]) -> CommandResult
                 )
             try:
                 hours = int(args[i + 1])
-                since = datetime.now(timezone.utc) - timedelta(hours=hours)
+                since = datetime.now(UTC) - timedelta(hours=hours)
             except ValueError:
                 return CommandResult(
                     success=False,
@@ -228,8 +230,8 @@ async def cmd_audit_stats(ctx: SharedContext, _args: list[str]) -> CommandResult
     lines = [
         "**Audit Statistics**\n",
         f"  Total events: `{total}`",
-        f"  Successful: `{success_count}` ({100*success_count//total if total else 0}%)",
-        f"  Failed: `{fail_count}` ({100*fail_count//total if total else 0}%)",
+        f"  Successful: `{success_count}` ({100 * success_count // total if total else 0}%)",
+        f"  Failed: `{fail_count}` ({100 * fail_count // total if total else 0}%)",
         "",
         "**By Event Type:**",
     ]
@@ -241,15 +243,22 @@ async def cmd_audit_stats(ctx: SharedContext, _args: list[str]) -> CommandResult
     obs_status = audit.get_observability_status()
     logfire_status = "enabled" if obs_status.logfire_enabled else "disabled"
     sqlite_status = "enabled" if obs_status.sqlite_enabled else "disabled"
-    lines.extend([
-        "",
-        "**Observability:**",
-        f"  - Logfire/OTEL: `{logfire_status}`",
-        f"  - SQLite: `{sqlite_status}`",
-    ])
+    lines.extend(
+        [
+            "",
+            "**Observability:**",
+            f"  - Logfire/OTEL: `{logfire_status}`",
+            f"  - SQLite: `{sqlite_status}`",
+        ]
+    )
 
     return CommandResult(
         success=True,
         message="\n".join(lines),
-        data={"total": total, "success": success_count, "failed": fail_count, "by_type": type_counts},
+        data={
+            "total": total,
+            "success": success_count,
+            "failed": fail_count,
+            "by_type": type_counts,
+        },
     )

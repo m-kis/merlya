@@ -31,7 +31,7 @@ MAX_HOST_LENGTH = 1000
 MAX_TASK_LENGTH = 10000
 
 # Regex to remove control characters (except newlines/tabs)
-CONTROL_CHAR_PATTERN = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
+CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
 
 # Base system prompt for subagents
@@ -214,8 +214,8 @@ class SubagentFactory:
         format string injection vulnerabilities.
         """
         # Sanitize inputs - remove control characters and limit length
-        safe_host = CONTROL_CHAR_PATTERN.sub('', host)[:MAX_HOST_LENGTH]
-        safe_task = CONTROL_CHAR_PATTERN.sub('', task)[:MAX_TASK_LENGTH]
+        safe_host = CONTROL_CHAR_PATTERN.sub("", host)[:MAX_HOST_LENGTH]
+        safe_task = CONTROL_CHAR_PATTERN.sub("", task)[:MAX_TASK_LENGTH]
 
         # Truncate prompt for safety
         safe_prompt = prompt[:MAX_SYSTEM_PROMPT_LENGTH]
@@ -351,8 +351,9 @@ class SubagentInstance:
         Returns:
             SubagentRunResult with output and metadata.
         """
-        from merlya.agent.main import AgentDependencies
         from pydantic_ai.settings import ModelSettings
+
+        from merlya.agent.main import AgentDependencies
 
         deps = AgentDependencies(context=self.context)
 

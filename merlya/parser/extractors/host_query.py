@@ -56,9 +56,19 @@ def is_host_query(text: str) -> bool:
         True if text looks like a host query.
     """
     keywords = [
-        "host", "hosts", "server", "servers", "machine", "machines",
-        "list", "show", "get", "find", "search",
-        "inventory", "fleet",
+        "host",
+        "hosts",
+        "server",
+        "servers",
+        "machine",
+        "machines",
+        "list",
+        "show",
+        "get",
+        "find",
+        "search",
+        "inventory",
+        "fleet",
     ]
     text_lower = text.lower()
     return any(kw in text_lower for kw in keywords)

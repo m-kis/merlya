@@ -22,14 +22,16 @@ LOG_TRUNCATE_LENGTH = 100  # Max chars in log messages
 MIN_PATTERN_SPECIFICITY = 3  # Minimum characters a pattern must match to be useful
 
 # Patterns that are too generic and should be rejected
-FORBIDDEN_PATTERNS = frozenset({
-    r".*",
-    r".+",
-    r"^.*$",
-    r"^.+$",
-    r"[\s\S]*",
-    r"[\s\S]+",
-})
+FORBIDDEN_PATTERNS = frozenset(
+    {
+        r".*",
+        r".+",
+        r"^.*$",
+        r"^.+$",
+        r"[\s\S]*",
+        r"[\s\S]+",
+    }
+)
 
 # Singleton instance with thread-safety
 _registry_instance: SkillRegistry | None = None
@@ -94,8 +96,14 @@ class SkillRegistry:
                     patterns.append(compiled)
                 except re.error as e:
                     # Truncate pattern in log for safety
-                    safe_pattern = pattern[:LOG_TRUNCATE_LENGTH] + "..." if len(pattern) > LOG_TRUNCATE_LENGTH else pattern
-                    logger.warning(f"⚠️ Invalid pattern '{safe_pattern}' in skill '{skill.name}': {e}")
+                    safe_pattern = (
+                        pattern[:LOG_TRUNCATE_LENGTH] + "..."
+                        if len(pattern) > LOG_TRUNCATE_LENGTH
+                        else pattern
+                    )
+                    logger.warning(
+                        f"⚠️ Invalid pattern '{safe_pattern}' in skill '{skill.name}': {e}"
+                    )
 
             self._intent_patterns[skill.name] = patterns
 

@@ -185,9 +185,7 @@ class HeuristicBackend(ParserBackend):
             return ""
         # Truncate if too large (security: prevent DoS)
         if len(text) > MAX_INPUT_SIZE:
-            logger.warning(
-                f"⚠️ Input truncated from {len(text)} to {MAX_INPUT_SIZE} bytes"
-            )
+            logger.warning(f"⚠️ Input truncated from {len(text)} to {MAX_INPUT_SIZE} bytes")
             text = text[:MAX_INPUT_SIZE]
         return text
 
@@ -414,8 +412,7 @@ class HeuristicBackend(ParserBackend):
 
         # Check if requires elevation
         requires_elevation = any(
-            word in command.lower()
-            for word in ["sudo", "su -", "doas", "/etc/", "/var/log/"]
+            word in command.lower() for word in ["sudo", "su -", "doas", "/etc/", "/var/log/"]
         )
 
         # Extract secrets
@@ -455,7 +452,8 @@ class HeuristicBackend(ParserBackend):
                 # Validate IPv4 addresses in hosts (reject octets > 255)
                 if entity_type == "hosts":
                     found = {
-                        h for h in found
+                        h
+                        for h in found
                         if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", h)
                         or _is_valid_ipv4(h)
                     }
@@ -503,7 +501,9 @@ class HeuristicBackend(ParserBackend):
         errors: list[str] = []
 
         # Quoted strings that look like errors
-        quoted = re.findall(r'["\']([^"\']*(?:error|failed|exception)[^"\']*)["\']', text, re.IGNORECASE)
+        quoted = re.findall(
+            r'["\']([^"\']*(?:error|failed|exception)[^"\']*)["\']', text, re.IGNORECASE
+        )
         errors.extend(quoted)
 
         # Lines starting with common error prefixes

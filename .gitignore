@@ -1,0 +1,7 @@
+.venv
+.coverage
+.dockerignore
+.claude
+.mypy_cache
+.ruff_cache
+uv.lock

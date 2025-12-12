@@ -42,7 +42,9 @@ async def cmd_mcp(ctx: SharedContext, args: list[str]) -> CommandResult:
     if action == "examples":
         return await cmd_mcp_examples(ctx, rest)
 
-    return CommandResult(success=False, message="Usage: `/mcp <list|add|remove|show|test|tools|examples>`")
+    return CommandResult(
+        success=False, message="Usage: `/mcp <list|add|remove|show|test|tools|examples>`"
+    )
 
 
 @subcommand("mcp", "list", "List configured MCP servers", "/mcp list")
@@ -51,7 +53,9 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     manager = await _manager(ctx)
     servers = await manager.list_servers()
     if not servers:
-        return CommandResult(success=True, message="ℹ️ No MCP servers configured. Use `/mcp add <name> <command>`.")
+        return CommandResult(
+            success=True, message="ℹ️ No MCP servers configured. Use `/mcp add <name> <command>`."
+        )
 
     ctx.ui.table(
         headers=["Name", "Command", "Args", "Env", "Enabled"],
@@ -71,11 +75,19 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     return CommandResult(success=True, message=f"✅ Configured MCP servers: {names}")
 
 
-@subcommand("mcp", "add", "Add an MCP server", "/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]")
+@subcommand(
+    "mcp",
+    "add",
+    "Add an MCP server",
+    "/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]",
+)
 async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Add a new MCP server configuration."""
     if len(args) < 2:
-        return CommandResult(success=False, message="Usage: `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]`")
+        return CommandResult(
+            success=False,
+            message="Usage: `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]`",
+        )
 
     env, cwd, remaining = _extract_env_and_cwd(args[1:])
     name = args[0]
@@ -125,7 +137,7 @@ async def cmd_mcp_show(ctx: SharedContext, args: list[str]) -> CommandResult:
     lines = [
         f"**{name}**",
         f"- Command: `{server.command}`",
-        f"- Args: `{ ' '.join(server.args) if server.args else '-'}`",
+        f"- Args: `{' '.join(server.args) if server.args else '-'}`",
         f"- Env keys: `{', '.join(server.env.keys()) if server.env else 'none'}`",
     ]
     if server.cwd:
@@ -145,14 +157,16 @@ async def cmd_mcp_test(ctx: SharedContext, args: list[str]) -> CommandResult:
     try:
         with ctx.ui.spinner(f"Testing MCP server '{name}'..."):
             result = await asyncio.wait_for(manager.test_server(name), timeout=15)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error(f"⏱️ MCP test timed out for {name}")
         return CommandResult(success=False, message=f"❌ Timeout connecting to '{name}' (15s)")
     except Exception as e:
         logger.error(f"❌ MCP test failed for {name}: {e}")
         return CommandResult(success=False, message=f"❌ Failed to connect to '{name}': {e}")
 
-    tool_names = ", ".join([tool.name for tool in result["tools"]]) if result["tools"] else "no tools"
+    tool_names = (
+        ", ".join([tool.name for tool in result["tools"]]) if result["tools"] else "no tools"
+    )
     return CommandResult(
         success=True,
         message=f"✅ Server '{name}' reachable. Tools: {tool_names}",
@@ -213,7 +227,7 @@ async def cmd_mcp_examples(_ctx: SharedContext, _args: list[str]) -> CommandResu
         "[mcp.servers.custom]\n"
         'command = "python"\n'
         'args = ["server.py"]\n'
-        '# Use ${VAR:-default} for optional env with defaults\n'
+        "# Use ${VAR:-default} for optional env with defaults\n"
         'env = { PORT = "${MCP_PORT:-8080}", HOST = "${MCP_HOST:-localhost}" }\n'
         "```\n\n"
         "**Note:** Secrets can be stored via `/secret set GITHUB_TOKEN <value>`\n"
@@ -246,7 +260,5 @@ async def _manager(ctx: SharedContext) -> MCPManager:
     """Helper to get MCP manager with correct type."""
     manager = await ctx.get_mcp_manager()
     if manager is None or not isinstance(manager, MCPManager):
-        raise TypeError(
-            f"Expected MCPManager instance, got {type(manager).__name__}"
-        )
+        raise TypeError(f"Expected MCPManager instance, got {type(manager).__name__}")
     return manager

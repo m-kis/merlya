@@ -313,7 +313,9 @@ def create_agent(
         """Validate the agent response for coherence."""
         # Check for empty message
         if not output.message or not output.message.strip():
-            raise ModelRetry("Response message cannot be empty. Please provide a meaningful response.")
+            raise ModelRetry(
+                "Response message cannot be empty. Please provide a meaningful response."
+            )
 
         # Check for overly short responses when actions were taken
         if output.actions_taken and len(output.message) < MIN_RESPONSE_LENGTH_WITH_ACTIONS:

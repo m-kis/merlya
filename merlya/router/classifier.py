@@ -30,14 +30,16 @@ from merlya.router.intent_classifier import AgentMode, IntentClassifier
 
 # Fast path intents - operations that can be handled without LLM
 # These are simple database queries or direct operations
-FAST_PATH_INTENTS = frozenset({
-    "host.list",      # List hosts from inventory
-    "host.details",   # Get details for a specific host
-    "group.list",     # List host groups/tags
-    "skill.list",     # List available skills
-    "var.list",       # List variables
-    "var.get",        # Get a specific variable
-})
+FAST_PATH_INTENTS = frozenset(
+    {
+        "host.list",  # List hosts from inventory
+        "host.details",  # Get details for a specific host
+        "group.list",  # List host groups/tags
+        "skill.list",  # List available skills
+        "var.list",  # List variables
+        "var.get",  # Get a specific variable
+    }
+)
 
 # Patterns to detect fast path intents
 FAST_PATH_PATTERNS: dict[str, list[str]] = {
@@ -101,12 +103,12 @@ JUMP_HOST_PATTERNS = [
 
 # Re-export for compatibility
 __all__ = [
+    "FAST_PATH_INTENTS",
+    "FAST_PATH_PATTERNS",
     "AgentMode",
     "IntentClassifier",
     "IntentRouter",
     "RouterResult",
-    "FAST_PATH_INTENTS",
-    "FAST_PATH_PATTERNS",
 ]
 
 # Pre-compiled fast path patterns for performance
@@ -119,9 +121,7 @@ def _compile_fast_path_patterns() -> None:
     if _COMPILED_FAST_PATH:
         return
     for intent, patterns in FAST_PATH_PATTERNS.items():
-        _COMPILED_FAST_PATH[intent] = [
-            re.compile(p, re.IGNORECASE) for p in patterns
-        ]
+        _COMPILED_FAST_PATH[intent] = [re.compile(p, re.IGNORECASE) for p in patterns]
 
 
 # Compile patterns at module load
@@ -291,7 +291,9 @@ class IntentRouter:
                     if skill_match and skill_confidence >= 0.7:
                         result.skill_match = skill_match
                         result.skill_confidence = skill_confidence
-                        logger.debug(f"🎯 Skill match (LLM): {skill_match} ({skill_confidence:.2f})")
+                        logger.debug(
+                            f"🎯 Skill match (LLM): {skill_match} ({skill_confidence:.2f})"
+                        )
                 else:
                     # ONNX not loaded and no LLM fallback - skip skill matching entirely
                     # This prevents regex patterns from causing false matches
@@ -330,10 +332,10 @@ class IntentRouter:
         if not name or len(name) > 255:
             return False
         # Must start with alphanumeric, contain only safe chars
-        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$', name):
+        if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$", name):
             return False
         # Reject path traversal attempts
-        if '..' in name:
+        if ".." in name:
             return False
         return True
 
@@ -401,8 +403,9 @@ class IntentRouter:
             return None, 0.0
 
         try:
-            from merlya.skills.registry import get_registry
             from pydantic_ai import Agent
+
+            from merlya.skills.registry import get_registry
 
             registry = get_registry()
             skills = registry.get_all()
@@ -447,6 +450,7 @@ Rules:
                 raw = str(response)
 
             import json
+
             data = json.loads(str(raw))
 
             skill_name = data.get("skill")
@@ -455,7 +459,9 @@ Rules:
             if skill_name and confidence >= 0.5:
                 # Verify skill exists
                 if registry.get(skill_name):
-                    logger.debug(f"🎯 LLM skill match: {skill_name} ({confidence:.2f}) - {data.get('reason', '')}")
+                    logger.debug(
+                        f"🎯 LLM skill match: {skill_name} ({confidence:.2f}) - {data.get('reason', '')}"
+                    )
                     return skill_name, confidence
                 else:
                     logger.warning(f"⚠️ LLM matched non-existent skill: {skill_name}")

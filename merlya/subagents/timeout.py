@@ -9,7 +9,8 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from loguru import logger
 
@@ -25,7 +26,7 @@ _current_tracker: contextvars.ContextVar[ActivityTimeout | None] = contextvars.C
 )
 
 
-def get_current_tracker() -> "ActivityTimeout | None":
+def get_current_tracker() -> ActivityTimeout | None:
     """Get the current activity tracker from context (if any)."""
     return _current_tracker.get()
 
@@ -182,7 +183,7 @@ class ActivityTimeout:
                         asyncio.shield(self._task),
                         timeout=check_interval,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Check interval elapsed, check for timeout
                     pass
 

@@ -27,6 +27,8 @@ from merlya.config.tiers import (
 )
 
 __all__ = [
+    "PARSER_MODELS",
+    "ROUTER_MODELS",
     "Config",
     "EffectivePolicy",
     "GeneralConfig",
@@ -34,10 +36,8 @@ __all__ = [
     "LoggingConfig",
     "ModelConfig",
     "ModelTier",
-    "PARSER_MODELS",
     "PolicyConfig",
     "PolicyManager",
-    "ROUTER_MODELS",
     "RouterConfig",
     "SSHConfig",
     "UIConfig",

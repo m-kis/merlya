@@ -7,7 +7,7 @@ Pydantic models for subagent execution results and aggregation.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -213,7 +213,7 @@ class AggregatedResults(BaseModel):
 
     # Timing
     started_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When batch execution started",
     )
     completed_at: datetime | None = Field(

@@ -469,9 +469,7 @@ class Database:
         await conn.execute("ALTER TABLE raw_logs_new RENAME TO raw_logs")
 
         # Recreate indexes
-        await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON raw_logs(host_id)"
-        )
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON raw_logs(host_id)")
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_raw_logs_created ON raw_logs(created_at DESC)"
         )

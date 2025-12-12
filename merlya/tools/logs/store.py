@@ -94,9 +94,7 @@ async def store_raw_log(
     )
     await db.connection.commit()
 
-    logger.debug(
-        f"📝 Stored log {log_id[:8]}... ({line_count} lines, {byte_size} bytes)"
-    )
+    logger.debug(f"📝 Stored log {log_id[:8]}... ({line_count} lines, {byte_size} bytes)")
 
     return LogRef(
         id=log_id,
@@ -207,8 +205,7 @@ async def get_raw_log_slice(
     actual_end = start_idx + len(sliced_lines)
 
     logger.debug(
-        f"📄 Log slice {log_id[:8]}...: lines {actual_start}-{actual_end} "
-        f"of {total_lines}"
+        f"📄 Log slice {log_id[:8]}...: lines {actual_start}-{actual_end} of {total_lines}"
     )
 
     return sliced_output, actual_start, actual_end

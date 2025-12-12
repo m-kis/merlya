@@ -6,16 +6,14 @@ Guides users through creating custom skills interactively.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from loguru import logger
 
 from merlya.skills.loader import SkillLoader
 from merlya.skills.models import SkillConfig
 from merlya.skills.registry import get_registry
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # Default tools that are commonly used
 DEFAULT_TOOLS = [
@@ -142,9 +140,7 @@ class SkillWizard:
         # Normalize optional values
         patterns = [p.strip() for p in (patterns or []) if isinstance(p, str) and p.strip()]
         tools = [t.strip() for t in (tools or []) if isinstance(t, str) and t.strip()]
-        confirm_ops = [
-            c.strip() for c in (confirm_ops or []) if isinstance(c, str) and c.strip()
-        ]
+        confirm_ops = [c.strip() for c in (confirm_ops or []) if isinstance(c, str) and c.strip()]
         description = description or ""
         system_prompt = system_prompt or None
 
@@ -280,7 +276,17 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
             # Common action words to look for
             keywords = []
             desc_lower = description.lower()
-            for word in ["audit", "check", "verify", "scan", "search", "deploy", "build", "test", "monitor"]:
+            for word in [
+                "audit",
+                "check",
+                "verify",
+                "scan",
+                "search",
+                "deploy",
+                "build",
+                "test",
+                "monitor",
+            ]:
                 if word in desc_lower:
                     keywords.append(word)
             for kw in keywords[:2]:
@@ -310,11 +316,7 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
                     tools = [selected.strip()]
             elif isinstance(selected, (list, tuple, set)):
                 # Handle iterables: filter for valid string entries
-                tools = [
-                    s.strip()
-                    for s in selected
-                    if isinstance(s, str) and s.strip()
-                ]
+                tools = [s.strip() for s in selected if isinstance(s, str) and s.strip()]
             else:
                 # Unexpected type (int, float, etc.) - log and treat as "all"
                 logger.warning(
@@ -445,9 +447,7 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
         # Check if new_name already exists
         if get_registry().has(new_name):
             if self.confirm:
-                confirmed = await self.confirm(
-                    f"Skill '{new_name}' already exists. Overwrite?"
-                )
+                confirmed = await self.confirm(f"Skill '{new_name}' already exists. Overwrite?")
                 if not confirmed:
                     logger.info("🚫 Skill duplication cancelled")
                     return None
@@ -501,7 +501,7 @@ def generate_skill_template(name: str, description: str = "") -> str:
 
 name: {name}
 version: "1.0"
-description: "{description or 'Custom skill'}"
+description: "{description or "Custom skill"}"
 
 # Intent patterns (regex) - when should this skill be triggered?
 # IMPORTANT: Don't use catch-all patterns like '.*' - be specific!

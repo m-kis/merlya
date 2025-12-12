@@ -193,9 +193,9 @@ async def cmd_variable_import(ctx: SharedContext, args: list[str]) -> CommandRes
             value = await ctx.ui.prompt_secret(f"Enter {secret_name}")
             if value:
                 ctx.secrets.set(secret_name, value)
-                lines.append(f"    ✅ Set")
+                lines.append("    ✅ Set")
             else:
-                lines.append(f"    ⏭️ Skipped")
+                lines.append("    ⏭️ Skipped")
     elif secrets and dry_run:
         lines.append(f"\n🔐 {len(secrets)} secret(s) would be prompted")
 

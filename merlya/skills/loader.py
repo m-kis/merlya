@@ -6,7 +6,6 @@ Loads skills from YAML files in builtin and user directories.
 
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -131,7 +130,9 @@ class SkillLoader:
                     else:
                         new_count += 1
 
-        logger.debug(f"📁 Loaded {new_count} new skills from {directory} ({overwritten} overwritten)")
+        logger.debug(
+            f"📁 Loaded {new_count} new skills from {directory} ({overwritten} overwritten)"
+        )
         return new_count, overwritten
 
     def _is_safe_path(self, path: Path, allowed_dir: Path) -> bool:
@@ -195,7 +196,7 @@ class SkillLoader:
         except ValidationError as e:
             logger.error(f"❌ Invalid skill config in {path}: {e}")
             return None
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.error(f"❌ Failed to read file {path}: {e}")
             return None
         except Exception as e:
@@ -267,7 +268,7 @@ class SkillLoader:
         # Add header comment
         yaml_content = f"# Merlya Skill: {skill.name}\n"
         yaml_content += f"# Version: {skill.version}\n"
-        yaml_content += f"# Created by Merlya SkillWizard\n\n"
+        yaml_content += "# Created by Merlya SkillWizard\n\n"
         yaml_content += yaml.dump(data, default_flow_style=False, sort_keys=False)
 
         # Atomic write: write to temp file then rename
@@ -284,7 +285,7 @@ class SkillLoader:
 
             # Atomic rename
             temp_path.rename(path)
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.error(f"❌ Failed to save skill: {e}")
             # Cleanup temp file if exists
             if "temp_path" in locals() and temp_path.exists():

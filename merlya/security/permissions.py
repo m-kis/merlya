@@ -17,15 +17,16 @@ and referenced via @elevation:host:password tokens to prevent leakage.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
 from merlya.ssh.pool import SSHConnectionOptions
 
 if TYPE_CHECKING:
+    from merlya.core.context import SharedContext
     from merlya.secrets.store import SecretStore
 
 # Cache TTL for elevation capabilities (24 hours)
@@ -65,7 +66,7 @@ class PermissionManager:
     - Lock to prevent race conditions in capability detection
     """
 
-    def __init__(self, ctx: Any) -> None:
+    def __init__(self, ctx: "SharedContext") -> None:
         self.ctx = ctx
         self._cache: dict[str, dict[str, Any]] = {}  # Capabilities cache
         self._consent_cache: dict[str, bool] = {}  # host -> user consented
@@ -168,7 +169,8 @@ class PermissionManager:
                     logger.debug(f"🔒 Cached capabilities for {host} expired")
                     return None
 
-            return elevation.get("capabilities")
+            caps = elevation.get("capabilities")
+            return cast(dict[str, Any] | None, caps)
         except Exception as e:
             logger.debug(f"Failed to load cached capabilities for {host}: {e}")
             return None
@@ -256,7 +258,9 @@ class PermissionManager:
                 capabilities["sudo_nopasswd"] = True
                 available.append((ELEVATION_PRIORITY["sudo"], "sudo", False))
             else:
-                available.append((ELEVATION_PRIORITY["sudo_with_password"], "sudo_with_password", True))
+                available.append(
+                    (ELEVATION_PRIORITY["sudo_with_password"], "sudo_with_password", True)
+                )
 
         # Check doas (test NOPASSWD)
         ok, doas_path = await _run("which doas")
@@ -268,7 +272,9 @@ class PermissionManager:
                 available.append((ELEVATION_PRIORITY["doas"], "doas", False))
             else:
                 # doas with password is similar priority to sudo with password
-                available.append((ELEVATION_PRIORITY["sudo_with_password"], "doas_with_password", True))
+                available.append(
+                    (ELEVATION_PRIORITY["sudo_with_password"], "doas_with_password", True)
+                )
 
         # Check su (always needs password)
         ok, su_path = await _run("which su")

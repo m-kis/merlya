@@ -120,9 +120,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         # Signal activity before and after SSH command
         touch_activity()
 
-        result = await _ssh_execute(
-            ctx.deps.context, host, command, timeout, via=via
-        )
+        result = await _ssh_execute(ctx.deps.context, host, command, timeout, via=via)
 
         # Signal activity after command completes
         touch_activity()

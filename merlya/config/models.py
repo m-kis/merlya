@@ -86,7 +86,9 @@ class MCPServerConfig(BaseModel):
 
     command: str = Field(description="Executable to start the MCP server")
     args: list[str] = Field(default_factory=list, description="Arguments for the server command")
-    env: dict[str, str] = Field(default_factory=dict, description="Environment variables for server")
+    env: dict[str, str] = Field(
+        default_factory=dict, description="Environment variables for server"
+    )
     cwd: Path | None = Field(default=None, description="Working directory for the server")
     enabled: bool = Field(default=True, description="Whether this server should be used")
 

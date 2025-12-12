@@ -53,9 +53,7 @@ async def extract_incident(
         )
         return result.incident, result
 
-    logger.debug(
-        f"⚠️ Low confidence incident parsing ({result.confidence:.2f} < {min_confidence})"
-    )
+    logger.debug(f"⚠️ Low confidence incident parsing ({result.confidence:.2f} < {min_confidence})")
     return None, result
 
 

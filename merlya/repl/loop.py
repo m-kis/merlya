@@ -6,8 +6,8 @@ Interactive console with autocompletion.
 
 from __future__ import annotations
 
-import contextlib
 import asyncio
+import contextlib
 import os
 import re
 from dataclasses import dataclass
@@ -457,9 +457,7 @@ class REPL:
     # Valid pattern for variable/secret names (must start with letter)
     _VALID_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
-    async def _prompt_for_undefined_mentions(
-        self, text: str, undefined: list[str]
-    ) -> str:
+    async def _prompt_for_undefined_mentions(self, text: str, undefined: list[str]) -> str:
         """
         Prompt user to define undefined @ mentions inline.
 

@@ -12,8 +12,6 @@ Tiers:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from loguru import logger
 
 from merlya.parser.backends.base import ParserBackend
@@ -25,9 +23,6 @@ from merlya.parser.models import (
     IncidentParsingResult,
     LogParsingResult,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class ParserService:

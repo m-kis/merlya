@@ -10,7 +10,7 @@ from merlya.parser.extractors.incident import extract_incident
 from merlya.parser.extractors.log import extract_log_info
 
 __all__ = [
-    "extract_incident",
     "extract_host_query",
+    "extract_incident",
     "extract_log_info",
 ]

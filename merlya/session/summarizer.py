@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -44,9 +44,7 @@ COMPILED_ACTION_PATTERNS: list[re.Pattern[str]] = [
 # Entity extraction patterns (pre-compiled)
 HOST_PATTERN = re.compile(r"@(\w{1,64})")
 IP_PATTERN = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b")
-SERVICE_PATTERN = re.compile(
-    r"\b(nginx|mysql|postgres|redis|docker)\b", re.IGNORECASE
-)
+SERVICE_PATTERN = re.compile(r"\b(nginx|mysql|postgres|redis|docker)\b", re.IGNORECASE)
 
 # Sentence splitting pattern
 SENTENCE_SPLIT_PATTERN = re.compile(r"[.!?\n]+")
@@ -310,9 +308,7 @@ class SessionSummarizer:
         # 2. Try LLM summarization if available
         if self.fallback_model:
             try:
-                llm_summary = await self._summarize_with_llm(
-                    extracted, self.fallback_model
-                )
+                llm_summary = await self._summarize_with_llm(extracted, self.fallback_model)
                 if llm_summary:
                     summary = self._format_summary(llm_summary, key_entities, key_actions)
                     summary_tokens = self._estimate_tokens(summary)

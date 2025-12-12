@@ -35,7 +35,7 @@ class ContextTier(Enum):
     EXTENDED = "extended"  # ~100 messages, 8000 tokens
 
     @classmethod
-    def from_ram_gb(cls, available_gb: float) -> "ContextTier":
+    def from_ram_gb(cls, available_gb: float) -> ContextTier:
         """
         Select tier based on available RAM.
 
@@ -53,7 +53,7 @@ class ContextTier(Enum):
             return cls.MINIMAL
 
     @classmethod
-    def from_string(cls, value: str | None) -> "ContextTier":
+    def from_string(cls, value: str | None) -> ContextTier:
         """
         Convert string to ContextTier, with sensible defaults.
 
@@ -377,8 +377,7 @@ class ContextTierPredictor:
 
         tier = self._score_to_tier(score)
         logger.debug(
-            f"🎯 Tier predicted: {tier.value} (score={score:.2f}, "
-            f"factors={len(factors.to_dict())})"
+            f"🎯 Tier predicted: {tier.value} (score={score:.2f}, factors={len(factors.to_dict())})"
         )
 
         return tier

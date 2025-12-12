@@ -14,9 +14,9 @@ from merlya.tools.logs.store import (
 )
 
 __all__ = [
-    "store_raw_log",
-    "get_raw_log_slice",
-    "get_raw_log",
-    "RawLogEntry",
     "LogRef",
+    "RawLogEntry",
+    "get_raw_log",
+    "get_raw_log_slice",
+    "store_raw_log",
 ]

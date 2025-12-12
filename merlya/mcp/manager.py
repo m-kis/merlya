@@ -11,9 +11,9 @@ import logging
 import os
 import threading
 import warnings
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -21,7 +21,6 @@ from mcp.client.session_group import ClientSessionGroup
 from mcp.client.stdio import StdioServerParameters
 
 from merlya.config.models import MCPServerConfig
-
 
 # MCP-related logger names to suppress during connection
 _MCP_LOGGERS = ("mcp", "mcp.client", "mcp.server", "httpx", "httpcore")
@@ -54,6 +53,7 @@ def suppress_mcp_capability_warnings() -> Iterator[None]:
             for logger_name, level in original_levels.items():
                 logging.getLogger(logger_name).setLevel(level)
 
+
 if TYPE_CHECKING:
     from mcp.types import CallToolResult, Implementation
 
@@ -73,7 +73,7 @@ class MCPToolInfo:
 class MCPManager:
     """Manage MCP server lifecycle and tool discovery."""
 
-    _instance: "MCPManager | None" = None
+    _instance: MCPManager | None = None
     _instance_lock: asyncio.Lock | None = None
     _instance_lock_guard = threading.Lock()  # Guards lazy creation of _instance_lock
 
@@ -104,7 +104,7 @@ class MCPManager:
         return cls._instance_lock
 
     @classmethod
-    async def create(cls, config: Config, secrets: SecretStore) -> "MCPManager":
+    async def create(cls, config: Config, secrets: SecretStore) -> MCPManager:
         """
         Create or get singleton instance (async-safe).
 
@@ -116,7 +116,7 @@ class MCPManager:
             return cls._instance
 
     @classmethod
-    def get_instance(cls) -> "MCPManager | None":
+    def get_instance(cls) -> MCPManager | None:
         """Get the singleton instance (may be None if not created)."""
         return cls._instance
 
@@ -235,7 +235,9 @@ class MCPManager:
             )
         return sorted(tools, key=lambda t: t.name)
 
-    async def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def call_tool(
+        self, tool_name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Call a tool by aggregated name (server.tool).
 

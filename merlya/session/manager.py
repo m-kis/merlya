@@ -11,7 +11,7 @@ import asyncio
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -45,7 +45,7 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 
 def _utc_now() -> datetime:
     """Return current UTC datetime (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -98,7 +98,7 @@ class SessionManager:
     - Persist session state to database
     """
 
-    _instance: "SessionManager | None" = None
+    _instance: SessionManager | None = None
 
     def __init__(
         self,
@@ -135,7 +135,7 @@ class SessionManager:
         logger.debug(f"📋 SessionManager initialized (model={model})")
 
     @classmethod
-    def get_instance(cls) -> "SessionManager | None":
+    def get_instance(cls) -> SessionManager | None:
         """Get the singleton instance."""
         return cls._instance
 
@@ -248,9 +248,7 @@ class SessionManager:
             if self._session.message_count == 1 and router_result:
                 new_tier = await self.tier_predictor.predict(content, router_result)
                 if new_tier != self._session.tier:
-                    logger.info(
-                        f"🎯 Tier adjusted: {self._session.tier.value} → {new_tier.value}"
-                    )
+                    logger.info(f"🎯 Tier adjusted: {self._session.tier.value} → {new_tier.value}")
                     self._session.tier = new_tier
 
             # Check if summarization needed
@@ -426,9 +424,7 @@ class SessionManager:
         }
 
         if result["will_exceed"]:
-            logger.warning(
-                f"⚠️ Token limit will be exceeded: {total:,} > {limit:,}"
-            )
+            logger.warning(f"⚠️ Token limit will be exceeded: {total:,} > {limit:,}")
 
         return result
 
@@ -472,12 +468,8 @@ class SessionManager:
                     message_rows = []
                     for seq_num, msg in enumerate(self._session.messages):
                         # Serialize single message to JSON
-                        msg_data = ModelMessagesTypeAdapter.dump_json(
-                            [msg]
-                        ).decode("utf-8")
-                        message_rows.append(
-                            (self._session.id, seq_num, msg_data)
-                        )
+                        msg_data = ModelMessagesTypeAdapter.dump_json([msg]).decode("utf-8")
+                        message_rows.append((self._session.id, seq_num, msg_data))
 
                     await self.db.executemany(
                         """
@@ -526,8 +518,7 @@ class SessionManager:
                 tier = ContextTier(row["context_tier"])
             except ValueError:
                 logger.warning(
-                    f"⚠️ Invalid context_tier '{row['context_tier']}', "
-                    f"defaulting to STANDARD"
+                    f"⚠️ Invalid context_tier '{row['context_tier']}', defaulting to STANDARD"
                 )
                 tier = ContextTier.STANDARD
 
@@ -548,16 +539,11 @@ class SessionManager:
 
             # Apply retention limit if needed
             if len(self._session.messages) > MAX_MESSAGES_IN_MEMORY:
-                self._session.messages = self._session.messages[
-                    -MAX_MESSAGES_IN_MEMORY:
-                ]
-                logger.debug(
-                    f"📋 Trimmed loaded messages to {MAX_MESSAGES_IN_MEMORY}"
-                )
+                self._session.messages = self._session.messages[-MAX_MESSAGES_IN_MEMORY:]
+                logger.debug(f"📋 Trimmed loaded messages to {MAX_MESSAGES_IN_MEMORY}")
 
             logger.info(
-                f"📋 Session loaded: {session_id[:8]}... "
-                f"({len(self._session.messages)} messages)"
+                f"📋 Session loaded: {session_id[:8]}... ({len(self._session.messages)} messages)"
             )
             return self._session
 
@@ -569,7 +555,7 @@ class SessionManager:
             logger.error(f"❌ Database I/O error: {e}")
             return None
 
-    async def _load_session_messages(self, session_id: str) -> list["ModelMessage"]:
+    async def _load_session_messages(self, session_id: str) -> list[ModelMessage]:
         """
         Load messages for a session from database.
 
@@ -582,7 +568,7 @@ class SessionManager:
         if not self.db:
             return []
 
-        messages: list["ModelMessage"] = []
+        messages: list[ModelMessage] = []
 
         try:
             async with await self.db.execute(
@@ -598,16 +584,12 @@ class SessionManager:
             for row in rows:
                 try:
                     # Deserialize message from JSON
-                    msg_list = ModelMessagesTypeAdapter.validate_json(
-                        row["message_data"]
-                    )
+                    msg_list = ModelMessagesTypeAdapter.validate_json(row["message_data"])
                     # Each row contains a single message serialized as a list
                     if msg_list:
                         messages.extend(msg_list)
                 except Exception as e:
-                    logger.warning(
-                        f"⚠️ Failed to deserialize message: {e}"
-                    )
+                    logger.warning(f"⚠️ Failed to deserialize message: {e}")
                     # Skip corrupted messages but continue loading others
 
         except Exception as e:

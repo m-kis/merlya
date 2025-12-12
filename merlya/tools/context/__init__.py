@@ -15,10 +15,10 @@ from merlya.tools.context.tools import (
 )
 
 __all__ = [
-    "list_hosts_summary",
+    "GroupSummary",
+    "HostDetails",
+    "HostsSummary",
     "get_host_details",
     "list_groups",
-    "HostsSummary",
-    "HostDetails",
-    "GroupSummary",
+    "list_hosts_summary",
 ]

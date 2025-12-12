@@ -91,7 +91,9 @@ async def cmd_skill_list(_ctx: SharedContext, args: list[str]) -> CommandResult:
             for skill in sorted(user, key=lambda s: s.name):
                 lines.append(f"  `{skill.name}` - {skill.description}")
 
-        return CommandResult(success=True, message="\n".join(lines), data={"tag": tag_filter, "count": len(tagged)})
+        return CommandResult(
+            success=True, message="\n".join(lines), data={"tag": tag_filter, "count": len(tagged)}
+        )
 
     # No tag filter - show all skills
     lines = [f"**Registered Skills** ({stats['total']} total)\n"]
@@ -170,6 +172,7 @@ async def cmd_skill_show(_ctx: SharedContext, args: list[str]) -> CommandResult:
 @subcommand("skill", "create", "Create a new skill interactively", "/skill create")
 async def cmd_skill_create(ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Create a new skill using the interactive wizard."""
+
     # Create callbacks that use the UI
     async def prompt_callback(message: str, default: str | None) -> str | None:
         return await ctx.ui.prompt(message, default)
@@ -216,7 +219,7 @@ async def cmd_skill_create(ctx: SharedContext, _args: list[str]) -> CommandResul
         )
 
 
-async def _generate_skill_with_llm(ctx: "SharedContext", skill) -> object | None:
+async def _generate_skill_with_llm(ctx: SharedContext, skill) -> object | None:
     """
     Ask the LLM to enhance the skill YAML with detailed configuration.
 
@@ -227,6 +230,7 @@ async def _generate_skill_with_llm(ctx: "SharedContext", skill) -> object | None
     """
     try:
         from pydantic_ai import Agent
+
         from merlya.skills.loader import SkillLoader
 
         # Keep locally-generated patterns
@@ -419,8 +423,7 @@ async def cmd_skill_run(ctx: SharedContext, args: list[str]) -> CommandResult:
             message=(
                 f"Please specify hosts to run `{name}` on:\n\n"
                 f"Usage: `/skill run {name} host1 host2 ...`\n\n"
-                "Available hosts:\n"
-                + "\n".join(f"  - `{h.name}`" for h in all_hosts[:10])
+                "Available hosts:\n" + "\n".join(f"  - `{h.name}`" for h in all_hosts[:10])
             ),
         )
 
@@ -429,8 +432,7 @@ async def cmd_skill_run(ctx: SharedContext, args: list[str]) -> CommandResult:
         return CommandResult(
             success=False,
             message=(
-                f"Too many hosts ({len(hosts)}). "
-                f"Skill `{name}` allows max {skill.max_hosts} hosts."
+                f"Too many hosts ({len(hosts)}). Skill `{name}` allows max {skill.max_hosts} hosts."
             ),
         )
 

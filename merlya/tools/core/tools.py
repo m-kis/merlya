@@ -377,7 +377,9 @@ async def ssh_execute(
                             )
 
                     result = await _run(elevated_cmd, elevated_input)
-                    logger.debug(f"🔒 Elevation with {elevation_used}: exit_code={result.exit_code}")
+                    logger.debug(
+                        f"🔒 Elevation with {elevation_used}: exit_code={result.exit_code}"
+                    )
 
                     # If elevation failed due to needing password, retry with password
                     # but only if we haven't already prompted for one
@@ -397,14 +399,18 @@ async def ssh_execute(
 
                     if needs_password_retry:
                         logger.debug(f"🔒 {elevation_used} requires password, prompting user...")
-                        password = await ctx.ui.prompt_secret(f"🔑 {elevation_used} password required")
+                        password = await ctx.ui.prompt_secret(
+                            f"🔑 {elevation_used} password required"
+                        )
                         if password:
                             permissions.cache_password(host, password)
                             elevated_cmd, elevated_input = permissions.elevate_command(
                                 base_command, capabilities, elevation_used, password
                             )
                             result = await _run(elevated_cmd, elevated_input)
-                            logger.debug(f"🔒 Elevation retry with password: exit_code={result.exit_code}")
+                            logger.debug(
+                                f"🔒 Elevation retry with password: exit_code={result.exit_code}"
+                            )
             except Exception as elev_exc:
                 logger.warning(f"🔒 Auto-elevation failed: {type(elev_exc).__name__}: {elev_exc}")
 

@@ -13,8 +13,6 @@ import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from loguru import logger
-
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
@@ -226,9 +224,9 @@ async def _import_env(
         value = value.strip()
 
         # Remove quotes if present
-        if value.startswith('"') and value.endswith('"'):
-            value = value[1:-1]
-        elif value.startswith("'") and value.endswith("'"):
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
             value = value[1:-1]
 
         # Check if it's a secret (prefixed with SECRET_ or empty value)

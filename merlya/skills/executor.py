@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -115,7 +115,7 @@ class SkillExecutor:
             SkillResult with aggregated results.
         """
         execution_id = str(uuid.uuid4())[:8]
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
 
         logger.info(f"🎬 Executing skill '{skill.name}' on {len(hosts)} hosts (id={execution_id})")
 
@@ -131,9 +131,7 @@ class SkillExecutor:
         # Apply skill's max_hosts limit
         effective_hosts = hosts
         if len(hosts) > skill.max_hosts:
-            logger.warning(
-                f"⚠️ Limiting hosts from {len(hosts)} to skill max of {skill.max_hosts}"
-            )
+            logger.warning(f"⚠️ Limiting hosts from {len(hosts)} to skill max of {skill.max_hosts}")
             effective_hosts = hosts[: skill.max_hosts]
 
         # Create semaphore for concurrency control
@@ -170,7 +168,7 @@ class SkillExecutor:
             else:
                 processed_results.append(result)
 
-        completed_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(UTC)
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
         # Calculate stats
@@ -341,7 +339,7 @@ class SkillExecutor:
             execution_id=execution_id,
             status=SkillStatus.FAILED,
             started_at=started_at,
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
             duration_ms=0,
             host_results=[],
             total_hosts=0,

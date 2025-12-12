@@ -159,9 +159,7 @@ class ONNXParserBackend(ParserBackend):
             logger.error(f"❌ Failed to load ONNX parser model: {e}")
             return False
 
-    def _load_onnx_and_tokenizer(
-        self, model_path: Path, tokenizer_path: Path
-    ) -> tuple[Any, Any]:
+    def _load_onnx_and_tokenizer(self, model_path: Path, tokenizer_path: Path) -> tuple[Any, Any]:
         """Load ONNX session and tokenizer (runs in thread)."""
         import onnxruntime as ort
         from tokenizers import Tokenizer
@@ -184,12 +182,8 @@ class ONNXParserBackend(ParserBackend):
 
             logger.info(f"🔽 Downloading parser model: {self._model_id}...")
 
-            onnx_src = hf_hub_download(
-                repo_id=self._model_id, filename="onnx/model.onnx"
-            )
-            tokenizer_src = hf_hub_download(
-                repo_id=self._model_id, filename="tokenizer.json"
-            )
+            onnx_src = hf_hub_download(repo_id=self._model_id, filename="onnx/model.onnx")
+            tokenizer_src = hf_hub_download(repo_id=self._model_id, filename="tokenizer.json")
 
             # Copy to local directory
             model_path.write_bytes(Path(onnx_src).read_bytes())
@@ -197,9 +191,7 @@ class ONNXParserBackend(ParserBackend):
 
             # Try to download config for label mapping
             try:
-                config_src = hf_hub_download(
-                    repo_id=self._model_id, filename="config.json"
-                )
+                config_src = hf_hub_download(repo_id=self._model_id, filename="config.json")
                 config_path = model_path.parent / "config.json"
                 config_path.write_bytes(Path(config_src).read_bytes())
             except Exception:
@@ -433,9 +425,24 @@ class ONNXParserBackend(ParserBackend):
 
         # Reject if it looks like a generic organization name
         generic_orgs = {
-            "microsoft", "amazon", "google", "apple", "facebook", "meta",
-            "netflix", "twitter", "oracle", "ibm", "intel", "cisco",
-            "vmware", "redhat", "ubuntu", "debian", "linux", "windows",
+            "microsoft",
+            "amazon",
+            "google",
+            "apple",
+            "facebook",
+            "meta",
+            "netflix",
+            "twitter",
+            "oracle",
+            "ibm",
+            "intel",
+            "cisco",
+            "vmware",
+            "redhat",
+            "ubuntu",
+            "debian",
+            "linux",
+            "windows",
         }
         if value.lower() in generic_orgs:
             return False

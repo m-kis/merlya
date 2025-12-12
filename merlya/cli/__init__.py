@@ -33,6 +33,7 @@ def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
         loop.add_signal_handler(signal.SIGINT, lambda: handle_signal(signal.SIGINT))
         loop.add_signal_handler(signal.SIGTERM, lambda: handle_signal(signal.SIGTERM))
 
+
 __version__ = "0.6.1"
 
 

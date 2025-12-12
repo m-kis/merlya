@@ -92,18 +92,18 @@ def _to_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
     """Convert common Merlya objects to JSON-serializable structures."""
     if _seen is None:
         _seen = set()
-    
+
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
-    
+
     obj_id = id(value)
     if obj_id in _seen:
         return str(value)  # or raise an error, or return a sentinel
-    
+
     # Mark as seen for containers
     if isinstance(value, (dict, list, tuple, set)) or is_dataclass(value):
         _seen = _seen | {obj_id}
-    
+
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, Path):

@@ -188,6 +188,7 @@ class SkillConfig(BaseModel):
             raise ValueError("Name must be at least 2 characters")
         # Only allow alphanumeric, underscore, hyphen
         import re
+
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", v):
             raise ValueError("Name must start with letter and contain only letters, numbers, _, -")
         return v.lower()

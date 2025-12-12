@@ -10,4 +10,4 @@ from merlya.parser.backends.base import ParserBackend
 from merlya.parser.backends.heuristic import HeuristicBackend
 from merlya.parser.backends.onnx import ONNXParserBackend
 
-__all__ = ["ParserBackend", "HeuristicBackend", "ONNXParserBackend"]
+__all__ = ["HeuristicBackend", "ONNXParserBackend", "ParserBackend"]

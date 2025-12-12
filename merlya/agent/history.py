@@ -321,7 +321,10 @@ def detect_loop(
         last_n = signatures[-consecutive_threshold:]
         if len(set(sig for _, sig in last_n)) == 1:
             tool_name = last_n[0][0]
-            return True, f"Same tool call '{tool_name}' repeated {consecutive_threshold}+ times consecutively"
+            return (
+                True,
+                f"Same tool call '{tool_name}' repeated {consecutive_threshold}+ times consecutively",
+            )
 
     # Check 2: Same exact call repeated (total count in window)
     sig_counter = Counter(sig for _, sig in signatures)
@@ -338,10 +341,7 @@ def detect_loop(
         last_sigs = [sig for _, sig in signatures[-threshold_pattern * 2 :]]
         pattern_2 = last_sigs[:2]
         if len(pattern_2) == 2 and pattern_2[0] != pattern_2[1]:
-            is_pattern = all(
-                last_sigs[i] == pattern_2[i % 2]
-                for i in range(len(last_sigs))
-            )
+            is_pattern = all(last_sigs[i] == pattern_2[i % 2] for i in range(len(last_sigs)))
             if is_pattern:
                 tools = [name for name, _ in signatures[-threshold_pattern * 2 :]]
                 unique_tools = list(dict.fromkeys(tools))[:2]

@@ -14,7 +14,7 @@ import re
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -81,7 +81,7 @@ class AuditEvent:
     user: str | None = None
     details: dict[str, Any] = field(default_factory=dict)
     success: bool = True
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def to_dict(self) -> dict[str, Any]:
@@ -229,8 +229,11 @@ class AuditLogger:
                     target=event.target,
                     user=event.user,
                     success=event.success,
-                    **{f"details.{k}": v for k, v in (event.details or {}).items()
-                       if isinstance(v, (str, int, float, bool))},  # Only primitive types
+                    **{
+                        f"details.{k}": v
+                        for k, v in (event.details or {}).items()
+                        if isinstance(v, (str, int, float, bool))
+                    },  # Only primitive types
                 )
             except Exception as e:
                 logger.debug(f"Logfire logging failed: {e}")
@@ -625,11 +628,14 @@ class AuditLogger:
                 }
                 events.append(event)
 
-            return json.dumps({
-                "events": events,
-                "count": len(events),
-                "exported_at": datetime.now(timezone.utc).isoformat(),
-            }, indent=2)
+            return json.dumps(
+                {
+                    "events": events,
+                    "count": len(events),
+                    "exported_at": datetime.now(UTC).isoformat(),
+                },
+                indent=2,
+            )
 
         except Exception as e:
             logger.warning(f"Failed to export audit logs: {e}")

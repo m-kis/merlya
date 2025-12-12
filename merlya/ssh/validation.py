@@ -19,7 +19,7 @@ def _is_ppk_format(path: Path) -> bool:
             # Read first 50 bytes to check header
             header = f.read(50)
             return header.startswith(b"PuTTY-User-Key-File-")
-    except (OSError, IOError):
+    except OSError:
         return False
 
 
@@ -66,6 +66,7 @@ async def validate_private_key(
 
     # Check permissions (should be 600 or 400) - only on Unix
     import sys
+
     if sys.platform != "win32":
         mode = path.stat().st_mode & 0o777
         if mode not in (0o600, 0o400):

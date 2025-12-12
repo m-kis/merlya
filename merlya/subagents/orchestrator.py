@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -90,9 +90,7 @@ class SubagentOrchestrator:
         self._active_executions: dict[str, str] = {}  # execution_id -> status
         self._executions_lock = asyncio.Lock()
 
-        logger.debug(
-            f"🎼 SubagentOrchestrator initialized (max_concurrent={max_concurrent})"
-        )
+        logger.debug(f"🎼 SubagentOrchestrator initialized (max_concurrent={max_concurrent})")
 
     async def run_on_hosts(
         self,
@@ -120,16 +118,23 @@ class SubagentOrchestrator:
             return AggregatedResults(results=[])
 
         execution_id = str(uuid.uuid4())[:8]
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
 
         # Determine and validate max timeout
         effective_timeout = timeout
         if effective_timeout is None:
-            skill_timeout = getattr(skill, 'timeout_seconds', None) if skill else None
-            effective_timeout = skill_timeout if isinstance(skill_timeout, (int, float)) else DEFAULT_MAX_TIMEOUT_SECONDS
+            skill_timeout = getattr(skill, "timeout_seconds", None) if skill else None
+            effective_timeout = (
+                skill_timeout
+                if isinstance(skill_timeout, (int, float))
+                else DEFAULT_MAX_TIMEOUT_SECONDS
+            )
 
         # Clamp timeout to valid range (also handles None/invalid values from above)
-        if not isinstance(effective_timeout, (int, float)) or effective_timeout < MIN_TIMEOUT_SECONDS:
+        if (
+            not isinstance(effective_timeout, (int, float))
+            or effective_timeout < MIN_TIMEOUT_SECONDS
+        ):
             logger.warning(
                 f"Timeout {effective_timeout}s too low, using minimum {MIN_TIMEOUT_SECONDS}s"
             )
@@ -176,7 +181,7 @@ class SubagentOrchestrator:
         )
 
         total_duration_ms = int((time.perf_counter() - start_time) * 1000)
-        completed_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(UTC)
 
         # Process results
         results: list[SubagentResult] = []
@@ -244,7 +249,7 @@ class SubagentOrchestrator:
         Returns:
             SubagentResult for this host.
         """
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         start_time = time.perf_counter()
 
         # Notify progress: starting
@@ -272,7 +277,7 @@ class SubagentOrchestrator:
             run_result = await timeout_tracker.run(subagent.run(task))
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            completed_at = datetime.now(timezone.utc)
+            completed_at = datetime.now(UTC)
 
             result = SubagentResult(
                 host=host,
@@ -309,7 +314,7 @@ class SubagentOrchestrator:
                 status=SubagentStatus.TIMEOUT,
                 error=f"Execution timed out: {timeout_reason}",
                 started_at=started_at,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
                 duration_ms=duration_ms,
             )
 
@@ -332,7 +337,7 @@ class SubagentOrchestrator:
                 status=SubagentStatus.CANCELLED,
                 error="Execution cancelled",
                 started_at=started_at,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
                 duration_ms=duration_ms,
             )
 
@@ -356,7 +361,7 @@ class SubagentOrchestrator:
                 status=SubagentStatus.FAILED,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
                 duration_ms=duration_ms,
             )
 
@@ -396,11 +401,15 @@ class SubagentOrchestrator:
             skill=skill,
             timeout=timeout,
         )
-        return results.results[0] if results.results else SubagentResult(
-            host=host,
-            success=False,
-            status=SubagentStatus.FAILED,
-            error="No result returned",
+        return (
+            results.results[0]
+            if results.results
+            else SubagentResult(
+                host=host,
+                success=False,
+                status=SubagentStatus.FAILED,
+                error="No result returned",
+            )
         )
 
     async def get_active_executions(self) -> dict[str, str]:
