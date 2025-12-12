@@ -2,11 +2,12 @@
 Merlya Commands - Host management handlers.
 
 Implements /hosts command with subcommands: list, add, show, delete,
-tag, untag, edit, import, export.
+tag, untag, edit, check, import, export.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -81,11 +82,15 @@ async def cmd_hosts_list(ctx: SharedContext, args: list[str]) -> CommandResult:
     return CommandResult(success=True, message="", data=hosts)
 
 
-@subcommand("hosts", "add", "Add a new host", "/hosts add <name>")
+@subcommand("hosts", "add", "Add a new host", "/hosts add <name> [--test]")
 async def cmd_hosts_add(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Add a new host."""
+    """Add a new host. Use --test to verify SSH connectivity before adding."""
+    # Parse flags
+    test_connection = "--test" in args
+    args = [a for a in args if not a.startswith("--")]
+
     if not args:
-        return CommandResult(success=False, message="Usage: `/hosts add <name>`")
+        return CommandResult(success=False, message="Usage: `/hosts add <name> [--test]`")
 
     name = args[0]
 
@@ -102,6 +107,25 @@ async def cmd_hosts_add(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     username = await ctx.ui.prompt("Username (optional)")
 
+    # Test connection before adding if --test flag is set
+    if test_connection:
+        ctx.ui.info(f"🔌 Testing SSH connection to {hostname}:{port}...")
+
+        test_result = await _test_ssh_connection(
+            ctx, hostname, port, username if username else None
+        )
+
+        if not test_result["success"]:
+            ctx.ui.warning(f"⚠️ Connection test failed: {test_result['error']}")
+            proceed = await ctx.ui.prompt_confirm("Add host anyway?")
+            if not proceed:
+                return CommandResult(
+                    success=False,
+                    message=f"❌ Host not added. Connection test failed: {test_result['error']}",
+                )
+        else:
+            ctx.ui.success(f"✅ Connection successful (latency: {test_result['latency_ms']}ms)")
+
     host = Host(
         name=name,
         hostname=hostname,
@@ -111,10 +135,183 @@ async def cmd_hosts_add(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     await ctx.hosts.create(host)
 
-    return CommandResult(
-        success=True,
-        message=f"Host '{name}' added ({hostname}:{port}).",
+    msg = f"Host '{name}' added ({hostname}:{port})."
+    if test_connection:
+        msg = f"✅ {msg}"
+
+    return CommandResult(success=True, message=msg)
+
+
+async def _test_ssh_connection(
+    ctx: SharedContext,
+    hostname: str,
+    port: int,
+    username: str | None,
+    timeout: int = 10,
+) -> dict:
+    """
+    Test SSH connection to a host.
+
+    Returns dict with: success, latency_ms, error, os_info
+    """
+    import time
+
+    from merlya.ssh import SSHConnectionOptions
+
+    try:
+        ssh_pool = await ctx.get_ssh_pool()
+        opts = SSHConnectionOptions(port=port, connect_timeout=timeout)
+
+        start = time.monotonic()
+
+        # Try to execute a simple command
+        result = await ssh_pool.execute(
+            host=hostname,
+            command="echo ok && uname -s 2>/dev/null || echo unknown",
+            timeout=timeout,
+            username=username,
+            options=opts,
+            retry=False,  # Don't retry for connection test
+        )
+
+        latency = int((time.monotonic() - start) * 1000)
+
+        if result.exit_code == 0:
+            os_info = result.stdout.strip().split("\n")[-1] if result.stdout else "unknown"
+            return {
+                "success": True,
+                "latency_ms": latency,
+                "os_info": os_info,
+                "error": None,
+            }
+        else:
+            return {
+                "success": False,
+                "latency_ms": latency,
+                "error": result.stderr or "Command failed",
+            }
+
+    except Exception as e:
+        logger.debug(f"🔌 Connection test failed: {e}")
+        return {
+            "success": False,
+            "latency_ms": None,
+            "error": str(e),
+        }
+
+
+@subcommand(
+    "hosts",
+    "check",
+    "Check connectivity to hosts",
+    "/hosts check [<name>|--tag=<tag>|--all]",
+)
+async def cmd_hosts_check(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """
+    Check SSH connectivity to hosts.
+
+    Examples:
+        /hosts check           - Check all hosts
+        /hosts check webserver - Check specific host
+        /hosts check --tag=prod - Check hosts with tag
+        /hosts check --parallel - Check all hosts in parallel
+    """
+    # Parse options
+    parallel = "--parallel" in args
+    tag = None
+    host_name = None
+
+    for arg in args:
+        if arg.startswith("--tag="):
+            tag = arg[6:]
+        elif not arg.startswith("--"):
+            host_name = arg
+
+    # Get hosts to check
+    if host_name:
+        host = await ctx.hosts.get_by_name(host_name)
+        if not host:
+            return CommandResult(success=False, message=f"Host '{host_name}' not found.")
+        hosts_to_check = [host]
+    elif tag:
+        hosts_to_check = await ctx.hosts.get_by_tag(tag)
+        if not hosts_to_check:
+            return CommandResult(success=False, message=f"No hosts found with tag '{tag}'.")
+    else:
+        hosts_to_check = await ctx.hosts.get_all()
+        if not hosts_to_check:
+            return CommandResult(success=True, message="No hosts in inventory.")
+
+    ctx.ui.info(f"🔌 Checking {len(hosts_to_check)} host(s)...")
+
+    results: list[dict] = []
+
+    if parallel and len(hosts_to_check) > 1:
+        # Parallel check with semaphore to limit concurrent connections
+        semaphore = asyncio.Semaphore(10)
+
+        async def check_with_semaphore(host: Host) -> dict:
+            async with semaphore:
+                result = await _test_ssh_connection(
+                    ctx, host.hostname, host.port, host.username
+                )
+                return {"host": host, "result": result}
+
+        tasks = [check_with_semaphore(h) for h in hosts_to_check]
+        results = await asyncio.gather(*tasks)
+    else:
+        # Sequential check with progress
+        for i, host in enumerate(hosts_to_check):
+            ctx.ui.muted(f"  [{i + 1}/{len(hosts_to_check)}] Checking {host.name}...")
+            result = await _test_ssh_connection(
+                ctx, host.hostname, host.port, host.username
+            )
+            results.append({"host": host, "result": result})
+
+    # Display results table
+    healthy = 0
+    unhealthy = 0
+    rows = []
+
+    for item in results:
+        host = item["host"]
+        result = item["result"]
+
+        if result["success"]:
+            healthy += 1
+            status = "✅"
+            latency = f"{result['latency_ms']}ms"
+            error = "-"
+            # Update host health status
+            host.health_status = "healthy"
+            await ctx.hosts.update(host)
+        else:
+            unhealthy += 1
+            status = "❌"
+            latency = "-"
+            error = result["error"][:50] if result["error"] else "Unknown error"
+            # Update host health status
+            host.health_status = "unreachable"
+            await ctx.hosts.update(host)
+
+        rows.append([status, host.name, host.hostname, latency, error])
+
+    ctx.ui.table(
+        headers=["Status", "Name", "Hostname", "Latency", "Error"],
+        rows=rows,
+        title=f"🔌 Connectivity Check ({healthy} healthy, {unhealthy} unreachable)",
     )
+
+    if unhealthy == 0:
+        return CommandResult(
+            success=True,
+            message=f"✅ All {healthy} host(s) are reachable.",
+        )
+    else:
+        return CommandResult(
+            success=True,
+            message=f"⚠️ {unhealthy}/{len(hosts_to_check)} host(s) unreachable.",
+        )
 
 
 @subcommand("hosts", "show", "Show host details", "/hosts show <name>")

@@ -15,6 +15,41 @@ from merlya.tools.core.models import ToolResult
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
+# Environment variables that should never be set by the agent
+# These can be used for privilege escalation, code injection, or security bypass
+DANGEROUS_ENV_VARS: frozenset[str] = frozenset(
+    {
+        # Path manipulation - can execute arbitrary code
+        "PATH",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",  # macOS equivalent of LD_PRELOAD
+        "PYTHONPATH",
+        "NODE_PATH",
+        "PERL5LIB",
+        "RUBYLIB",
+        # Shell/execution control
+        "HOME",
+        "SHELL",
+        "IFS",  # Can break shell parsing
+        "BASH_ENV",
+        "ENV",
+        "PS4",  # DEBUG trap can exfiltrate data
+        # Sudo/privilege escalation
+        "SUDO_ASKPASS",
+        "SSH_ASKPASS",
+        # History manipulation (anti-forensics)
+        "HISTFILE",
+        "HISTIGNORE",
+        "HISTCONTROL",
+        # Language-specific injection vectors
+        "NODE_OPTIONS",  # Node.js code injection
+        "PERL5OPT",  # Perl code injection
+        "PYTHONSTARTUP",  # Python code injection
+        "RUBYOPT",  # Ruby code injection
+    }
+)
+
 
 async def get_variable(
     ctx: SharedContext,
@@ -79,8 +114,7 @@ async def set_variable(
         )
 
     # Security: Prevent setting dangerous env vars
-    dangerous_env_vars = {"PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "HOME"}
-    if is_env and name.upper() in dangerous_env_vars:
+    if is_env and name.upper() in DANGEROUS_ENV_VARS:
         logger.warning(f"🔒 Blocked attempt to set dangerous env var: {name}")
         return ToolResult(
             success=False,

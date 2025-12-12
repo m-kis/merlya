@@ -17,6 +17,7 @@ from merlya.tools.security.monitoring import (
     check_pending_updates,
 )
 from merlya.tools.security.ports import check_open_ports
+from merlya.tools.security.ssl import check_ssl_cert_file, check_ssl_certs
 from merlya.tools.security.users import check_sudo_config, check_users
 
 __all__ = [
@@ -29,6 +30,8 @@ __all__ = [
     "check_open_ports",
     "check_pending_updates",
     "check_security_config",
+    "check_ssl_cert_file",
+    "check_ssl_certs",
     "check_sudo_config",
     "check_users",
 ]
