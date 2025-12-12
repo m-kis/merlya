@@ -30,7 +30,7 @@ class TestValidateFilePath:
         assert is_valid is True
         assert error == ""
 
-    def test_valid_tmp_path(self, _tmp_path: Path) -> None:
+    def test_valid_tmp_path(self) -> None:
         """Test that paths in allowed directories are valid."""
         # tmp_path is under home or temp, which should be allowed
         # On macOS, /tmp resolves to /private/tmp which may not be in ALLOWED_IMPORT_DIRS

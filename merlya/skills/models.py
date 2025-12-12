@@ -6,13 +6,11 @@ Pydantic models for skill configuration and results.
 
 from __future__ import annotations
 
+from datetime import datetime  # noqa: TC003 - Required at runtime for Pydantic
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 # Constants for skill configuration limits
 DEFAULT_MAX_HOSTS = 5

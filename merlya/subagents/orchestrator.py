@@ -227,7 +227,7 @@ class SubagentOrchestrator:
         skill: SkillConfig | None,
         max_timeout: float,
         idle_timeout: float,
-        _execution_id: str,
+        execution_id: str,  # noqa: ARG002 - Part of public API, may be used in future
         on_progress: Any | None = None,
     ) -> SubagentResult:
         """
