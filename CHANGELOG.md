@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2025-12-12
+
+### Added
+
+- **Proactive Agent Mode** (`merlya/agent/main.py`)
+  - Agent never blocks because of missing inventory/config
+  - Discovers resources dynamically and proposes alternatives
+  - Inventory is now optional - agent works without pre-configured hosts
+  - New `unresolved_hosts` field in RouterResult for proactive discovery
+
+- **Bash Tool** (`merlya/tools/core/tools.py`)
+  - New `bash` tool for local command execution
+  - Universal fallback for CLI tools (kubectl, aws, docker, gcloud, etc.)
+  - Dangerous command blocklist for safety
+  - Proper timeout and secret handling
+
+### Fixed
+
+- **Ctrl+C handling in prompts** (`merlya/ui/console.py`)
+  - KeyboardInterrupt now properly converted to CancelledError
+  - Fixes "Task exception was never retrieved" error on Ctrl+C
+  - All async prompt methods (prompt, prompt_secret, prompt_confirm, prompt_choice) updated
+
+- **SSH execute permissive mode**
+  - Hosts not in inventory can now be connected directly
+  - Agent tries direct connection instead of failing immediately
+
+### Changed
+
+- **System prompt** completely rewritten with proactive philosophy
+  - "NEVER SAY I can't because X is not configured"
+  - Clear guidelines for bash vs ssh_execute usage
+  - Zero-config mode documentation
+
 ## [Unreleased]
 
 ### Added
@@ -336,7 +370,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy with vulnerability reporting process
 - Architecture Decision Records (ADR)
 
-[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/m-kis/merlya/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/m-kis/merlya/releases/tag/v0.7.0
 [0.6.3]: https://github.com/m-kis/merlya/releases/tag/v0.6.3
 [0.6.2]: https://github.com/m-kis/merlya/releases/tag/v0.6.2

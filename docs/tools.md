@@ -26,15 +26,37 @@ Get detailed information about a specific host.
 - "What's the IP of web01?"
 - "Show me details for the database server"
 
+### `bash`
+Execute a command locally on the Merlya host machine.
+
+**Parameters:**
+- `command`: Command to execute
+- `timeout` (default: 60): Command timeout in seconds
+
+**Use cases:**
+- kubectl, aws, gcloud, az CLI commands
+- docker commands (local daemon)
+- Local file operations
+- Any CLI tool installed locally
+
+**Example prompts:**
+- "Check pods in namespace production"
+- "List AWS EC2 instances"
+- "Show local docker containers"
+
+**Note:** This is the universal fallback for local operations. Dangerous commands are blocked (rm -rf /, mkfs, etc.).
+
 ### `ssh_execute`
 Execute a command on a remote host.
 
 **Parameters:**
-- `host`: Target host name
+- `host`: Target host name (inventory entry or direct hostname/IP)
 - `command`: Command to execute
 - `timeout` (default: 60): Command timeout in seconds
 - `elevation` (optional): Elevation method (sudo, doas, su)
 - `via` (optional): Jump host for SSH tunneling
+
+**Proactive mode:** If the host is not in inventory, the agent will attempt direct connection instead of failing.
 
 **Example prompts:**
 - "Check disk usage on web01"
@@ -227,8 +249,13 @@ The router suggests tools based on user intent:
 | cpu, memory, disk, process | system |
 | file, log, config, read, write | files |
 | port, firewall, ssh, security | security |
-| docker, container | docker |
-| kubernetes, k8s, pod | kubernetes |
+| docker, container | docker (local via bash) |
+| kubernetes, k8s, pod | kubernetes (local via bash) |
+| aws, gcloud, az, terraform | cloud CLI (local via bash) |
 | search, find, google | web |
+
+**When to use bash vs ssh_execute:**
+- `bash`: Local tools (kubectl, aws, docker, gcloud, az, terraform, etc.)
+- `ssh_execute`: Commands on remote servers via SSH
 
 The agent may use additional tools based on context and reasoning.
