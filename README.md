@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="README_EN.md">Read in English</a>
+  <a href="https://github.com/m-kis/merlya/blob/main/README_EN.md">Read in English</a>
 </p>
 
 ---
