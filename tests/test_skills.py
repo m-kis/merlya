@@ -477,6 +477,323 @@ class TestSkillExecutor:
         assert filtered == available
 
 
+class TestSkillExecutorExtended:
+    """Extended tests for SkillExecutor covering more edge cases."""
+
+    @pytest.fixture
+    def skill(self):
+        """Create a test skill."""
+        return SkillConfig(
+            name="test_skill",
+            max_hosts=5,
+            timeout_seconds=60,
+            tools_allowed=["ssh_execute"],
+            require_confirmation_for=["delete", "restart"],
+        )
+
+    def test_max_concurrent_default(self):
+        """Test max_concurrent default value."""
+        executor = SkillExecutor()
+        assert executor.max_concurrent == 5  # Default
+
+    def test_max_concurrent_override(self):
+        """Test max_concurrent with explicit override."""
+        executor = SkillExecutor(max_concurrent=10)
+        assert executor.max_concurrent == 10
+
+    def test_max_concurrent_from_policy_manager(self):
+        """Test max_concurrent from policy_manager."""
+        from unittest.mock import MagicMock
+
+        policy_manager = MagicMock()
+        policy_manager.config.max_hosts_per_skill = 15
+
+        executor = SkillExecutor(policy_manager=policy_manager)
+        assert executor.max_concurrent == 15
+
+    def test_has_real_execution_without_context(self):
+        """Test has_real_execution without context."""
+        executor = SkillExecutor()
+        assert executor.has_real_execution is False
+
+    def test_has_real_execution_with_context(self):
+        """Test has_real_execution with context."""
+        from unittest.mock import MagicMock
+
+        context = MagicMock()
+        executor = SkillExecutor(context=context)
+        assert executor.has_real_execution is True
+
+    def test_orchestrator_lazy_init_without_context(self):
+        """Test orchestrator returns None without context."""
+        executor = SkillExecutor()
+        assert executor.orchestrator is None
+
+    @pytest.mark.asyncio
+    async def test_execute_host_count_validation_fail(self, skill):
+        """Test execution fails when host count validation fails."""
+        from unittest.mock import MagicMock
+
+        policy_manager = MagicMock()
+        policy_manager.validate_hosts_count.return_value = (False, "Too many hosts")
+        policy_manager.config.max_hosts_per_skill = 5
+
+        executor = SkillExecutor(policy_manager=policy_manager)
+
+        result = await executor.execute(
+            skill=skill,
+            hosts=["h1", "h2", "h3"],
+            task="test",
+        )
+
+        assert result.status == SkillStatus.FAILED
+        assert "Too many hosts" in (result.summary or "")
+
+    @pytest.mark.asyncio
+    async def test_execute_with_exception_in_host(self, skill):
+        """Test execution handles exceptions from hosts gracefully."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        executor = SkillExecutor(max_concurrent=2)
+
+        # Mock _execute_single to raise for one host
+        original_execute_single = executor._execute_single
+
+        async def mock_execute_single(skill, host, task, _context=None, _confirm_callback=None):
+            if host == "bad-host":
+                raise RuntimeError("Connection failed")
+            return await original_execute_single(skill, host, task, _context, _confirm_callback)
+
+        with patch.object(executor, "_execute_single", side_effect=mock_execute_single):
+            result = await executor.execute(
+                skill=skill,
+                hosts=["good-host", "bad-host"],
+                task="check status",
+            )
+
+        assert result.total_hosts == 2
+        assert result.failed_hosts == 1
+        assert result.succeeded_hosts == 1
+        assert result.status == SkillStatus.PARTIAL
+
+    @pytest.mark.asyncio
+    async def test_execute_all_hosts_fail(self, skill):
+        """Test execution when all hosts fail."""
+        from unittest.mock import patch
+
+        executor = SkillExecutor(max_concurrent=2)
+
+        async def mock_execute_single(*args, **kwargs):
+            raise RuntimeError("All connections failed")
+
+        with patch.object(executor, "_execute_single", side_effect=mock_execute_single):
+            result = await executor.execute(
+                skill=skill,
+                hosts=["h1", "h2"],
+                task="test",
+            )
+
+        assert result.status == SkillStatus.FAILED
+        assert result.failed_hosts == 2
+        assert result.succeeded_hosts == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_with_audit_logger(self, skill):
+        """Test execution with audit logger."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        audit_logger = MagicMock()
+        audit_logger.log_skill = AsyncMock()
+
+        executor = SkillExecutor(audit_logger=audit_logger)
+
+        result = await executor.execute(
+            skill=skill,
+            hosts=["web-01"],
+            task="check disk",
+        )
+
+        assert result.status == SkillStatus.SUCCESS
+        audit_logger.log_skill.assert_called_once()
+        call_kwargs = audit_logger.log_skill.call_args.kwargs
+        assert call_kwargs["skill_name"] == "test_skill"
+        assert call_kwargs["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_audit_logger_failure(self, skill):
+        """Test execution continues when audit logger fails."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        audit_logger = MagicMock()
+        audit_logger.log_skill = AsyncMock(side_effect=Exception("Audit DB error"))
+
+        executor = SkillExecutor(audit_logger=audit_logger)
+
+        # Should not raise, execution still succeeds
+        result = await executor.execute(
+            skill=skill,
+            hosts=["web-01"],
+            task="check disk",
+        )
+
+        assert result.status == SkillStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_execute_single_timeout_error(self, skill):
+        """Test _execute_single handles TimeoutError."""
+        from unittest.mock import patch
+
+        executor = SkillExecutor(max_concurrent=2)
+
+        async def mock_simulate(*args, **kwargs):
+            raise TimeoutError("idle timeout exceeded after 30s")
+
+        with patch.object(executor, "_simulate_execution", side_effect=mock_simulate):
+            result = await executor._execute_single(
+                skill=skill,
+                host="slow-host",
+                task="long task",
+            )
+
+        assert result.success is False
+        assert "Timeout" in result.error
+        assert "idle timeout" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_single_generic_exception(self, skill):
+        """Test _execute_single handles generic exceptions."""
+        from unittest.mock import patch
+
+        executor = SkillExecutor(max_concurrent=2)
+
+        async def mock_simulate(*args, **kwargs):
+            raise ValueError("Unexpected error")
+
+        with patch.object(executor, "_simulate_execution", side_effect=mock_simulate):
+            result = await executor._execute_single(
+                skill=skill,
+                host="error-host",
+                task="task",
+            )
+
+        assert result.success is False
+        assert "Unexpected error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_with_orchestrator(self, skill):
+        """Test _execute_single with real orchestrator."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        context = MagicMock()
+        executor = SkillExecutor(context=context, max_concurrent=2)
+
+        # Mock the orchestrator
+        mock_orchestrator = MagicMock()
+        mock_orchestrator.run_on_host = AsyncMock(return_value=MagicMock(
+            success=True,
+            output="Task completed",
+            error=None,
+            duration_ms=100,
+            tool_calls=3,
+        ))
+
+        executor._orchestrator = mock_orchestrator
+
+        result = await executor._execute_single(
+            skill=skill,
+            host="web-01",
+            task="check disk",
+        )
+
+        assert result.success is True
+        assert result.output == "Task completed"
+        assert result.tool_calls == 3
+        mock_orchestrator.run_on_host.assert_called_once()
+
+    def test_create_failed_result(self, skill):
+        """Test _create_failed_result."""
+        executor = SkillExecutor()
+        started_at = datetime.now(UTC)
+
+        result = executor._create_failed_result(
+            skill=skill,
+            execution_id="abc123",
+            started_at=started_at,
+            error="Validation failed",
+        )
+
+        assert result.status == SkillStatus.FAILED
+        assert result.skill_name == "test_skill"
+        assert result.execution_id == "abc123"
+        assert "Validation failed" in result.summary
+        assert result.total_hosts == 0
+
+    @pytest.mark.asyncio
+    async def test_check_confirmation_not_needed(self, skill):
+        """Test check_confirmation when not needed."""
+        executor = SkillExecutor()
+
+        # "status" doesn't match "delete" or "restart"
+        result = await executor.check_confirmation(skill, "status check")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_check_confirmation_needed_with_callback(self, skill):
+        """Test check_confirmation with callback."""
+        from unittest.mock import AsyncMock
+
+        executor = SkillExecutor()
+        callback = AsyncMock(return_value=True)
+
+        # "delete files" matches "delete"
+        result = await executor.check_confirmation(
+            skill, "delete files", confirm_callback=callback
+        )
+
+        assert result is True
+        callback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_confirmation_denied(self, skill):
+        """Test check_confirmation when user denies."""
+        from unittest.mock import AsyncMock
+
+        executor = SkillExecutor()
+        callback = AsyncMock(return_value=False)
+
+        result = await executor.check_confirmation(
+            skill, "restart service", confirm_callback=callback
+        )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_confirmation_no_callback(self, skill):
+        """Test check_confirmation without callback returns False."""
+        executor = SkillExecutor()
+
+        # Needs confirmation but no callback
+        result = await executor.check_confirmation(skill, "delete everything")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_confirmation_policy_manager_overrides(self, skill):
+        """Test check_confirmation with policy manager override."""
+        from unittest.mock import MagicMock
+
+        policy_manager = MagicMock()
+        policy_manager.should_confirm.return_value = False  # Policy says no confirm needed
+        policy_manager.config.max_hosts_per_skill = 5
+
+        executor = SkillExecutor(policy_manager=policy_manager)
+
+        # Even though skill requires confirmation for "delete", policy overrides
+        result = await executor.check_confirmation(skill, "delete files")
+
+        assert result is True
+
+
 class TestSkillWizard:
     """Tests for SkillWizard."""
 
