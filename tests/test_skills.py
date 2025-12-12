@@ -552,7 +552,7 @@ class TestSkillExecutorExtended:
     @pytest.mark.asyncio
     async def test_execute_with_exception_in_host(self, skill):
         """Test execution handles exceptions from hosts gracefully."""
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import patch
 
         executor = SkillExecutor(max_concurrent=2)
 

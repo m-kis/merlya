@@ -128,7 +128,7 @@ class TestConvDeleteCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv delete without args shows usage."""
         result = await registry.execute(mock_context, "/conv delete")
@@ -163,7 +163,7 @@ class TestConvRenameCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv rename without args shows usage."""
         result = await registry.execute(mock_context, "/conv rename")
@@ -175,7 +175,7 @@ class TestConvRenameCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv rename with id but no title."""
         result = await registry.execute(mock_context, "/conv rename conv-123")
@@ -210,7 +210,7 @@ class TestConvExportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv export without args shows usage."""
         result = await registry.execute(mock_context, "/conv export")
@@ -222,7 +222,7 @@ class TestConvExportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv export with id but no file."""
         result = await registry.execute(mock_context, "/conv export conv-123")
@@ -244,7 +244,7 @@ class TestConvExportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_conversations_repo: MagicMock,  # noqa: ARG002
+        mock_conversations_repo: MagicMock,
     ):
         """Test /conv export with valid conversation."""
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
@@ -265,7 +265,7 @@ class TestHostsEditCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts edit without args shows usage."""
         result = await registry.execute(mock_context, "/hosts edit")
@@ -304,7 +304,7 @@ class TestHostsImportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts import without args shows usage."""
         result = await registry.execute(mock_context, "/hosts import")
@@ -316,7 +316,7 @@ class TestHostsImportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts import with non-existent file."""
         result = await registry.execute(mock_context, "/hosts import /nonexistent/file.yaml")
@@ -328,7 +328,7 @@ class TestHostsImportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts import with valid YAML file."""
 
@@ -366,7 +366,7 @@ class TestHostsExportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts export without args shows usage."""
         result = await registry.execute(mock_context, "/hosts export")
@@ -378,7 +378,7 @@ class TestHostsExportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts export to YAML file."""
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
@@ -390,7 +390,7 @@ class TestHostsExportCommand:
         self,
         registry: CommandRegistry,
         mock_context: MagicMock,
-        mock_hosts_repo: MagicMock,  # noqa: ARG002
+        mock_hosts_repo: MagicMock,
     ):
         """Test /hosts export to JSON file."""
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:

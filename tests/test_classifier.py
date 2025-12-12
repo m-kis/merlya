@@ -282,7 +282,7 @@ class TestIntentClassifierModule:
 
     def test_intent_embeddings_defined(self) -> None:
         """Test that INTENT_EMBEDDINGS are defined."""
-        from merlya.router.intent_classifier import AgentMode, INTENT_EMBEDDINGS
+        from merlya.router.intent_classifier import INTENT_EMBEDDINGS, AgentMode
 
         assert AgentMode.DIAGNOSTIC in INTENT_EMBEDDINGS
         assert AgentMode.REMEDIATION in INTENT_EMBEDDINGS
@@ -291,7 +291,7 @@ class TestIntentClassifierModule:
 
     def test_intent_patterns_defined(self) -> None:
         """Test that INTENT_PATTERNS are defined."""
-        from merlya.router.intent_classifier import AgentMode, INTENT_PATTERNS
+        from merlya.router.intent_classifier import INTENT_PATTERNS, AgentMode
 
         assert AgentMode.DIAGNOSTIC in INTENT_PATTERNS
         assert "check" in INTENT_PATTERNS[AgentMode.DIAGNOSTIC]
@@ -365,32 +365,32 @@ class TestIntentClassifierClassifyByPatterns:
 
     def test_classify_remediation_pattern(self, classifier) -> None:
         """Test classification of remediation patterns."""
-        mode, confidence = classifier.classify_patterns("fix the broken service")
+        mode, _confidence = classifier.classify_patterns("fix the broken service")
 
         assert mode.value in ["remediation", "chat"]
 
     def test_classify_query_pattern(self, classifier) -> None:
         """Test classification of query patterns."""
         # "why is" should trigger query pattern
-        mode, confidence = classifier.classify_patterns("why is the server slow")
+        mode, _confidence = classifier.classify_patterns("why is the server slow")
 
         assert mode.value in ["query", "chat", "diagnostic"]
 
     def test_classify_chat_pattern(self, classifier) -> None:
         """Test classification of chat patterns."""
-        mode, confidence = classifier.classify_patterns("hello there")
+        mode, _confidence = classifier.classify_patterns("hello there")
 
         assert mode.value == "chat"
 
     def test_classify_empty_input(self, classifier) -> None:
         """Test classification of empty input."""
-        mode, confidence = classifier.classify_patterns("")
+        mode, _confidence = classifier.classify_patterns("")
 
         assert mode.value == "chat"
 
     def test_classify_returns_confidence(self, classifier) -> None:
         """Test that classification returns confidence score."""
-        mode, confidence = classifier.classify_patterns("check status")
+        _mode, confidence = classifier.classify_patterns("check status")
 
         assert 0.0 <= confidence <= 1.0
 
@@ -738,7 +738,7 @@ class TestFastPathDetection:
 
     def test_detect_host_list_en(self, router: IntentRouter) -> None:
         """Test fast path detection for 'show hosts'."""
-        fast_path, args = router._detect_fast_path("show hosts")
+        fast_path, _args = router._detect_fast_path("show hosts")
         assert fast_path == "host.list"
 
     def test_detect_host_details(self, router: IntentRouter) -> None:
@@ -749,22 +749,22 @@ class TestFastPathDetection:
 
     def test_detect_inventory(self, router: IntentRouter) -> None:
         """Test fast path detection for 'inventory'."""
-        fast_path, args = router._detect_fast_path("inventory")
+        fast_path, _args = router._detect_fast_path("inventory")
         assert fast_path == "host.list"
 
     def test_detect_group_list(self, router: IntentRouter) -> None:
         """Test fast path detection for 'liste les groupes'."""
-        fast_path, args = router._detect_fast_path("liste les groupes")
+        fast_path, _args = router._detect_fast_path("liste les groupes")
         assert fast_path == "group.list"
 
     def test_detect_skill_list(self, router: IntentRouter) -> None:
         """Test fast path detection for 'show skills'."""
-        fast_path, args = router._detect_fast_path("show skills")
+        fast_path, _args = router._detect_fast_path("show skills")
         assert fast_path == "skill.list"
 
     def test_detect_var_list(self, router: IntentRouter) -> None:
         """Test fast path detection for 'show variables'."""
-        fast_path, args = router._detect_fast_path("show variables")
+        fast_path, _args = router._detect_fast_path("show variables")
         assert fast_path == "var.list"
 
     def test_detect_no_fast_path(self, router: IntentRouter) -> None:
@@ -776,7 +776,7 @@ class TestFastPathDetection:
     def test_detect_invalid_target_rejected(self, router: IntentRouter) -> None:
         """Test that invalid targets are rejected."""
         # Path traversal attempt
-        fast_path, args = router._detect_fast_path("info on @../etc/passwd")
+        _fast_path, args = router._detect_fast_path("info on @../etc/passwd")
         # Should not match due to invalid identifier
         assert "target" not in args or args.get("target") != "../etc/passwd"
 

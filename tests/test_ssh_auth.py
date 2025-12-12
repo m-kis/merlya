@@ -635,7 +635,8 @@ class TestSSHAuthManagerMFA:
         ui = MagicMock()
         manager = SSHAuthManager(secrets, ui)
 
-        callback = lambda prompt: "123456"
+        def callback(prompt):
+            return "123456"
         manager.set_mfa_callback(callback)
 
         assert manager._mfa_callback is callback

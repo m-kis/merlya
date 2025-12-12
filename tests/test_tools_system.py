@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,10 +21,6 @@ from merlya.tools.system.tools import (
     get_system_info,
     list_processes,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ==============================================================================
 # TestValidatePath

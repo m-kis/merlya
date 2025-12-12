@@ -14,12 +14,12 @@ from loguru import logger
 
 from merlya.commands.registry import CommandResult, command, subcommand
 from merlya.skills.loader import SkillLoader
-from merlya.skills.models import SkillConfig
 from merlya.skills.registry import get_registry
 from merlya.skills.wizard import SkillWizard, generate_skill_template
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+    from merlya.skills.models import SkillConfig
 
 # Valid skill name pattern (alphanumeric, underscores, hyphens, 2-50 chars)
 _VALID_SKILL_NAME = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{1,49}$")

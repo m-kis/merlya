@@ -15,8 +15,8 @@ class _StubUI:
 
     async def prompt_confirm(
         self,
-        message: str,  # noqa: ARG002
-        default: bool = False,  # noqa: ARG002
+        message: str,
+        default: bool = False,
     ) -> bool:
         return self.confirm
 

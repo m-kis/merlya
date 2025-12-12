@@ -242,7 +242,8 @@ class TestSSHPoolCallbacks:
     async def test_set_mfa_callback(self) -> None:
         """Test setting MFA callback."""
         pool = await SSHPool.get_instance()
-        callback = lambda prompt: "123456"
+        def callback(prompt):
+            return "123456"
 
         pool.set_mfa_callback(callback)
 
@@ -259,7 +260,8 @@ class TestSSHPoolCallbacks:
     async def test_set_passphrase_callback(self) -> None:
         """Test setting passphrase callback."""
         pool = await SSHPool.get_instance()
-        callback = lambda path: "secret"
+        def callback(path):
+            return "secret"
 
         pool.set_passphrase_callback(callback)
 
@@ -632,7 +634,7 @@ class TestSSHPoolValidateKey:
         with patch("merlya.ssh.pool._validate_private_key", new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = (True, "Key is valid")
 
-            result = await SSHPool.validate_private_key("/path/to/key", "secret")
+            await SSHPool.validate_private_key("/path/to/key", "secret")
 
             mock_validate.assert_called_once_with("/path/to/key", "secret")
 
@@ -762,13 +764,12 @@ class TestSSHPoolBuildSSHOptions:
         key_file.write_text("bad key")
 
         opts = SSHConnectionOptions()
-        with patch.dict("os.environ", {}, clear=True):
-            with patch.object(
-                pool, "_load_private_key",
-                new_callable=AsyncMock,
-                side_effect=Exception("Key load failed")
-            ):
-                options = await pool._build_ssh_options("host1", "user", str(key_file), opts)
+        with patch.dict("os.environ", {}, clear=True), patch.object(
+            pool, "_load_private_key",
+            new_callable=AsyncMock,
+            side_effect=Exception("Key load failed")
+        ):
+            options = await pool._build_ssh_options("host1", "user", str(key_file), opts)
 
         assert "client_keys" not in options
 
@@ -861,7 +862,7 @@ class TestSSHPoolGetConnection:
 
         new_conn = SSHConnection(host="host2", connection=MagicMock())
         with patch.object(pool, "_create_connection", new_callable=AsyncMock, return_value=new_conn):
-            result = await pool.get_connection("host2", username="admin")
+            await pool.get_connection("host2", username="admin")
 
         assert "user@host1:22" not in pool._connections
         assert "admin@host2:22" in pool._connections
@@ -944,14 +945,13 @@ class TestSSHPoolConnectWithOptions:
             "asyncssh.connect",
             new_callable=AsyncMock,
             side_effect=asyncssh.PermissionDenied("keyboard-interactive failed"),
-        ):
-            with pytest.raises(asyncssh.PermissionDenied):
-                await pool._connect_with_options(
-                    "host1",
-                    {"host": "host1", "port": 22, "client_keys": ["key"]},
-                    None,
-                    30,
-                )
+        ), pytest.raises(asyncssh.PermissionDenied):
+            await pool._connect_with_options(
+                "host1",
+                {"host": "host1", "port": 22, "client_keys": ["key"]},
+                None,
+                30,
+            )
 
     @pytest.mark.asyncio
     async def test_connect_removes_internal_keys(self) -> None:
@@ -1259,7 +1259,6 @@ class TestSSHPoolMFAClientClass:
     @pytest.mark.asyncio
     async def test_mfa_client_kbdint_challenge_received(self) -> None:
         """Test MFA client handles challenge correctly."""
-        responses = []
 
         def mfa_callback(prompt: str) -> str:
             return f"response_to_{prompt}"

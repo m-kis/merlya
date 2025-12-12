@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,10 +24,6 @@ from merlya.tools.files.tools import (
     upload_file,
     write_file,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ==============================================================================
 # TestFileResult
@@ -1043,7 +1038,7 @@ class TestDownloadFile:
         with patch("pathlib.Path.stat") as mock_stat:
             mock_stat.return_value.st_size = 100
 
-            result = await download_file(
+            await download_file(
                 mock_shared_context, "web-01", "/remote/file.txt"
             )
 

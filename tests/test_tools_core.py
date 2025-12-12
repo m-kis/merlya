@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -19,7 +18,6 @@ from merlya.tools.core.tools import (
     set_variable,
     ssh_execute,
 )
-
 
 # ==============================================================================
 # Tests for resolve_secrets
@@ -56,7 +54,7 @@ class TestResolveSecrets:
         secrets = MagicMock()
         secrets.get.return_value = None
 
-        resolved, safe = resolve_secrets("echo @unknown-secret", secrets)
+        resolved, _safe = resolve_secrets("echo @unknown-secret", secrets)
 
         # Secret reference stays as-is when not found
         assert "@unknown-secret" in resolved
@@ -66,7 +64,7 @@ class TestResolveSecrets:
         secrets = MagicMock()
         secrets.get.return_value = "SHOULD_NOT_APPEAR"
 
-        resolved, safe = resolve_secrets("git config user@github.com", secrets)
+        resolved, _safe = resolve_secrets("git config user@github.com", secrets)
 
         # Email should not be treated as secret
         assert "user@github.com" in resolved
@@ -124,7 +122,7 @@ class TestDetectUnsafePassword:
     def test_allows_secret_reference_quoted_echo(self) -> None:
         """Test that quoted @secret references are allowed in echo pattern."""
         # The pattern requires space after echo, so direct @ doesn't match
-        result = detect_unsafe_password("echo '@db-password' | sudo -S apt update")
+        _result = detect_unsafe_password("echo '@db-password' | sudo -S apt update")
 
         # Note: Current implementation may still flag this - test actual behavior
         # The protection is about detecting obvious plaintext passwords
