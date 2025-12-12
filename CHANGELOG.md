@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **@hostname Resolution** (`merlya/tools/core/tools.py`)
+  - `@pine64` in commands now resolved to actual hostname/IP
+  - Resolution order: inventory → DNS → user prompt
+  - Follows sysadmin logic for unknown hosts
+  - Works in both `ssh_execute` and `bash` tools
+
 - **Session Message Persistence**
   - Messages now persisted to SQLite for session resumption
   - Full conversation history restored on `/session load`
