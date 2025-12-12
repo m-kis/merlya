@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="[README_EN.md]">Read in English</a>
+  <a href="README_EN.md">Read in English</a>
 </p>
 
 ---
