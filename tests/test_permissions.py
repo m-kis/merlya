@@ -1,10 +1,8 @@
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from merlya.security import PermissionManager
-from merlya.security.permissions import PASSWORD_CACHE_TTL, CachedPassword
 
 
 class _StubUI:
@@ -42,18 +40,37 @@ class _StubResult:
         self.exit_code = exit_code
 
 
+class _StubSecrets:
+    """In-memory secret store stub."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self._data.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self._data[key] = value
+
+    def remove(self, key: str) -> None:
+        self._data.pop(key, None)
+
+    def list_names(self) -> list[str]:
+        return list(self._data.keys())
+
+
 def _make_ctx(ui: _StubUI) -> MagicMock:
     ctx = MagicMock()
     ctx.ui = ui
+    ctx.secrets = _StubSecrets()
+    ctx.hosts = AsyncMock()
+    ctx.hosts.get_by_name = AsyncMock(return_value=None)
     return ctx
 
 
 @pytest.mark.asyncio
 async def test_su_without_password_when_privileged_group() -> None:
-    """When sudo exists (no NOPASSWD) but su is available, prefer su over sudo_with_password.
-
-    First attempt is always without password - password prompt only if su fails.
-    """
+    """When sudo exists but needs password, prefer sudo_with_password over su."""
 
     ui = _StubUI(confirm=True, secrets=["pw"])
     ctx = _make_ctx(ui)
@@ -74,14 +91,15 @@ async def test_su_without_password_when_privileged_group() -> None:
 
     result = await pm.prepare_command("host", "systemctl restart nginx")
 
-    assert result.method == "su"
-    assert result.input_data is None  # first attempt is passwordless
-    assert result.note == "try_without_password"  # will retry with password if fails
+    assert result.method == "sudo_with_password"
+    assert result.needs_password is True
+    assert result.input_data is None
+    assert result.note == "password_needed"
 
 
 @pytest.mark.asyncio
 async def test_su_prompts_when_no_privileged_group() -> None:
-    """su is attempted passwordless first, password prompt only if it fails."""
+    """When only su is available, return needs_password prompt."""
 
     ui = _StubUI(confirm=True, secrets=["pw123"])
     ctx = _make_ctx(ui)
@@ -102,8 +120,9 @@ async def test_su_prompts_when_no_privileged_group() -> None:
     result = await pm.prepare_command("host", "systemctl restart nginx")
 
     assert result.method == "su"
-    assert result.input_data is None  # first attempt without password
-    assert result.note == "try_without_password"  # will retry with password if fails
+    assert result.needs_password is True
+    assert result.input_data is None
+    assert result.note == "password_needed"
 
 
 @pytest.mark.asyncio
@@ -132,34 +151,6 @@ async def test_sudo_nopasswd_avoids_prompt() -> None:
     assert ui.secret_calls == []
 
 
-class TestCachedPassword:
-    """Tests for CachedPassword TTL functionality."""
-
-    def test_new_password_not_expired(self) -> None:
-        """Test that a new cached password is not expired."""
-        cached = CachedPassword(password="secret")
-        assert not cached.is_expired()
-
-    def test_expired_password(self) -> None:
-        """Test that an old password is expired."""
-        # Create a password that expired 1 minute ago
-        expired_time = datetime.now(UTC) - timedelta(minutes=1)
-        cached = CachedPassword(password="secret", expires_at=expired_time)
-        assert cached.is_expired()
-
-    def test_password_ttl_correct(self) -> None:
-        """Test that password TTL is set correctly."""
-        before = datetime.now(UTC)
-        cached = CachedPassword(password="secret")
-        after = datetime.now(UTC)
-
-        # expires_at should be within PASSWORD_CACHE_TTL of now
-        expected_min = before + PASSWORD_CACHE_TTL
-        expected_max = after + PASSWORD_CACHE_TTL
-
-        assert expected_min <= cached.expires_at <= expected_max
-
-
 class TestPermissionManagerPasswordCache:
     """Tests for PermissionManager password cache functionality."""
 
@@ -182,23 +173,6 @@ class TestPermissionManagerPasswordCache:
 
         result = pm._get_cached_password("unknown-host")
         assert result is None
-
-    def test_get_cached_password_cleans_expired(self) -> None:
-        """Test that _get_cached_password cleans up expired passwords."""
-        ctx = _make_ctx(_StubUI())
-        pm = PermissionManager(ctx)
-
-        # Manually insert an expired password
-        expired_time = datetime.now(UTC) - timedelta(minutes=1)
-        pm._password_cache["host1"] = CachedPassword(
-            password="expired",
-            expires_at=expired_time,
-        )
-
-        # Should return None and clean up
-        result = pm._get_cached_password("host1")
-        assert result is None
-        assert "host1" not in pm._password_cache
 
     def test_clear_cache_single_host(self) -> None:
         """Test clearing cache for a single host."""
