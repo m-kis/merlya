@@ -25,13 +25,16 @@ if TYPE_CHECKING:
 SECRET_PATTERN = re.compile(r"(?:^|(?<=[\s;|&='\"]))\@([a-zA-Z][a-zA-Z0-9_:.-]*)")
 
 
-def resolve_secrets(command: str, secrets: Any) -> tuple[str, str]:
+def resolve_secrets(
+    command: str, secrets: Any, known_hosts: set[str] | None = None
+) -> tuple[str, str]:
     """
     Resolve @secret-name references in a command.
 
     Args:
         command: Command string potentially containing @secret-name references.
         secrets: SecretStore instance.
+        known_hosts: Optional set of known host names to exclude from secret resolution.
 
     Returns:
         Tuple of (resolved_command, safe_command_for_logging).
@@ -39,6 +42,7 @@ def resolve_secrets(command: str, secrets: Any) -> tuple[str, str]:
     """
     resolved = command
     safe = command
+    known_hosts = known_hosts or set()
 
     # Collect all matches and sort by start position in reverse order
     # This ensures we replace from end to start, preserving span positions
@@ -48,6 +52,12 @@ def resolve_secrets(command: str, secrets: Any) -> tuple[str, str]:
 
     for match in matches:
         secret_name = match.group(1)
+
+        # Skip if this is a known host reference (not a secret)
+        if secret_name in known_hosts or secret_name.lower() in known_hosts:
+            logger.debug(f"Skipping @{secret_name} - it's a host, not a secret")
+            continue
+
         secret_value = secrets.get(secret_name)
         start, end = match.span(0)
         if secret_value is not None:  # Allow empty strings as valid secrets
@@ -57,8 +67,10 @@ def resolve_secrets(command: str, secrets: Any) -> tuple[str, str]:
             safe = safe[:start] + "***" + safe[end:]
             logger.debug(f"🔐 Resolved secret @{secret_name}")
         else:
-            # Log warning if secret reference found but not in store
-            logger.warning(f"⚠️ Secret @{secret_name} not found in store")
+            # Only warn if it's not structured like a host:field reference
+            # (e.g., @ssh:passphrase:hostname is internal, not user-facing)
+            if ":" not in secret_name:
+                logger.warning(f"⚠️ Secret @{secret_name} not found in store")
 
     return resolved, safe
 
@@ -250,8 +262,12 @@ async def ssh_execute(
         # Initialize safe_command early so it's always available in the except block
         safe_command = command
 
+        # Get known host names to avoid treating @hostname as secrets
+        all_hosts = await ctx.hosts.get_all()
+        known_host_names = {h.name for h in all_hosts} | {h.name.lower() for h in all_hosts}
+
         # Resolve secrets in command (@secret-name -> actual value)
-        resolved_command, safe_command = resolve_secrets(command, ctx.secrets)
+        resolved_command, safe_command = resolve_secrets(command, ctx.secrets, known_host_names)
 
         # Resolve host from inventory (optional - inventory is a convenience, not a requirement)
         host_entry = await ctx.hosts.get_by_name(host)
@@ -767,8 +783,12 @@ async def bash_execute(
                     data={"command": command[:50]},
                 )
 
+        # Get known host names to avoid treating @hostname as secrets
+        all_hosts = await ctx.hosts.get_all()
+        known_host_names = {h.name for h in all_hosts} | {h.name.lower() for h in all_hosts}
+
         # Resolve secrets in command
-        resolved_command, safe_command = resolve_secrets(command, ctx.secrets)
+        resolved_command, safe_command = resolve_secrets(command, ctx.secrets, known_host_names)
 
         logger.debug(f"🖥️ Executing locally: {safe_command[:80]}...")
 
