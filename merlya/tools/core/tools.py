@@ -17,16 +17,91 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-# Pattern to match @secret-name references in commands
+# Pattern to match @reference references in commands
 # Only match @ preceded by whitespace, start of string, or shell operators (not emails/URLs)
-# Examples matched: @api-key, --password @db-pass, echo @token, @sudo:hostname:password
+# Examples matched: @api-key, --password @db-pass, echo @token, @sudo:hostname:password, @pine64
 # Examples NOT matched: user@github.com, git@repo.com
-# Now supports colons for structured keys like @service:host:field
-SECRET_PATTERN = re.compile(r"(?:^|(?<=[\s;|&='\"]))\@([a-zA-Z][a-zA-Z0-9_:.-]*)")
+# Supports colons for structured keys like @service:host:field
+REFERENCE_PATTERN = re.compile(r"(?:^|(?<=[\s;|&='\"]))\@([a-zA-Z][a-zA-Z0-9_:.-]*)")
+
+
+async def resolve_host_references(
+    command: str,
+    hosts: list[Any],
+    ui: Any | None = None,
+) -> str:
+    """
+    Resolve @hostname references in a command to actual hostnames/IPs.
+
+    Resolution order (sysadmin logic):
+    1. Check inventory - if host exists, use its hostname
+    2. Try DNS resolution
+    3. Ask user for IP if unresolved
+
+    Args:
+        command: Command string potentially containing @hostname references.
+        hosts: List of Host objects from inventory.
+        ui: ConsoleUI for user prompts (optional).
+
+    Returns:
+        Command with @hostname replaced by actual hostname/IP.
+    """
+    import socket
+
+    resolved = command
+
+    # Build lookup dict: name -> hostname
+    host_lookup: dict[str, str] = {}
+    for h in hosts:
+        host_lookup[h.name.lower()] = h.hostname or h.name
+
+    # Collect matches and sort by position (reverse to replace from end)
+    matches = list(REFERENCE_PATTERN.finditer(command))
+    matches.sort(key=lambda m: m.start(), reverse=True)
+
+    for match in matches:
+        ref_name = match.group(1)
+
+        # Skip structured references (secrets like @sudo:host:password)
+        if ":" in ref_name:
+            continue
+
+        start, end = match.span(0)
+        replacement = None
+
+        # 1. Check inventory
+        if ref_name.lower() in host_lookup:
+            replacement = host_lookup[ref_name.lower()]
+            logger.debug(f"🖥️ Resolved @{ref_name} from inventory → {replacement}")
+
+        # 2. Try DNS resolution
+        if replacement is None:
+            try:
+                socket.gethostbyname(ref_name)
+                replacement = ref_name  # DNS works, use the name as-is
+                logger.debug(f"🌐 Resolved @{ref_name} via DNS")
+            except socket.gaierror:
+                pass  # DNS failed, continue to user prompt
+
+        # 3. Ask user for IP
+        if replacement is None and ui:
+            logger.info(f"❓ Host @{ref_name} not found in inventory and DNS failed")
+            user_ip = await ui.prompt(f"Enter IP/hostname for '{ref_name}'", default="")
+            if user_ip:
+                replacement = user_ip
+                logger.info(f"📝 User provided: @{ref_name} → {replacement}")
+            else:
+                logger.warning(f"⚠️ No resolution for @{ref_name}, keeping as-is")
+
+        # Apply replacement if found
+        if replacement:
+            resolved = resolved[:start] + replacement + resolved[end:]
+
+    return resolved
 
 
 def resolve_secrets(
-    command: str, secrets: Any, known_hosts: set[str] | None = None
+    command: str, secrets: Any, resolved_hosts: set[str] | None = None
 ) -> tuple[str, str]:
     """
     Resolve @secret-name references in a command.
@@ -34,7 +109,7 @@ def resolve_secrets(
     Args:
         command: Command string potentially containing @secret-name references.
         secrets: SecretStore instance.
-        known_hosts: Optional set of known host names to exclude from secret resolution.
+        resolved_hosts: Set of host names already resolved (to skip).
 
     Returns:
         Tuple of (resolved_command, safe_command_for_logging).
@@ -42,33 +117,27 @@ def resolve_secrets(
     """
     resolved = command
     safe = command
-    known_hosts = known_hosts or set()
+    resolved_hosts = resolved_hosts or set()
 
     # Collect all matches and sort by start position in reverse order
-    # This ensures we replace from end to start, preserving span positions
-    # and avoiding corruption of overlapping names (e.g., @api vs @api_key)
-    matches = list(SECRET_PATTERN.finditer(command))
+    matches = list(REFERENCE_PATTERN.finditer(command))
     matches.sort(key=lambda m: m.start(), reverse=True)
 
     for match in matches:
         secret_name = match.group(1)
 
-        # Skip if this is a known host reference (not a secret)
-        if secret_name in known_hosts or secret_name.lower() in known_hosts:
-            logger.debug(f"Skipping @{secret_name} - it's a host, not a secret")
+        # Skip if this was already resolved as a host reference
+        if secret_name in resolved_hosts or secret_name.lower() in resolved_hosts:
             continue
 
         secret_value = secrets.get(secret_name)
         start, end = match.span(0)
         if secret_value is not None:  # Allow empty strings as valid secrets
-            # Replace exact span in resolved command with actual value
             resolved = resolved[:start] + secret_value + resolved[end:]
-            # Replace exact span in safe command with mask
             safe = safe[:start] + "***" + safe[end:]
             logger.debug(f"🔐 Resolved secret @{secret_name}")
         else:
             # Only warn if it's not structured like a host:field reference
-            # (e.g., @ssh:passphrase:hostname is internal, not user-facing)
             if ":" not in secret_name:
                 logger.warning(f"⚠️ Secret @{secret_name} not found in store")
 
@@ -262,12 +331,18 @@ async def ssh_execute(
         # Initialize safe_command early so it's always available in the except block
         safe_command = command
 
-        # Get known host names to avoid treating @hostname as secrets
+        # Get hosts for reference resolution
         all_hosts = await ctx.hosts.get_all()
-        known_host_names = {h.name for h in all_hosts} | {h.name.lower() for h in all_hosts}
 
-        # Resolve secrets in command (@secret-name -> actual value)
-        resolved_command, safe_command = resolve_secrets(command, ctx.secrets, known_host_names)
+        # 1. Resolve @hostname references → actual hostnames/IPs
+        # (inventory → DNS → user prompt)
+        resolved_command = await resolve_host_references(command, all_hosts, ctx.ui)
+
+        # Track which host names were resolved (to skip in secret resolution)
+        resolved_host_names = {h.name for h in all_hosts} | {h.name.lower() for h in all_hosts}
+
+        # 2. Resolve @secret references → actual values
+        resolved_command, safe_command = resolve_secrets(resolved_command, ctx.secrets, resolved_host_names)
 
         # Resolve host from inventory (optional - inventory is a convenience, not a requirement)
         host_entry = await ctx.hosts.get_by_name(host)
@@ -783,12 +858,18 @@ async def bash_execute(
                     data={"command": command[:50]},
                 )
 
-        # Get known host names to avoid treating @hostname as secrets
+        # Get hosts for reference resolution
         all_hosts = await ctx.hosts.get_all()
-        known_host_names = {h.name for h in all_hosts} | {h.name.lower() for h in all_hosts}
 
-        # Resolve secrets in command
-        resolved_command, safe_command = resolve_secrets(command, ctx.secrets, known_host_names)
+        # 1. Resolve @hostname references → actual hostnames/IPs
+        # (inventory → DNS → user prompt)
+        resolved_command = await resolve_host_references(command, all_hosts, ctx.ui)
+
+        # Track which host names were resolved (to skip in secret resolution)
+        resolved_host_names = {h.name for h in all_hosts} | {h.name.lower() for h in all_hosts}
+
+        # 2. Resolve @secret references → actual values
+        resolved_command, safe_command = resolve_secrets(resolved_command, ctx.secrets, resolved_host_names)
 
         logger.debug(f"🖥️ Executing locally: {safe_command[:80]}...")
 
