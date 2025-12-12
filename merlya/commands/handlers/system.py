@@ -42,16 +42,45 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
       --show-all   Show all ports and users (no truncation)
       --no-docker  Skip Docker checks
       --no-updates Skip pending updates check
+      --parallel   Scan multiple hosts in parallel
+      --tag=<tag>  Scan all hosts with a specific tag
+      --all        Scan all hosts in inventory
     """
     if not args:
         return CommandResult(
             success=False,
-            message="Usage: `/scan <host> [<host2> ...] [--full|--quick|--security|--system] [--json]`\n"
-            "Example: `/scan @myserver` or `/scan @myserver @myserver2 --quick --json`",
+            message="Usage: `/scan <host> [<host2> ...] [--full|--quick|--security|--system] [--json] [--parallel]`\n"
+            "Examples:\n"
+            "  `/scan @myserver`\n"
+            "  `/scan @myserver @myserver2 --quick --parallel`\n"
+            "  `/scan --tag=production --parallel`\n"
+            "  `/scan --all --quick --parallel`",
             show_help=True,
         )
 
+    # Parse special flags
+    parallel_mode = "--parallel" in args
+    scan_all = "--all" in args
+    tag_filter = None
+
+    for arg in args:
+        if arg.startswith("--tag="):
+            tag_filter = arg[6:]
+
     host_names, opts = parse_scan_args(args)
+
+    # Get hosts based on flags
+    if scan_all:
+        hosts = await ctx.hosts.get_all()
+        if not hosts:
+            return CommandResult(success=False, message="No hosts in inventory.")
+        host_names = [h.name for h in hosts]
+    elif tag_filter:
+        hosts = await ctx.hosts.get_by_tag(tag_filter)
+        if not hosts:
+            return CommandResult(success=False, message=f"No hosts found with tag '{tag_filter}'.")
+        host_names = [h.name for h in hosts]
+
     if not host_names:
         return CommandResult(
             success=False,
@@ -59,6 +88,128 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
             show_help=True,
         )
 
+    # Parallel execution for multiple hosts
+    if parallel_mode and len(host_names) > 1:
+        return await _scan_hosts_parallel(ctx, host_names, opts)
+
+    # Sequential execution (original behavior)
+    return await _scan_hosts_sequential(ctx, host_names, opts)
+
+
+async def _scan_hosts_parallel(
+    ctx: SharedContext,
+    host_names: list[str],
+    opts: ScanOptions,
+) -> CommandResult:
+    """Scan multiple hosts in parallel."""
+    ctx.ui.info(f"🔍 Scanning {len(host_names)} hosts in parallel...")
+
+    # Limit concurrent host scans
+    host_semaphore = asyncio.Semaphore(5)
+
+    async def scan_one_host(host_name: str) -> dict:
+        async with host_semaphore:
+            host = await ctx.hosts.get_by_name(host_name)
+            if not host:
+                return {
+                    "host_name": host_name,
+                    "success": False,
+                    "error": f"Host '{host_name}' not found",
+                    "result": None,
+                    "host": None,
+                }
+
+            try:
+                # Establish connection
+                ssh_pool = await ctx.get_ssh_pool()
+                connect_timeout = min(ctx.config.ssh.connect_timeout, 15)
+                options = SSHConnectionOptions(
+                    port=host.port,
+                    jump_host=host.jump_host,
+                    connect_timeout=connect_timeout,
+                )
+                await ssh_pool.get_connection(
+                    host=host.hostname,
+                    username=host.username,
+                    private_key=host.private_key,
+                    options=options,
+                    host_name=host.name,
+                )
+
+                # Run scan
+                scan_result = ScanResult()
+                ssh_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SSH_CHANNELS)
+
+                if opts.scan_type == "quick":
+                    await _scan_quick(ctx, host, scan_result)
+                elif opts.scan_type == "system":
+                    await _scan_system_parallel(ctx, host, scan_result, opts, ssh_semaphore)
+                elif opts.scan_type == "security":
+                    await _scan_security_parallel(ctx, host, scan_result, opts, ssh_semaphore)
+                else:  # full
+                    await asyncio.gather(
+                        _scan_system_parallel(ctx, host, scan_result, opts, ssh_semaphore),
+                        _scan_security_parallel(ctx, host, scan_result, opts, ssh_semaphore),
+                    )
+
+                await _calculate_severity_score(ctx, scan_result)
+
+                return {
+                    "host_name": host_name,
+                    "success": True,
+                    "error": None,
+                    "result": scan_result,
+                    "host": host,
+                }
+
+            except Exception as e:
+                return {
+                    "host_name": host_name,
+                    "success": False,
+                    "error": str(e),
+                    "result": None,
+                    "host": host,
+                }
+
+    # Run all scans in parallel
+    tasks = [scan_one_host(name) for name in host_names]
+    scan_results = await asyncio.gather(*tasks)
+
+    # Format output
+    outputs: list[str] = []
+    results: list[ScanResult] = []
+    successes = 0
+
+    for item in scan_results:
+        if item["success"]:
+            successes += 1
+            results.append(item["result"])
+            if opts.output_json:
+                outputs.append(
+                    f"```json\n{json.dumps(scan_to_dict(item['result'], item['host']), indent=2)}\n```"
+                )
+            else:
+                outputs.append(format_scan_output(item["result"], item["host"], opts))
+        else:
+            outputs.append(f"❌ `{item['host_name']}`: {item['error']}")
+
+    # Summary
+    summary = f"\n---\n**Summary:** {successes}/{len(host_names)} hosts scanned successfully"
+    outputs.append(summary)
+
+    return CommandResult(
+        success=successes > 0,
+        message="\n\n".join(outputs),
+        data=results if len(results) > 1 else (results[0] if results else None),
+    )
+
+
+async def _scan_hosts_sequential(
+    ctx: SharedContext,
+    host_names: list[str],
+    opts: ScanOptions,
+) -> CommandResult:
+    """Scan hosts sequentially (original behavior)."""
     outputs: list[str] = []
     results: list[ScanResult] = []
     successes = 0

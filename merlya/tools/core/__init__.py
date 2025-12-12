@@ -16,12 +16,14 @@ from merlya.tools.core.models import ToolResult
 from merlya.tools.core.resolve import (
     REFERENCE_PATTERN,
     get_resolved_host_names,
+    resolve_all_references,
     resolve_host_references,
     resolve_secrets,
 )
 
 # Security
 from merlya.tools.core.security import (
+    DANGEROUS_COMMAND_PATTERNS,
     DANGEROUS_COMMANDS,
     UNSAFE_PASSWORD_PATTERNS,
     detect_unsafe_password,
@@ -40,11 +42,13 @@ from merlya.tools.core.user_input import (
 )
 
 # Variables
-from merlya.tools.core.variables import get_variable, set_variable
+from merlya.tools.core.variables import DANGEROUS_ENV_VARS, get_variable, set_variable
 
 __all__ = [
-    # Security
     "DANGEROUS_COMMANDS",
+    # Security constants
+    "DANGEROUS_COMMAND_PATTERNS",
+    "DANGEROUS_ENV_VARS",
     # Resolution
     "REFERENCE_PATTERN",
     "UNSAFE_PASSWORD_PATTERNS",
@@ -52,11 +56,13 @@ __all__ = [
     "ToolResult",
     # User interaction
     "ask_user",
-    # Bash execution
+    # Execution
     "bash_execute",
+    # Security functions
     "detect_unsafe_password",
     # Host tools
     "get_host",
+    # Resolution functions
     "get_resolved_host_names",
     # Variables
     "get_variable",
@@ -65,9 +71,9 @@ __all__ = [
     "request_confirmation",
     "request_credentials",
     "request_elevation",
+    "resolve_all_references",
     "resolve_host_references",
     "resolve_secrets",
     "set_variable",
-    # SSH execution
     "ssh_execute",
 ]

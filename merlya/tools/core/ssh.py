@@ -13,17 +13,34 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from merlya.tools.core.models import ToolResult
-from merlya.tools.core.resolve import (
-    get_resolved_host_names,
-    resolve_host_references,
-    resolve_secrets,
-)
+from merlya.tools.core.resolve import resolve_all_references
 from merlya.tools.core.security import detect_unsafe_password
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
     from merlya.persistence.models import Host
     from merlya.ssh import SSHConnectionOptions, SSHPool
+
+
+# =============================================================================
+# Error Detection Constants
+# =============================================================================
+
+# Authentication failure indicators (sudo/su password failures)
+AUTH_ERROR_PATTERNS: tuple[str, ...] = (
+    "authentication failure",
+    "sorry",
+    "incorrect password",
+    "permission denied",
+    "must be run from a terminal",
+)
+
+# Permission error indicators (triggers auto-elevation)
+PERMISSION_ERROR_PATTERNS: tuple[str, ...] = (
+    "permission denied",
+    "operation not permitted",
+    "access denied",
+)
 
 
 # =============================================================================
@@ -249,15 +266,7 @@ async def _retry_with_password(
     Returns:
         Tuple of (elevated_command, input_data) or None if no retry needed.
     """
-    auth_errors = (
-        "authentication failure",
-        "sorry",
-        "incorrect password",
-        "permission denied",
-        "must be run from a terminal",
-    )
-
-    if not any(err in result.stderr.lower() for err in auth_errors):
+    if not any(err in result.stderr.lower() for err in AUTH_ERROR_PATTERNS):
         return None
 
     if method not in ("su", "sudo_with_password"):
@@ -327,19 +336,8 @@ async def ssh_execute(
                 data={"host": host, "command": command[:50] + "..."},
             )
 
-        # Get hosts for reference resolution
-        all_hosts = await ctx.hosts.get_all()
-
-        # 1. Resolve @hostname references → actual hostnames/IPs
-        resolved_command = await resolve_host_references(command, all_hosts, ctx.ui)
-
-        # Track which host names were resolved (to skip in secret resolution)
-        resolved_host_names = get_resolved_host_names(all_hosts)
-
-        # 2. Resolve @secret references → actual values
-        resolved_command, safe_command = resolve_secrets(
-            resolved_command, ctx.secrets, resolved_host_names
-        )
+        # Resolve all @references (hosts then secrets)
+        resolved_command, safe_command = await resolve_all_references(command, ctx)
 
         # Resolve host from inventory (optional - inventory is a convenience)
         host_entry: Host | None = await ctx.hosts.get_by_name(host)
@@ -386,12 +384,11 @@ async def ssh_execute(
         )
 
         # Auto-elevation: retry with elevation on permission errors
-        permission_errors = ("permission denied", "operation not permitted", "access denied")
         needs_elevation = (
             result.exit_code != 0
             and not elevation_used
             and auto_elevate
-            and any(err in result.stderr.lower() for err in permission_errors)
+            and any(err in result.stderr.lower() for err in PERMISSION_ERROR_PATTERNS)
         )
 
         if needs_elevation:
@@ -504,18 +501,11 @@ async def _execute_with_elevation(
         logger.debug(f"🔒 Elevation with {method}: exit_code={result.exit_code}")
 
         # Retry with password if auth failed and we haven't prompted yet
-        auth_errors = (
-            "authentication failure",
-            "sorry",
-            "incorrect password",
-            "permission denied",
-            "must be run from a terminal",
-        )
         needs_password_retry = (
             result.exit_code != 0
             and not password_prompted
             and method in ("su", "sudo_with_password")
-            and any(err in result.stderr.lower() for err in auth_errors)
+            and any(err in result.stderr.lower() for err in AUTH_ERROR_PATTERNS)
         )
 
         if needs_password_retry:
