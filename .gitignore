@@ -5,3 +5,9 @@
 .mypy_cache
 .ruff_cache
 uv.lock
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
