@@ -95,6 +95,8 @@
     "hosts": {
       "list_title": "Hôtes",
       "added": "Hôte '{name}' ajouté",
+      "added_test_success": "Hôte '{name}' ajouté (connexion OK, {latency_ms}ms)",
+      "added_test_failed": "Hôte '{name}' ajouté (test de connexion échoué : {error})",
       "updated": "Hôte '{name}' mis à jour",
       "deleted": "Hôte '{name}' supprimé",
       "not_found": "Hôte '{name}' introuvable",
@@ -105,7 +107,11 @@
       "scan_complete": "Scan terminé pour '{name}'",
       "import_started": "Import depuis {file}...",
       "import_complete": "{count} hôtes importés",
-      "import_errors": "{count} lignes n'ont pas pu être importées"
+      "import_errors": "{count} lignes n'ont pas pu être importées",
+      "check_started": "Vérification de la connectivité pour {count} hôte(s)...",
+      "check_result_ok": "✅ {name} : OK ({latency_ms}ms)",
+      "check_result_failed": "❌ {name} : {error}",
+      "check_summary": "Vérification de connectivité : {ok}/{total} hôtes joignables"
     },
     "ssh": {
       "connecting": "Connexion à {host}...",
@@ -115,7 +121,10 @@
       "mfa_prompt": "Entrez le code MFA",
       "passphrase_prompt": "Entrez la passphrase pour la clé {key}",
       "executing": "Exécution : {command}",
-      "execution_complete": "Commande terminée (code de sortie : {code})"
+      "execution_complete": "Commande terminée (code de sortie : {code})",
+      "circuit_open": "Circuit ouvert pour {host}, réessai dans {seconds}s",
+      "circuit_recovered": "Connexion à {host} rétablie",
+      "retry_attempt": "Nouvelle tentative vers {host} ({attempt}/{max})"
     },
     "variable": {
       "set": "Variable @{name} définie",
@@ -162,7 +171,13 @@
     "scan": {
       "started": "Scan des sources locales...",
       "found": "Trouvé : {source} ({count} hôtes)",
-      "complete": "Scan terminé : {count} hôtes depuis {sources} sources"
+      "complete": "Scan terminé : {count} hôtes depuis {sources} sources",
+      "host_started": "Scan de {host}...",
+      "host_complete": "Scan terminé pour {host}",
+      "parallel_started": "Scan de {count} hôtes en parallèle...",
+      "parallel_complete": "Scan parallèle terminé : {success}/{total} hôtes",
+      "tag_filter": "Filtrage des hôtes par tag : {tag}",
+      "no_hosts_match": "Aucun hôte ne correspond aux critères"
     },
     "exit": {
       "goodbye": "Au revoir !"
@@ -216,7 +231,8 @@
     },
     "hosts": {
       "description": "Gérer l'inventaire des hôtes",
-      "usage": "/hosts <sous-commande>"
+      "usage": "/hosts <sous-commande>",
+      "subcommands": "Sous-commandes :\n  list              - Lister tous les hôtes\n  add <nom>         - Ajouter un hôte (--test pour vérifier la connexion)\n  delete <nom>      - Supprimer un hôte\n  show <nom>        - Afficher les détails d'un hôte\n  tag <nom> <tag>   - Ajouter un tag à un hôte\n  untag <nom> <tag> - Retirer un tag d'un hôte\n  check [options]   - Vérifier la connectivité\n                      --all : Vérifier tous les hôtes\n                      --tag=<tag> : Vérifier les hôtes avec ce tag\n                      --parallel : Vérifier en parallèle"
     },
     "ssh": {
       "description": "Gestion des connexions SSH",
@@ -232,7 +248,8 @@
     },
     "scan": {
       "description": "Scanner un hôte (infos système et sécurité)",
-      "usage": "/scan <hote> [--full|--security|--system]"
+      "usage": "/scan <hôte> [options]",
+      "options": "Options :\n  --full       Scan complet (système + sécurité)\n  --security   Scan sécurité uniquement\n  --system     Scan système uniquement\n  --all        Scanner tous les hôtes\n  --tag=<tag>  Scanner les hôtes avec ce tag\n  --parallel   Scanner plusieurs hôtes en parallèle"
     },
     "health": {
       "description": "Afficher l'état de santé du système",

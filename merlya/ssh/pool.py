@@ -1,12 +1,13 @@
 """
 Merlya SSH - Connection pool.
 
-Manages SSH connections with reuse and timeout.
+Manages SSH connections with reuse, retry, and circuit breaker.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,7 +15,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from merlya.ssh.sftp import SFTPOperations
-from merlya.ssh.types import SSHConnection, SSHConnectionOptions, SSHResult
+from merlya.ssh.types import (
+    CircuitBreaker,
+    SSHConnection,
+    SSHConnectionOptions,
+    SSHResult,
+    is_transient_error,
+)
 from merlya.ssh.validation import validate_private_key as _validate_private_key
 
 if TYPE_CHECKING:
@@ -26,16 +33,24 @@ __all__ = ["SSHConnection", "SSHConnectionOptions", "SSHPool", "SSHResult"]
 
 class SSHPool(SFTPOperations):
     """
-    SSH connection pool with reuse.
+    SSH connection pool with reuse, retry, and circuit breaker.
 
     Maintains connections for reuse and handles MFA prompts.
     Thread-safe singleton with threading.Lock for instance creation,
     asyncio.Lock for connection pool operations.
+
+    Features:
+    - Connection reuse with timeout management
+    - Circuit breaker per host (prevents cascade failures)
+    - Automatic retry for transient errors
+    - Health checks for zombie connection detection
     """
 
     DEFAULT_TIMEOUT = 600  # 10 minutes
     DEFAULT_CONNECT_TIMEOUT = 30
     DEFAULT_MAX_CONNECTIONS = 50
+    DEFAULT_MAX_RETRIES = 3
+    DEFAULT_RETRY_DELAY = 1.0  # seconds
 
     _instance: SSHPool | None = None
     _instance_lock: threading.Lock = threading.Lock()
@@ -46,6 +61,8 @@ class SSHPool(SFTPOperations):
         connect_timeout: int = DEFAULT_CONNECT_TIMEOUT,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
         auto_add_host_keys: bool = True,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY,
     ) -> None:
         """
         Initialize pool.
@@ -55,13 +72,18 @@ class SSHPool(SFTPOperations):
             connect_timeout: Initial connection timeout.
             max_connections: Maximum number of concurrent connections.
             auto_add_host_keys: Auto-accept unknown host keys.
+            max_retries: Maximum retry attempts for transient errors.
+            retry_delay: Delay between retries in seconds.
         """
         self.timeout = timeout
         self.connect_timeout = connect_timeout
         self.max_connections = max_connections
         self.auto_add_host_keys = auto_add_host_keys
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self._connections: dict[str, SSHConnection] = {}
         self._connection_locks: dict[str, asyncio.Lock] = {}
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
         self._pool_lock = asyncio.Lock()
         self._mfa_callback: Callable[[str], str] | None = None
         self._passphrase_callback: Callable[[str], str] | None = None
@@ -101,6 +123,28 @@ class SSHPool(SFTPOperations):
             if key not in self._connection_locks:
                 self._connection_locks[key] = asyncio.Lock()
             return self._connection_locks[key]
+
+    def _get_circuit_breaker(self, host: str) -> CircuitBreaker:
+        """Get or create circuit breaker for a host."""
+        if host not in self._circuit_breakers:
+            self._circuit_breakers[host] = CircuitBreaker()
+        return self._circuit_breakers[host]
+
+    def get_circuit_status(self, host: str) -> dict:
+        """Get circuit breaker status for a host."""
+        cb = self._get_circuit_breaker(host)
+        return {
+            "host": host,
+            "state": cb.state.value,
+            "failure_count": cb.failure_count,
+            "time_until_retry": cb.time_until_retry(),
+        }
+
+    def reset_circuit(self, host: str) -> None:
+        """Reset circuit breaker for a host (manual recovery)."""
+        if host in self._circuit_breakers:
+            self._circuit_breakers[host] = CircuitBreaker()
+            logger.info(f"🔌 Circuit breaker reset for {host}")
 
     async def _evict_lru_connection(self) -> None:
         """Evict the least recently used connection."""
@@ -455,9 +499,10 @@ class SSHPool(SFTPOperations):
         private_key: str | None = None,
         options: SSHConnectionOptions | None = None,
         host_name: str | None = None,  # Inventory name for credential lookup
+        retry: bool = True,  # Enable automatic retry for transient errors
     ) -> SSHResult:
         """
-        Execute a command on a host.
+        Execute a command on a host with retry and circuit breaker.
 
         Args:
             host: Target host.
@@ -467,12 +512,15 @@ class SSHPool(SFTPOperations):
             username: SSH username.
             private_key: Path to private key.
             options: Additional connection options (port, jump host, etc.).
+            host_name: Inventory name for credential lookup.
+            retry: Enable automatic retry for transient errors.
 
         Returns:
             SSHResult with stdout, stderr, and exit_code.
 
         Raises:
             ValueError: If host or command is empty.
+            RuntimeError: If circuit breaker is open.
         """
         # Validate inputs
         if not host or not host.strip():
@@ -480,6 +528,66 @@ class SSHPool(SFTPOperations):
         if not command or not command.strip():
             raise ValueError("Command cannot be empty")
 
+        # Check circuit breaker
+        circuit = self._get_circuit_breaker(host)
+        if not circuit.can_execute():
+            retry_in = circuit.time_until_retry()
+            raise RuntimeError(
+                f"🔌 Circuit breaker open for {host}. "
+                f"Too many failures. Retry in {retry_in}s or use reset_circuit()"
+            )
+
+        max_attempts = self.max_retries if retry else 1
+        last_error: Exception | None = None
+
+        for attempt in range(max_attempts):
+            try:
+                result = await self._execute_once(
+                    host, command, timeout, input_data, username, private_key, options, host_name
+                )
+
+                # Success - update circuit breaker
+                circuit.record_success()
+                return result
+
+            except Exception as e:
+                last_error = e
+
+                # Check if this is a transient error worth retrying
+                if retry and is_transient_error(e) and attempt < max_attempts - 1:
+                    logger.warning(
+                        f"⚠️ Transient error on {host} (attempt {attempt + 1}/{max_attempts}): {e}"
+                    )
+
+                    # Invalidate the connection for retry
+                    await self._invalidate_connection(host, username, options)
+
+                    # Wait before retry with exponential backoff
+                    delay = self.retry_delay * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                    continue
+
+                # Non-transient error or last attempt - record failure
+                circuit.record_failure()
+                raise
+
+        # Should not reach here, but just in case
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"Unexpected error executing command on {host}")
+
+    async def _execute_once(
+        self,
+        host: str,
+        command: str,
+        timeout: int,
+        input_data: str | None,
+        username: str | None,
+        private_key: str | None,
+        options: SSHConnectionOptions | None,
+        host_name: str | None,
+    ) -> SSHResult:
+        """Execute a command once (no retry)."""
         conn = await self.get_connection(host, username, private_key, options, host_name)
 
         if conn.connection is None:
@@ -513,6 +621,24 @@ class SSHPool(SFTPOperations):
         except TimeoutError:
             logger.warning(f"⚠️ Command timeout on {host}")
             raise
+
+    async def _invalidate_connection(
+        self,
+        host: str,
+        username: str | None,
+        options: SSHConnectionOptions | None,
+    ) -> None:
+        """Invalidate a connection for reconnection on next attempt."""
+        opts = options or SSHConnectionOptions()
+        key = f"{username or 'default'}@{host}:{opts.port}"
+
+        async with self._pool_lock:
+            if key in self._connections:
+                conn = self._connections.pop(key)
+                conn.mark_unhealthy()
+                with contextlib.suppress(Exception):
+                    await conn.close()
+                logger.debug(f"🔌 Invalidated connection: {key}")
 
     async def disconnect(self, host: str) -> None:
         """Disconnect from a specific host."""

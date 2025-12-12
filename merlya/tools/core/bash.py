@@ -12,11 +12,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from merlya.tools.core.models import ToolResult
-from merlya.tools.core.resolve import (
-    get_resolved_host_names,
-    resolve_host_references,
-    resolve_secrets,
-)
+from merlya.tools.core.resolve import resolve_all_references
 from merlya.tools.core.security import is_dangerous_command
 
 if TYPE_CHECKING:
@@ -66,20 +62,8 @@ async def bash_execute(
                 data={"command": command[:50]},
             )
 
-        # Get hosts for reference resolution
-        all_hosts = await ctx.hosts.get_all()
-
-        # 1. Resolve @hostname references → actual hostnames/IPs
-        # (inventory → DNS → user prompt)
-        resolved_command = await resolve_host_references(command, all_hosts, ctx.ui)
-
-        # Track which host names were resolved (to skip in secret resolution)
-        resolved_host_names = get_resolved_host_names(all_hosts)
-
-        # 2. Resolve @secret references → actual values
-        resolved_command, safe_command = resolve_secrets(
-            resolved_command, ctx.secrets, resolved_host_names
-        )
+        # Resolve all @references (hosts then secrets)
+        resolved_command, safe_command = await resolve_all_references(command, ctx)
 
         logger.debug(f"🖥️ Executing locally: {safe_command[:80]}...")
 

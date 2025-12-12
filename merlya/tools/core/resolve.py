@@ -6,6 +6,7 @@ Resolves @hostname and @secret references in commands.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import socket
 from typing import TYPE_CHECKING, Any
@@ -13,7 +14,21 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 if TYPE_CHECKING:
+    from merlya.core.context import SharedContext
     from merlya.secrets import SecretStore
+
+# Private/internal IP ranges - warn when DNS resolves to these
+# (not blocked, as internal DNS is legitimate for infrastructure tools)
+PRIVATE_IP_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
+    ipaddress.ip_network("127.0.0.0/8"),  # Loopback
+    ipaddress.ip_network("10.0.0.0/8"),  # Private Class A
+    ipaddress.ip_network("172.16.0.0/12"),  # Private Class B
+    ipaddress.ip_network("192.168.0.0/16"),  # Private Class C
+    ipaddress.ip_network("169.254.0.0/16"),  # Link-local
+    ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),  # IPv6 unique local
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
+)
 
 
 # Pattern to match @reference references in commands
@@ -22,6 +37,26 @@ if TYPE_CHECKING:
 # Examples NOT matched: user@github.com, git@repo.com
 # Supports colons for structured keys like @service:host:field
 REFERENCE_PATTERN = re.compile(r"(?:^|(?<=[\s;|&='\"]))\@([a-zA-Z][a-zA-Z0-9_:.-]*)")
+
+
+def _is_private_ip(ip_str: str) -> bool:
+    """
+    Check if an IP address is in a private/internal range.
+
+    This is used to warn about potential DNS rebinding or SSRF risks.
+    Private IPs are NOT blocked since internal DNS is legitimate for infrastructure tools.
+
+    Args:
+        ip_str: IP address string (IPv4 or IPv6).
+
+    Returns:
+        True if IP is in a private/internal range.
+    """
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return any(ip in network for network in PRIVATE_IP_NETWORKS)
+    except ValueError:
+        return False
 
 
 async def resolve_host_references(
@@ -71,12 +106,21 @@ async def resolve_host_references(
             replacement = host_lookup[ref_name.lower()]
             logger.debug(f"🖥️ Resolved @{ref_name} from inventory → {replacement}")
 
-        # 2. Try DNS resolution
+        # 2. Try DNS resolution with security checks
         if replacement is None:
             try:
-                socket.gethostbyname(ref_name)
+                resolved_ip = socket.gethostbyname(ref_name)
                 replacement = ref_name  # DNS works, use the name as-is
-                logger.debug(f"🌐 Resolved @{ref_name} via DNS")
+
+                # Security: Warn if external hostname resolves to private IP
+                # This could indicate DNS rebinding attack or misconfiguration
+                if _is_private_ip(resolved_ip):
+                    logger.warning(
+                        f"⚠️ SECURITY: @{ref_name} resolves to private IP {resolved_ip} - "
+                        "verify this is expected (potential DNS rebinding)"
+                    )
+                else:
+                    logger.debug(f"🌐 Resolved @{ref_name} via DNS → {resolved_ip}")
             except socket.gaierror:
                 pass  # DNS failed, continue to user prompt
 
@@ -155,3 +199,43 @@ def get_resolved_host_names(hosts: list[Any]) -> set[str]:
         Set of host names to exclude from secret resolution.
     """
     return {h.name for h in hosts} | {h.name.lower() for h in hosts}
+
+
+async def resolve_all_references(
+    command: str,
+    ctx: SharedContext,
+) -> tuple[str, str]:
+    """
+    Resolve all @references (hosts and secrets) in a command.
+
+    This is a convenience function that combines host and secret resolution
+    in the correct order. Use this instead of calling resolve_host_references
+    and resolve_secrets separately.
+
+    Resolution order:
+    1. @hostname references → inventory lookup → DNS → user prompt
+    2. @secret references → keyring lookup
+
+    Args:
+        command: Command string potentially containing @references.
+        ctx: Shared context with hosts, secrets, and ui.
+
+    Returns:
+        Tuple of (resolved_command, safe_command_for_logging).
+        The safe_command replaces secret values with '***'.
+    """
+    # Get hosts for reference resolution
+    all_hosts = await ctx.hosts.get_all()
+
+    # 1. Resolve @hostname references → actual hostnames/IPs
+    resolved_command = await resolve_host_references(command, all_hosts, ctx.ui)
+
+    # Track which host names were resolved (to skip in secret resolution)
+    resolved_host_names = get_resolved_host_names(all_hosts)
+
+    # 2. Resolve @secret references → actual values
+    resolved_command, safe_command = resolve_secrets(
+        resolved_command, ctx.secrets, resolved_host_names
+    )
+
+    return resolved_command, safe_command

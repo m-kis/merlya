@@ -95,6 +95,8 @@
     "hosts": {
       "list_title": "Hosts",
       "added": "Host '{name}' added",
+      "added_test_success": "Host '{name}' added (connection OK, {latency_ms}ms)",
+      "added_test_failed": "Host '{name}' added (connection test failed: {error})",
       "updated": "Host '{name}' updated",
       "deleted": "Host '{name}' deleted",
       "not_found": "Host '{name}' not found",
@@ -105,7 +107,11 @@
       "scan_complete": "Scan complete for '{name}'",
       "import_started": "Importing from {file}...",
       "import_complete": "{count} hosts imported",
-      "import_errors": "{count} lines could not be imported"
+      "import_errors": "{count} lines could not be imported",
+      "check_started": "Checking connectivity for {count} host(s)...",
+      "check_result_ok": "✅ {name}: OK ({latency_ms}ms)",
+      "check_result_failed": "❌ {name}: {error}",
+      "check_summary": "Connectivity check: {ok}/{total} hosts reachable"
     },
     "ssh": {
       "connecting": "Connecting to {host}...",
@@ -115,7 +121,10 @@
       "mfa_prompt": "Enter MFA code",
       "passphrase_prompt": "Enter passphrase for key {key}",
       "executing": "Executing: {command}",
-      "execution_complete": "Command completed (exit code: {code})"
+      "execution_complete": "Command completed (exit code: {code})",
+      "circuit_open": "Circuit breaker open for {host}, retry in {seconds}s",
+      "circuit_recovered": "Connection to {host} recovered",
+      "retry_attempt": "Retrying connection to {host} (attempt {attempt}/{max})"
     },
     "variable": {
       "set": "Variable @{name} set",
@@ -162,7 +171,13 @@
     "scan": {
       "started": "Scanning local sources...",
       "found": "Found: {source} ({count} hosts)",
-      "complete": "Scan complete: {count} hosts from {sources} sources"
+      "complete": "Scan complete: {count} hosts from {sources} sources",
+      "host_started": "Scanning {host}...",
+      "host_complete": "Scan complete for {host}",
+      "parallel_started": "Scanning {count} hosts in parallel...",
+      "parallel_complete": "Parallel scan complete: {success}/{total} hosts",
+      "tag_filter": "Filtering hosts by tag: {tag}",
+      "no_hosts_match": "No hosts match the specified criteria"
     },
     "exit": {
       "goodbye": "Goodbye!"
@@ -216,7 +231,8 @@
     },
     "hosts": {
       "description": "Manage hosts inventory",
-      "usage": "/hosts <subcommand>"
+      "usage": "/hosts <subcommand>",
+      "subcommands": "Subcommands:\n  list              - List all hosts\n  add <name>        - Add a host (--test to verify connection)\n  delete <name>     - Remove a host\n  show <name>       - Show host details\n  tag <name> <tag>  - Add a tag to a host\n  untag <name> <tag> - Remove a tag from a host\n  check [options]   - Check host connectivity\n                      --all: Check all hosts\n                      --tag=<tag>: Check hosts with tag\n                      --parallel: Check in parallel"
     },
     "ssh": {
       "description": "SSH connection management",
@@ -232,7 +248,8 @@
     },
     "scan": {
       "description": "Scan a host for system info and security",
-      "usage": "/scan <host> [--full|--security|--system]"
+      "usage": "/scan <host> [options]",
+      "options": "Options:\n  --full       Full scan (system + security)\n  --security   Security-focused scan only\n  --system     System info scan only\n  --all        Scan all hosts\n  --tag=<tag>  Scan hosts with specified tag\n  --parallel   Scan multiple hosts in parallel"
     },
     "health": {
       "description": "Show system health status",
