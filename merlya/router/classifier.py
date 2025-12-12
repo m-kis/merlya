@@ -145,6 +145,9 @@ class RouterResult:
     fast_path_args: dict[str, str] = field(default_factory=dict)  # Args extracted from pattern
     skill_match: str | None = None  # Matched skill name if detected
     skill_confidence: float = 0.0  # Confidence of skill match
+    # Proactive mode: entities mentioned but not found in inventory
+    # Agent should discover alternatives if needed
+    unresolved_hosts: list[str] = field(default_factory=list)
 
     @property
     def is_fast_path(self) -> bool:
