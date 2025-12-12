@@ -134,6 +134,92 @@ class TestResolveSecrets:
 
 
 # ==============================================================================
+# Tests for resolve_host_references
+# ==============================================================================
+
+
+class TestResolveHostReferences:
+    """Tests for resolve_host_references function."""
+
+    @pytest.mark.asyncio
+    async def test_resolve_from_inventory(self) -> None:
+        """Test resolving @hostname from inventory."""
+        from merlya.tools.core.tools import resolve_host_references
+
+        # Create mock hosts
+        host = MagicMock()
+        host.name = "pine64"
+        host.hostname = "192.168.1.100"
+        hosts = [host]
+
+        result = await resolve_host_references("ping @pine64", hosts)
+
+        assert result == "ping 192.168.1.100"
+
+    @pytest.mark.asyncio
+    async def test_resolve_from_inventory_case_insensitive(self) -> None:
+        """Test that host resolution is case-insensitive."""
+        from merlya.tools.core.tools import resolve_host_references
+
+        host = MagicMock()
+        host.name = "Pine64"
+        host.hostname = "192.168.1.100"
+        hosts = [host]
+
+        result = await resolve_host_references("ping @pine64", hosts)
+
+        assert result == "ping 192.168.1.100"
+
+    @pytest.mark.asyncio
+    async def test_resolve_via_dns(self) -> None:
+        """Test resolving @hostname via DNS when not in inventory."""
+        from merlya.tools.core.tools import resolve_host_references
+
+        # Empty inventory, but google.com resolves via DNS
+        result = await resolve_host_references("ping @google.com", [])
+
+        # Should resolve to google.com (DNS worked)
+        assert result == "ping google.com"
+
+    @pytest.mark.asyncio
+    async def test_resolve_with_user_prompt(self) -> None:
+        """Test asking user when inventory and DNS both fail."""
+        from merlya.tools.core.tools import resolve_host_references
+
+        ui = MagicMock()
+        ui.prompt = AsyncMock(return_value="10.0.0.50")
+
+        # Unknown host, won't resolve via DNS
+        result = await resolve_host_references("ping @unknownhost12345", [], ui)
+
+        assert result == "ping 10.0.0.50"
+        ui.prompt.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_resolution_keeps_original(self) -> None:
+        """Test that unresolved hosts stay as @hostname."""
+        from merlya.tools.core.tools import resolve_host_references
+
+        ui = MagicMock()
+        ui.prompt = AsyncMock(return_value="")  # User provides nothing
+
+        result = await resolve_host_references("ping @unknownhost12345", [], ui)
+
+        # Should keep original since nothing resolved
+        assert result == "ping @unknownhost12345"
+
+    @pytest.mark.asyncio
+    async def test_skip_structured_references(self) -> None:
+        """Test that structured refs like @sudo:host:password are skipped."""
+        from merlya.tools.core.tools import resolve_host_references
+
+        result = await resolve_host_references("echo @sudo:host:password", [])
+
+        # Should not try to resolve structured refs (they're for secrets)
+        assert result == "echo @sudo:host:password"
+
+
+# ==============================================================================
 # Tests for detect_unsafe_password
 # ==============================================================================
 
@@ -877,6 +963,9 @@ class TestBashExecute:
         # Mock hosts.get_all() to return empty list (no hosts to confuse with secrets)
         ctx.hosts = MagicMock()
         ctx.hosts.get_all = AsyncMock(return_value=[])
+        # Mock UI for host resolution prompts
+        ctx.ui = MagicMock()
+        ctx.ui.prompt = AsyncMock(return_value="")  # Empty = no user input
         return ctx
 
     @pytest.mark.asyncio
