@@ -79,8 +79,11 @@ def detect_unsafe_password(command: str) -> str | None:
     for i, pattern in enumerate(UNSAFE_PASSWORD_PATTERNS):
         match = pattern.search(command)
         if match:
+            # SECURITY: Mask the password before logging
+            safe_command = mask_sensitive_command(command)
+            safe_match = mask_sensitive_command(match.group())
             logger.warning(
-                f"🔒 Password pattern {i} matched in command: '{command[:50]}...' at '{match.group()}'"
+                f"🔒 Password pattern {i} matched in command: '{safe_command[:50]}...' at '{safe_match}'"
             )
             return (
                 "⚠️ SECURITY: Command may contain a plaintext password. "
@@ -127,6 +130,93 @@ DANGEROUS_COMMANDS: frozenset[str] = frozenset(
         "chmod -R 777 /",
     }
 )
+
+
+def mask_sensitive_command(command: str) -> str:
+    """
+    Mask potential sensitive data in commands for logging.
+
+    Replaces password-like values with [MASKED] to prevent leakage in logs.
+
+    Args:
+        command: Command string that may contain sensitive data.
+
+    Returns:
+        Sanitized command string safe for logging.
+
+    Examples:
+        >>> mask_sensitive_command("echo 'mypassword' | sudo -S ls")
+        "echo '[MASKED]' | sudo -S ls"
+        >>> mask_sensitive_command("mysql -p'secret123'")
+        "mysql -p'[MASKED]'"
+    """
+    result = command
+
+    # Pattern 1: echo 'anything' | sudo -S -> mask the echo content
+    result = re.sub(
+        r"echo\s+['\"]([^'\"]+)['\"]\s*\|\s*sudo\s+-S",
+        r"echo '[MASKED]' | sudo -S",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 1b: echo anything | sudo -S (no quotes)
+    result = re.sub(
+        r"echo\s+(\S+)\s*\|\s*sudo\s+-S",
+        r"echo '[MASKED]' | sudo -S",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 2: -p'password' or -p"password"
+    result = re.sub(
+        r"-p['\"]([^'\"]+)['\"]",
+        r"-p'[MASKED]'",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 3: --password=value or --password value
+    result = re.sub(
+        r"--password[=\s]+['\"]?([^\s'\"]+)['\"]?",
+        r"--password=[MASKED]",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 4: MYSQL_PWD=value, PASSWORD=value, etc.
+    result = re.sub(
+        r"(MYSQL_PWD|PASSWORD|PASSWD|DB_PASSWORD|API_KEY|SECRET_KEY)=['\"]?([^\s'\"]+)['\"]?",
+        r"\1=[MASKED]",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 5: curl -u user:password
+    result = re.sub(
+        r"-u\s+['\"]?(\w+):([^@\s'\"]+)['\"]?",
+        r"-u '\1:[MASKED]'",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 6: sshpass -p password
+    result = re.sub(
+        r"sshpass\s+-p\s+['\"]?([^'\"@\s]+)['\"]?",
+        r"sshpass -p '[MASKED]'",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Pattern 7: Connection strings with passwords
+    result = re.sub(
+        r"://([\w]+):([^@\s'\"]+)@",
+        r"://\1:[MASKED]@",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    return result
 
 
 def is_dangerous_command(command: str) -> bool:

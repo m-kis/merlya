@@ -354,6 +354,16 @@ async def ssh_execute(
         ssh_opts = SSHConnectionOptions(connect_timeout=connect_timeout)
 
         # Resolve jump host - 'via' parameter takes priority over inventory config
+        # SECURITY: Reject elevation methods passed as jump hosts (LLM confusion)
+        ELEVATION_KEYWORDS = {"sudo", "su", "doas", "root", "admin", "elevate", "privilege"}
+        if via and via.lower() in ELEVATION_KEYWORDS:
+            logger.warning(
+                f"⚠️ '{via}' is an elevation method, not a jump host. "
+                "Use auto_elevate=True or the elevation parameter instead."
+            )
+            # Don't use it as jump host, continue without
+            via = None
+
         jump_host_name = via or (host_entry.jump_host if host_entry else None)
 
         if jump_host_name:
