@@ -453,8 +453,9 @@ class SSHAuthManager:
                     await self._store_passphrase(key_path, host_id, current_passphrase)
                 return
 
-            except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError) as e:
+            except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError, ValueError, TypeError) as e:
                 error_msg = str(e).lower()
+                logger.debug(f"Key loading exception: type={type(e).__name__}, msg='{error_msg}'")
                 is_passphrase_error = self._is_passphrase_error(error_msg)
 
                 if not is_passphrase_error:
@@ -498,8 +499,14 @@ class SSHAuthManager:
             "unable to decrypt",
             "wrong password",
             "mac check",
+            "pkcs",  # PKCS#1, PKCS#8 encrypted keys
+            "private key",  # "Unable to decrypt ... private key"
+            "password",
+            "need passphrase",
         ]
-        return any(indicator in error_msg for indicator in passphrase_indicators)
+        result = any(indicator in error_msg for indicator in passphrase_indicators)
+        logger.debug(f"Passphrase error check: '{error_msg}' -> {result}")
+        return result
 
     async def _clear_cached_passphrase(self, key_path: Path, host_id: str) -> None:
         """Clear wrong passphrase from cache."""
