@@ -703,3 +703,115 @@ async def set_variable(
     except Exception as e:
         logger.error(f"Failed to set variable: {e}")
         return ToolResult(success=False, data=None, error=str(e))
+
+
+# Dangerous commands that should be blocked for safety
+DANGEROUS_COMMANDS = frozenset(
+    {
+        "rm -rf /",
+        "rm -rf /*",
+        "mkfs",
+        "dd if=/dev/zero",
+        ":(){ :|:& };:",  # Fork bomb
+        "> /dev/sda",
+        "chmod -R 777 /",
+    }
+)
+
+
+async def bash_execute(
+    ctx: SharedContext,
+    command: str,
+    timeout: int = 60,
+) -> ToolResult:
+    """
+    Execute a command locally on the Merlya host machine.
+
+    Use this for local operations like kubectl, aws, gcloud, az CLI commands.
+
+    Args:
+        ctx: Shared context.
+        command: Command to execute locally.
+        timeout: Command timeout in seconds (1-3600).
+
+    Returns:
+        ToolResult with command output.
+    """
+    import asyncio
+
+    # Validate timeout
+    if timeout < 1 or timeout > 3600:
+        return ToolResult(
+            success=False,
+            error="⚠️ Timeout must be between 1 and 3600 seconds",
+            data={"timeout": timeout},
+        )
+
+    # Validate command is not empty
+    if not command or not command.strip():
+        return ToolResult(
+            success=False,
+            error="⚠️ Command cannot be empty",
+            data={},
+        )
+
+    try:
+        # Security: Check for dangerous commands
+        cmd_lower = command.lower().strip()
+        for dangerous in DANGEROUS_COMMANDS:
+            if dangerous in cmd_lower:
+                logger.warning(f"🔒 Blocked dangerous command: {command[:50]}")
+                return ToolResult(
+                    success=False,
+                    error="⚠️ SECURITY: Command blocked - potentially destructive",
+                    data={"command": command[:50]},
+                )
+
+        # Resolve secrets in command
+        resolved_command, safe_command = resolve_secrets(command, ctx.secrets)
+
+        logger.debug(f"🖥️ Executing locally: {safe_command[:80]}...")
+
+        # Execute command
+        process = await asyncio.create_subprocess_shell(
+            resolved_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            logger.warning(f"⏱️ Command timed out after {timeout}s")
+            return ToolResult(
+                success=False,
+                error=f"⏱️ Command timed out after {timeout}s",
+                data={"command": safe_command[:50], "timeout": timeout},
+            )
+
+        stdout_str = stdout.decode("utf-8", errors="replace")
+        stderr_str = stderr.decode("utf-8", errors="replace")
+        exit_code = process.returncode or 0
+
+        return ToolResult(
+            success=exit_code == 0,
+            data={
+                "stdout": stdout_str,
+                "stderr": stderr_str,
+                "exit_code": exit_code,
+                "command": safe_command[:50] + "..." if len(safe_command) > 50 else safe_command,
+            },
+            error=stderr_str if exit_code != 0 else None,
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Local execution failed: {e}")
+        return ToolResult(
+            success=False,
+            data={"command": command[:50]},
+            error=str(e),
+        )

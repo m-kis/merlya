@@ -815,3 +815,96 @@ class TestToolResult:
 
         assert result.success is False
         assert result.error == "Something went wrong"
+
+
+# ==============================================================================
+# Tests for bash_execute (local command execution)
+# ==============================================================================
+
+
+class TestBashExecute:
+    """Tests for bash_execute function."""
+
+    @pytest.fixture
+    def mock_context(self) -> MagicMock:
+        """Create mock SharedContext for bash tests."""
+        ctx = MagicMock()
+        ctx.secrets = MagicMock()
+        ctx.secrets.get.return_value = None  # No secrets by default
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_success(self, mock_context: MagicMock) -> None:
+        """Test successful local command execution."""
+        from merlya.tools.core.tools import bash_execute
+
+        result = await bash_execute(mock_context, "echo 'hello world'", timeout=10)
+
+        assert result.success is True
+        assert "hello world" in result.data["stdout"]
+        assert result.data["exit_code"] == 0
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_command_failure(self, mock_context: MagicMock) -> None:
+        """Test command that returns non-zero exit code."""
+        from merlya.tools.core.tools import bash_execute
+
+        result = await bash_execute(mock_context, "exit 1", timeout=10)
+
+        assert result.success is False
+        assert result.data["exit_code"] == 1
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_empty_command(self, mock_context: MagicMock) -> None:
+        """Test that empty command is rejected."""
+        from merlya.tools.core.tools import bash_execute
+
+        result = await bash_execute(mock_context, "", timeout=10)
+
+        assert result.success is False
+        assert "empty" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_invalid_timeout(self, mock_context: MagicMock) -> None:
+        """Test that invalid timeout is rejected."""
+        from merlya.tools.core.tools import bash_execute
+
+        result = await bash_execute(mock_context, "echo test", timeout=0)
+
+        assert result.success is False
+        assert "timeout" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_dangerous_command_blocked(
+        self, mock_context: MagicMock
+    ) -> None:
+        """Test that dangerous commands are blocked."""
+        from merlya.tools.core.tools import bash_execute
+
+        result = await bash_execute(mock_context, "rm -rf /", timeout=10)
+
+        assert result.success is False
+        assert "SECURITY" in result.error
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_with_secret(self, mock_context: MagicMock) -> None:
+        """Test command with secret resolution."""
+        from merlya.tools.core.tools import bash_execute
+
+        mock_context.secrets.get.return_value = "secret_value"
+
+        result = await bash_execute(mock_context, "echo @test-secret", timeout=10)
+
+        assert result.success is True
+        # Secret should be resolved in actual command
+        assert "secret_value" in result.data["stdout"]
+
+    @pytest.mark.asyncio
+    async def test_bash_execute_captures_stderr(self, mock_context: MagicMock) -> None:
+        """Test that stderr is captured."""
+        from merlya.tools.core.tools import bash_execute
+
+        result = await bash_execute(mock_context, "echo 'error' >&2", timeout=10)
+
+        assert result.success is True
+        assert "error" in result.data["stderr"]
