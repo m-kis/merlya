@@ -5,11 +5,11 @@ Tests for router module (intent classification and routing).
 import pytest
 
 from merlya.router.classifier import (
+    _COMPILED_FAST_PATH,
     FAST_PATH_INTENTS,
     FAST_PATH_PATTERNS,
     IntentRouter,
     RouterResult,
-    _COMPILED_FAST_PATH,
 )
 from merlya.router.intent_classifier import (
     INTENT_PATTERNS,
@@ -228,13 +228,13 @@ class TestFastPath:
     def test_detect_host_list_english(self):
         """Test host list detection in English."""
         router = IntentRouter(use_local=False)
-        intent, args = router._detect_fast_path("list hosts")
+        intent, _args = router._detect_fast_path("list hosts")
         assert intent == "host.list"
 
     def test_detect_host_list_french(self):
         """Test host list detection in French."""
         router = IntentRouter(use_local=False)
-        intent, args = router._detect_fast_path("liste les serveurs")
+        intent, _args = router._detect_fast_path("liste les serveurs")
         assert intent == "host.list"
 
     def test_detect_host_details(self):
@@ -254,7 +254,7 @@ class TestFastPath:
     def test_detect_group_list(self):
         """Test group list detection."""
         router = IntentRouter(use_local=False)
-        intent, args = router._detect_fast_path("show groups")
+        intent, _args = router._detect_fast_path("show groups")
         assert intent == "group.list"
 
     def test_no_fast_path(self):
@@ -441,6 +441,7 @@ class TestTierIntegration:
         model_id = classifier._select_model_id(None, "balanced")
 
         from merlya.config.tiers import get_router_model_id
+
         expected = get_router_model_id("balanced")
         assert model_id == expected
 
@@ -449,6 +450,7 @@ class TestTierIntegration:
         classifier = IntentClassifier(use_embeddings=True)
 
         from merlya.config.tiers import get_router_model_id, resolve_model_path
+
         model_id = get_router_model_id("balanced")
         expected_path = resolve_model_path(model_id)
 

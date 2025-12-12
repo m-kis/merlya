@@ -319,7 +319,7 @@ def detect_loop(
     consecutive_threshold = min(threshold_same, 3)  # At least 3 consecutive
     if len(signatures) >= consecutive_threshold:
         last_n = signatures[-consecutive_threshold:]
-        if len(set(sig for _, sig in last_n)) == 1:
+        if len({sig for _, sig in last_n}) == 1:
             tool_name = last_n[0][0]
             return (
                 True,

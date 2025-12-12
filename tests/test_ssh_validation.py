@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,6 +12,9 @@ from merlya.ssh.validation import (
     validate_private_key,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestPPKDetection:
     """Tests for PuTTY PPK format detection."""
@@ -20,9 +23,7 @@ class TestPPKDetection:
         """Test detection of PPK version 2 format."""
         ppk_file = tmp_path / "key.ppk"
         ppk_file.write_bytes(
-            b"PuTTY-User-Key-File-2: ssh-rsa\n"
-            b"Encryption: none\n"
-            b"Comment: test@example.com\n"
+            b"PuTTY-User-Key-File-2: ssh-rsa\nEncryption: none\nComment: test@example.com\n"
         )
 
         assert _is_ppk_format(ppk_file) is True
@@ -53,9 +54,7 @@ class TestPPKDetection:
         """Test that PEM format is not detected as PPK."""
         pem_file = tmp_path / "key.pem"
         pem_file.write_bytes(
-            b"-----BEGIN RSA PRIVATE KEY-----\n"
-            b"MIIEowIBAAKCAQEA...\n"
-            b"-----END RSA PRIVATE KEY-----\n"
+            b"-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----\n"
         )
 
         assert _is_ppk_format(pem_file) is False
@@ -138,10 +137,7 @@ class TestValidatePrivateKey:
     async def test_rejects_ppk_format(self, tmp_path: Path) -> None:
         """Test that PPK format keys are rejected with helpful message."""
         ppk_file = tmp_path / "key.ppk"
-        ppk_file.write_bytes(
-            b"PuTTY-User-Key-File-2: ssh-rsa\n"
-            b"Encryption: none\n"
-        )
+        ppk_file.write_bytes(b"PuTTY-User-Key-File-2: ssh-rsa\nEncryption: none\n")
 
         success, message = await validate_private_key(ppk_file)
 
@@ -210,7 +206,7 @@ class TestValidatePrivateKey:
         key_file.write_bytes(key.export_private_key())
         key_file.chmod(0o600)
 
-        success, message = await validate_private_key(key_file)
+        success, _message = await validate_private_key(key_file)
 
         assert success is True
 
@@ -229,7 +225,7 @@ class TestValidatePrivateKey:
         key_file.write_bytes(key.export_private_key())
         key_file.chmod(0o400)
 
-        success, message = await validate_private_key(key_file)
+        success, _message = await validate_private_key(key_file)
 
         assert success is True
 
@@ -265,6 +261,6 @@ class TestValidatePrivateKey:
             pytest.skip("bcrypt not available for encrypted key export")
         key_file.chmod(0o600)
 
-        success, message = await validate_private_key(key_file, passphrase="testpass")
+        success, _message = await validate_private_key(key_file, passphrase="testpass")
 
         assert success is True

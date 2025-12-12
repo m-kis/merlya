@@ -37,7 +37,7 @@ async def cmd_audit(ctx: SharedContext, args: list[str]) -> CommandResult:
 
 
 @subcommand("audit", "recent", "Show recent audit events", "/audit recent [limit]")
-async def cmd_audit_recent(ctx: SharedContext, args: list[str]) -> CommandResult:
+async def cmd_audit_recent(_ctx: SharedContext, args: list[str]) -> CommandResult:
     """Show recent audit events."""
     limit = 20
     if args:
@@ -69,7 +69,7 @@ async def cmd_audit_recent(ctx: SharedContext, args: list[str]) -> CommandResult
 
 
 @subcommand("audit", "export", "Export audit logs to JSON", "/audit export [file]")
-async def cmd_audit_export(ctx: SharedContext, args: list[str]) -> CommandResult:
+async def cmd_audit_export(_ctx: SharedContext, args: list[str]) -> CommandResult:
     """Export audit logs to JSON file."""
     # Default filter values
     limit = 1000
@@ -155,7 +155,7 @@ async def cmd_audit_export(ctx: SharedContext, args: list[str]) -> CommandResult
 
 
 @subcommand("audit", "filter", "Filter audit events by type", "/audit filter <type>")
-async def cmd_audit_filter(ctx: SharedContext, args: list[str]) -> CommandResult:
+async def cmd_audit_filter(_ctx: SharedContext, args: list[str]) -> CommandResult:
     """Filter audit events by type."""
     if not args:
         # List available types
@@ -203,7 +203,7 @@ async def cmd_audit_filter(ctx: SharedContext, args: list[str]) -> CommandResult
 
 
 @subcommand("audit", "stats", "Show audit statistics", "/audit stats")
-async def cmd_audit_stats(ctx: SharedContext, _args: list[str]) -> CommandResult:
+async def cmd_audit_stats(_ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Show audit statistics."""
     audit = await get_audit_logger()
 

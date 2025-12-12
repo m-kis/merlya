@@ -139,6 +139,7 @@ class TestAuditLogger:
 
         # Verify the raw secret is not present anywhere in details
         import json
+
         details_str = json.dumps(details)
         assert "secret123" not in details_str, "Raw secret should not be in stored details"
 

@@ -10,14 +10,12 @@ import pytest
 
 from merlya.router.classifier import AgentMode, RouterResult
 from merlya.router.handler import (
-    SKILL_CONFIDENCE_THRESHOLD,
     HandlerResponse,
     handle_agent,
     handle_fast_path,
     handle_skill_flow,
     handle_user_message,
 )
-
 
 # ==============================================================================
 # Fixtures

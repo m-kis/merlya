@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from loguru import logger
 
@@ -52,7 +52,7 @@ class TokenEstimator:
     """
 
     # Model-specific context limits
-    MODEL_LIMITS = {
+    MODEL_LIMITS: ClassVar[dict[str, int]] = {
         "gpt-4": 8192,
         "gpt-4-32k": 32768,
         "gpt-4-turbo": 128000,

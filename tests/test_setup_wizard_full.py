@@ -6,7 +6,6 @@ Tests LLMConfig, SetupResult, inventory detection, and host merging logic.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -122,9 +121,9 @@ class TestProviders:
 
     def test_provider_structure(self):
         """Test provider configuration structure."""
-        for key, config in PROVIDERS.items():
+        for _key, config in PROVIDERS.items():
             assert len(config) == 4  # (provider, env_key, default_model, fallback)
-            provider, env_key, default_model, fallback = config
+            provider, _env_key, default_model, _fallback = config
             assert isinstance(provider, str)
             assert isinstance(default_model, str)
             # env_key can be None (Ollama)
@@ -132,7 +131,7 @@ class TestProviders:
 
     def test_anthropic_provider(self):
         """Test Anthropic provider config."""
-        provider, env_key, model, fallback = PROVIDERS["2"]
+        provider, env_key, model, _fallback = PROVIDERS["2"]
 
         assert provider == "anthropic"
         assert env_key == "ANTHROPIC_API_KEY"
@@ -140,7 +139,7 @@ class TestProviders:
 
     def test_ollama_no_api_key(self):
         """Test Ollama has no API key requirement."""
-        provider, env_key, model, fallback = PROVIDERS["4"]
+        provider, env_key, _model, _fallback = PROVIDERS["4"]
 
         assert provider == "ollama"
         assert env_key is None
@@ -177,9 +176,7 @@ class TestMergeFields:
     def test_merge_private_key(self, host_data_class):
         """Test merging private key."""
         target = host_data_class(name="web-01", hostname="host.com", private_key=None)
-        source = host_data_class(
-            name="web-01", hostname="host.com", private_key="/path/to/key"
-        )
+        source = host_data_class(name="web-01", hostname="host.com", private_key="/path/to/key")
 
         _merge_fields(target, source)
 
@@ -188,9 +185,7 @@ class TestMergeFields:
     def test_merge_jump_host(self, host_data_class):
         """Test merging jump host."""
         target = host_data_class(name="internal", hostname="host.com", jump_host=None)
-        source = host_data_class(
-            name="internal", hostname="host.com", jump_host="bastion"
-        )
+        source = host_data_class(name="internal", hostname="host.com", jump_host="bastion")
 
         _merge_fields(target, source)
 
@@ -247,12 +242,8 @@ class TestMergeHostData:
     async def test_merge_duplicate_names(self, host_data_class):
         """Test merging hosts with duplicate names."""
         hosts = [
-            host_data_class(
-                name="web-01", hostname="192.168.1.10", tags=["ssh-config:1"]
-            ),
-            host_data_class(
-                name="web-01", hostname="10.0.0.1", tags=["known-hosts:1"]
-            ),
+            host_data_class(name="web-01", hostname="192.168.1.10", tags=["ssh-config:1"]),
+            host_data_class(name="web-01", hostname="10.0.0.1", tags=["known-hosts:1"]),
         ]
 
         result = await merge_host_data(hosts)
@@ -370,7 +361,7 @@ class TestDeduplicateHosts:
         ]
         existing = set()
 
-        result, duplicates = await deduplicate_hosts(hosts, existing)
+        result, _duplicates = await deduplicate_hosts(hosts, existing)
 
         assert len(result) == 1
         # Should keep the more complete one
@@ -455,7 +446,7 @@ class TestParseInventorySource:
         ) as mock_parser:
             mock_parser.return_value = []
 
-            result = await parse_inventory_source(source)
+            await parse_inventory_source(source)
 
             mock_parser.assert_called_once_with(source.path)
 
@@ -475,7 +466,7 @@ class TestParseInventorySource:
         ) as mock_parser:
             mock_parser.return_value = []
 
-            result = await parse_inventory_source(source)
+            await parse_inventory_source(source)
 
             mock_parser.assert_called_once_with(source.path)
 
@@ -488,10 +479,10 @@ class TestCheckFirstRun:
         """Test first run detection when no config exists."""
         with patch("merlya.setup.wizard.Path") as MockPath:
             MockPath.home.return_value = tmp_path
-            mock_config = tmp_path / ".merlya" / "config.yaml"
+            tmp_path / ".merlya" / "config.yaml"
 
             # Config doesn't exist
-            is_first = await check_first_run()
+            await check_first_run()
 
             # Usually True if config doesn't exist
             # Actual result depends on real filesystem
@@ -661,14 +652,16 @@ class TestRunLLMSetupMocked:
         mock_ui.success = MagicMock()
         mock_ui.warning = MagicMock()
 
-        with patch("merlya.secrets.get_secret", return_value=None):
-            with patch("merlya.secrets.set_secret"):
-                from merlya.setup.wizard import run_llm_setup
+        with (
+            patch("merlya.secrets.get_secret", return_value=None),
+            patch("merlya.secrets.set_secret"),
+        ):
+            from merlya.setup.wizard import run_llm_setup
 
-                config = await run_llm_setup(mock_ui)
+            config = await run_llm_setup(mock_ui)
 
-                assert config is not None
-                assert config.provider == "openrouter"
+            assert config is not None
+            assert config.provider == "openrouter"
 
     @pytest.mark.asyncio
     async def test_llm_setup_ollama_no_api_key(self):
@@ -719,14 +712,16 @@ class TestRunLLMSetupMocked:
 
         import os
 
-        with patch.dict(os.environ, {}, clear=True):
-            with patch("merlya.secrets.get_secret", return_value=None):
-                from merlya.setup.wizard import run_llm_setup
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("merlya.secrets.get_secret", return_value=None),
+        ):
+            from merlya.setup.wizard import run_llm_setup
 
-                # Remove ANTHROPIC_API_KEY if present
-                os.environ.pop("ANTHROPIC_API_KEY", None)
+            # Remove ANTHROPIC_API_KEY if present
+            os.environ.pop("ANTHROPIC_API_KEY", None)
 
-                config = await run_llm_setup(mock_ui)
+            config = await run_llm_setup(mock_ui)
 
-                # Should return None when API key cancelled
-                assert config is None
+            # Should return None when API key cancelled
+            assert config is None

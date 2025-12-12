@@ -15,15 +15,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-
-# UUID validation pattern
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE,
-)
-
-# Session limits
-MAX_MESSAGES_IN_MEMORY = 1000
+from pydantic_ai import ModelMessagesTypeAdapter
+from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 
 from merlya.session.context_tier import (
     TIER_CONFIG,
@@ -38,9 +31,14 @@ if TYPE_CHECKING:
     from merlya.persistence.database import Database
     from merlya.router.classifier import RouterResult
 
-# Import ModelMessagesTypeAdapter for message serialization
-from pydantic_ai import ModelMessagesTypeAdapter
-from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
+# UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+# Session limits
+MAX_MESSAGES_IN_MEMORY = 1000
 
 
 def _utc_now() -> datetime:

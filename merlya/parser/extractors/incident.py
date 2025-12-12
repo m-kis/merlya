@@ -6,10 +6,14 @@ High-level incident extraction with confidence checks.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
 
-from merlya.parser.models import IncidentInput, IncidentParsingResult
 from merlya.parser.service import ParserService
+
+if TYPE_CHECKING:
+    from merlya.parser.models import IncidentInput, IncidentParsingResult
 
 
 async def extract_incident(
@@ -86,6 +90,4 @@ async def is_incident_text(text: str, threshold: float = 0.4) -> bool:
 
     if result.confidence >= threshold:
         return True
-    if has_strong_indicators and result.confidence >= min_confidence:
-        return True
-    return False
+    return bool(has_strong_indicators and result.confidence >= min_confidence)

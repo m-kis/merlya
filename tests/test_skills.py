@@ -7,15 +7,15 @@ Tests SkillConfig, SkillRegistry, SkillLoader, SkillExecutor.
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from merlya.skills.models import HostResult, SkillConfig, SkillResult, SkillStatus
-from merlya.skills.registry import SkillRegistry, get_registry, reset_registry
-from merlya.skills.loader import SkillLoader
 from merlya.skills.executor import SkillExecutor
+from merlya.skills.loader import SkillLoader
+from merlya.skills.models import HostResult, SkillConfig, SkillResult, SkillStatus
+from merlya.skills.registry import SkillRegistry, reset_registry
 from merlya.skills.wizard import generate_skill_template
 
 
@@ -124,7 +124,7 @@ class TestSkillResult:
             skill_name="test",
             execution_id="abc123",
             status=SkillStatus.PARTIAL,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             total_hosts=10,
             succeeded_hosts=7,
             failed_hosts=3,
@@ -138,7 +138,7 @@ class TestSkillResult:
             skill_name="test",
             execution_id="abc123",
             status=SkillStatus.FAILED,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             total_hosts=0,
             succeeded_hosts=0,
             failed_hosts=0,
@@ -152,7 +152,7 @@ class TestSkillResult:
             skill_name="test",
             execution_id="abc123",
             status=SkillStatus.SUCCESS,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
 
         assert result.is_success
@@ -164,7 +164,7 @@ class TestSkillResult:
             skill_name="disk_audit",
             execution_id="abc123",
             status=SkillStatus.SUCCESS,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             total_hosts=5,
             succeeded_hosts=5,
             failed_hosts=0,

@@ -11,7 +11,6 @@ import logging
 import os
 import threading
 import warnings
-from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -21,6 +20,9 @@ from mcp.client.session_group import ClientSessionGroup
 from mcp.client.stdio import StdioServerParameters
 
 from merlya.config.models import MCPServerConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # MCP-related logger names to suppress during connection
 _MCP_LOGGERS = ("mcp", "mcp.client", "mcp.server", "httpx", "httpcore")

@@ -6,6 +6,7 @@ Tests HostsSummary, HostDetails, GroupSummary and async functions.
 
 from __future__ import annotations
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -320,7 +321,7 @@ class TestListHostsSummary:
         hosts = []
         for i in range(5):
             host = MagicMock()
-            host.name = f"web-{i+1:02d}"
+            host.name = f"web-{i + 1:02d}"
             host.health_status = "healthy" if i < 4 else "unhealthy"
             host.tags = ["production", "web"] if i < 3 else ["staging"]
             hosts.append(host)
@@ -392,7 +393,7 @@ class TestGetHostDetails:
     @pytest.fixture
     def mock_host(self):
         """Create a mock host object."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         host = MagicMock()
         host.name = "web-01"
@@ -402,7 +403,7 @@ class TestGetHostDetails:
         host.jump_host = None
         host.tags = ["production", "web"]
         host.health_status = "healthy"
-        host.last_seen = datetime.now(timezone.utc)
+        host.last_seen = datetime.now(UTC)
         host.os_info = MagicMock()
         host.os_info.model_dump.return_value = {"name": "Ubuntu", "version": "22.04"}
         host.metadata = {}
@@ -477,7 +478,7 @@ class TestListGroups:
         hosts = []
         for i in range(10):
             host = MagicMock()
-            host.name = f"host-{i+1:02d}"
+            host.name = f"host-{i + 1:02d}"
             host.health_status = "healthy" if i < 8 else "unhealthy"
             if i < 5:
                 host.tags = ["production", "web"]

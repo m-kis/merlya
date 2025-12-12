@@ -66,7 +66,7 @@ class PermissionManager:
     - Lock to prevent race conditions in capability detection
     """
 
-    def __init__(self, ctx: "SharedContext") -> None:
+    def __init__(self, ctx: SharedContext) -> None:
         self.ctx = ctx
         self._cache: dict[str, dict[str, Any]] = {}  # Capabilities cache
         self._consent_cache: dict[str, bool] = {}  # host -> user consented
@@ -170,7 +170,7 @@ class PermissionManager:
                     return None
 
             caps = elevation.get("capabilities")
-            return cast(dict[str, Any] | None, caps)
+            return cast("dict[str, Any] | None", caps)
         except Exception as e:
             logger.debug(f"Failed to load cached capabilities for {host}: {e}")
             return None

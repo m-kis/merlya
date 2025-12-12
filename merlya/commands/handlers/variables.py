@@ -169,7 +169,7 @@ async def cmd_variable_import(ctx: SharedContext, args: list[str]) -> CommandRes
     file_format = detect_import_format(file_path)
 
     try:
-        var_count, secret_count, host_count, secrets, errors = await import_variables(
+        var_count, _secret_count, host_count, secrets, errors = await import_variables(
             ctx, file_path, file_format, merge, dry_run
         )
     except Exception as e:
@@ -264,7 +264,7 @@ async def cmd_variable_export(ctx: SharedContext, args: list[str]) -> CommandRes
     "Generate a template file",
     "/variable template <file>",
 )
-async def cmd_variable_template(ctx: SharedContext, args: list[str]) -> CommandResult:
+async def cmd_variable_template(_ctx: SharedContext, args: list[str]) -> CommandResult:
     """Generate a template file for variable import."""
     from pathlib import Path
 

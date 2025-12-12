@@ -6,7 +6,6 @@ Tests SubagentResult, AggregatedResults, SubagentFactory, SubagentOrchestrator.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -540,7 +539,7 @@ class TestSubagentOrchestrator:
 
         progress_calls = []
 
-        async def on_progress(host, status, result):
+        async def on_progress(host, status, _result):
             progress_calls.append((host, status))
 
         # Mock the factory

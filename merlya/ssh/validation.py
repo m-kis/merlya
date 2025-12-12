@@ -15,7 +15,7 @@ def _is_ppk_format(path: Path) -> bool:
     PPK files start with "PuTTY-User-Key-File-" followed by version number.
     """
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             # Read first 50 bytes to check header
             header = f.read(50)
             return header.startswith(b"PuTTY-User-Key-File-")

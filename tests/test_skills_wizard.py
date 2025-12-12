@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -261,7 +261,7 @@ class TestSkillWizardPromptLimits:
         prompt_cb = AsyncMock(side_effect=["200", "120"])
         wizard = SkillWizard(prompt_callback=prompt_cb)
 
-        max_hosts, timeout = await wizard._prompt_limits()
+        max_hosts, _timeout = await wizard._prompt_limits()
 
         assert max_hosts == 100  # Clamped to max
 
@@ -271,7 +271,7 @@ class TestSkillWizardPromptLimits:
         prompt_cb = AsyncMock(side_effect=["5", "5"])
         wizard = SkillWizard(prompt_callback=prompt_cb)
 
-        max_hosts, timeout = await wizard._prompt_limits()
+        _max_hosts, timeout = await wizard._prompt_limits()
 
         assert timeout == 10  # Clamped to min
 
@@ -396,17 +396,19 @@ class TestSkillWizardCreateSkill:
         """Test full skill creation flow."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Mock all callbacks
-            prompt_responses = iter([
-                "test_skill",  # name
-                "Test description",  # description
-                "disk.*",  # patterns
-                "ssh_execute",  # tools
-                "5",  # max_hosts
-                "120",  # timeout
-                "restart,kill",  # confirmations
-                "",  # system prompt (empty = use default)
-            ])
-            prompt_cb = AsyncMock(side_effect=lambda msg, default: next(prompt_responses))
+            prompt_responses = iter(
+                [
+                    "test_skill",  # name
+                    "Test description",  # description
+                    "disk.*",  # patterns
+                    "ssh_execute",  # tools
+                    "5",  # max_hosts
+                    "120",  # timeout
+                    "restart,kill",  # confirmations
+                    "",  # system prompt (empty = use default)
+                ]
+            )
+            prompt_cb = AsyncMock(side_effect=lambda _msg, _default: next(prompt_responses))
             confirm_cb = AsyncMock(side_effect=[True, True])  # system prompt, final confirm
 
             loader = SkillLoader(user_dir=Path(tmpdir))
@@ -426,17 +428,19 @@ class TestSkillWizardCreateSkill:
     async def test_create_skill_cancelled_at_confirm(self):
         """Test cancellation at final confirmation."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            prompt_responses = iter([
-                "cancel_skill",
-                "Description",
-                "pattern.*",
-                "ssh_execute",
-                "5",
-                "120",
-                "restart",
-                "",
-            ])
-            prompt_cb = AsyncMock(side_effect=lambda msg, default: next(prompt_responses))
+            prompt_responses = iter(
+                [
+                    "cancel_skill",
+                    "Description",
+                    "pattern.*",
+                    "ssh_execute",
+                    "5",
+                    "120",
+                    "restart",
+                    "",
+                ]
+            )
+            prompt_cb = AsyncMock(side_effect=lambda _msg, _default: next(prompt_responses))
             confirm_cb = AsyncMock(side_effect=[True, False])  # Accept prompt, deny creation
 
             loader = SkillLoader(user_dir=Path(tmpdir))
@@ -542,7 +546,7 @@ class TestGenerateSkillTemplate:
         template = generate_skill_template("my_skill")
 
         assert "name: my_skill" in template
-        assert "version: \"1.0\"" in template
+        assert 'version: "1.0"' in template
         assert "max_hosts: 5" in template
         assert "timeout_seconds: 120" in template
 

@@ -288,7 +288,7 @@ async def handle_skill_flow(
         ]
 
         # Add detailed results if partial success or failure
-        if not result.status.value == "success":
+        if result.status.value != "success":
             message_parts.append("")
             message_parts.append("### Details")
             for hr in result.host_results:
@@ -315,7 +315,7 @@ async def handle_skill_flow(
 
 
 async def handle_agent(
-    ctx: SharedContext,
+    _ctx: SharedContext,
     agent: MerlyaAgent,
     user_input: str,
     route_result: RouterResult,
@@ -479,7 +479,7 @@ async def _handle_group_list(ctx: SharedContext) -> HandlerResponse:
     )
 
 
-async def _handle_skill_list(ctx: SharedContext) -> HandlerResponse:
+async def _handle_skill_list(_ctx: SharedContext) -> HandlerResponse:
     """List available skills."""
     try:
         from merlya.skills.registry import get_registry

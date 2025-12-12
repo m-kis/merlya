@@ -319,10 +319,7 @@ class TestExtractRecentToolSignatures:
 
     def test_respects_window_size(self) -> None:
         """Should only return last N signatures."""
-        messages = [
-            _make_tool_call_with_args(f"call_{i}", "tool", {"i": i})
-            for i in range(10)
-        ]
+        messages = [_make_tool_call_with_args(f"call_{i}", "tool", {"i": i}) for i in range(10)]
         # Add returns
         for i in range(10):
             messages.append(_make_tool_return(f"call_{i}"))
@@ -347,9 +344,7 @@ class TestDetectLoop:
         messages = []
         # Same command repeated 4 times
         for i in range(4):
-            messages.append(
-                _make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"})
-            )
+            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"}))
             messages.append(_make_tool_return(f"call_{i}"))
 
         is_loop, desc = detect_loop(messages, threshold_same=3)
@@ -444,9 +439,7 @@ class TestCreateLoopAwareHistoryProcessor:
         # Create a looping pattern
         messages = []
         for i in range(5):
-            messages.append(
-                _make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"})
-            )
+            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"}))
             messages.append(_make_tool_return(f"call_{i}"))
 
         result = processor(messages)
@@ -473,9 +466,7 @@ class TestCreateLoopAwareHistoryProcessor:
         # Create a looping pattern
         messages = []
         for i in range(5):
-            messages.append(
-                _make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"})
-            )
+            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"}))
             messages.append(_make_tool_return(f"call_{i}"))
 
         result = processor(messages)

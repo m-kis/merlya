@@ -30,7 +30,7 @@ class TestValidateFilePath:
         assert is_valid is True
         assert error == ""
 
-    def test_valid_tmp_path(self, tmp_path: Path) -> None:
+    def test_valid_tmp_path(self, _tmp_path: Path) -> None:
         """Test that paths in allowed directories are valid."""
         # tmp_path is under home or temp, which should be allowed
         # On macOS, /tmp resolves to /private/tmp which may not be in ALLOWED_IMPORT_DIRS
@@ -161,7 +161,7 @@ secrets:
 """)
 
         try:
-            var_count, secret_count, host_count, secrets, errors = await import_variables(
+            var_count, secret_count, _host_count, secrets, errors = await import_variables(
                 mock_ctx, yaml_file, "yaml", merge=True, dry_run=False
             )
 
@@ -178,15 +178,10 @@ secrets:
         """Test importing from JSON file."""
         mock_ctx = self._make_mock_ctx()
         json_file = Path("/tmp") / "test_vars_import.json"
-        json_file.write_text(json.dumps({
-            "variables": {
-                "app-name": "myapp",
-                "version": "1.0.0"
-            }
-        }))
+        json_file.write_text(json.dumps({"variables": {"app-name": "myapp", "version": "1.0.0"}}))
 
         try:
-            var_count, secret_count, host_count, secrets, errors = await import_variables(
+            var_count, secret_count, _host_count, _secrets, errors = await import_variables(
                 mock_ctx, json_file, "json", merge=True, dry_run=False
             )
 
@@ -210,7 +205,7 @@ SECRET_API_KEY=
 """)
 
         try:
-            var_count, secret_count, host_count, secrets, errors = await import_variables(
+            var_count, secret_count, _host_count, secrets, errors = await import_variables(
                 mock_ctx, env_file, "env", merge=True, dry_run=False
             )
 

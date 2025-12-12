@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from merlya.security import PermissionManager
-from merlya.security.permissions import CachedPassword, PASSWORD_CACHE_TTL
+from merlya.security.permissions import PASSWORD_CACHE_TTL, CachedPassword
 
 
 class _StubUI:

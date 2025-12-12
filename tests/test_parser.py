@@ -341,7 +341,7 @@ class TestCommandParsing:
     async def test_extract_secrets(self, backend: HeuristicBackend) -> None:
         """Test secret reference extraction."""
         text = "connect with password @db-password"
-        result = await backend.parse_command(text)
+        await backend.parse_command(text)
 
         # Secrets are extracted in entities
         entities = await backend.extract_entities(text)
@@ -427,7 +427,7 @@ class TestExtractorFunctions:
     async def test_extract_incident_low_confidence(self) -> None:
         """Test extract_incident returns None when not confident."""
         text = "hello world"  # Not an incident
-        incident, result = await extract_incident(text, min_confidence=0.9)
+        _incident, result = await extract_incident(text, min_confidence=0.9)
 
         # May or may not return incident based on confidence
         assert result is not None
@@ -436,7 +436,7 @@ class TestExtractorFunctions:
     async def test_extract_host_query(self) -> None:
         """Test extract_host_query function."""
         text = "list all hosts with tag=web"
-        query, result = await extract_host_query(text)
+        query, _result = await extract_host_query(text)
 
         assert isinstance(query, HostQueryInput)
         assert query.query_type == "list"
@@ -446,7 +446,7 @@ class TestExtractorFunctions:
         """Test extract_log_info function."""
         text = """ERROR: Connection failed
 INFO: Retrying..."""
-        log_info, result = await extract_log_info(text)
+        log_info, _result = await extract_log_info(text)
 
         assert isinstance(log_info, ParsedLog)
         assert log_info.error_count >= 1

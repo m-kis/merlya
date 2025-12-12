@@ -67,7 +67,7 @@ class SkillLoader:
         builtin_new, _ = self.load_builtin()
 
         # Load user skills (can override builtin)
-        user_new, user_overwritten = self.load_user()
+        user_new, _user_overwritten = self.load_user()
 
         # Return unique skill count (builtin + new user skills, not counting overwrites)
         return builtin_new + user_new

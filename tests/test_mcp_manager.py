@@ -63,10 +63,12 @@ async def test_resolve_env_uses_default_value(monkeypatch: pytest.MonkeyPatch):
     secrets = DummySecrets(value=None)  # No secret available
 
     manager = MCPManager(config, secrets)
-    resolved = manager._resolve_env({
-        "PORT": "${MISSING_VAR:-8080}",
-        "HOST": "${MISSING_HOST:-localhost}",
-    })
+    resolved = manager._resolve_env(
+        {
+            "PORT": "${MISSING_VAR:-8080}",
+            "HOST": "${MISSING_HOST:-localhost}",
+        }
+    )
 
     assert resolved["PORT"] == "8080"
     assert resolved["HOST"] == "localhost"

@@ -251,7 +251,7 @@ class SessionSummarizer:
     async def summarize(
         self,
         messages: list[ModelMessage],
-        context: str | None = None,
+        _context: str | None = None,
     ) -> SummaryResult:
         """
         Summarize a list of messages.
@@ -395,7 +395,7 @@ class SessionSummarizer:
 
         return f"{header}\n{text}" if header else text
 
-    async def _summarize_with_llm(self, text: str, model: str) -> str | None:
+    async def _summarize_with_llm(self, _text: str, _model: str) -> str | None:
         """
         Summarize using LLM.
 

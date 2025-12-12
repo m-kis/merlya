@@ -7,9 +7,9 @@ Tests store_raw_log, get_raw_log, get_raw_log_slice operations.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
-from datetime import datetime, timedelta
 
 from merlya.persistence.database import Database
 from merlya.tools.logs.store import (
@@ -200,7 +200,7 @@ class TestGetRawLogSlice:
         )
 
         assert result is not None
-        sliced, start, end = result
+        sliced, start, _end = result
         assert start == 1  # Can't go below 1
         assert "Line 001" in sliced
 
@@ -215,7 +215,7 @@ class TestGetRawLogSlice:
         )
 
         assert result is not None
-        sliced, start, end = result
+        sliced, _start, _end = result
         assert "Line 100" in sliced
 
     @pytest.mark.asyncio

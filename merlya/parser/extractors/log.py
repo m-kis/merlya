@@ -6,10 +6,14 @@ High-level log parsing with summarization.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
 
-from merlya.parser.models import LogParsingResult, ParsedLog
 from merlya.parser.service import ParserService
+
+if TYPE_CHECKING:
+    from merlya.parser.models import LogParsingResult, ParsedLog
 
 
 async def extract_log_info(
@@ -58,7 +62,7 @@ async def get_log_summary(text: str, max_errors: int = 5) -> str:
     Returns:
         Human-readable summary string.
     """
-    log_info, result = await extract_log_info(text)
+    log_info, _result = await extract_log_info(text)
 
     summary_parts = []
 

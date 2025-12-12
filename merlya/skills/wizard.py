@@ -6,14 +6,17 @@ Guides users through creating custom skills interactively.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+import contextlib
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from merlya.skills.loader import SkillLoader
 from merlya.skills.models import SkillConfig
 from merlya.skills.registry import get_registry
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Default tools that are commonly used
 DEFAULT_TOOLS = [
@@ -302,7 +305,7 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
             # Multi-select from default tools
             selected = await self.select(
                 "🔧 Select allowed tools:",
-                DEFAULT_TOOLS + ["all"],
+                [*DEFAULT_TOOLS, "all"],
             )
 
             # Handle None explicitly - treat as "all"
@@ -343,17 +346,13 @@ Réponds UNIQUEMENT avec les patterns séparés par des virgules, rien d'autre."
         if self.prompt:
             hosts_str = await self.prompt("🖥️ Max hosts (default=5):", "5")
             if hosts_str:
-                try:
+                with contextlib.suppress(ValueError):
                     max_hosts = max(1, min(int(hosts_str), 100))
-                except ValueError:
-                    pass
 
             timeout_str = await self.prompt("⏱️ Timeout seconds (default=120):", "120")
             if timeout_str:
-                try:
+                with contextlib.suppress(ValueError):
                     timeout = max(10, min(int(timeout_str), 600))
-                except ValueError:
-                    pass
 
         return max_hosts, timeout
 

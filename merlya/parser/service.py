@@ -12,17 +12,21 @@ Tiers:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
 
-from merlya.parser.backends.base import ParserBackend
 from merlya.parser.backends.heuristic import HeuristicBackend
 from merlya.parser.backends.onnx import ONNXParserBackend
-from merlya.parser.models import (
-    CommandParsingResult,
-    HostQueryParsingResult,
-    IncidentParsingResult,
-    LogParsingResult,
-)
+
+if TYPE_CHECKING:
+    from merlya.parser.backends.base import ParserBackend
+    from merlya.parser.models import (
+        CommandParsingResult,
+        HostQueryParsingResult,
+        IncidentParsingResult,
+        LogParsingResult,
+    )
 
 
 class ParserService:
@@ -172,9 +176,8 @@ class ParserService:
             - coverage_ratio: How much of the text was parsed
             - backend_used: Which backend performed the parsing
         """
-        if not self._initialized:
-            if not await self.initialize():
-                raise RuntimeError("Failed to initialize ParserService")
+        if not self._initialized and not await self.initialize():
+            raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_incident(text)
 
@@ -191,9 +194,8 @@ class ParserService:
             - confidence: Parsing confidence
             - coverage_ratio: Text coverage
         """
-        if not self._initialized:
-            if not await self.initialize():
-                raise RuntimeError("Failed to initialize ParserService")
+        if not self._initialized and not await self.initialize():
+            raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_log(text)
 
@@ -207,9 +209,8 @@ class ParserService:
         Returns:
             Structured host query parsing result.
         """
-        if not self._initialized:
-            if not await self.initialize():
-                raise RuntimeError("Failed to initialize ParserService")
+        if not self._initialized and not await self.initialize():
+            raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_host_query(text)
 
@@ -223,9 +224,8 @@ class ParserService:
         Returns:
             Structured command parsing result.
         """
-        if not self._initialized:
-            if not await self.initialize():
-                raise RuntimeError("Failed to initialize ParserService")
+        if not self._initialized and not await self.initialize():
+            raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.parse_command(text)
 
@@ -239,9 +239,8 @@ class ParserService:
         Returns:
             Dictionary mapping entity types to values.
         """
-        if not self._initialized:
-            if not await self.initialize():
-                raise RuntimeError("Failed to initialize ParserService")
+        if not self._initialized and not await self.initialize():
+            raise RuntimeError("Failed to initialize ParserService")
 
         return await self._backend.extract_entities(text)
 

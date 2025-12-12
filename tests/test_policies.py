@@ -10,7 +10,7 @@ import pytest
 
 from merlya.config.models import PolicyConfig
 from merlya.config.policies import EffectivePolicy, PolicyManager
-from merlya.session.context_tier import ContextTier, TIER_CONFIG
+from merlya.session.context_tier import TIER_CONFIG, ContextTier
 
 
 class TestPolicyConfig:

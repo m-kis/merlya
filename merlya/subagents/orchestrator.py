@@ -227,7 +227,7 @@ class SubagentOrchestrator:
         skill: SkillConfig | None,
         max_timeout: float,
         idle_timeout: float,
-        execution_id: str,
+        _execution_id: str,
         on_progress: Any | None = None,
     ) -> SubagentResult:
         """

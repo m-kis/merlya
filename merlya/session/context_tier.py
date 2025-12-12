@@ -384,8 +384,8 @@ class ContextTierPredictor:
 
     async def _ask_llm_complexity(
         self,
-        user_input: str,
-        factors: ComplexityFactors,
+        _user_input: str,
+        _factors: ComplexityFactors,
     ) -> float | None:
         """
         Ask LLM to assess complexity for uncertain cases.

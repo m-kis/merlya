@@ -331,10 +331,11 @@ async def cmd_skill_template(ctx: SharedContext, args: list[str]) -> CommandResu
     user_skills_dir.mkdir(parents=True, exist_ok=True)
     output_path = user_skills_dir / f"{name}.yaml"
 
-    # Check if exists
-    if output_path.exists():
-        if not await ctx.ui.confirm(f"Overwrite existing file `{output_path}`?"):
-            return CommandResult(success=False, message="Template generation cancelled.")
+    # Check if exists and ask for confirmation
+    if output_path.exists() and not await ctx.ui.confirm(
+        f"Overwrite existing file `{output_path}`?"
+    ):
+        return CommandResult(success=False, message="Template generation cancelled.")
 
     # Write template
     output_path.write_text(template)

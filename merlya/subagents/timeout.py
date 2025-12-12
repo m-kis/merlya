@@ -7,12 +7,15 @@ Provides intelligent timeout that tracks activity instead of absolute time.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import time
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Default timeout values
 DEFAULT_IDLE_TIMEOUT_SECONDS = 60  # Cancel if no activity for 60s
@@ -178,23 +181,18 @@ class ActivityTimeout:
         try:
             while not self._task.done():
                 # Wait for task or check interval
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(
                         asyncio.shield(self._task),
                         timeout=check_interval,
                     )
-                except TimeoutError:
-                    # Check interval elapsed, check for timeout
-                    pass
 
                 # Check if we should timeout
                 if not self._task.done() and self._check_timeout():
                     # Cancel the task
                     self._task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError):
                         await self._task
-                    except asyncio.CancelledError:
-                        pass
 
                     # Invoke callback if set
                     if self.on_timeout:
@@ -214,10 +212,8 @@ class ActivityTimeout:
             # External cancellation
             if self._task and not self._task.done():
                 self._task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await self._task
-                except asyncio.CancelledError:
-                    pass
             raise
 
         finally:

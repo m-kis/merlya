@@ -6,10 +6,14 @@ High-level host query extraction.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
 
-from merlya.parser.models import HostQueryInput, HostQueryParsingResult
 from merlya.parser.service import ParserService
+
+if TYPE_CHECKING:
+    from merlya.parser.models import HostQueryInput, HostQueryParsingResult
 
 
 async def extract_host_query(

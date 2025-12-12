@@ -175,8 +175,8 @@ class TestIsSafeSshKeyPath:
         This test mocks Path.resolve() to simulate Linux filesystem semantics
         where /home/user/../../etc/passwd resolves to /etc/passwd.
         """
-        from unittest.mock import patch
         import posixpath
+        from unittest.mock import patch
 
         def mock_resolve_linux(path_str: str) -> str:
             """Simulate Linux-style path resolution (pure, no symlink resolution)."""
@@ -206,8 +206,7 @@ class TestIsSafeSshKeyPath:
         for input_path, expected_resolved, _ in test_cases:
             resolved = mock_resolve_linux(input_path)
             assert resolved == expected_resolved, (
-                f"Mock resolution of {input_path} produced {resolved}, "
-                f"expected {expected_resolved}"
+                f"Mock resolution of {input_path} produced {resolved}, expected {expected_resolved}"
             )
 
         # Now test the actual function with mocked Path.resolve
@@ -218,7 +217,7 @@ class TestIsSafeSshKeyPath:
             normalized = mock_resolve_linux(str(self))
             return Path(normalized)
 
-        with patch.object(Path, 'resolve', patched_resolve):
+        with patch.object(Path, "resolve", patched_resolve):
             for input_path, _, expected in test_cases:
                 result = _is_safe_ssh_key_path(input_path)
                 assert result is expected, (
@@ -390,7 +389,9 @@ class TestCheckUsers:
         """Test successful user check."""
         passwd_result = MagicMock()
         passwd_result.exit_code = 0
-        passwd_result.stdout = "root:x:0:0:root:/root:/bin/bash\nuser:x:1000:1000::/home/user:/bin/bash\n"
+        passwd_result.stdout = (
+            "root:x:0:0:root:/root:/bin/bash\nuser:x:1000:1000::/home/user:/bin/bash\n"
+        )
 
         shadow_result = MagicMock()
         shadow_result.exit_code = 1
@@ -435,7 +436,7 @@ class TestParsePasswdLine:
     def test_parse_valid_line(self):
         """Test parsing valid passwd line."""
         line = "root:x:0:0:root:/root:/bin/bash"
-        user_info, severity = _parse_passwd_line(line)
+        user_info, _severity = _parse_passwd_line(line)
 
         assert user_info is not None
         assert user_info["username"] == "root"
@@ -463,14 +464,14 @@ class TestParsePasswdLine:
 
     def test_parse_invalid_line(self):
         """Test parsing invalid line."""
-        user_info, severity = _parse_passwd_line("invalid")
+        user_info, _severity = _parse_passwd_line("invalid")
 
         assert user_info is None
 
     def test_parse_invalid_uid(self):
         """Test parsing line with invalid UID."""
         line = "user:x:abc:1000::/home/user:/bin/bash"
-        user_info, severity = _parse_passwd_line(line)
+        user_info, _severity = _parse_passwd_line(line)
 
         assert user_info is None
 

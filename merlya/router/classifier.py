@@ -335,9 +335,7 @@ class IntentRouter:
         if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$", name):
             return False
         # Reject path traversal attempts
-        if ".." in name:
-            return False
-        return True
+        return ".." not in name
 
     def _detect_fast_path(self, text: str) -> tuple[str | None, dict[str, str]]:
         """

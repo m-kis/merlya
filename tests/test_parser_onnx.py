@@ -7,9 +7,8 @@ Use pytest -m "slow" to run these tests (they download models).
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -205,12 +204,14 @@ class TestONNXParserBackendLoadMocked:
         """Test load returns False when dependencies missing."""
         backend = ONNXParserBackend()
 
-        with patch.dict("sys.modules", {"onnxruntime": None}):
-            with patch("builtins.__import__", side_effect=ImportError("onnxruntime")):
-                # The backend catches ImportError and returns False
-                result = await backend.load()
-                # May return True if deps are actually installed
-                # This is more of a smoke test
+        with (
+            patch.dict("sys.modules", {"onnxruntime": None}),
+            patch("builtins.__import__", side_effect=ImportError("onnxruntime")),
+        ):
+            # The backend catches ImportError and returns False
+            await backend.load()
+            # May return True if deps are actually installed
+            # This is more of a smoke test
 
     @pytest.mark.asyncio
     async def test_load_already_loaded(self):

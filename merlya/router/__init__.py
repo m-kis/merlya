@@ -21,18 +21,18 @@ from merlya.router.handler import (
 )
 
 __all__ = [
-    # Classifier
-    "AgentMode",
-    "IntentClassifier",
-    "IntentRouter",
-    "RouterResult",
     # Fast path
     "FAST_PATH_INTENTS",
     "FAST_PATH_PATTERNS",
+    # Classifier
+    "AgentMode",
     # Handler
     "HandlerResponse",
-    "handle_user_message",
+    "IntentClassifier",
+    "IntentRouter",
+    "RouterResult",
+    "handle_agent",
     "handle_fast_path",
     "handle_skill_flow",
-    "handle_agent",
+    "handle_user_message",
 ]

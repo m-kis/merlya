@@ -32,7 +32,9 @@ def ctx() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_mcp_add_parses_env_and_args(monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock):
+async def test_mcp_add_parses_env_and_args(
+    monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock
+):
     """Ensure /mcp add forwards parsed command/args/env to manager."""
     manager = SimpleNamespace(
         add_server=AsyncMock(),
@@ -41,7 +43,10 @@ async def test_mcp_add_parses_env_and_args(monkeypatch: pytest.MonkeyPatch, regi
     )
     monkeypatch.setattr(mcp_module, "_manager", AsyncMock(return_value=manager))
 
-    result = await registry.execute(ctx, "/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${GITHUB_TOKEN}")
+    result = await registry.execute(
+        ctx,
+        "/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${GITHUB_TOKEN}",
+    )
 
     assert result is not None and result.success
     manager.add_server.assert_awaited_with(
@@ -54,7 +59,9 @@ async def test_mcp_add_parses_env_and_args(monkeypatch: pytest.MonkeyPatch, regi
 
 
 @pytest.mark.asyncio
-async def test_mcp_tools_lists_tools(monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock):
+async def test_mcp_tools_lists_tools(
+    monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock
+):
     """Ensure /mcp tools renders tool list."""
     tools = [
         MCPToolInfo(name="github.search_repos", description="Search repos", server="github"),
@@ -71,8 +78,11 @@ async def test_mcp_tools_lists_tools(monkeypatch: pytest.MonkeyPatch, registry: 
 
 
 @pytest.mark.asyncio
-async def test_mcp_test_reports_errors(monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock):
+async def test_mcp_test_reports_errors(
+    monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock
+):
     """Ensure /mcp test surfaces connection errors."""
+
     async def _raise(*_args, **_kwargs):
         raise RuntimeError("boom")
 

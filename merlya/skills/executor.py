@@ -221,8 +221,8 @@ class SkillExecutor:
         skill: SkillConfig,
         host: str,
         task: str,
-        context: dict[str, Any] | None = None,
-        confirm_callback: Any | None = None,
+        _context: dict[str, Any] | None = None,
+        _confirm_callback: Any | None = None,
     ) -> HostResult:
         """
         Execute skill on a single host.

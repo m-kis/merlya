@@ -19,15 +19,16 @@ from loguru import logger
 
 from merlya.parser.backends.base import ParserBackend
 from merlya.parser.backends.heuristic import HeuristicBackend
-from merlya.parser.models import (
-    CommandParsingResult,
-    HostQueryParsingResult,
-    IncidentParsingResult,
-    LogParsingResult,
-)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+    from merlya.parser.models import (
+        CommandParsingResult,
+        HostQueryParsingResult,
+        IncidentParsingResult,
+        LogParsingResult,
+    )
 
 # Import centralized tier configuration
 from merlya.config.tiers import (
@@ -352,7 +353,7 @@ class ONNXParserBackend(ParserBackend):
             current_entity = ""
             current_type = ""
 
-            for i, (token, pred) in enumerate(zip(tokens, predictions)):
+            for _i, (token, pred) in enumerate(zip(tokens, predictions, strict=False)):
                 label = self._id2label.get(int(pred), "O")
 
                 if label.startswith("B-"):
@@ -462,13 +463,13 @@ class ONNXParserBackend(ParserBackend):
         # Add organizations as potential services/hosts
         if "ORG" in ner_entities:
             for org in ner_entities["ORG"]:
-                if org.lower() not in [s.lower() for s in result.incident.affected_services]:
-                    # Check if it looks like a service name
-                    if any(
-                        pattern in org.lower()
-                        for pattern in ["service", "server", "db", "api", "app"]
-                    ):
-                        result.incident.affected_services.append(org)
+                # Check if not already in services and looks like a service name
+                if org.lower() not in [
+                    s.lower() for s in result.incident.affected_services
+                ] and any(
+                    pattern in org.lower() for pattern in ["service", "server", "db", "api", "app"]
+                ):
+                    result.incident.affected_services.append(org)
 
         # Add locations as potential hosts
         if "LOC" in ner_entities:
