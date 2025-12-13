@@ -1,296 +1,41 @@
 """
 Merlya Tools - SSH execution.
 
-Execute commands on remote hosts via SSH.
+Execute commands on remote hosts via SSH with automatic elevation.
 """
 
 from __future__ import annotations
 
-import ipaddress
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from merlya.tools.core.models import ToolResult
 from merlya.tools.core.resolve import resolve_all_references
 from merlya.tools.core.security import detect_unsafe_password
+from merlya.tools.core.ssh_connection import (
+    ensure_callbacks,
+    execute_ssh_command,
+    is_ip_address,
+    resolve_jump_host,
+)
+from merlya.tools.core.ssh_elevation import execute_with_elevation
+from merlya.tools.core.ssh_errors import explain_ssh_error
+from merlya.tools.core.ssh_models import (
+    ElevationPayload,
+    ExecutionContext,
+    SSHResultProtocol,
+)
+from merlya.tools.core.ssh_patterns import (
+    ELEVATION_KEYWORDS,
+    needs_elevation,
+    strip_sudo_prefix,
+)
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
     from merlya.persistence.models import Host
-    from merlya.ssh import SSHConnectionOptions, SSHPool
-
-
-# =============================================================================
-# Error Detection Constants
-# =============================================================================
-
-# Authentication failure indicators (sudo/su password failures)
-AUTH_ERROR_PATTERNS: tuple[str, ...] = (
-    "authentication failure",
-    "sorry",
-    "incorrect password",
-    "permission denied",
-    "must be run from a terminal",
-)
-
-# Permission error indicators (triggers auto-elevation)
-PERMISSION_ERROR_PATTERNS: tuple[str, ...] = (
-    "permission denied",
-    "operation not permitted",
-    "access denied",
-)
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-def _is_ip(value: str) -> bool:
-    """Return True if value is a valid IPv4/IPv6 address."""
-    try:
-        ipaddress.ip_address(value)
-        return True
-    except ValueError:
-        return False
-
-
-def _explain_ssh_error(error: Exception, host: str, via: str | None = None) -> dict[str, str]:
-    """
-    Parse SSH error and return human-readable explanation with suggested solutions.
-
-    Returns dict with keys:
-    - symptom: What happened (technical)
-    - explanation: Why it happened (human-readable)
-    - suggestion: What to do about it
-    """
-    error_str = str(error).lower()
-    error_full = str(error)
-
-    # Connection timeout (Errno 60 on macOS, 110 on Linux)
-    if "errno 60" in error_str or "errno 110" in error_str or "timed out" in error_str:
-        target = via if via else host
-        return {
-            "symptom": f"Connection timeout to {target}",
-            "explanation": f"Could not establish TCP connection to {target}:22 within timeout",
-            "suggestion": (
-                f"Check: (1) VPN connected? (2) {target} reachable? (3) Port 22 open? "
-                f"Try: ping {target} or nc -zv {target} 22"
-            ),
-        }
-
-    # Connection refused (port closed or service down)
-    if "connection refused" in error_str or "errno 111" in error_str:
-        target = via if via else host
-        return {
-            "symptom": f"Connection refused by {target}",
-            "explanation": "TCP connection was actively refused (SSH service not running or port blocked)",
-            "suggestion": f"Check if SSH service is running on {target}: systemctl status sshd",
-        }
-
-    # Host unreachable
-    if "no route to host" in error_str or "network is unreachable" in error_str:
-        target = via if via else host
-        return {
-            "symptom": f"No route to host {target}",
-            "explanation": "Network path to host does not exist (routing issue)",
-            "suggestion": "Check: (1) VPN connected? (2) Network configuration (3) Firewall rules",
-        }
-
-    # DNS resolution failure
-    if "name or service not known" in error_str or "nodename nor servname provided" in error_str:
-        return {
-            "symptom": f"DNS resolution failed for {host}",
-            "explanation": "Could not resolve hostname to IP address",
-            "suggestion": "Check: (1) Hostname spelling (2) DNS configuration (3) /etc/hosts",
-        }
-
-    # Authentication failure
-    if "authentication failed" in error_str or "permission denied" in error_str:
-        return {
-            "symptom": f"Authentication failed for {host}",
-            "explanation": "SSH key or password rejected by server",
-            "suggestion": "Check: (1) SSH key exists and loaded (ssh-add -l) (2) Key authorized on server (3) Username correct",
-        }
-
-    # Host key verification
-    if "host key verification failed" in error_str:
-        return {
-            "symptom": f"Host key verification failed for {host}",
-            "explanation": "Server's SSH key doesn't match known_hosts (possible MITM or server reinstall)",
-            "suggestion": f"If expected: ssh-keygen -R {host} then reconnect to accept new key",
-        }
-
-    # Generic fallback
-    return {
-        "symptom": error_full,
-        "explanation": "SSH connection or execution error",
-        "suggestion": "Check SSH connectivity manually: ssh <user>@<host>",
-    }
-
-
-def _ensure_callbacks(ctx: SharedContext, ssh_pool: SSHPool) -> None:
-    """
-    Ensure MFA and passphrase callbacks are set for SSH operations.
-
-    Uses blocking prompts in background threads to avoid event-loop conflicts.
-    """
-    import asyncio as _asyncio
-    import concurrent.futures
-
-    if hasattr(ssh_pool, "has_passphrase_callback") and not ssh_pool.has_passphrase_callback():
-
-        def passphrase_cb(key_path: str) -> str:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 Passphrase for {key_path}"))
-                )
-                return future.result(timeout=60)
-
-        ssh_pool.set_passphrase_callback(passphrase_cb)
-
-    if hasattr(ssh_pool, "has_mfa_callback") and not ssh_pool.has_mfa_callback():
-
-        def mfa_cb(prompt: str) -> str:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(lambda: _asyncio.run(ctx.ui.prompt_secret(f"🔐 {prompt}")))
-                return future.result(timeout=120)
-
-        ssh_pool.set_mfa_callback(mfa_cb)
-
-
-@dataclass
-class JumpHostConfig:
-    """Jump host configuration for SSH tunneling."""
-
-    host: str
-    port: int | None = None
-    username: str | None = None
-    private_key: str | None = None
-
-
-async def _resolve_jump_host(
-    ctx: SharedContext,
-    jump_host_name: str,
-) -> JumpHostConfig:
-    """
-    Resolve jump host configuration from inventory or use directly.
-
-    Args:
-        ctx: Shared context.
-        jump_host_name: Jump host name (inventory entry or hostname/IP).
-
-    Returns:
-        JumpHostConfig with resolved configuration.
-    """
-    try:
-        jump_entry = await ctx.hosts.get_by_name(jump_host_name)
-    except Exception:
-        jump_entry = None
-
-    if jump_entry:
-        logger.debug(f"🔗 Using jump host '{jump_host_name}' ({jump_entry.hostname})")
-        return JumpHostConfig(
-            host=jump_entry.hostname,
-            port=jump_entry.port,
-            username=jump_entry.username,
-            private_key=jump_entry.private_key,
-        )
-    else:
-        # Use jump_host_name directly as hostname if not in inventory
-        logger.debug(f"🔗 Using jump host '{jump_host_name}' (direct)")
-        return JumpHostConfig(host=jump_host_name)
-
-
-async def _handle_auto_elevation(
-    ctx: SharedContext,
-    host: str,
-    base_command: str,
-) -> tuple[str, str | None, str | None]:
-    """
-    Handle automatic elevation retry on permission errors.
-
-    Args:
-        ctx: Shared context.
-        host: Target host name.
-        base_command: Original command without elevation.
-
-    Returns:
-        Tuple of (elevated_command, input_data, method) or (base_command, None, None) if no elevation.
-    """
-    permissions = await ctx.get_permissions()
-    elevation_result = await permissions.prepare_command(host, base_command)  # type: ignore[attr-defined]
-
-    if not elevation_result.method:
-        return base_command, None, None
-
-    elevated_cmd = elevation_result.command
-    elevated_input = elevation_result.input_data
-    method = elevation_result.method
-
-    # Get cached capabilities for elevate_command calls
-    capabilities = await permissions.detect_capabilities(host)  # type: ignore[attr-defined]
-
-    # If elevation needs password and we don't have input, prompt
-    if elevation_result.needs_password and not elevated_input:
-        password = await ctx.ui.prompt_secret("🔑 Elevation password required")
-        if password:
-            # Cache password for reuse in this session
-            permissions.cache_password(host, password)  # type: ignore[attr-defined]
-            elevated_cmd, elevated_input = permissions.elevate_command(  # type: ignore[attr-defined]
-                base_command, capabilities, method, password
-            )
-
-    return elevated_cmd, elevated_input, method
-
-
-async def _retry_with_password(
-    ctx: SharedContext,
-    host: str,
-    base_command: str,
-    method: str,
-    result: Any,
-) -> tuple[str, str | None] | None:
-    """
-    Retry elevation with password if authentication failed.
-
-    Args:
-        ctx: Shared context.
-        host: Target host name.
-        base_command: Original command without elevation.
-        method: Elevation method (su, sudo_with_password).
-        result: SSH execution result.
-
-    Returns:
-        Tuple of (elevated_command, input_data) or None if no retry needed.
-    """
-    if not any(err in result.stderr.lower() for err in AUTH_ERROR_PATTERNS):
-        return None
-
-    if method not in ("su", "sudo_with_password"):
-        return None
-
-    logger.debug(f"🔒 {method} requires password, prompting user...")
-    password = await ctx.ui.prompt_secret(f"🔑 {method} password required")
-
-    if not password:
-        return None
-
-    permissions = await ctx.get_permissions()
-    permissions.cache_password(host, password)  # type: ignore[attr-defined]
-    capabilities = await permissions.detect_capabilities(host)  # type: ignore[attr-defined]
-
-    elevated_cmd, elevated_input = permissions.elevate_command(  # type: ignore[attr-defined]
-        base_command, capabilities, method, password
-    )
-    return elevated_cmd, elevated_input
-
-
-# =============================================================================
-# Main SSH Execute Function
-# =============================================================================
+    from merlya.ssh import SSHConnectionOptions
 
 
 async def ssh_execute(
@@ -299,16 +44,12 @@ async def ssh_execute(
     command: str,
     timeout: int = 60,
     connect_timeout: int | None = None,
-    elevation: dict[str, Any] | None = None,
+    elevation: dict | None = None,
     via: str | None = None,
     auto_elevate: bool = True,
 ) -> ToolResult:
     """
     Execute a command on a host via SSH.
-
-    Features:
-    - Secret resolution: @secret-name in commands are resolved from keyring
-    - Auto-elevation: Permission denied errors trigger automatic elevation retry
 
     Args:
         ctx: Shared context.
@@ -316,235 +57,298 @@ async def ssh_execute(
         command: Command to execute. Can contain @secret-name references.
         timeout: Command timeout in seconds.
         connect_timeout: Optional connection timeout.
-        elevation: Optional prepared elevation payload (from request_elevation).
-        via: Optional jump host/bastion to use for this connection.
-        auto_elevate: If True, automatically retry with elevation on permission errors.
-
-    Returns:
-        ToolResult with command output.
+        elevation: Optional prepared elevation payload.
+        via: Optional jump host/bastion.
+        auto_elevate: Auto-retry with elevation on permission errors.
     """
-    safe_command = command  # Initialize early for exception handling
+    safe_command = command
 
     try:
-        # SECURITY: Check for plaintext passwords in command
-        unsafe_warning = detect_unsafe_password(command)
-        if unsafe_warning:
-            logger.warning(unsafe_warning)
-            return ToolResult(
-                success=False,
-                error=unsafe_warning,
-                data={"host": host, "command": command[:50] + "..."},
-            )
+        # Validate and prepare command
+        command, safe_command, force_elevate, error = await _prepare_command(ctx, host, command)
+        if error:
+            return error
 
-        # Resolve all @references (hosts then secrets)
-        resolved_command, safe_command = await resolve_all_references(command, ctx)
-
-        # Resolve host from inventory (optional - inventory is a convenience)
-        host_entry: Host | None = await ctx.hosts.get_by_name(host)
-
-        if not host_entry:
-            if _is_ip(host):
-                logger.debug(f"Using direct IP (no inventory) for SSH: {host}")
-            else:
-                logger.debug(f"Host '{host}' not in inventory, attempting direct connection")
-
-        # Build SSH connection options
-        from merlya.ssh import SSHConnectionOptions
-
-        ssh_opts = SSHConnectionOptions(connect_timeout=connect_timeout)
-
-        # Resolve jump host - 'via' parameter takes priority over inventory config
-        # SECURITY: Reject elevation methods passed as jump hosts (LLM confusion)
-        ELEVATION_KEYWORDS = {"sudo", "su", "doas", "root", "admin", "elevate", "privilege"}
-        if via and via.lower() in ELEVATION_KEYWORDS:
-            logger.warning(
-                f"⚠️ '{via}' is an elevation method, not a jump host. "
-                "Use auto_elevate=True or the elevation parameter instead."
-            )
-            # Don't use it as jump host, continue without
-            via = None
-
-        jump_host_name = via or (host_entry.jump_host if host_entry else None)
-
-        if jump_host_name:
-            jump_config = await _resolve_jump_host(ctx, jump_host_name)
-            ssh_opts.jump_host = jump_config.host
-            ssh_opts.jump_port = jump_config.port
-            ssh_opts.jump_username = jump_config.username
-            ssh_opts.jump_private_key = jump_config.private_key
-
-        # Apply prepared elevation (brain-driven only)
-        input_data = None
-        elevation_used = None
-        base_command = resolved_command
-
-        if elevation:
-            resolved_command = elevation.get("command", resolved_command)
-            base_command = elevation.get("base_command", resolved_command)
-            elevation_used = elevation.get("method")
-
-            # SECURITY: Get password from elevation cache, not from the dict
-            # (prevents LLM from seeing/using password directly)
-            input_ref = elevation.get("input_ref")
-            if input_ref and hasattr(ctx, "_elevation_cache"):
-                cached = ctx._elevation_cache.get(input_ref)  # type: ignore[attr-defined]
-                if cached:
-                    input_data = cached.get("input_data")
-                    # Clean up after use
-                    del ctx._elevation_cache[input_ref]  # type: ignore[attr-defined]
-            # Fallback for backwards compatibility (but log warning)
-            elif elevation.get("input"):
-                logger.warning(
-                    "⚠️ SECURITY: Elevation data contains raw password. "
-                    "This is deprecated and will be removed."
-                )
-                input_data = elevation.get("input")
-
-        # Get SSH pool and ensure callbacks
-        ssh_pool = await ctx.get_ssh_pool()
-        _ensure_callbacks(ctx, ssh_pool)
-
-        # Execute SSH command
-        result = await _execute_ssh(
-            ssh_pool, host, host_entry, resolved_command, timeout, input_data, ssh_opts
+        # Build execution context
+        exec_ctx = await _build_context(
+            ctx, host, command, timeout, connect_timeout, via, elevation
         )
 
-        # Auto-elevation: retry with elevation on permission errors
-        needs_elevation = (
-            result.exit_code != 0
-            and not elevation_used
-            and auto_elevate
-            and any(err in result.stderr.lower() for err in PERMISSION_ERROR_PATTERNS)
+        # Execute and handle auto-elevation
+        # If LLM stripped sudo prefix, force elevation mode
+        should_elevate = auto_elevate or force_elevate
+        result, elevation_used = await _run_with_elevation(
+            ctx, exec_ctx, should_elevate, force_elevate
         )
 
-        if needs_elevation:
-            logger.info(f"🔒 Permission denied on {host}, attempting elevation...")
-            result, elevation_used = await _execute_with_elevation(
-                ctx, ssh_pool, host, host_entry, base_command, timeout, ssh_opts, result
-            )
-
-        return ToolResult(
-            success=result.exit_code == 0,
-            data={
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "exit_code": result.exit_code,
-                "host": host,
-                "command": safe_command[:50] + "..." if len(safe_command) > 50 else safe_command,
-                "elevation": elevation_used,
-                "via": jump_host_name,
-            },
-            error=result.stderr if result.exit_code != 0 else None,
-        )
+        return _build_result(result, exec_ctx, safe_command, elevation_used, force_elevate)
 
     except Exception as e:
-        error_info = _explain_ssh_error(e, host, via=via)
-        logger.error(f"SSH execution failed: {error_info['symptom']}")
-        logger.info(f"💡 {error_info['suggestion']}")
+        return _handle_error(e, host, safe_command, via)
 
-        return ToolResult(
+
+async def _prepare_command(
+    ctx: SharedContext, host: str, command: str
+) -> tuple[str, str, bool, ToolResult | None]:
+    """Validate and prepare command for execution.
+
+    Returns:
+        Tuple of (command, safe_command, force_elevate, error).
+    """
+    original = command
+    command, stripped = strip_sudo_prefix(command)
+    force_elevate = False
+
+    if stripped:
+        logger.warning(f"⚠️ Stripped '{stripped}' - will force elevation.")
+        force_elevate = True  # LLM explicitly requested elevation
+
+    unsafe = detect_unsafe_password(command)
+    if unsafe:
+        logger.warning(unsafe)
+        error = ToolResult(
             success=False,
-            data={
-                "host": host,
-                "command": safe_command[:50],
-                "symptom": error_info["symptom"],
-                "explanation": error_info["explanation"],
-                "suggestion": error_info["suggestion"],
-            },
-            error=f"{error_info['symptom']} - {error_info['explanation']}",
+            error=unsafe,
+            data={"host": host, "command": original[:50] + "..."},
         )
+        return "", original, False, error
+
+    resolved, safe = await resolve_all_references(command, ctx)
+    return resolved, safe, force_elevate, None
 
 
-async def _execute_ssh(
-    ssh_pool: SSHPool,
+async def _build_context(
+    ctx: SharedContext,
     host: str,
-    host_entry: Host | None,
     command: str,
     timeout: int,
-    input_data: str | None,
-    ssh_opts: SSHConnectionOptions,
-) -> Any:
-    """Execute SSH command with proper options."""
-    if host_entry:
-        from merlya.ssh import SSHConnectionOptions
+    connect_timeout: int | None,
+    via: str | None,
+    elevation: dict | None,
+) -> ExecutionContext:
+    """Build execution context with all required components."""
+    host_entry: Host | None = await ctx.hosts.get_by_name(host)
+    if not host_entry:
+        _log_host_resolution(host)
 
-        opts = SSHConnectionOptions(
-            port=host_entry.port,
-            connect_timeout=ssh_opts.connect_timeout,
-        )
-        # Copy jump host config if present
-        if ssh_opts.jump_host:
-            opts.jump_host = ssh_opts.jump_host
-            opts.jump_port = ssh_opts.jump_port
-            opts.jump_username = ssh_opts.jump_username
-            opts.jump_private_key = ssh_opts.jump_private_key
+    ssh_opts, jump = await _build_ssh_options(ctx, host_entry, via, connect_timeout)
+    ssh_pool = await ctx.get_ssh_pool()
+    ensure_callbacks(ctx, ssh_pool)
 
-        return await ssh_pool.execute(
-            host=host_entry.hostname,
-            command=command,
-            timeout=timeout,
-            input_data=input_data,
-            username=host_entry.username,
-            private_key=host_entry.private_key,
-            options=opts,
-            host_name=host,
-        )
-
-    return await ssh_pool.execute(
+    exec_ctx = ExecutionContext(
+        ssh_pool=ssh_pool,
         host=host,
-        command=command,
+        host_entry=host_entry,
+        ssh_opts=ssh_opts,
         timeout=timeout,
-        input_data=input_data,
-        options=ssh_opts,
-        host_name=host,
+        jump_host_name=jump,
+        base_command=command,
+    )
+
+    if elevation:
+        _apply_elevation(ctx, elevation, command, exec_ctx)
+
+    return exec_ctx
+
+
+def _apply_elevation(
+    ctx: SharedContext, elevation: dict, command: str, exec_ctx: ExecutionContext
+) -> None:
+    """Apply elevation data to execution context."""
+    payload = ElevationPayload.from_dict(elevation)
+    if not payload:
+        return
+
+    exec_ctx.base_command = payload.base_command or command
+    exec_ctx.elevation_method = payload.method
+
+    # Get password from secure cache
+    if payload.input_ref and hasattr(ctx, "_elevation_cache"):
+        cached = ctx._elevation_cache.get(payload.input_ref)
+        if cached:
+            exec_ctx.input_data = cached.get("input_data")
+            del ctx._elevation_cache[payload.input_ref]
+    elif payload.input:
+        logger.warning("⚠️ SECURITY: Raw password in elevation (deprecated).")
+        exec_ctx.input_data = payload.input
+
+
+async def _run_with_elevation(
+    ctx: SharedContext,
+    exec_ctx: ExecutionContext,
+    auto_elevate: bool,
+    force_elevate: bool = False,
+) -> tuple[SSHResultProtocol, str | None]:
+    """Execute command with optional auto-elevation.
+
+    Args:
+        ctx: Shared context.
+        exec_ctx: Execution context.
+        auto_elevate: Auto-retry with elevation on permission errors.
+        force_elevate: Skip initial attempt and go straight to elevation.
+    """
+    elevation_used = exec_ctx.elevation_method
+
+    # If force_elevate, skip the initial non-elevated attempt
+    if force_elevate and not elevation_used:
+        logger.info(f"🔒 Forced elevation on {exec_ctx.host}...")
+        # Create a dummy failed result to trigger elevation
+        from merlya.tools.core.ssh_models import _DummyFailedResult
+
+        dummy_result = _DummyFailedResult()
+        result, elevation_used = await execute_with_elevation(
+            ctx,
+            exec_ctx.ssh_pool,
+            exec_ctx.host,
+            exec_ctx.host_entry,
+            exec_ctx.base_command,
+            exec_ctx.timeout,
+            exec_ctx.ssh_opts,
+            dummy_result,
+            execute_ssh_command,
+        )
+        return result, elevation_used
+
+    # Normal flow: try without elevation first
+    result = await execute_ssh_command(
+        exec_ctx.ssh_pool,
+        exec_ctx.host,
+        exec_ctx.host_entry,
+        exec_ctx.base_command,
+        exec_ctx.timeout,
+        exec_ctx.input_data,
+        exec_ctx.ssh_opts,
+    )
+
+    if _should_auto_elevate(result, elevation_used, auto_elevate, exec_ctx.base_command):
+        logger.info(f"🔒 Permission denied on {exec_ctx.host}, elevating...")
+        result, elevation_used = await execute_with_elevation(
+            ctx,
+            exec_ctx.ssh_pool,
+            exec_ctx.host,
+            exec_ctx.host_entry,
+            exec_ctx.base_command,
+            exec_ctx.timeout,
+            exec_ctx.ssh_opts,
+            result,
+            execute_ssh_command,
+        )
+
+    return result, elevation_used
+
+
+def _build_result(
+    result: SSHResultProtocol,
+    exec_ctx: ExecutionContext,
+    safe_command: str,
+    elevation_used: str | None,
+    sudo_stripped: bool = False,
+) -> ToolResult:
+    """Build ToolResult from execution result."""
+    cmd = safe_command[:50] + "..." if len(safe_command) > 50 else safe_command
+    data = {
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "exit_code": result.exit_code,
+        "host": exec_ctx.host,
+        "command": cmd,
+        "elevation": elevation_used,
+        "via": exec_ctx.jump_host_name,
+    }
+
+    # Add hint for LLM when sudo was stripped
+    if sudo_stripped and elevation_used:
+        data["_hint"] = (
+            f"NOTE: 'sudo' is not available on {exec_ctx.host}. "
+            f"Elevation was done via '{elevation_used}'. "
+            "Do NOT prefix commands with 'sudo' for this host."
+        )
+
+    return ToolResult(
+        success=result.exit_code == 0,
+        data=data,
+        error=result.stderr if result.exit_code != 0 else None,
     )
 
 
-async def _execute_with_elevation(
+def _handle_error(e: Exception, host: str, command: str, via: str | None) -> ToolResult:
+    """Handle SSH execution error."""
+    info = explain_ssh_error(e, host, via=via)
+    logger.error(f"SSH failed: {info.symptom}")
+    logger.info(f"💡 {info.suggestion}")
+    return ToolResult(
+        success=False,
+        data={
+            "host": host,
+            "command": command[:50],
+            "symptom": info.symptom,
+            "explanation": info.explanation,
+            "suggestion": info.suggestion,
+        },
+        error=f"{info.symptom} - {info.explanation}",
+    )
+
+
+def _log_host_resolution(host: str) -> None:
+    """Log host resolution status."""
+    if is_ip_address(host):
+        logger.debug(f"Using direct IP: {host}")
+    else:
+        logger.debug(f"Host '{host}' not in inventory, trying direct")
+
+
+async def _build_ssh_options(
     ctx: SharedContext,
-    ssh_pool: SSHPool,
-    host: str,
     host_entry: Host | None,
-    base_command: str,
-    timeout: int,
-    ssh_opts: SSHConnectionOptions,
-    initial_result: Any,
-) -> tuple[Any, str | None]:
-    """Execute command with automatic elevation."""
-    password_prompted = False
-    elevation_used = None
+    via: str | None,
+    connect_timeout: int | None,
+) -> tuple[SSHConnectionOptions, str | None]:
+    """Build SSH connection options with jump host resolution."""
+    from merlya.ssh import SSHConnectionOptions
 
-    try:
-        elevated_cmd, elevated_input, method = await _handle_auto_elevation(ctx, host, base_command)
+    opts = SSHConnectionOptions(connect_timeout=connect_timeout)
 
-        if not method:
-            return initial_result, None
+    if via and via.lower() in ELEVATION_KEYWORDS:
+        logger.warning(f"⚠️ '{via}' is elevation method, not jump host.")
+        via = None
 
-        elevation_used = method
-        result = await _execute_ssh(
-            ssh_pool, host, host_entry, elevated_cmd, timeout, elevated_input, ssh_opts
-        )
-        logger.debug(f"🔒 Elevation with {method}: exit_code={result.exit_code}")
+    jump = via or (host_entry.jump_host if host_entry else None)
 
-        # Retry with password if auth failed and we haven't prompted yet
-        needs_password_retry = (
-            result.exit_code != 0
-            and not password_prompted
-            and method in ("su", "sudo_with_password")
-            and any(err in result.stderr.lower() for err in AUTH_ERROR_PATTERNS)
-        )
+    if jump:
+        cfg = await resolve_jump_host(ctx, jump)
+        opts.jump_host = cfg.host
+        opts.jump_port = cfg.port
+        opts.jump_username = cfg.username
+        opts.jump_private_key = cfg.private_key
 
-        if needs_password_retry:
-            retry = await _retry_with_password(ctx, host, base_command, method, result)
-            if retry:
-                elevated_cmd, elevated_input = retry
-                result = await _execute_ssh(
-                    ssh_pool, host, host_entry, elevated_cmd, timeout, elevated_input, ssh_opts
-                )
-                logger.debug(f"🔒 Elevation retry with password: exit_code={result.exit_code}")
+    return opts, jump
 
-        return result, elevation_used
 
-    except Exception as elev_exc:
-        logger.warning(f"🔒 Auto-elevation failed: {type(elev_exc).__name__}: {elev_exc}")
-        return initial_result, None
+def _should_auto_elevate(
+    result: SSHResultProtocol,
+    elevation_used: str | None,
+    auto_elevate: bool,
+    command: str = "",
+) -> bool:
+    """Check if auto-elevation should be attempted.
+
+    Triggers on:
+    - Permission denied in stderr
+    - Exit code 2 on privileged paths (/root/, /etc/shadow, etc.)
+    """
+    if result.exit_code == 0 or elevation_used or not auto_elevate:
+        return False
+
+    # Check stderr for permission errors
+    if needs_elevation(result.stderr):
+        return True
+
+    # Exit code 2 on privileged paths likely means permission denied
+    # (ls returns 2 for "cannot access", but without clear stderr sometimes)
+    if result.exit_code == 2:
+        privileged_paths = ("/root/", "/root ", "/etc/shadow", "/etc/sudoers")
+        if any(path in command for path in privileged_paths):
+            logger.debug("🔒 Exit code 2 on privileged path, assuming permission denied")
+            return True
+
+    return False

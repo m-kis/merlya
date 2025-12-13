@@ -7,7 +7,6 @@ Provides OS-aware command execution with fallbacks for robustness.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -15,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from merlya.core.context import SharedContext
 
 

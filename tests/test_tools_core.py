@@ -275,123 +275,123 @@ class TestDetectUnsafePassword:
 # ==============================================================================
 
 
-class TestIsIP:
-    """Tests for _is_ip helper function."""
+class TestIsIPAddress:
+    """Tests for is_ip_address helper function."""
 
     def test_valid_ipv4(self) -> None:
         """Test valid IPv4 address."""
-        from merlya.tools.core.ssh import _is_ip
+        from merlya.tools.core.ssh_connection import is_ip_address
 
-        assert _is_ip("192.168.1.1") is True
-        assert _is_ip("10.0.0.1") is True
-        assert _is_ip("127.0.0.1") is True
+        assert is_ip_address("192.168.1.1") is True
+        assert is_ip_address("10.0.0.1") is True
+        assert is_ip_address("127.0.0.1") is True
 
     def test_valid_ipv6(self) -> None:
         """Test valid IPv6 address."""
-        from merlya.tools.core.ssh import _is_ip
+        from merlya.tools.core.ssh_connection import is_ip_address
 
-        assert _is_ip("::1") is True
-        assert _is_ip("2001:db8::1") is True
+        assert is_ip_address("::1") is True
+        assert is_ip_address("2001:db8::1") is True
 
     def test_invalid_ip(self) -> None:
         """Test invalid IP addresses."""
-        from merlya.tools.core.ssh import _is_ip
+        from merlya.tools.core.ssh_connection import is_ip_address
 
-        assert _is_ip("hostname.example.com") is False
-        assert _is_ip("192.168.1.256") is False
-        assert _is_ip("not-an-ip") is False
+        assert is_ip_address("hostname.example.com") is False
+        assert is_ip_address("192.168.1.256") is False
+        assert is_ip_address("not-an-ip") is False
 
 
 # ==============================================================================
-# Tests for _explain_ssh_error
+# Tests for explain_ssh_error
 # ==============================================================================
 
 
 class TestExplainSSHError:
-    """Tests for _explain_ssh_error function."""
+    """Tests for explain_ssh_error function."""
 
     def test_timeout_error_errno_60(self) -> None:
         """Test explanation for timeout error (errno 60)."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Connection timed out errno 60")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "timeout" in result["symptom"].lower()
-        assert "suggestion" in result
+        assert "timeout" in result.symptom.lower()
+        assert result.suggestion
 
     def test_timeout_error_errno_110(self) -> None:
         """Test explanation for timeout error (errno 110)."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("errno 110 connection timed out")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "timeout" in result["symptom"].lower()
+        assert "timeout" in result.symptom.lower()
 
     def test_connection_refused(self) -> None:
         """Test explanation for connection refused."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Connection refused")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "refused" in result["symptom"].lower()
+        assert "refused" in result.symptom.lower()
 
     def test_no_route_to_host(self) -> None:
         """Test explanation for no route to host."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("No route to host")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "route" in result["symptom"].lower()
+        assert "route" in result.symptom.lower()
 
     def test_dns_resolution_failed(self) -> None:
         """Test explanation for DNS failure."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Name or service not known")
-        result = _explain_ssh_error(error, "unknown-host")
+        result = explain_ssh_error(error, "unknown-host")
 
-        assert "DNS" in result["symptom"]
+        assert "DNS" in result.symptom
 
     def test_authentication_failed(self) -> None:
         """Test explanation for auth failure."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Authentication failed")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "Authentication" in result["symptom"]
+        assert "Authentication" in result.symptom
 
     def test_host_key_verification_failed(self) -> None:
         """Test explanation for host key verification."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Host key verification failed")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "key" in result["symptom"].lower()
+        assert "key" in result.symptom.lower()
 
     def test_via_jump_host_in_message(self) -> None:
         """Test that jump host is mentioned when provided."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Connection timed out")
-        result = _explain_ssh_error(error, "host1", via="jump-host")
+        result = explain_ssh_error(error, "host1", via="jump-host")
 
-        assert "jump-host" in result["suggestion"]
+        assert "jump-host" in result.suggestion
 
     def test_generic_error(self) -> None:
         """Test generic error fallback."""
-        from merlya.tools.core.ssh import _explain_ssh_error
+        from merlya.tools.core.ssh_errors import explain_ssh_error
 
         error = Exception("Some unknown error")
-        result = _explain_ssh_error(error, "host1")
+        result = explain_ssh_error(error, "host1")
 
-        assert "symptom" in result
-        assert "suggestion" in result
+        assert result.symptom
+        assert result.suggestion
 
 
 # ==============================================================================
@@ -877,46 +877,46 @@ class TestSSHExecute:
 
 
 # ==============================================================================
-# Tests for _ensure_callbacks
+# Tests for ensure_callbacks
 # ==============================================================================
 
 
 class TestEnsureCallbacks:
-    """Tests for _ensure_callbacks function."""
+    """Tests for ensure_callbacks function."""
 
     def test_sets_passphrase_callback(self, mock_shared_context: MagicMock) -> None:
         """Test that passphrase callback is set."""
-        from merlya.tools.core.ssh import _ensure_callbacks
+        from merlya.tools.core.ssh_connection import ensure_callbacks
 
         mock_pool = MagicMock()
         mock_pool.has_passphrase_callback.return_value = False
         mock_pool.has_mfa_callback.return_value = True
 
-        _ensure_callbacks(mock_shared_context, mock_pool)
+        ensure_callbacks(mock_shared_context, mock_pool)
 
         mock_pool.set_passphrase_callback.assert_called_once()
 
     def test_sets_mfa_callback(self, mock_shared_context: MagicMock) -> None:
         """Test that MFA callback is set."""
-        from merlya.tools.core.ssh import _ensure_callbacks
+        from merlya.tools.core.ssh_connection import ensure_callbacks
 
         mock_pool = MagicMock()
         mock_pool.has_passphrase_callback.return_value = True
         mock_pool.has_mfa_callback.return_value = False
 
-        _ensure_callbacks(mock_shared_context, mock_pool)
+        ensure_callbacks(mock_shared_context, mock_pool)
 
         mock_pool.set_mfa_callback.assert_called_once()
 
     def test_skips_if_callbacks_already_set(self, mock_shared_context: MagicMock) -> None:
         """Test that callbacks are not set if already present."""
-        from merlya.tools.core.ssh import _ensure_callbacks
+        from merlya.tools.core.ssh_connection import ensure_callbacks
 
         mock_pool = MagicMock()
         mock_pool.has_passphrase_callback.return_value = True
         mock_pool.has_mfa_callback.return_value = True
 
-        _ensure_callbacks(mock_shared_context, mock_pool)
+        ensure_callbacks(mock_shared_context, mock_pool)
 
         mock_pool.set_passphrase_callback.assert_not_called()
         mock_pool.set_mfa_callback.assert_not_called()

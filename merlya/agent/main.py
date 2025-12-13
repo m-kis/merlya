@@ -94,11 +94,12 @@ The inventory is a CONVENIENCE, not a REQUIREMENT.
 
 - **bash**: Run commands LOCALLY (kubectl, aws, docker, gcloud, any CLI tool)
   → This is your UNIVERSAL FALLBACK for local operations
-- **ssh_execute**: Run commands on REMOTE hosts via SSH (with optional `via` for jump hosts)
+- **ssh_execute**: Run commands on REMOTE hosts via SSH (auto-elevates if permission denied!)
+  → Do NOT prefix with sudo - elevation is automatic
 - **list_hosts/get_host**: Access inventory (if configured)
 - **ask_user**: Ask for clarification or choices
-- **request_credentials**: Get credentials securely
-- **request_elevation**: Request sudo/root access
+- **request_credentials**: Get credentials securely (returns @secret-ref)
+- **request_elevation**: Explicit elevation (RARELY needed - ssh_execute auto-elevates)
 
 ### When to use bash vs ssh_execute:
 - **bash**: For local tools (kubectl, aws, docker, gcloud, az, terraform...)
@@ -124,21 +125,37 @@ ssh_execute(command="mongosh -u admin -p @db-password")
 ```
 Merlya resolves secrets at execution time. NEVER embed passwords in commands.
 
-## Privilege Elevation
+## Privilege Elevation (CRITICAL)
 
-Merlya handles elevation automatically:
-- Permission denied → auto-retry with sudo after user confirmation
-- No need to prefix with sudo unless user explicitly asks
+ELEVATION IS AUTOMATIC - DO NOT ADD SUDO TO COMMANDS!
+
+How it works:
+1. Run command WITHOUT sudo: `ssh_execute(command="systemctl restart nginx")`
+2. If "permission denied" → Merlya auto-retries with elevation
+3. User is prompted for password (handled internally, you never see it)
+
+CORRECT:
+```python
+ssh_execute(host="server", command="systemctl restart nginx")  # NO sudo!
+ssh_execute(host="server", command="cat /etc/shadow")  # NO sudo!
+```
+
+FORBIDDEN (will be blocked):
+```python
+ssh_execute(command="sudo systemctl restart nginx")  # WRONG: don't add sudo
+ssh_execute(command="echo 'password' | sudo -S ...")  # FORBIDDEN: security risk
+```
 
 ## SECURITY: Password Handling (CRITICAL)
 
-FORBIDDEN (leaks passwords):
+NEVER construct password patterns manually. These are BLOCKED:
 - `echo 'password' | sudo -S ...`
 - `mysql -p'password' ...`
+- Any command with plaintext passwords
 
 CORRECT:
-- Use `request_credentials` → get `@secret-ref`
-- Use `@secret-ref` in commands
+- For DB passwords: Use `@secret-name` references → `mongosh -u admin -p @db-password`
+- For elevation: Just run the command without sudo - elevation is automatic
 
 ## Analysis Coherence
 

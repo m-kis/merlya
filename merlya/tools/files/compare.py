@@ -101,8 +101,12 @@ async def compare_files(
 
     if not diff.files_identical and show_diff:
         diff.diff_lines = _compute_diff(content1, content2, path1, path2, context_lines)
-        diff.additions = sum(1 for line in diff.diff_lines if line.startswith("+") and not line.startswith("+++"))
-        diff.deletions = sum(1 for line in diff.diff_lines if line.startswith("-") and not line.startswith("---"))
+        diff.additions = sum(
+            1 for line in diff.diff_lines if line.startswith("+") and not line.startswith("+++")
+        )
+        diff.deletions = sum(
+            1 for line in diff.diff_lines if line.startswith("-") and not line.startswith("---")
+        )
         diff.changes = diff.additions + diff.deletions
 
     return ToolResult(
@@ -127,7 +131,9 @@ async def compare_files(
                 "changes": diff.changes,
                 "lines": diff.diff_lines[:500] if diff.diff_lines else [],
                 "truncated": len(diff.diff_lines) > 500,
-            } if not diff.files_identical else None,
+            }
+            if not diff.files_identical
+            else None,
         },
     )
 
@@ -293,7 +299,4 @@ def _is_safe_path(path: str) -> bool:
 
     # Reject dangerous paths
     dangerous = ("/proc/", "/sys/", "/dev/")
-    if any(path.startswith(d) for d in dangerous):
-        return False
-
-    return True
+    return not any(path.startswith(d) for d in dangerous)
