@@ -343,27 +343,36 @@ def _format_health_section(lines: list[str], health: dict[str, Any]) -> None:
     lines.append("**Health Summary:**")
     lines.append("")
 
-    # Per-host status
-    hosts = health.get("hosts", {})
-    for host_name, status in hosts.items():
-        if status == "healthy":
-            lines.append(f"- ✅ `{host_name}`: healthy")
-        elif status == "degraded":
-            lines.append(f"- ⚠️ `{host_name}`: degraded")
-        elif status == "critical":
-            lines.append(f"- 🔴 `{host_name}`: critical")
-        else:
-            lines.append(f"- ❓ `{host_name}`: {status}")
-
-    # Alerts
-    alerts = health.get("alerts", [])
-    if alerts:
+    # Overall summary
+    summary = health.get("summary", {})
+    if summary:
+        total = summary.get("total", 0)
+        healthy = summary.get("healthy", 0)
+        warning = summary.get("warning", 0)
+        critical = summary.get("critical", 0)
+        lines.append(f"Total: {total} | ✅ {healthy} | ⚠️ {warning} | 🔴 {critical}")
         lines.append("")
-        lines.append("**Alerts:**")
-        for alert in alerts[:5]:
-            severity = alert.get("severity", "info")
-            icon = "🔴" if severity == "critical" else "⚠️" if severity == "warning" else "ℹ️"
-            lines.append(f"  {icon} {alert.get('message', alert)}")
+
+    # Per-host status (hosts is a list of dicts)
+    hosts = health.get("hosts", [])
+    for host_info in hosts:
+        host_name = host_info.get("name", "unknown")
+        score = host_info.get("score", 0)
+        reachable = host_info.get("reachable", False)
+
+        if not reachable:
+            lines.append(f"- 🔴 `{host_name}`: unreachable")
+        elif score >= 80:
+            lines.append(f"- ✅ `{host_name}`: healthy (score: {score})")
+        elif score >= 50:
+            lines.append(f"- ⚠️ `{host_name}`: degraded (score: {score})")
+        else:
+            lines.append(f"- 🔴 `{host_name}`: critical (score: {score})")
+
+        # Show warnings if any
+        warnings = host_info.get("warnings", [])
+        for warn in warnings[:3]:
+            lines.append(f"    ⚠️ {warn}")
 
     lines.append("")
 
