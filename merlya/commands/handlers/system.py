@@ -43,6 +43,7 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
       --no-updates  Skip pending updates check
       --no-network  Skip network diagnostics
       --no-services Skip services list
+      --no-cron     Skip cron jobs list
       --parallel    Scan multiple hosts in parallel
       --tag=<tag>   Scan all hosts with a specific tag
       --all         Scan all hosts in inventory
@@ -355,6 +356,7 @@ async def _scan_system_parallel(
         check_network,
         get_system_info,
         health_summary,
+        list_cron,
         list_services,
     )
 
@@ -387,6 +389,9 @@ async def _scan_system_parallel(
 
     if opts.include_network:
         tasks["network"] = run_with_sem(check_network(ctx, host.name))
+
+    if opts.include_cron:
+        tasks["cron"] = run_with_sem(list_cron(ctx, host.name))
 
     # Execute all tasks in parallel (semaphore limits concurrency)
     results_dict = {}

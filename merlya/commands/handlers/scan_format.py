@@ -22,6 +22,7 @@ class ScanOptions:
     include_logins: bool = True
     include_network: bool = True  # Network diagnostics (ping, dns)
     include_services: bool = True  # Running services list
+    include_cron: bool = True  # Cron jobs list
     show_all: bool = False  # Show all ports/users (no truncation)
 
 
@@ -61,6 +62,8 @@ def parse_scan_options(args: list[str]) -> ScanOptions:
             opts.include_network = False
         elif arg == "--no-services":
             opts.include_services = False
+        elif arg == "--no-cron":
+            opts.include_cron = False
         elif arg == "--show-all":
             opts.show_all = True
 
@@ -204,6 +207,10 @@ def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all:
     # Running services
     if "services" in sys_data:
         _format_running_services(lines, sys_data["services"], show_all)
+
+    # Cron jobs
+    if "cron" in sys_data:
+        _format_cron_jobs(lines, sys_data["cron"], show_all)
 
 
 def _format_security_section(lines: list[str], sec_data: dict[str, Any], show_all: bool) -> None:
@@ -432,5 +439,34 @@ def _format_running_services(lines: list[str], services: dict[str, Any], show_al
 
         if not show_all and len(svc_list) > max_items:
             lines.append(f"  *... and {len(svc_list) - max_items} more (use --show-all)*")
+
+    lines.append("")
+
+
+def _format_cron_jobs(lines: list[str], cron_data: dict[str, Any], show_all: bool) -> None:
+    """Format cron jobs list."""
+    jobs = cron_data.get("jobs", [])
+    total = cron_data.get("total", len(jobs))
+
+    lines.append(f"**Cron Jobs:** {total}")
+    lines.append("")
+
+    if jobs:
+        max_items = len(jobs) if show_all else 10
+        for job in jobs[:max_items]:
+            schedule = job.get("schedule", "?")
+            command = job.get("command", "?")
+            human = job.get("human_schedule", "")
+            user = job.get("user", "")
+            # Truncate long commands
+            if len(command) > 50 and not show_all:
+                command = command[:47] + "..."
+            user_str = f" ({user})" if user else ""
+            lines.append(f"  - `{schedule}`{user_str}: {command}")
+            if human:
+                lines.append(f"    _{human}_")
+
+        if not show_all and len(jobs) > max_items:
+            lines.append(f"  *... and {len(jobs) - max_items} more (use --show-all)*")
 
     lines.append("")
