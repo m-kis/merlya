@@ -398,13 +398,27 @@ def _format_network_section(lines: list[str], network: dict[str, Any]) -> None:
     lines.append("")
 
     # Gateway/ping
-    gateway = network.get("gateway")
-    if gateway:
+    gateway_data = network.get("gateway")
+    # Handle both string and dict formats
+    if isinstance(gateway_data, dict):
+        gateway_ip = gateway_data.get("gateway", "")
+        rtt = gateway_data.get("rtt_ms")
+        reachable = gateway_data.get("reachable", False)
+        if gateway_ip and reachable:
+            if rtt:
+                lines.append(f"- ✅ Gateway: `{gateway_ip}` ({rtt:.1f}ms)")
+            else:
+                lines.append(f"- ✅ Gateway: `{gateway_ip}`")
+        elif gateway_ip:
+            lines.append(f"- ⚠️ Gateway: `{gateway_ip}` (unreachable)")
+        else:
+            lines.append("- ⚠️ Gateway: not detected")
+    elif gateway_data:
         latency = network.get("gateway_latency")
         if latency:
-            lines.append(f"- ✅ Gateway: `{gateway}` (latency: {latency})")
+            lines.append(f"- ✅ Gateway: `{gateway_data}` (latency: {latency})")
         else:
-            lines.append(f"- ✅ Gateway: `{gateway}`")
+            lines.append(f"- ✅ Gateway: `{gateway_data}`")
     else:
         lines.append("- ⚠️ Gateway: not detected")
 
