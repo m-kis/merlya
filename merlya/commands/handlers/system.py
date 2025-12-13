@@ -37,6 +37,8 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
       --quick      Fast check: CPU, memory, disk, ports only
       --security   Security checks only
       --system     System checks only
+      --network    Include network diagnostics (ping, dns, ports)
+      --services   Include running services list
       --json       Output as JSON
       --all-disks  Check all mounted filesystems
       --show-all   Show all ports and users (no truncation)
@@ -351,7 +353,10 @@ async def _scan_system_parallel(
         check_cpu,
         check_docker,
         check_memory,
+        check_network,
         get_system_info,
+        health_summary,
+        list_services,
     )
 
     sem = semaphore or asyncio.Semaphore(MAX_CONCURRENT_SSH_CHANNELS)
@@ -365,6 +370,7 @@ async def _scan_system_parallel(
         "system_info": run_with_sem(get_system_info(ctx, host.name)),
         "memory": run_with_sem(check_memory(ctx, host.name)),
         "cpu": run_with_sem(check_cpu(ctx, host.name)),
+        "health": run_with_sem(health_summary(ctx, host.name)),
     }
 
     if opts.all_disks:
@@ -376,6 +382,12 @@ async def _scan_system_parallel(
 
     if opts.include_docker:
         tasks["docker"] = run_with_sem(check_docker(ctx, host.name))
+
+    if opts.include_services:
+        tasks["services"] = run_with_sem(list_services(ctx, host.name, status="running"))
+
+    if opts.include_network:
+        tasks["network"] = run_with_sem(check_network(ctx, host.name))
 
     # Execute all tasks in parallel (semaphore limits concurrency)
     results_dict = {}
