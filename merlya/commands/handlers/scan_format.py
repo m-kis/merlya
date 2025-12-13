@@ -126,7 +126,7 @@ def format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None =
     return "\n".join(lines)
 
 
-def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all: bool) -> None:  # noqa: ARG001
+def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all: bool) -> None:
     """Format system section of scan output."""
     lines.append("### 🖥️ System")
     lines.append("")
@@ -192,6 +192,18 @@ def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all:
             lines.append("- ⚠️ **Docker:** not running")
 
     lines.append("")
+
+    # Health summary
+    if "health" in sys_data:
+        _format_health_section(lines, sys_data["health"])
+
+    # Network diagnostics
+    if "network" in sys_data:
+        _format_network_section(lines, sys_data["network"])
+
+    # Running services
+    if "services" in sys_data:
+        _format_running_services(lines, sys_data["services"], show_all)
 
 
 def _format_security_section(lines: list[str], sec_data: dict[str, Any], show_all: bool) -> None:
@@ -323,4 +335,93 @@ def _format_users(lines: list[str], users: dict[str, Any], show_all: bool) -> No
     if issues:
         for issue in issues[:3]:
             lines.append(f"   ⚠️ {issue}")
+    lines.append("")
+
+
+def _format_health_section(lines: list[str], health: dict[str, Any]) -> None:
+    """Format health summary section."""
+    lines.append("**Health Summary:**")
+    lines.append("")
+
+    # Per-host status
+    hosts = health.get("hosts", {})
+    for host_name, status in hosts.items():
+        if status == "healthy":
+            lines.append(f"- ✅ `{host_name}`: healthy")
+        elif status == "degraded":
+            lines.append(f"- ⚠️ `{host_name}`: degraded")
+        elif status == "critical":
+            lines.append(f"- 🔴 `{host_name}`: critical")
+        else:
+            lines.append(f"- ❓ `{host_name}`: {status}")
+
+    # Alerts
+    alerts = health.get("alerts", [])
+    if alerts:
+        lines.append("")
+        lines.append("**Alerts:**")
+        for alert in alerts[:5]:
+            severity = alert.get("severity", "info")
+            icon = "🔴" if severity == "critical" else "⚠️" if severity == "warning" else "ℹ️"
+            lines.append(f"  {icon} {alert.get('message', alert)}")
+
+    lines.append("")
+
+
+def _format_network_section(lines: list[str], network: dict[str, Any]) -> None:
+    """Format network diagnostics section."""
+    lines.append("**Network:**")
+    lines.append("")
+
+    # Gateway/ping
+    gateway = network.get("gateway")
+    if gateway:
+        latency = network.get("gateway_latency")
+        if latency:
+            lines.append(f"- ✅ Gateway: `{gateway}` (latency: {latency})")
+        else:
+            lines.append(f"- ✅ Gateway: `{gateway}`")
+    else:
+        lines.append("- ⚠️ Gateway: not detected")
+
+    # DNS resolution
+    dns_ok = network.get("dns_resolution", False)
+    if dns_ok:
+        lines.append("- ✅ DNS: resolving")
+    else:
+        lines.append("- ⚠️ DNS: not resolving")
+
+    # Internet connectivity
+    internet = network.get("internet", False)
+    if internet:
+        lines.append("- ✅ Internet: connected")
+    else:
+        lines.append("- ⚠️ Internet: no connectivity")
+
+    # Interfaces summary
+    interfaces = network.get("interfaces", [])
+    if interfaces:
+        lines.append(f"- 📶 Interfaces: {len(interfaces)} active")
+
+    lines.append("")
+
+
+def _format_running_services(lines: list[str], services: dict[str, Any], show_all: bool) -> None:
+    """Format running services list."""
+    svc_list = services.get("services", [])
+    total = services.get("total", len(svc_list))
+
+    lines.append(f"**Running Services:** {total}")
+    lines.append("")
+
+    if svc_list:
+        max_items = len(svc_list) if show_all else 15
+        for svc in svc_list[:max_items]:
+            name = svc.get("name", "unknown")
+            status = svc.get("status", "")
+            lines.append(f"  - `{name}` [{status}]")
+
+        if not show_all and len(svc_list) > max_items:
+            lines.append(f"  *... and {len(svc_list) - max_items} more (use --show-all)*")
+
     lines.append("")
