@@ -33,20 +33,19 @@ async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
     Scan a host for system information and security issues.
 
     Options:
-      --full       Complete scan (default)
-      --quick      Fast check: CPU, memory, disk, ports only
-      --security   Security checks only
-      --system     System checks only
-      --network    Include network diagnostics (ping, dns, ports)
-      --services   Include running services list
-      --json       Output as JSON
-      --all-disks  Check all mounted filesystems
-      --show-all   Show all ports and users (no truncation)
-      --no-docker  Skip Docker checks
-      --no-updates Skip pending updates check
-      --parallel   Scan multiple hosts in parallel
-      --tag=<tag>  Scan all hosts with a specific tag
-      --all        Scan all hosts in inventory
+      --full        Complete scan (default)
+      --quick       Fast check: CPU, memory, disk, ports only
+      --security    Security checks only
+      --system      System checks only
+      --json        Output as JSON
+      --show-all    Show all ports/users/services (no truncation)
+      --no-docker   Skip Docker checks
+      --no-updates  Skip pending updates check
+      --no-network  Skip network diagnostics
+      --no-services Skip services list
+      --parallel    Scan multiple hosts in parallel
+      --tag=<tag>   Scan all hosts with a specific tag
+      --all         Scan all hosts in inventory
     """
     if not args:
         return CommandResult(
