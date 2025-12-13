@@ -384,7 +384,7 @@ async def _scan_system_parallel(
         tasks["docker"] = run_with_sem(check_docker(ctx, host.name))
 
     if opts.include_services:
-        tasks["services"] = run_with_sem(list_services(ctx, host.name, status="running"))
+        tasks["services"] = run_with_sem(list_services(ctx, host.name, filter_state="running"))
 
     if opts.include_network:
         tasks["network"] = run_with_sem(check_network(ctx, host.name))
