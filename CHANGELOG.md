@@ -44,6 +44,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clear guidelines for bash vs ssh_execute usage
   - Zero-config mode documentation
 
+## [0.7.2] - 2025-12-13
+
+### Added
+
+- **New System Tools** (`merlya/tools/system/`)
+  - Network: `check_network`, `check_port`, `dns_lookup`, `ping`, `traceroute`
+  - Services: `list_services`, `manage_service` (systemd/init support)
+  - Health: `health_summary` for quick host health check
+  - Logs: `grep_logs`, `tail_logs` with journalctl support
+  - Cron: `list_cron`, `add_cron`, `remove_cron`
+
+- **MCP Tool Schema Exposure** (`merlya/mcp/manager.py`, `merlya/agent/tools.py`)
+  - LLM now sees full parameter schemas for MCP tools
+  - `list_mcp_tools` returns required/optional parameters
+  - Improved `call_mcp_tool` docstring with Context7 usage pattern
+
+- **Enhanced `/scan` Command** (`merlya/commands/handlers/system.py`)
+  - `--services`: Include running services list
+  - `--network`: Include network diagnostics
+  - `health_summary` added to default system scan
+
+- **SSH Verification Hints** (`merlya/tools/core/verification.py`)
+  - State-changing commands return verification suggestions
+  - Agent can confirm actions succeeded (e.g., service restart)
+
+### Fixed
+
+- **MCP Deadlock** (`merlya/mcp/manager.py`)
+  - Fix deadlock in `_ensure_connected` by calling `_ensure_group` before acquiring lock
+  - `asyncio.Lock()` is not reentrant, caused hang on MCP tool calls
+
+- **MCP Environment Variables** (`merlya/mcp/manager.py`)
+  - Custom env vars now merged with `get_default_environment()` instead of replacing
+  - Fixes missing PATH causing `npx` and other executables not found
+
+- **MCP Auto-Test** (`merlya/commands/handlers/mcp.py`)
+  - `/mcp add` now automatically tests connection after adding
+  - `--no-test` flag to skip auto-test
+  - Better error messages for timeout, missing env vars
+
+### Changed
+
+- **SSH Module Refactoring** (`merlya/tools/core/`)
+  - Split `ssh.py` into focused modules: connection, elevation, patterns, errors
+  - Better separation of concerns
+  - Improved error handling and password security
+
 ## [Unreleased]
 
 ### Fixed

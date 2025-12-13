@@ -370,7 +370,7 @@ async def _scan_system_parallel(
         "system_info": run_with_sem(get_system_info(ctx, host.name)),
         "memory": run_with_sem(check_memory(ctx, host.name)),
         "cpu": run_with_sem(check_cpu(ctx, host.name)),
-        "health": run_with_sem(health_summary(ctx, host.name)),
+        "health": run_with_sem(health_summary(ctx, [host.name])),  # list of hosts
     }
 
     if opts.all_disks:
