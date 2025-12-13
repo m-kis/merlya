@@ -212,6 +212,14 @@ def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all:
     if "cron" in sys_data:
         _format_cron_jobs(lines, sys_data["cron"], show_all)
 
+    # Top processes (full scan only)
+    if "processes" in sys_data:
+        _format_top_processes(lines, sys_data["processes"], show_all)
+
+    # Recent errors (full scan only)
+    if "logs" in sys_data:
+        _format_recent_errors(lines, sys_data["logs"], show_all)
+
 
 def _format_security_section(lines: list[str], sec_data: dict[str, Any], show_all: bool) -> None:
     """Format security section of scan output."""
@@ -468,5 +476,63 @@ def _format_cron_jobs(lines: list[str], cron_data: dict[str, Any], show_all: boo
 
         if not show_all and len(jobs) > max_items:
             lines.append(f"  *... and {len(jobs) - max_items} more (use --show-all)*")
+
+    lines.append("")
+
+
+def _format_top_processes(lines: list[str], proc_data: list[dict] | Any, show_all: bool) -> None:
+    """Format top processes list."""
+    # Handle both list and dict with processes key
+    if isinstance(proc_data, dict):
+        processes = proc_data.get("processes", proc_data)
+    else:
+        processes = proc_data if isinstance(proc_data, list) else []
+
+    if not processes:
+        return
+
+    lines.append("**Top Processes (CPU):**")
+    lines.append("")
+
+    max_items = len(processes) if show_all else 10
+    for proc in processes[:max_items]:
+        user = proc.get("user", "?")
+        cpu = proc.get("cpu", 0)
+        mem = proc.get("mem", 0)
+        cmd = proc.get("command", proc.get("cmd", "?"))
+        # Truncate long commands
+        if len(cmd) > 40 and not show_all:
+            cmd = cmd[:37] + "..."
+        lines.append(f"  - `{cpu:.1f}%` CPU, `{mem:.1f}%` MEM ({user}): {cmd}")
+
+    if not show_all and len(processes) > max_items:
+        lines.append(f"  *... and {len(processes) - max_items} more (use --show-all)*")
+
+    lines.append("")
+
+
+def _format_recent_errors(lines: list[str], log_data: dict[str, Any], show_all: bool) -> None:
+    """Format recent log errors."""
+    log_lines = log_data.get("lines", [])
+    count = log_data.get("count", len(log_lines))
+
+    if not log_lines:
+        lines.append("**Recent Errors:** none")
+        lines.append("")
+        return
+
+    icon = "🔴" if count > 10 else ("⚠️" if count > 0 else "✅")
+    lines.append(f"{icon} **Recent Errors:** {count}")
+    lines.append("")
+
+    max_items = len(log_lines) if show_all else 5
+    for line in log_lines[:max_items]:
+        # Truncate long lines
+        if len(line) > 80 and not show_all:
+            line = line[:77] + "..."
+        lines.append(f"  `{line}`")
+
+    if not show_all and len(log_lines) > max_items:
+        lines.append(f"  *... and {len(log_lines) - max_items} more (use --show-all)*")
 
     lines.append("")
