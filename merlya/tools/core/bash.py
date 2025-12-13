@@ -53,17 +53,27 @@ async def bash_execute(
             data={},
         )
 
+    # Resolve all @references FIRST (hosts then secrets)
+    # This must happen before security check to catch dangerous patterns in references
     try:
-        # Security: Check for dangerous commands
-        if is_dangerous_command(command):
+        resolved_command, safe_command = await resolve_all_references(command, ctx)
+    except Exception as e:
+        logger.error(f"❌ Reference resolution failed: {e}")
+        return ToolResult(
+            success=False,
+            data={"command": command[:50]},  # Safe: original command before resolution
+            error=f"Reference resolution failed: {e}",
+        )
+
+    try:
+        # SECURITY: Check for dangerous commands AFTER reference resolution
+        # This catches dangerous patterns hidden in @host or @secret references
+        if is_dangerous_command(resolved_command):
             return ToolResult(
                 success=False,
                 error="⚠️ SECURITY: Command blocked - potentially destructive",
-                data={"command": command[:50]},
+                data={"command": safe_command[:50]},  # Use safe_command, not resolved
             )
-
-        # Resolve all @references (hosts then secrets)
-        resolved_command, safe_command = await resolve_all_references(command, ctx)
 
         logger.debug(f"🖥️ Executing locally: {safe_command[:80]}...")
 
@@ -81,6 +91,7 @@ async def bash_execute(
             )
         except TimeoutError:
             process.kill()
+            await process.wait()  # Cleanup: avoid zombie processes
             logger.warning(f"⏱️ Command timed out after {timeout}s")
             return ToolResult(
                 success=False,
@@ -90,7 +101,8 @@ async def bash_execute(
 
         stdout_str = stdout.decode("utf-8", errors="replace")
         stderr_str = stderr.decode("utf-8", errors="replace")
-        exit_code = process.returncode or 0
+        # returncode should always be set after communicate(), but handle None explicitly
+        exit_code = process.returncode if process.returncode is not None else -1
 
         return ToolResult(
             success=exit_code == 0,
@@ -107,6 +119,6 @@ async def bash_execute(
         logger.error(f"❌ Local execution failed: {e}")
         return ToolResult(
             success=False,
-            data={"command": command[:50]},
+            data={"command": safe_command[:50]},  # Use safe_command to avoid secret leak
             error=str(e),
         )
