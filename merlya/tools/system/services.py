@@ -16,25 +16,28 @@ from merlya.tools.security.base import execute_security_command
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+    from merlya.ssh.types import SSHResult
 
 
 # Service actions that require confirmation
 DANGEROUS_ACTIONS = {"stop", "restart"}
 
 # Critical services that need extra confirmation
-CRITICAL_SERVICES = frozenset({
-    "sshd",
-    "ssh",
-    "networking",
-    "network",
-    "NetworkManager",
-    "systemd-networkd",
-    "firewalld",
-    "iptables",
-    "docker",
-    "containerd",
-    "kubelet",
-})
+CRITICAL_SERVICES = frozenset(
+    {
+        "sshd",
+        "ssh",
+        "networking",
+        "network",
+        "NetworkManager",
+        "systemd-networkd",
+        "firewalld",
+        "iptables",
+        "docker",
+        "containerd",
+        "kubelet",
+    }
+)
 
 
 async def manage_service(
@@ -299,20 +302,24 @@ def _parse_service_list(output: str, os_family: OSFamily) -> list[dict]:
         if os_family == OSFamily.MACOS:
             # launchctl format: PID Status Label
             if len(parts) >= 3:
-                services.append({
-                    "name": parts[2],
-                    "pid": parts[0] if parts[0] != "-" else None,
-                    "status": "running" if parts[0] != "-" else "stopped",
-                })
+                services.append(
+                    {
+                        "name": parts[2],
+                        "pid": parts[0] if parts[0] != "-" else None,
+                        "status": "running" if parts[0] != "-" else "stopped",
+                    }
+                )
         else:
             # systemd format: UNIT LOAD ACTIVE SUB DESCRIPTION...
             if ".service" in parts[0]:
                 name = parts[0].replace(".service", "")
                 status = parts[3] if len(parts) > 3 else "unknown"
-                services.append({
-                    "name": name,
-                    "status": status,
-                    "active": parts[2] == "active" if len(parts) > 2 else False,
-                })
+                services.append(
+                    {
+                        "name": name,
+                        "status": status,
+                        "active": parts[2] == "active" if len(parts) > 2 else False,
+                    }
+                )
 
     return services

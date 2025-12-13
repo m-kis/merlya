@@ -305,10 +305,12 @@ def _is_valid_domain(domain: str) -> bool:
         return False
 
     # Check format
-    return bool(re.match(
-        r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+$",
-        domain,
-    ))
+    return bool(
+        re.match(
+            r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+$",
+            domain,
+        )
+    )
 
 
 def _is_safe_cert_path(path: str) -> bool:

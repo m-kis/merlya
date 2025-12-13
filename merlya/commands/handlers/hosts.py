@@ -252,9 +252,7 @@ async def cmd_hosts_check(ctx: SharedContext, args: list[str]) -> CommandResult:
 
         async def check_with_semaphore(host: Host) -> dict:
             async with semaphore:
-                result = await _test_ssh_connection(
-                    ctx, host.hostname, host.port, host.username
-                )
+                result = await _test_ssh_connection(ctx, host.hostname, host.port, host.username)
                 return {"host": host, "result": result}
 
         tasks = [check_with_semaphore(h) for h in hosts_to_check]
@@ -263,9 +261,7 @@ async def cmd_hosts_check(ctx: SharedContext, args: list[str]) -> CommandResult:
         # Sequential check with progress
         for i, host in enumerate(hosts_to_check):
             ctx.ui.muted(f"  [{i + 1}/{len(hosts_to_check)}] Checking {host.name}...")
-            result = await _test_ssh_connection(
-                ctx, host.hostname, host.port, host.username
-            )
+            result = await _test_ssh_connection(ctx, host.hostname, host.port, host.username)
             results.append({"host": host, "result": result})
 
     # Display results table

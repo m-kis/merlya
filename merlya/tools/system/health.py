@@ -295,9 +295,8 @@ def _parse_health_output(health: HostHealth, output: str) -> None:
                 except (ValueError, IndexError):
                     pass
 
-        elif header == "UPTIME":
-            if len(lines) >= 2:
-                health.uptime = lines[1].strip()[:50]
+        elif header == "UPTIME" and len(lines) >= 2:
+            health.uptime = lines[1].strip()[:50]
 
 
 async def _check_critical_services(
