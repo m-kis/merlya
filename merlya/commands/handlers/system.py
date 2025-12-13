@@ -349,6 +349,7 @@ async def _scan_system_parallel(
 ) -> None:
     """System scan with parallel execution."""
     from merlya.tools.system import (
+        analyze_logs,
         check_all_disks,
         check_cpu,
         check_docker,
@@ -357,6 +358,7 @@ async def _scan_system_parallel(
         get_system_info,
         health_summary,
         list_cron,
+        list_processes,
         list_services,
     )
 
@@ -392,6 +394,11 @@ async def _scan_system_parallel(
 
     if opts.include_cron:
         tasks["cron"] = run_with_sem(list_cron(ctx, host.name))
+
+    # Full scan only: top processes and recent errors
+    if opts.scan_type == "full":
+        tasks["processes"] = run_with_sem(list_processes(ctx, host.name, limit=10, sort_by="cpu"))
+        tasks["logs"] = run_with_sem(analyze_logs(ctx, host.name, lines=20, level="error"))
 
     # Execute all tasks in parallel (semaphore limits concurrency)
     results_dict = {}
