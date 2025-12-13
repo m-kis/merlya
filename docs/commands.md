@@ -201,7 +201,7 @@ Change the LLM model.
 
 ## MCP (Model Context Protocol)
 
-Extend Merlya with external MCP servers (e.g., GitHub, Slack, custom).
+Extend Merlya with external MCP servers (e.g., Context7, GitHub, Slack, custom).
 
 ### `/mcp list`
 List configured MCP servers.
@@ -210,14 +210,43 @@ List configured MCP servers.
 /mcp list
 ```
 
-### `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]`
-Add a server (env values can reference `${ENV_VAR}` and will pull from env or keyring).
+### `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path] [--no-test]`
+Add a server and automatically test the connection.
+
+**Environment Variable Syntax:**
+- `${secret-name}` - Required variable (from env or `/secret set`)
+- `${VAR:-default}` - Variable with default value
+
+**Flags:**
+- `--env=KEY=VALUE` - Set environment variable (can use multiple times)
+- `--cwd=/path` - Set working directory for the server
+- `--no-test` - Skip automatic connection test
+
+**Examples:**
 
 ```bash
-/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${GITHUB_TOKEN}
-/mcp add slack node slack-server.js --env=SLACK_TOKEN=keyring:slack_token --cwd=/opt/mcp-servers
-/mcp add filesystem npx -y @modelcontextprotocol/server-filesystem /home/user/projects
+# Context7 - Code documentation context
+/secret set context7-token <your-api-key>
+/mcp add context7 npx -y @upstash/context7-mcp --env=CONTEXT7_API_KEY=${context7-token}
+
+# GitHub - Repository management
+/secret set github-token ghp_xxxxx
+/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${github-token}
+
+# Filesystem - Local file access
+/mcp add fs npx -y @modelcontextprotocol/server-filesystem /home/user/projects
+
+# With optional env default
+/mcp add custom python server.py --env=PORT=${MCP_PORT:-8080}
+
+# Skip auto-test (useful for offline setup)
+/mcp add slow-server npx -y @slow/mcp --no-test
 ```
+
+**Important:**
+- After adding, Merlya automatically tests the connection
+- If the test fails, the config is saved but you'll see a warning
+- Use `/mcp test <name>` to retry the connection test
 
 ### `/mcp remove <name>`
 Remove a server from configuration.
@@ -249,7 +278,7 @@ List available MCP tools (optionally filter by server).
 ```
 
 ### `/mcp examples`
-Show sample configuration snippets.
+Show sample configuration snippets with common MCP servers.
 
 ```bash
 /mcp examples
