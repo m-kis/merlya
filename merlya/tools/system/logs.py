@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal
 from loguru import logger
 
 from merlya.tools.core.models import ToolResult
-from merlya.tools.core.os_detect import OSFamily, detect_os
+from merlya.tools.core.os_detect import OSFamily, OSInfo, detect_os
 from merlya.tools.security.base import execute_security_command
 
 if TYPE_CHECKING:
@@ -147,9 +147,7 @@ async def grep_logs(
     os_info = await detect_os(ctx, host)
 
     # Determine which log sources to search
-    sources = await _determine_log_sources(
-        ctx, host, os_info, log_category, log_paths
-    )
+    sources = await _determine_log_sources(ctx, host, os_info, log_category, log_paths)
 
     if not sources["files"] and not sources["use_journal"]:
         return ToolResult(
@@ -371,11 +369,13 @@ async def _search_journal(
     if result.exit_code == 0 and result.stdout:
         for line in result.stdout.strip().split("\n"):
             if line:
-                matches.append(LogMatch(
-                    line=line[:500],
-                    file="journal",
-                    level=_detect_log_level(line),
-                ))
+                matches.append(
+                    LogMatch(
+                        line=line[:500],
+                        file="journal",
+                        level=_detect_log_level(line),
+                    )
+                )
 
     return matches
 
@@ -397,16 +397,18 @@ async def _search_log_file(
     if result.exit_code == 0 and result.stdout:
         for line in result.stdout.strip().split("\n"):
             if line:
-                matches.append(LogMatch(
-                    line=line[:500],
-                    file=log_file,
-                    level=_detect_log_level(line),
-                ))
+                matches.append(
+                    LogMatch(
+                        line=line[:500],
+                        file=log_file,
+                        level=_detect_log_level(line),
+                    )
+                )
 
     return matches
 
 
-def _build_grep_options(use_regex: bool, context_lines: int, level: str | None) -> str:
+def _build_grep_options(use_regex: bool, context_lines: int, _level: str | None) -> str:
     """Build grep command options."""
     opts = ["-n"]  # Line numbers
 

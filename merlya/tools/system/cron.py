@@ -65,12 +65,8 @@ async def list_cron(
 
     entries: list[dict] = []
 
-    # Get user crontabs
-    if user:
-        users = [user]
-    else:
-        # Get current user's crontab
-        users = [""]  # Empty string = current user
+    # Get user crontabs (empty string = current user)
+    users = [user] if user else [""]
 
     for cron_user in users:
         user_entries = await _get_user_crontab(ctx, host, cron_user)
@@ -236,7 +232,9 @@ async def remove_cron(
         )
 
     # Actually remove
-    remove_cmd = f"crontab {user_flag} -l 2>/dev/null | grep -v '{safe_pattern}' | crontab {user_flag} -"
+    remove_cmd = (
+        f"crontab {user_flag} -l 2>/dev/null | grep -v '{safe_pattern}' | crontab {user_flag} -"
+    )
     result = await execute_security_command(ctx, host, remove_cmd, timeout=30)
 
     if result.exit_code != 0:
@@ -364,7 +362,16 @@ def _parse_cron_line(line: str, has_user_field: bool = False) -> dict | None:
 def _is_valid_schedule(schedule: str) -> bool:
     """Validate cron schedule format."""
     # Special schedules
-    special = {"@reboot", "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly"}
+    special = {
+        "@reboot",
+        "@yearly",
+        "@annually",
+        "@monthly",
+        "@weekly",
+        "@daily",
+        "@midnight",
+        "@hourly",
+    }
     if schedule in special:
         return True
 
@@ -374,11 +381,7 @@ def _is_valid_schedule(schedule: str) -> bool:
         return False
 
     # Basic validation of each field
-    for i, part in enumerate(parts):
-        if not _is_valid_cron_field(part, i):
-            return False
-
-    return True
+    return all(_is_valid_cron_field(part, i) for i, part in enumerate(parts))
 
 
 def _is_valid_cron_field(field: str, position: int) -> bool:
@@ -466,7 +469,16 @@ def _humanize_schedule(schedule: str) -> str:
             desc_parts.append(f"at {hour}:00")
 
     if dow != "*":
-        days = {"0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun"}
+        days = {
+            "0": "Sun",
+            "1": "Mon",
+            "2": "Tue",
+            "3": "Wed",
+            "4": "Thu",
+            "5": "Fri",
+            "6": "Sat",
+            "7": "Sun",
+        }
         desc_parts.append(f"on {days.get(dow, dow)}")
 
     if dom != "*":

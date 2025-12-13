@@ -387,7 +387,7 @@ class TestInjectLoopBreaker:
 
     def test_injects_system_prompt(self) -> None:
         """Should inject a system prompt to break loop."""
-        from pydantic_ai.messages import SystemPromptPart
+        from pydantic_ai.messages import UserPromptPart
 
         messages = [
             _make_user_request("do stuff"),
@@ -396,15 +396,15 @@ class TestInjectLoopBreaker:
         ]
         result = inject_loop_breaker(messages, "Test loop detected")
 
-        # Check that a system prompt was added to the last request
-        assert len(result) == len(messages)
+        # Check that a new user prompt was appended
+        assert len(result) == len(messages) + 1
         last_request = result[-1]
         assert isinstance(last_request, ModelRequest)
-        assert any(isinstance(p, SystemPromptPart) for p in last_request.parts)
+        assert any(isinstance(p, UserPromptPart) for p in last_request.parts)
 
-        # Check content of system prompt
+        # Check content of user prompt
         for part in last_request.parts:
-            if isinstance(part, SystemPromptPart):
+            if isinstance(part, UserPromptPart):
                 assert "LOOP DETECTED" in part.content
                 assert "Test loop detected" in part.content
                 break
@@ -432,7 +432,7 @@ class TestCreateLoopAwareHistoryProcessor:
 
     def test_injects_breaker_on_loop(self) -> None:
         """Processor should inject loop breaker when loop detected."""
-        from pydantic_ai.messages import SystemPromptPart
+        from pydantic_ai.messages import UserPromptPart
 
         processor = create_loop_aware_history_processor(max_messages=50)
 
@@ -444,12 +444,12 @@ class TestCreateLoopAwareHistoryProcessor:
 
         result = processor(messages)
 
-        # Check that a system prompt was injected
+        # Check that a user prompt with loop breaker was appended
         has_breaker = False
         for msg in result:
             if isinstance(msg, ModelRequest):
                 for part in msg.parts:
-                    if isinstance(part, SystemPromptPart) and "LOOP DETECTED" in part.content:
+                    if isinstance(part, UserPromptPart) and "LOOP DETECTED" in part.content:
                         has_breaker = True
                         break
 
@@ -457,7 +457,7 @@ class TestCreateLoopAwareHistoryProcessor:
 
     def test_no_breaker_when_disabled(self) -> None:
         """Processor should not inject breaker when detection disabled."""
-        from pydantic_ai.messages import SystemPromptPart
+        from pydantic_ai.messages import UserPromptPart
 
         processor = create_loop_aware_history_processor(
             max_messages=50, enable_loop_detection=False
@@ -471,12 +471,12 @@ class TestCreateLoopAwareHistoryProcessor:
 
         result = processor(messages)
 
-        # Check that no system prompt was injected
+        # Check that no user prompt with loop breaker was added
         has_breaker = False
         for msg in result:
             if isinstance(msg, ModelRequest):
                 for part in msg.parts:
-                    if isinstance(part, SystemPromptPart) and "LOOP DETECTED" in part.content:
+                    if isinstance(part, UserPromptPart) and "LOOP DETECTED" in part.content:
                         has_breaker = True
                         break
 

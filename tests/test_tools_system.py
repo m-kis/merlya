@@ -252,8 +252,17 @@ class TestCheckMemory:
     @pytest.mark.asyncio
     async def test_check_memory_success(self, mock_shared_context: MagicMock) -> None:
         """Test successful memory check."""
+        # Now uses free -b (bytes) for precision, so we provide bytes
+        # 7982 MB = 7982 * 1024 * 1024 bytes
+        total_bytes = 7982 * 1024 * 1024
+        used_bytes = 2156 * 1024 * 1024
+        free_bytes = 3421 * 1024 * 1024
+        shared_bytes = 256 * 1024 * 1024
+        buffers_bytes = 2404 * 1024 * 1024
+        available_bytes = 5289 * 1024 * 1024
         free_output = (
-            "Mem:           7982        2156        3421         256        2404        5289"
+            f"              total        used        free      shared  buff/cache   available\n"
+            f"Mem:    {total_bytes}  {used_bytes}  {free_bytes}  {shared_bytes}  {buffers_bytes}  {available_bytes}"
         )
 
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:
@@ -269,9 +278,16 @@ class TestCheckMemory:
     @pytest.mark.asyncio
     async def test_check_memory_warning(self, mock_shared_context: MagicMock) -> None:
         """Test memory with warning threshold exceeded."""
-        # High memory usage: ~95%
+        # High memory usage: ~95% (in bytes)
+        total_bytes = 8000 * 1024 * 1024
+        used_bytes = 7600 * 1024 * 1024
+        free_bytes = 200 * 1024 * 1024
+        shared_bytes = 100 * 1024 * 1024
+        buffers_bytes = 200 * 1024 * 1024
+        available_bytes = 200 * 1024 * 1024
         free_output = (
-            "Mem:           8000        7600         200         100          200         200"
+            f"              total        used        free      shared  buff/cache   available\n"
+            f"Mem:    {total_bytes}  {used_bytes}  {free_bytes}  {shared_bytes}  {buffers_bytes}  {available_bytes}"
         )
 
         with patch("merlya.tools.system.tools.ssh_execute", new_callable=AsyncMock) as mock_ssh:

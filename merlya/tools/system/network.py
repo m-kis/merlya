@@ -92,11 +92,13 @@ async def check_network(
     if check_gateway:
         gateway_result = await _check_gateway(ctx, host)
         results["gateway"] = gateway_result
-        results["checks"].append({
-            "name": "gateway",
-            "status": "ok" if gateway_result.get("reachable") else "failed",
-            "details": gateway_result,
-        })
+        results["checks"].append(
+            {
+                "name": "gateway",
+                "status": "ok" if gateway_result.get("reachable") else "failed",
+                "details": gateway_result,
+            }
+        )
         if not gateway_result.get("reachable"):
             results["issues"].append("Default gateway unreachable")
 
@@ -104,11 +106,13 @@ async def check_network(
     if check_dns:
         dns_result = await _check_dns(ctx, host)
         results["dns"] = dns_result
-        results["checks"].append({
-            "name": "dns",
-            "status": "ok" if dns_result.get("working") else "failed",
-            "details": dns_result,
-        })
+        results["checks"].append(
+            {
+                "name": "dns",
+                "status": "ok" if dns_result.get("working") else "failed",
+                "details": dns_result,
+            }
+        )
         if not dns_result.get("working"):
             results["issues"].append("DNS resolution failed")
 
@@ -116,11 +120,13 @@ async def check_network(
     if check_internet:
         internet_result = await _check_internet(ctx, host)
         results["internet"] = internet_result
-        results["checks"].append({
-            "name": "internet",
-            "status": "ok" if internet_result.get("reachable") else "failed",
-            "details": internet_result,
-        })
+        results["checks"].append(
+            {
+                "name": "internet",
+                "status": "ok" if internet_result.get("reachable") else "failed",
+                "details": internet_result,
+            }
+        )
         if not internet_result.get("reachable"):
             results["issues"].append("Internet unreachable")
 
@@ -129,11 +135,13 @@ async def check_network(
         target_result = await ping(ctx, host, target)
         if target_result.success:
             results["target"] = target_result.data
-            results["checks"].append({
-                "name": f"target:{target}",
-                "status": "ok" if target_result.data.get("reachable") else "failed",
-                "details": target_result.data,
-            })
+            results["checks"].append(
+                {
+                    "name": f"target:{target}",
+                    "status": "ok" if target_result.data.get("reachable") else "failed",
+                    "details": target_result.data,
+                }
+            )
 
     # Determine overall status
     failed_checks = [c for c in results["checks"] if c["status"] == "failed"]
@@ -406,10 +414,12 @@ async def _get_interface_info(ctx: SharedContext, host: str) -> dict:
             elif "inet " in line and current_iface:
                 match = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", line)
                 if match:
-                    interfaces.append({
-                        "name": current_iface,
-                        "ip": match.group(1),
-                    })
+                    interfaces.append(
+                        {
+                            "name": current_iface,
+                            "ip": match.group(1),
+                        }
+                    )
 
     return {"interfaces": interfaces}
 
@@ -521,11 +531,13 @@ def _parse_traceroute_output(output: str) -> list[dict]:
                 host_match = re.search(r"([\w\-.]+(?:\s+\([\d.]+\))?)", rest)
                 rtt_match = re.search(r"([\d.]+)\s*ms", rest)
 
-                hops.append({
-                    "hop": hop_num,
-                    "host": host_match.group(1) if host_match else "unknown",
-                    "rtt_ms": float(rtt_match.group(1)) if rtt_match else None,
-                })
+                hops.append(
+                    {
+                        "hop": hop_num,
+                        "host": host_match.group(1) if host_match else "unknown",
+                        "rtt_ms": float(rtt_match.group(1)) if rtt_match else None,
+                    }
+                )
 
     return hops
 
@@ -537,7 +549,10 @@ def _is_valid_ping_target(target: str) -> bool:
         return True
 
     # Allow valid hostnames
-    if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$", target):
+    if re.match(
+        r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$",
+        target,
+    ):
         return len(target) <= 253
 
     return False

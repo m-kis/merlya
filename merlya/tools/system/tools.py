@@ -324,9 +324,7 @@ def _parse_proc_meminfo(output: str, threshold: int) -> dict | None:
     available_kb = data.get("MemAvailable")
     if available_kb is None:
         # Old kernels: calculate from Free + Buffers + Cached
-        available_kb = (
-            data.get("MemFree", 0) + data.get("Buffers", 0) + data.get("Cached", 0)
-        )
+        available_kb = data.get("MemFree", 0) + data.get("Buffers", 0) + data.get("Cached", 0)
 
     used_kb = total_kb - available_kb
     use_percent = round((used_kb / total_kb) * 100, 1)
@@ -703,13 +701,15 @@ def _parse_ps_output(
             if filter_name and filter_name.lower() not in command.lower():
                 continue
 
-            processes.append({
-                "user": proc_user,
-                "pid": pid,
-                "cpu": cpu,
-                "mem": mem,
-                "command": command,
-            })
+            processes.append(
+                {
+                    "user": proc_user,
+                    "pid": pid,
+                    "cpu": cpu,
+                    "mem": mem,
+                    "command": command,
+                }
+            )
         except (ValueError, IndexError):
             continue
 
@@ -925,10 +925,7 @@ async def check_all_disks(
                 filesystem = parts[0]
 
                 # Filter out excluded types by name patterns (for BSD)
-                if any(
-                    excl in filesystem.lower()
-                    for excl in ["devfs", "tmpfs", "map ", "autofs"]
-                ):
+                if any(excl in filesystem.lower() for excl in ["devfs", "tmpfs", "map ", "autofs"]):
                     continue
 
                 size_kb = int(parts[pct_idx - 3])

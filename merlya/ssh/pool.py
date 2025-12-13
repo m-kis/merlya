@@ -563,7 +563,7 @@ class SSHPool(SFTPOperations):
                     await self._invalidate_connection(host, username, options)
 
                     # Wait before retry with exponential backoff
-                    delay = self.retry_delay * (2 ** attempt)
+                    delay = self.retry_delay * (2**attempt)
                     await asyncio.sleep(delay)
                     continue
 

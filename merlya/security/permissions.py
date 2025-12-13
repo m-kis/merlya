@@ -69,7 +69,8 @@ class PermissionManager:
     def __init__(self, ctx: SharedContext) -> None:
         self.ctx = ctx
         self._cache: dict[str, dict[str, Any]] = {}  # Capabilities cache
-        self._consent_cache: dict[str, bool] = {}  # host -> user consented
+        self._declined_methods: dict[str, set[str]] = {}  # host -> declined methods
+        self._consented_methods: dict[str, str] = {}  # host -> consented method
         self._detection_locks: dict[str, asyncio.Lock] = {}  # Per-host lock for detection
         self._locks_lock = asyncio.Lock()  # Protects _detection_locks dict creation
 
@@ -78,8 +79,15 @@ class PermissionManager:
         """Get secret store from context."""
         return self.ctx.secrets
 
-    def _password_key(self, host: str) -> str:
-        """Get keyring key for elevation password."""
+    def _password_key(self, host: str, method: str | None = None) -> str:
+        """Get keyring key for elevation password.
+
+        Args:
+            host: Host name.
+            method: Elevation method. If 'su', uses root password key.
+        """
+        if method == "su":
+            return f"elevation:{host}:root:password"
         return f"elevation:{host}:password"
 
     async def _get_host_lock(self, host: str) -> asyncio.Lock:
@@ -362,15 +370,12 @@ class PermissionManager:
         Prepare an elevated command if needed.
 
         Logic:
-        - NOPASSWD methods (sudo, doas): Use directly, no password needed
-        - Password methods (sudo_with_password, su): We already know from
-          capability detection that password is required, so:
-          1. Check keyring for stored password
-          2. If found → use it
-          3. If not found → needs_password=True, caller prompts user
-
-        Note: Capability detection already tested `sudo -n true` - if it failed,
-        we know for sure the method needs a password. No need to retry.
+        - If we already have a consented method for this host, use it
+        - Otherwise, iterate through available_methods (sorted by priority):
+          - Skip methods the user has already declined
+          - Ask for consent on the first non-declined method
+          - If declined, add to declined set and try next method
+          - If all declined, return no elevation
         """
         caps = await self.detect_capabilities(host)
         if caps.get("is_root") or caps.get("elevation_method") == "none":
@@ -382,8 +387,8 @@ class PermissionManager:
                 base_command=command,
             )
 
-        method = caps.get("elevation_method")
-        if not method:
+        available = caps.get("available_methods", [])
+        if not available:
             return ElevationResult(
                 command=command,
                 input_data=None,
@@ -391,35 +396,59 @@ class PermissionManager:
                 note="no_elevation_available",
             )
 
-        # Check consent cache first
-        if host in self._consent_cache:
-            if not self._consent_cache[host]:
-                return ElevationResult(
-                    command=command,
-                    input_data=None,
-                    method=None,
-                    note="user_declined_cached",
-                    base_command=command,
-                )
-            logger.debug(f"🔒 Using cached elevation consent for {host}")
-        else:
-            # First time - ask for consent
+        # Check if we already have a consented method for this host
+        if host in self._consented_methods:
+            method = self._consented_methods[host]
+            logger.debug(f"🔒 Using cached elevation method {method} for {host}")
+            return await self._prepare_with_method(host, command, caps, method)
+
+        # Get declined methods for this host
+        declined = self._declined_methods.get(host, set())
+
+        # Try each available method in priority order
+        for method_info in available:
+            method = method_info["method"]
+
+            # Skip already declined methods
+            if method in declined:
+                logger.debug(f"🔒 Skipping declined method {method} for {host}")
+                continue
+
+            # Ask for consent
             confirm = await self.ctx.ui.prompt_confirm(
                 f"🔒 Command may require elevation on {host}. Use {method}?",
                 default=False,
             )
-            self._consent_cache[host] = confirm
-            if not confirm:
-                return ElevationResult(
-                    command=command,
-                    input_data=None,
-                    method=None,
-                    note="user_declined",
-                    base_command=command,
-                )
 
-        # NOPASSWD methods - just use them, no password needed
-        # (we already verified with `sudo -n true` during capability detection)
+            if confirm:
+                # User consented - save and use this method
+                self._consented_methods[host] = method
+                return await self._prepare_with_method(host, command, caps, method)
+
+            # User declined - add to declined set and try next
+            if host not in self._declined_methods:
+                self._declined_methods[host] = set()
+            self._declined_methods[host].add(method)
+            logger.debug(f"🔒 User declined {method} for {host}, trying next...")
+
+        # All methods declined
+        return ElevationResult(
+            command=command,
+            input_data=None,
+            method=None,
+            note="all_methods_declined",
+            base_command=command,
+        )
+
+    async def _prepare_with_method(
+        self,
+        host: str,
+        command: str,
+        caps: dict[str, Any],
+        method: str,
+    ) -> ElevationResult:
+        """Prepare elevated command using a specific method."""
+        # NOPASSWD methods - just use them
         if not self._method_needs_password(method):
             elevated_command, input_data = self._elevate_command(command, caps, method, None)
             return ElevationResult(
@@ -431,13 +460,11 @@ class PermissionManager:
                 base_command=command,
             )
 
-        # Password-requiring methods - we KNOW password is needed
-        # (capability detection already confirmed `sudo -n true` failed)
-        password_key = self._password_key(host)
+        # Password-requiring methods - use method-aware password key
+        password_key = self._password_key(host, method)
         password = self._secrets.get(password_key)
 
         if password:
-            # Use password from keyring
             elevated_command, input_data = self._elevate_command(command, caps, method, password)
             return ElevationResult(
                 command=elevated_command,
@@ -450,9 +477,8 @@ class PermissionManager:
             )
 
         # No password in keyring - caller must prompt user
-        # Return needs_password=True so caller knows to use request_credentials()
         return ElevationResult(
-            command=command,  # Return original, caller will re-call after getting password
+            command=command,
             input_data=None,
             method=method,
             note="password_needed",
@@ -461,34 +487,38 @@ class PermissionManager:
             password_ref=f"@{password_key}",
         )
 
-    def store_password(self, host: str, password: str) -> str:
+    def store_password(self, host: str, password: str, method: str | None = None) -> str:
         """Store elevation password in keyring.
 
         Args:
             host: Host name.
             password: Password to store.
+            method: Elevation method. If 'su', stores as root password.
 
         Returns:
             Secret reference (@elevation:host:password) for use in commands.
         """
-        password_key = self._password_key(host)
+        password_key = self._password_key(host, method)
         self._secrets.set(password_key, password)
-        logger.debug(f"🔒 Stored elevation password for {host} in keyring")
+        logger.debug(f"🔒 Stored elevation password for {host} ({method or 'user'}) in keyring")
         return f"@{password_key}"
 
-    def cache_password(self, host: str, password: str) -> None:
+    def cache_password(self, host: str, password: str, method: str | None = None) -> None:
         """Store elevation password (alias for store_password for compatibility)."""
-        self.store_password(host, password)
+        self.store_password(host, password, method)
 
     def clear_cache(self, host: str | None = None) -> None:
         """Clear cached consent and password for a host (or all hosts)."""
         if host:
-            self._consent_cache.pop(host, None)
+            self._declined_methods.pop(host, None)
+            self._consented_methods.pop(host, None)
             self._cache.pop(host, None)
-            # Remove password from keyring
+            # Remove passwords from keyring (both user and root)
             self._secrets.remove(self._password_key(host))
+            self._secrets.remove(self._password_key(host, "su"))
         else:
-            self._consent_cache.clear()
+            self._declined_methods.clear()
+            self._consented_methods.clear()
             self._cache.clear()
             # Remove all elevation passwords from keyring
             for key in self._secrets.list_names():
