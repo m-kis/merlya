@@ -27,6 +27,34 @@ if TYPE_CHECKING:
 MAX_CONCURRENT_SSH_CHANNELS = 6
 
 
+async def _get_recent_errors(ctx: SharedContext, host: str) -> dict[str, Any]:
+    """
+    Get recent error-level log entries using journalctl (systemd) or fallback to syslog.
+
+    Returns dict with 'lines' and 'count' keys for formatter compatibility.
+    """
+    from merlya.tools.security.base import execute_security_command
+
+    # Try journalctl first (modern systemd systems)
+    cmd = "journalctl -p err -n 20 --no-pager -q 2>/dev/null"
+    result = await execute_security_command(ctx, host, cmd, timeout=15)
+
+    if result.exit_code == 0 and result.stdout.strip():
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        return {"lines": lines, "count": len(lines), "source": "journalctl"}
+
+    # Fallback to syslog/messages
+    for log_path in ["/var/log/syslog", "/var/log/messages"]:
+        cmd = f"tail -n 100 {log_path} 2>/dev/null | grep -iE '(error|fail|critical)' | tail -n 20"
+        result = await execute_security_command(ctx, host, cmd, timeout=15)
+        if result.exit_code == 0 and result.stdout.strip():
+            lines = [line for line in result.stdout.strip().split("\n") if line]
+            return {"lines": lines, "count": len(lines), "source": log_path}
+
+    # No errors found or logs not accessible
+    return {"lines": [], "count": 0, "source": "none"}
+
+
 @command("scan", "Scan a host for system info and security", "/scan <host> [options]")
 async def cmd_scan(ctx: SharedContext, args: list[str]) -> CommandResult:
     """
@@ -349,7 +377,6 @@ async def _scan_system_parallel(
 ) -> None:
     """System scan with parallel execution."""
     from merlya.tools.system import (
-        analyze_logs,
         check_all_disks,
         check_cpu,
         check_docker,
@@ -398,7 +425,7 @@ async def _scan_system_parallel(
     # Full scan only: top processes and recent errors
     if opts.scan_type == "full":
         tasks["processes"] = run_with_sem(list_processes(ctx, host.name, limit=10, sort_by="cpu"))
-        tasks["logs"] = run_with_sem(analyze_logs(ctx, host.name, lines=20, level="error"))
+        tasks["logs"] = run_with_sem(_get_recent_errors(ctx, host.name))
 
     # Execute all tasks in parallel (semaphore limits concurrency)
     results_dict = {}
