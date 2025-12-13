@@ -79,17 +79,24 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     "mcp",
     "add",
     "Add an MCP server",
-    "/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]",
+    "/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path] [--no-test]",
 )
 async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Add a new MCP server configuration."""
+    """Add a new MCP server configuration and test connectivity."""
     if len(args) < 2:
         return CommandResult(
             success=False,
-            message="Usage: `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path]`",
+            message=(
+                "Usage: `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path] [--no-test]`\n\n"
+                "**Example:**\n"
+                "```\n"
+                "/mcp add context7 npx -y @upstash/context7-mcp --env=CONTEXT7_API_KEY=${my-secret}\n"
+                "```\n"
+                "ℹ️ Use `${secret-name}` to reference secrets stored with `/secret set`"
+            ),
         )
 
-    env, cwd, remaining = _extract_env_and_cwd(args[1:])
+    env, cwd, no_test, remaining = _extract_add_options(args[1:])
     name = args[0]
     if not remaining:
         return CommandResult(success=False, message="❌ Missing command to start the MCP server.")
@@ -100,11 +107,19 @@ async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
     manager = await _manager(ctx)
     if await manager.show_server(name) is not None:
         return CommandResult(success=False, message=f"❌ MCP server '{name}' already exists.")
+
     await manager.add_server(name, command, cmd_args, env, cwd=cwd)
-    return CommandResult(
-        success=True,
-        message=f"✅ MCP server '{name}' added. Use `/mcp test {name}` to verify.",
-    )
+    logger.info(f"✅ MCP server '{name}' added")
+
+    # Skip test if --no-test flag is provided
+    if no_test:
+        return CommandResult(
+            success=True,
+            message=f"✅ MCP server '{name}' added (test skipped). Use `/mcp test {name}` to verify later.",
+        )
+
+    # Automatically test the server
+    return await _test_newly_added_server(ctx, manager, name)
 
 
 @subcommand("mcp", "remove", "Remove an MCP server", "/mcp remove <name>")
@@ -215,31 +230,53 @@ async def cmd_mcp_tools(ctx: SharedContext, args: list[str]) -> CommandResult:
 async def cmd_mcp_examples(_ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Show example configuration for MCP servers."""
     example = (
-        "```toml\n"
-        "[mcp.servers.github]\n"
-        'command = "npx"\n'
-        'args = ["-y", "@modelcontextprotocol/server-github"]\n'
-        'env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }\n\n'
-        "[mcp.servers.slack]\n"
-        'command = "npx"\n'
-        'args = ["-y", "@modelcontextprotocol/server-slack"]\n'
-        'env = { SLACK_BOT_TOKEN = "${SLACK_BOT_TOKEN}" }\n\n'
-        "[mcp.servers.custom]\n"
-        'command = "python"\n'
-        'args = ["server.py"]\n'
-        "# Use ${VAR:-default} for optional env with defaults\n"
-        'env = { PORT = "${MCP_PORT:-8080}", HOST = "${MCP_HOST:-localhost}" }\n'
+        "## 🚀 Quick Add (CLI)\n\n"
+        "```bash\n"
+        "# Context7 - Code context from documentation\n"
+        "/secret set context7-token <your-api-key>\n"
+        "/mcp add context7 npx -y @upstash/context7-mcp --env=CONTEXT7_API_KEY=${context7-token}\n\n"
+        "# GitHub - Repository management\n"
+        "/secret set github-token <your-token>\n"
+        "/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${github-token}\n\n"
+        "# Filesystem - Local file access\n"
+        "/mcp add fs npx -y @modelcontextprotocol/server-filesystem /path/to/allowed/dir\n"
         "```\n\n"
-        "**Note:** Secrets can be stored via `/secret set GITHUB_TOKEN <value>`\n"
-        "and referenced with `${GITHUB_TOKEN}` in env."
+        "## 📁 Config File Format (~/.merlya/config.yaml)\n\n"
+        "```yaml\n"
+        "mcp:\n"
+        "  servers:\n"
+        "    context7:\n"
+        "      command: npx\n"
+        "      args: [-y, '@upstash/context7-mcp']\n"
+        "      env:\n"
+        '        CONTEXT7_API_KEY: "${context7-token}"\n'
+        "    github:\n"
+        "      command: npx\n"
+        "      args: [-y, '@modelcontextprotocol/server-github']\n"
+        "      env:\n"
+        '        GITHUB_TOKEN: "${GITHUB_TOKEN}"\n'
+        "```\n\n"
+        "## 💡 Tips\n"
+        "- Store secrets with `/secret set <name> <value>`\n"
+        "- Reference in env with `${secret-name}`\n"
+        "- Use `${VAR:-default}` for optional values with defaults\n"
+        "- Skip auto-test with `--no-test` flag"
     )
     return CommandResult(success=True, message=f"📋 MCP config examples:\n{example}")
 
 
-def _extract_env_and_cwd(args: list[str]) -> tuple[dict[str, str], str | None, list[str]]:
-    """Parse env/cwd flags from arguments."""
+def _extract_add_options(
+    args: list[str],
+) -> tuple[dict[str, str], str | None, bool, list[str]]:
+    """
+    Parse add command options from arguments.
+
+    Returns:
+        Tuple of (env dict, cwd path, no_test flag, remaining args)
+    """
     env: dict[str, str] = {}
     cwd: str | None = None
+    no_test: bool = False
     remaining: list[str] = []
 
     for arg in args:
@@ -250,10 +287,74 @@ def _extract_env_and_cwd(args: list[str]) -> tuple[dict[str, str], str | None, l
                 env[key] = val
         elif arg.startswith("--cwd="):
             cwd = arg[len("--cwd=") :]
+        elif arg == "--no-test":
+            no_test = True
         else:
             remaining.append(arg)
 
-    return env, cwd, remaining
+    return env, cwd, no_test, remaining
+
+
+async def _test_newly_added_server(
+    ctx: SharedContext, manager: MCPManager, name: str
+) -> CommandResult:
+    """
+    Test a newly added MCP server and return appropriate result.
+
+    If test fails, the server config is kept but user is warned.
+    """
+    try:
+        with ctx.ui.spinner(f"⚡ Testing MCP server '{name}'..."):
+            result = await asyncio.wait_for(manager.test_server(name), timeout=15)
+
+        tool_names = (
+            ", ".join([tool.name for tool in result["tools"]]) if result["tools"] else "no tools"
+        )
+        return CommandResult(
+            success=True,
+            message=f"✅ MCP server '{name}' added and connected successfully!\n📦 Tools: {tool_names}",
+            data={
+                "server": name,
+                "tools": [tool.name for tool in result["tools"]],
+                "tool_count": result["tool_count"],
+            },
+        )
+
+    except TimeoutError:
+        logger.warning(f"⏱️ MCP test timed out for {name}")
+        return CommandResult(
+            success=False,
+            message=(
+                f"⚠️ MCP server '{name}' added but connection timed out (15s).\n"
+                f"The server is saved in config. Check:\n"
+                f"  • Is the command correct? `/mcp show {name}`\n"
+                f"  • Are environment variables set? Use `--env=KEY=${{secret}}`\n"
+                f"  • Try again with `/mcp test {name}`"
+            ),
+        )
+
+    except ValueError as e:
+        # Missing environment variables
+        logger.warning(f"⚠️ MCP test failed for {name}: {e}")
+        return CommandResult(
+            success=False,
+            message=(
+                f"⚠️ MCP server '{name}' added but configuration error:\n"
+                f"❌ {e}\n\n"
+                f"💡 Fix: Use `/secret set <name>` then reference with `--env=KEY=${{name}}`"
+            ),
+        )
+
+    except Exception as e:
+        logger.warning(f"⚠️ MCP test failed for {name}: {e}")
+        return CommandResult(
+            success=False,
+            message=(
+                f"⚠️ MCP server '{name}' added but connection failed:\n"
+                f"❌ {e}\n\n"
+                f"The server is saved. Debug with `/mcp show {name}` and retry with `/mcp test {name}`"
+            ),
+        )
 
 
 async def _manager(ctx: SharedContext) -> MCPManager:

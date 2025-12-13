@@ -130,33 +130,49 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         command: str,
         timeout: int = 60,
         via: str | None = None,
+        elevation: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Execute a command on a host via SSH.
 
-        Features handled automatically by Merlya:
-        - Secret resolution: @secret-name in commands are resolved from keyring
-        - Auto-elevation: Permission denied errors trigger automatic elevation retry
+        IMPORTANT - ELEVATION IS AUTOMATIC:
+        - Do NOT prefix commands with 'sudo' - just run the command as-is
+        - If permission denied, Merlya automatically retries with elevation
+        - The user will be prompted for password if needed (handled internally)
+
+        NEVER do this:
+        - ssh_execute(command="sudo systemctl restart nginx")  # WRONG
+        - ssh_execute(command="echo password | sudo -S ...")   # FORBIDDEN
+
+        CORRECT usage:
+        - ssh_execute(command="systemctl restart nginx")  # Auto-elevation if needed
 
         Args:
             host: Host name or hostname (target machine).
-            command: Command to execute. Can contain @secret-name references.
+            command: Command WITHOUT sudo prefix. Can contain @secret-name references.
             timeout: Command timeout in seconds (default: 60).
             via: Optional jump host/bastion to tunnel through (e.g., "bastion").
+            elevation: Optional elevation data from request_elevation (rarely needed).
 
         Returns:
-            Command output with stdout, stderr, and exit_code.
+            Command output with stdout, stderr, exit_code, elevation method, and verification hint.
+            When a verification hint is present, you SHOULD run the verification command to confirm
+            the action succeeded (e.g., after restart, verify service is active).
 
         Example:
-            # Execute on a remote host via a bastion
+            # Simple command (auto-elevates if permission denied)
+            ssh_execute(host="web-server", command="systemctl restart nginx")
+
+            # Via bastion
             ssh_execute(host="db-server", command="df -h", via="bastion")
 
-            # Use secrets in commands (resolved automatically)
+            # With secrets (resolved automatically)
             ssh_execute(host="db", command="mongosh -u admin -p @db-password")
         """
         from merlya.subagents.timeout import touch_activity
         from merlya.tools.core import ssh_execute as _ssh_execute
         from merlya.tools.core.security import mask_sensitive_command
+        from merlya.tools.core.verification import get_verification_hint
 
         via_info = f" via {via}" if via else ""
         # SECURITY: Mask sensitive data before logging
@@ -166,12 +182,14 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         # Signal activity before and after SSH command
         touch_activity()
 
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, via=via)
+        result = await _ssh_execute(
+            ctx.deps.context, host, command, timeout, via=via, elevation=elevation
+        )
 
         # Signal activity after command completes
         touch_activity()
 
-        return {
+        response: dict[str, Any] = {
             "success": result.success,
             "stdout": result.data.get("stdout", "") if result.data else "",
             "stderr": result.data.get("stderr", "") if result.data else "",
@@ -179,6 +197,18 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
             "elevation": result.data.get("elevation") if result.data else None,
             "via": result.data.get("via") if result.data else None,
         }
+
+        # Add verification hint for state-changing commands
+        if result.success:
+            hint = get_verification_hint(command)
+            if hint:
+                response["verification"] = {
+                    "command": hint.command,
+                    "expect": hint.expect_stdout,
+                    "description": hint.description,
+                }
+
+        return response
 
     @agent.tool
     async def ask_user(
@@ -251,20 +281,31 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
     async def request_elevation(
         ctx: RunContext[AgentDependencies],
         command: str,
-        host: str | None = None,
+        host: str,
     ) -> dict[str, Any]:
         """
-        Request privilege elevation from the user.
+        Request privilege elevation explicitly (RARELY NEEDED).
 
-        Use this tool when a command fails with "Permission denied" and you need
-        sudo/su/doas access to retry.
+        IMPORTANT: In most cases, you should NOT use this tool!
+        ssh_execute() has auto_elevate=True by default - it automatically
+        retries with elevation when "permission denied" occurs.
+
+        Only use this tool when you need explicit control over the elevation
+        method BEFORE attempting the command.
+
+        Usage (when needed):
+            1. Call request_elevation(host="server", command="systemctl restart nginx")
+            2. Pass the result to ssh_execute:
+               ssh_execute(host="server", command="systemctl restart nginx", elevation=<result>)
+
+        NEVER construct commands like 'echo password | sudo -S' - that is FORBIDDEN.
 
         Args:
-            command: Command that requires elevation.
-            host: Target host for elevation (optional).
+            command: Command that will require elevation (without sudo prefix).
+            host: Target host for elevation (REQUIRED).
 
         Returns:
-            Elevation method approved by user (e.g., "sudo", "su").
+            Elevation data to pass to ssh_execute(elevation=...).
         """
         from merlya.tools.interaction import request_elevation as _request_elevation
 
@@ -280,17 +321,42 @@ def _register_mcp_tools(agent: Agent[Any, Any]) -> None:
     @agent.tool
     async def list_mcp_tools(ctx: RunContext[AgentDependencies]) -> dict[str, Any]:
         """
-        List available MCP tools from configured servers.
+        List available MCP tools with their schemas.
 
         MCP (Model Context Protocol) tools are external capabilities
-        provided by configured MCP servers.
+        provided by configured MCP servers. Use this to discover:
+        - Available tools and what they do
+        - Required and optional parameters for each tool
+        - Proper usage sequence (some tools require IDs from other tools)
+
+        IMPORTANT: Before calling an MCP tool, check its schema to know:
+        1. What parameters are required vs optional
+        2. The expected parameter types
+        3. If it needs IDs from other tools first
 
         Returns:
-            List of available tool names and count.
+            List of tools with names, descriptions, and parameter schemas.
         """
         manager = await ctx.deps.context.get_mcp_manager()
         tools = await manager.list_tools()
-        return {"tools": [tool.name for tool in tools], "count": len(tools)}
+
+        # Build detailed tool info for LLM
+        tool_details = []
+        for tool in tools:
+            detail: dict[str, Any] = {
+                "name": tool.name,
+                "description": tool.description or "No description",
+                "server": tool.server,
+            }
+            # Include schema so LLM knows required parameters
+            if tool.input_schema:
+                detail["parameters"] = tool.input_schema
+                # Extract required fields for clarity
+                if "required" in tool.input_schema:
+                    detail["required_params"] = tool.input_schema["required"]
+            tool_details.append(detail)
+
+        return {"tools": tool_details, "count": len(tools)}
 
     @agent.tool
     async def call_mcp_tool(
@@ -299,14 +365,30 @@ def _register_mcp_tools(agent: Agent[Any, Any]) -> None:
         arguments: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Call an MCP tool by name.
+        Call an MCP tool by name with arguments.
+
+        IMPORTANT: Before calling, use list_mcp_tools() to see:
+        1. Available tools and their descriptions
+        2. Required parameters (you MUST provide these)
+        3. Parameter types and formats
+
+        Common pattern for Context7:
+        1. First call "context7.resolve-library-id" with {"libraryName": "cloudflare/cloudflared"}
+        2. Get the context7CompatibleLibraryID from the result
+        3. Then call "context7.get-library-docs" with that ID
 
         Args:
-            tool: Tool name in format "server.tool" (e.g., "github.list_repos").
-            arguments: Arguments to pass to the tool (optional).
+            tool: Tool name in format "server.tool" (e.g., "context7.resolve-library-id").
+            arguments: Arguments dict matching the tool's schema. Check required params!
 
         Returns:
-            Tool execution result.
+            Tool execution result with content and any structured data.
+
+        Example:
+            # Step 1: Resolve library ID first
+            result = call_mcp_tool("context7.resolve-library-id", {"libraryName": "cloudflare/cloudflared"})
+            # Step 2: Use the ID to get docs
+            call_mcp_tool("context7.get-library-docs", {"context7CompatibleLibraryID": result["id"]})
         """
         manager = await ctx.deps.context.get_mcp_manager()
         return await manager.call_tool(tool, arguments or {})
