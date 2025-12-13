@@ -16,12 +16,12 @@ class ScanOptions:
 
     scan_type: str = "full"  # full, system, security, quick
     output_json: bool = False
-    all_disks: bool = False
+    all_disks: bool = True  # Check all mounted filesystems by default
     include_docker: bool = True
     include_updates: bool = True
     include_logins: bool = True
-    include_network: bool = False  # Network diagnostics (ping, dns)
-    include_services: bool = False  # Running services list
+    include_network: bool = True  # Network diagnostics (ping, dns)
+    include_services: bool = True  # Running services list
     show_all: bool = False  # Show all ports/users (no truncation)
 
 
@@ -57,12 +57,12 @@ def parse_scan_options(args: list[str]) -> ScanOptions:
             opts.include_docker = False
         elif arg == "--no-updates":
             opts.include_updates = False
+        elif arg == "--no-network":
+            opts.include_network = False
+        elif arg == "--no-services":
+            opts.include_services = False
         elif arg == "--show-all":
             opts.show_all = True
-        elif arg == "--network":
-            opts.include_network = True
-        elif arg == "--services":
-            opts.include_services = True
 
     return opts
 
