@@ -1,0 +1,292 @@
+/* Merlya Documentation - Custom Styles */
+
+:root {
+  --md-primary-fg-color: #7c3aed;
+  --md-primary-fg-color--light: #a78bfa;
+  --md-primary-fg-color--dark: #5b21b6;
+  --md-accent-fg-color: #8b5cf6;
+}
+
+/* Hero section styling */
+.md-typeset h1 {
+  font-weight: 700;
+}
+
+/* Code blocks */
+.md-typeset code {
+  border-radius: 4px;
+}
+
+.md-typeset pre > code {
+  border-radius: 8px;
+}
+
+/* Cards grid */
+.md-typeset .grid.cards > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.md-typeset .grid.cards > ul > li {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Tables */
+.md-typeset table:not([class]) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--md-primary-fg-color);
+  color: white;
+}
+
+/* Admonitions */
+.md-typeset .admonition {
+  border-radius: 8px;
+}
+
+/* Buttons */
+.md-typeset .md-button {
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.md-typeset .md-button--primary {
+  background: var(--md-primary-fg-color);
+}
+
+.md-typeset .md-button--primary:hover {
+  background: var(--md-primary-fg-color--dark);
+}
+
+/* Navigation */
+.md-nav__link {
+  font-weight: 500;
+}
+
+/* Footer */
+.md-footer {
+  background: var(--md-primary-fg-color--dark);
+}
+
+/* Terminal-like code blocks */
+.md-typeset pre > code[class*="language-bash"],
+.md-typeset pre > code[class*="language-shell"] {
+  background: #1a1b26;
+}
+
+/* Mermaid diagrams */
+.mermaid {
+  background: transparent !important;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 76.1875em) {
+  .md-typeset .grid.cards > ul {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   Chat Widget Styles
+   ============================================ */
+
+#merlya-chat-widget {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  font-family: var(--md-text-font-family);
+}
+
+#chat-toggle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#chat-toggle:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.5);
+}
+
+#chat-panel {
+  position: absolute;
+  bottom: 70px;
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  height: 450px;
+  max-height: calc(100vh - 120px);
+  background: var(--md-default-bg-color);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+#chat-panel.hidden {
+  display: none;
+}
+
+#chat-header {
+  background: var(--md-primary-fg-color);
+  color: white;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+#chat-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+#chat-close:hover {
+  opacity: 1;
+}
+
+#chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#chat-messages .message {
+  max-width: 85%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+#chat-messages .message.user {
+  align-self: flex-end;
+  background: var(--md-primary-fg-color);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+#chat-messages .message.bot {
+  align-self: flex-start;
+  background: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color);
+  border-bottom-left-radius: 4px;
+}
+
+#chat-messages .message.loading {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+#chat-messages .message.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+[data-md-color-scheme="slate"] #chat-messages .message.error {
+  background: #450a0a;
+  color: #fca5a5;
+}
+
+#chat-form {
+  display: flex;
+  padding: 12px;
+  gap: 8px;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-default-bg-color);
+}
+
+#chat-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 24px;
+  font-size: 0.9rem;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#chat-input:focus {
+  border-color: var(--md-primary-fg-color);
+}
+
+#chat-input:disabled {
+  opacity: 0.6;
+}
+
+#chat-send {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: background 0.2s;
+}
+
+#chat-send:hover {
+  background: var(--md-primary-fg-color--dark);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 480px) {
+  #merlya-chat-widget {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  #chat-panel {
+    width: calc(100vw - 32px);
+    height: calc(100vh - 100px);
+    bottom: 64px;
+    right: -8px;
+  }
+
+  #chat-toggle {
+    width: 48px;
+    height: 48px;
+  }
+}
