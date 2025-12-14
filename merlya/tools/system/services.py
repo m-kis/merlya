@@ -340,13 +340,13 @@ def _parse_service_list(output: str, os_family: OSFamily) -> list[dict[str, str 
                 # Extract runlevel and the rest
                 runlevel_end = line.find("] ")
                 if runlevel_end > 0:
-                    rest = line[runlevel_end + 2:].strip()
+                    rest = line[runlevel_end + 2 :].strip()
                     if rest.startswith("[") and "] " in rest:
                         # Extract status and service name
                         status_end = rest.find("] ")
                         if status_end > 0:
                             status = rest[1:status_end]  # Remove brackets
-                            service_name = rest[status_end + 2:].strip()
+                            service_name = rest[status_end + 2 :].strip()
                             if service_name:
                                 services.append(
                                     {

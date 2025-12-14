@@ -109,4 +109,3 @@ def is_valid_ping_target(target: str) -> bool:
 def is_valid_domain(domain: str) -> bool:
     """Validate domain name."""
     return is_valid_ping_target(domain)
-

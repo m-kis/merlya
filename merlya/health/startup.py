@@ -50,6 +50,7 @@ async def run_startup_checks(
     logger = None
     try:
         from loguru import logger as loguru_logger
+
         logger = loguru_logger
     except ImportError:
         pass
@@ -80,18 +81,20 @@ async def run_startup_checks(
             service_results = await asyncio.gather(
                 check_parser_service(effective_tier),
                 check_llm_provider(timeout=5.0),  # Short timeout for startup
-                return_exceptions=True
+                return_exceptions=True,
             )
             for result in service_results:
                 if isinstance(result, BaseException):
                     if logger:
                         logger.warning(f"⚠️ Optional check failed with exception: {result}")
-                    results.append(HealthCheck(
-                        name="startup_optional",
-                        status=CheckStatus.WARNING,
-                        message=f"⚠️ Optional check failed: {str(result)[:50]}",
-                        details={"error": str(result)},
-                    ))
+                    results.append(
+                        HealthCheck(
+                            name="startup_optional",
+                            status=CheckStatus.WARNING,
+                            message=f"⚠️ Optional check failed: {str(result)[:50]}",
+                            details={"error": str(result)},
+                        )
+                    )
                 else:
                     results.append(result)
         except Exception as e:

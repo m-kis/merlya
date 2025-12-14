@@ -169,7 +169,9 @@ async def add_cron(
 
     # Set new crontab using stdin
     set_cmd = ["crontab", *user_flag, "-"]
-    result = await execute_security_command(ctx, host, " ".join(set_cmd), timeout=30, input_data=new_crontab)
+    result = await execute_security_command(
+        ctx, host, " ".join(set_cmd), timeout=30, input_data=new_crontab
+    )
 
     if result.exit_code != 0:
         return ToolResult(

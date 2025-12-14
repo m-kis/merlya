@@ -159,9 +159,7 @@ async def check_ssl_cert_file(
         )
 
     # Use a safer approach with argument list instead of shell command interpolation
-    cmd_parts = [
-        "openssl", "x509", "-in", cert_path, "-noout", "-dates", "-subject", "-issuer"
-    ]
+    cmd_parts = ["openssl", "x509", "-in", cert_path, "-noout", "-dates", "-subject", "-issuer"]
 
     # Join the command parts for execute_security_command which expects a string
     cmd = " ".join(shlex.quote(part) for part in cmd_parts) + " 2>&1"
@@ -210,8 +208,9 @@ async def _check_certificate(
     # Use a safer approach with argument list instead of shell command interpolation
     # This prevents command injection by avoiding shell=True
     cmd_parts = [
-        "sh", "-c",
-        f"echo | openssl s_client -servername {shlex.quote(domain)} -connect {shlex.quote(domain)}:{port} 2>/dev/null | openssl x509 -noout -dates -subject -issuer -ext subjectAltName 2>/dev/null"
+        "sh",
+        "-c",
+        f"echo | openssl s_client -servername {shlex.quote(domain)} -connect {shlex.quote(domain)}:{port} 2>/dev/null | openssl x509 -noout -dates -subject -issuer -ext subjectAltName 2>/dev/null",
     ]
 
     # Join the command parts for execute_security_command which expects a string
@@ -284,9 +283,9 @@ def _parse_openssl_date(date_str: str) -> datetime | None:
 
     # Formats without %Z since we stripped the timezone
     formats = [
-        "%b %d %H:%M:%S %Y",   # "Mar 15 12:00:00 2024"
+        "%b %d %H:%M:%S %Y",  # "Mar 15 12:00:00 2024"
         "%b  %d %H:%M:%S %Y",  # "Mar  5 12:00:00 2024" (double-space for single-digit day)
-        "%Y-%m-%dT%H:%M:%S",   # "2024-03-15T12:00:00" (ISO format without Z)
+        "%Y-%m-%dT%H:%M:%S",  # "2024-03-15T12:00:00" (ISO format without Z)
     ]
 
     for fmt in formats:
@@ -385,6 +384,8 @@ def _is_safe_cert_path(path: str) -> bool:
     # Ensure path starts with allowed prefix (add trailing slash for prefix match)
     return any(
         normalized.startswith(prefix.rstrip("/"))
-        and (len(normalized) == len(prefix.rstrip("/")) or normalized[len(prefix.rstrip("/"))] == "/")
+        and (
+            len(normalized) == len(prefix.rstrip("/")) or normalized[len(prefix.rstrip("/"))] == "/"
+        )
         for prefix in allowed_prefixes
     )

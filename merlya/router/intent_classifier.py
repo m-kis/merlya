@@ -258,7 +258,9 @@ class IntentClassifier:
         # LRU cache using OrderedDict for O(1) operations
         self._embedding_cache: OrderedDict[str, NDArray[np.float32]] = OrderedDict()
 
-    async def load_model(self, model_path: Path | None = None, *, allow_download: bool = True) -> bool:
+    async def load_model(
+        self, model_path: Path | None = None, *, allow_download: bool = True
+    ) -> bool:
         """Load ONNX embedding model.
 
         Args:
@@ -282,7 +284,9 @@ class IntentClassifier:
                 return self._disable_embeddings(selected_path, tokenizer_path)
 
             if not selected_path.exists() or not tokenizer_path.exists():
-                downloaded = await self._download_model(selected_model, selected_path, tokenizer_path)
+                downloaded = await self._download_model(
+                    selected_model, selected_path, tokenizer_path
+                )
                 if not downloaded:
                     from merlya.config.tiers import get_router_model_id
 

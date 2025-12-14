@@ -57,10 +57,12 @@ class TestSSLSecurity:
 
         # Mock the SSH pool to avoid actual connections
         mock_pool = AsyncMock()
-        mock_pool.execute = AsyncMock(return_value=MagicMock(
-            exit_code=0,
-            stdout="notBefore=Jan 1 00:00:00 2024 GMT\nnotAfter=Jan 1 00:00:00 2025 GMT\nsubject=CN=example.com\nissuer=CN=CA"
-        ))
+        mock_pool.execute = AsyncMock(
+            return_value=MagicMock(
+                exit_code=0,
+                stdout="notBefore=Jan 1 00:00:00 2024 GMT\nnotAfter=Jan 1 00:00:00 2025 GMT\nsubject=CN=example.com\nissuer=CN=CA",
+            )
+        )
         ctx.get_ssh_pool.return_value = mock_pool
 
         # Execute the function

@@ -14,6 +14,7 @@ from loguru import logger
 
 class CircuitState(Enum):
     """Circuit breaker states."""
+
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
@@ -97,4 +98,5 @@ class CircuitBreaker:
     def _get_current_time(self) -> float:
         """Get current time (mockable for testing)."""
         import time
+
         return time.time()
