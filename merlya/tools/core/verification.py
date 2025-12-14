@@ -166,7 +166,19 @@ def get_verification_hint(command: str) -> VerificationHint | None:
                 if expect_stdout:
                     # If expect_stdout contains shell patterns (grep, etc.), escape it
                     # Otherwise keep raw value for direct comparison
-                    if any(shell_keyword in expect_stdout for shell_keyword in ['grep', 'test', 'echo', 'stat', 'dpkg', 'rpm', 'ufw', 'docker']):
+                    if any(
+                        shell_keyword in expect_stdout
+                        for shell_keyword in [
+                            "grep",
+                            "test",
+                            "echo",
+                            "stat",
+                            "dpkg",
+                            "rpm",
+                            "ufw",
+                            "docker",
+                        ]
+                    ):
                         expect_stdout = expect_stdout.replace(f"${i}", shlex.quote(safe_group))
                     else:
                         expect_stdout = expect_stdout.replace(f"${i}", safe_group)

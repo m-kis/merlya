@@ -35,4 +35,3 @@ async def test_execute_with_elevation_propagates_cancelled_error() -> None:
             initial_result=_DummyFailedResult(),
             execute_fn=_execute_fn,
         )
-

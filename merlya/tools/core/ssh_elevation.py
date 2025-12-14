@@ -208,16 +208,16 @@ async def _try_fallback_chain(
             continue
 
         if next_method in PASSWORD_METHODS:
-            retry = await retry_with_method(
-                ctx, host, command, next_method, capabilities=caps
-            )
+            retry = await retry_with_method(ctx, host, command, next_method, capabilities=caps)
             if not retry:
                 continue
             cmd, input_data = retry
         else:
             cmd, input_data = permissions.elevate_command(command, caps, next_method, None)
 
-        new_result = await execute_fn(ssh_pool, host, host_entry, cmd, timeout, input_data, ssh_opts)
+        new_result = await execute_fn(
+            ssh_pool, host, host_entry, cmd, timeout, input_data, ssh_opts
+        )
         logger.debug(f"🔒 Fallback {next_method}: exit={new_result.exit_code}")
 
         last_result = new_result

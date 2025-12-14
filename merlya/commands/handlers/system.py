@@ -32,6 +32,7 @@ class _ScanHostResult(TypedDict):
     result: ScanResult | None
     host: Host | None
 
+
 # Limit concurrent SSH channels to avoid MaxSessions limit (default 10 in OpenSSH)
 MAX_CONCURRENT_SSH_CHANNELS = 6
 

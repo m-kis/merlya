@@ -16,4 +16,3 @@ def test_explain_ssh_error_detects_channel_open_failed() -> None:
     err = RuntimeError("SSH failed: open failed")
     info = explain_ssh_error(err, host="192.168.1.5")
     assert "channel open failed" in info.symptom.lower()
-

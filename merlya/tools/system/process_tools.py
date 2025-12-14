@@ -189,6 +189,7 @@ async def list_processes(
         return ToolResult(success=True, data=processes)
     except Exception as e:
         from loguru import logger
+
         logger.warning(f"⚠️ Failed to parse process list: {e}")
         return ToolResult(
             success=False,

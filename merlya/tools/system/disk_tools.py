@@ -299,5 +299,6 @@ async def check_all_disks(
 
     except Exception as e:
         from loguru import logger
+
         logger.warning(f"⚠️ Failed to parse disk output: {e}")
         return ToolResult(success=False, data=[], error=f"❌ Failed to parse disk usage: {e}")
