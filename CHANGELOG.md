@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2025-12-14
+
+### Changed
+
+- Host mention detection now treats mixed-case `@Mentions` as variables to avoid resolving secrets as hosts.
+- Codebase reformatted with `ruff format` to satisfy CI style checks.
+
+### Fixed
+
+- Release pipeline updated with a new patch version after the previous tag already existed on PyPI/GitHub.
+
 ## [0.7.2] - 2025-02-19
 
 ### Added
