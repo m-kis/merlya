@@ -555,8 +555,10 @@ class IntentClassifier:
         # Extract @mentions (hosts or variables)
         mentions = re.findall(r"@(\w[\w.-]*)", text)
         for mention in mentions:
-            # Variables usually have underscores, hosts have dashes
-            if "_" in mention or mention.isupper():
+            # Heuristic:
+            # - Variables/secrets often have underscores OR any uppercase (MY_VAR, apiKey, MotDePasse)
+            # - Hosts are typically lowercase with dashes/digits/domains
+            if "_" in mention or any(c.isupper() for c in mention):
                 entities["variables"].append(mention)
             else:
                 entities["hosts"].append(mention)
