@@ -65,7 +65,9 @@
     "llm": {
       "ok": "{provider} accessible",
       "warning": "Provider inaccessible: {error} (will retry)",
-      "error": "No API key configured"
+      "error": "No API key configured",
+      "invalid_api_key": "❌ Invalid API key",
+      "rate_limited": "⚠️ Rate limited - will retry"
     },
     "ssh": {
       "ok": "SSH available (asyncssh + system client)",
@@ -301,7 +303,8 @@
     "confirm_action": "Are you sure you want to {action}?",
     "enter_value": "Enter value for {field}",
     "select_option": "Select an option",
-    "add_host": "Do you want to add '{name}' to inventory?"
+    "add_host": "Do you want to add '{name}' to inventory?",
+    "target_required": "This request needs a target. Type 'local' or the exact server name from inventory (request: {request})"
   },
   "setup": {
     "title": "⚙️ Merlya Setup",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from loguru import logger
 
@@ -25,10 +25,23 @@ from merlya.commands.handlers.hosts_io import (
     validate_tag,
 )
 from merlya.commands.registry import CommandResult, command, subcommand
+from merlya.core.types import HostStatus
 from merlya.persistence.models import Host
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+
+
+class _SSHConnectionTestResult(TypedDict):
+    success: bool
+    latency_ms: int | None
+    os_info: str | None
+    error: str | None
+
+
+class _HostCheckResult(TypedDict):
+    host: Host
+    result: _SSHConnectionTestResult
 
 
 @command("hosts", "Manage hosts inventory", "/hosts <subcommand>")
@@ -148,7 +161,7 @@ async def _test_ssh_connection(
     port: int,
     username: str | None,
     timeout: int = 10,
-) -> dict:
+) -> _SSHConnectionTestResult:
     """
     Test SSH connection to a host.
 
@@ -188,6 +201,7 @@ async def _test_ssh_connection(
             return {
                 "success": False,
                 "latency_ms": latency,
+                "os_info": None,
                 "error": result.stderr or "Command failed",
             }
 
@@ -196,6 +210,7 @@ async def _test_ssh_connection(
         return {
             "success": False,
             "latency_ms": None,
+            "os_info": None,
             "error": str(e),
         }
 
@@ -244,13 +259,13 @@ async def cmd_hosts_check(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     ctx.ui.info(f"🔌 Checking {len(hosts_to_check)} host(s)...")
 
-    results: list[dict] = []
+    results: list[_HostCheckResult] = []
 
     if parallel and len(hosts_to_check) > 1:
         # Parallel check with semaphore to limit concurrent connections
         semaphore = asyncio.Semaphore(10)
 
-        async def check_with_semaphore(host: Host) -> dict:
+        async def check_with_semaphore(host: Host) -> _HostCheckResult:
             async with semaphore:
                 result = await _test_ssh_connection(ctx, host.hostname, host.port, host.username)
                 return {"host": host, "result": result}
@@ -279,7 +294,7 @@ async def cmd_hosts_check(ctx: SharedContext, args: list[str]) -> CommandResult:
             latency = f"{result['latency_ms']}ms"
             error = "-"
             # Update host health status
-            host.health_status = "healthy"
+            host.health_status = HostStatus.HEALTHY
             await ctx.hosts.update(host)
         else:
             unhealthy += 1
@@ -287,7 +302,7 @@ async def cmd_hosts_check(ctx: SharedContext, args: list[str]) -> CommandResult:
             latency = "-"
             error = result["error"][:50] if result["error"] else "Unknown error"
             # Update host health status
-            host.health_status = "unreachable"
+            host.health_status = HostStatus.UNREACHABLE
             await ctx.hosts.update(host)
 
         rows.append([status, host.name, host.hostname, latency, error])

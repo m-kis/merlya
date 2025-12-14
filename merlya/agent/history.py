@@ -30,6 +30,7 @@ from merlya.config.constants import HARD_MAX_HISTORY_MESSAGES
 LOOP_DETECTION_WINDOW = 10  # Look at last N tool calls
 LOOP_THRESHOLD_SAME_CALL = 3  # Same tool+args called N times = loop
 LOOP_THRESHOLD_PATTERN = 4  # Same 2-3 tool alternation pattern
+MAX_TOOL_CALLS_SINCE_LAST_USER = 50  # Prevent command explosions per user request
 
 # Type alias for history processor function
 HistoryProcessor = Callable[[list[ModelMessage]], list[ModelMessage]]
@@ -354,6 +355,15 @@ def detect_loop(
     # This prevents false positives from old repetitive calls in loaded conversations
     last_user_idx = _find_last_user_message_index(messages)
     recent_messages = messages[last_user_idx:]
+
+    # Guardrail: too many tool calls in a single user request (even if not repetitive)
+    tool_calls_since_user = 0
+    for msg in recent_messages:
+        if isinstance(msg, ModelResponse):
+            tool_calls_since_user += sum(1 for part in msg.parts if isinstance(part, ToolCallPart))
+
+    if tool_calls_since_user >= MAX_TOOL_CALLS_SINCE_LAST_USER:
+        return True, f"Too many tool calls ({tool_calls_since_user}) since last user message"
 
     signatures = extract_recent_tool_signatures(recent_messages)
 

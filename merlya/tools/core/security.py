@@ -100,7 +100,7 @@ def detect_unsafe_password(command: str) -> str | None:
 # Normalizes whitespace and handles variations like 'rm -fr' vs 'rm -rf'
 DANGEROUS_COMMAND_PATTERNS: tuple[re.Pattern[str], ...] = (
     # rm -rf / or rm -rf /* (handles rm -rf, rm -fr, rm --recursive --force)
-    re.compile(r"\brm\s+(-[rf]+\s*)+/+\*?\s*$", re.IGNORECASE),
+    re.compile(r"\brm\s+(-[rf]+\s*)+/+\*?\s*(?:[;|&]|\s|$)", re.IGNORECASE),
     re.compile(r"\brm\s+--recursive\s+--force\s+/", re.IGNORECASE),
     # mkfs (any filesystem format command)
     re.compile(r"\bmkfs[.\s]", re.IGNORECASE),
@@ -111,7 +111,7 @@ DANGEROUS_COMMAND_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Redirect to disk devices
     re.compile(r">\s*/dev/(?:sd|hd|vd|nvme|xvd)", re.IGNORECASE),
     # chmod 777 on root
-    re.compile(r"\bchmod\s+(-R\s+)?777\s+/+\s*$", re.IGNORECASE),
+    re.compile(r"\bchmod\s+(-R\s+)?777\s+/+\s*(?:[;|&]|\s|$)", re.IGNORECASE),
     # wipefs (wipes filesystem signatures)
     re.compile(r"\bwipefs\s+", re.IGNORECASE),
     # shred on devices

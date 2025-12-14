@@ -13,8 +13,9 @@ Elevation chain (tries in order until success):
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -32,15 +33,7 @@ ExecuteFn = Callable[
     Awaitable[SSHResultProtocol],
 ]
 
-# Complete fallback chain: each method has a next fallback
-# sudo -> sudo_with_password -> su
-# doas -> doas_with_password -> su
-ELEVATION_FALLBACK_CHAIN: dict[str, str] = {
-    "sudo": "sudo_with_password",
-    "doas": "doas_with_password",
-    "sudo_with_password": "su",  # If sudo fails, try su (root password)
-    "doas_with_password": "su",  # If doas fails, try su (root password)
-}
+_ELEVATION_ORDER = ["sudo", "doas", "sudo_with_password", "doas_with_password", "su"]
 
 # User-friendly method names for prompts
 METHOD_DISPLAY: dict[str, str] = {
@@ -89,7 +82,11 @@ async def _prompt_password(ctx: SharedContext, host: str, method: str) -> str | 
 
 
 async def retry_with_method(
-    ctx: SharedContext, host: str, command: str, method: str
+    ctx: SharedContext,
+    host: str,
+    command: str,
+    method: str,
+    capabilities: dict[str, Any] | None = None,
 ) -> tuple[str, str | None] | None:
     """Retry elevation with a specific method."""
     if method not in PASSWORD_METHODS:
@@ -107,7 +104,7 @@ async def retry_with_method(
     # Cache password with method (su uses root password, others use user password)
     permissions.cache_password(host, password, method)
 
-    caps = await permissions.detect_capabilities(host)
+    caps = capabilities or await permissions.detect_capabilities(host)
     return permissions.elevate_command(command, caps, method, password)
 
 
@@ -115,11 +112,6 @@ def _is_auth_failure(stderr: str) -> bool:
     """Check if stderr indicates authentication failure."""
     lower = stderr.lower()
     return any(err in lower for err in AUTH_ERROR_PATTERNS)
-
-
-def get_next_fallback(method: str) -> str | None:
-    """Get next fallback method in the chain."""
-    return ELEVATION_FALLBACK_CHAIN.get(method)
 
 
 async def execute_with_elevation(
@@ -163,6 +155,9 @@ async def execute_with_elevation(
 
         return result, method
 
+    except asyncio.CancelledError:
+        # Propagate Ctrl+C cancellation (prompt_toolkit -> CancelledError)
+        raise
     except Exception as e:
         logger.warning(f"🔒 Auto-elevation failed: {type(e).__name__}: {e}")
         return initial_result, None
@@ -181,41 +176,57 @@ async def _try_fallback_chain(
     execute_fn: ExecuteFn,
 ) -> tuple[SSHResultProtocol, str]:
     """Try fallback chain until success or exhausted."""
-    method = current_method
+    permissions = await ctx.get_permissions()
+    caps = await permissions.detect_capabilities(host)
 
-    # Keep trying fallbacks until we succeed or run out of options
-    while True:
-        next_method = get_next_fallback(method)
-        if not next_method:
-            break
+    available_raw = caps.get("available_methods", [])
+    available: list[str] = []
+    if isinstance(available_raw, list):
+        for item in available_raw:
+            if isinstance(item, dict):
+                method = item.get("method")
+                if isinstance(method, str):
+                    available.append(method)
 
-        # Explain what's happening
-        if next_method == "su":
-            logger.info(f"🔒 {method} failed, trying su with root password...")
-        else:
-            logger.info(f"🔒 {method} failed, trying {next_method}...")
+    # Preserve the documented elevation order and only try methods that exist on the host.
+    available_set = set(available)
+    if current_method in _ELEVATION_ORDER:
+        start_idx = _ELEVATION_ORDER.index(current_method) + 1
+    else:
+        start_idx = 0
 
-        retry = await retry_with_method(ctx, host, command, next_method)
-        if not retry:
-            # User cancelled or didn't provide password
-            break
+    candidates = [m for m in _ELEVATION_ORDER[start_idx:] if m in available_set]
+    last_result = result
+    last_method = current_method
 
-        cmd, input_data = retry
-        new_result = await execute_fn(
-            ssh_pool, host, host_entry, cmd, timeout, input_data, ssh_opts
+    for next_method in candidates:
+        confirm = await ctx.ui.prompt_confirm(
+            f"🔒 Elevation via '{last_method}' failed on {host}. Try '{next_method}'?",
+            default=True,
         )
+        if not confirm:
+            continue
+
+        if next_method in PASSWORD_METHODS:
+            retry = await retry_with_method(
+                ctx, host, command, next_method, capabilities=caps
+            )
+            if not retry:
+                continue
+            cmd, input_data = retry
+        else:
+            cmd, input_data = permissions.elevate_command(command, caps, next_method, None)
+
+        new_result = await execute_fn(ssh_pool, host, host_entry, cmd, timeout, input_data, ssh_opts)
         logger.debug(f"🔒 Fallback {next_method}: exit={new_result.exit_code}")
 
+        last_result = new_result
+        last_method = next_method
+
         if new_result.exit_code == 0:
-            # Success!
             return new_result, next_method
 
         if not _is_auth_failure(new_result.stderr):
-            # Different error, not auth failure - return this result
             return new_result, next_method
 
-        # Auth failed again, continue to next fallback
-        result = new_result
-        method = next_method
-
-    return result, method
+    return last_result, last_method

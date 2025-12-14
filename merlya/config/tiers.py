@@ -84,9 +84,9 @@ ROUTER_MODELS: dict[ModelTier, ModelConfig] = {
         size_mb=1200,
     ),
     ModelTier.BALANCED: ModelConfig(
-        model_id="Xenova/gte-multilingual-base",
+        model_id="Xenova/multilingual-e5-base",
         description="Medium multilingual embedding model",
-        size_mb=400,
+        size_mb=500,
     ),
     ModelTier.LIGHTWEIGHT: ModelConfig(
         model_id="Xenova/all-MiniLM-L6-v2",

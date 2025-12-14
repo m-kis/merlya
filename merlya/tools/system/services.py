@@ -6,6 +6,7 @@ Manage systemd/init services on remote hosts with safety checks.
 
 from __future__ import annotations
 
+import shlex
 from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
@@ -118,7 +119,8 @@ async def manage_service(
         )
 
     # Check for permission denied
-    if "permission denied" in result.stderr.lower() or "access denied" in result.stderr.lower():
+    stderr_lower = (result.stderr or "").lower()
+    if "permission denied" in stderr_lower or "access denied" in stderr_lower:
         return ToolResult(
             success=False,
             data={"service": service, "action": action, "requires_elevation": True},
@@ -151,13 +153,31 @@ async def list_services(
     os_info = await detect_os(ctx, host)
 
     if os_info.family == OSFamily.MACOS:
-        cmd = "launchctl list"
+        # macOS uses launchctl
+        if filter_state == "running":
+            cmd = "launchctl list | grep -v '^-'"
+        elif filter_state == "stopped":
+            cmd = "launchctl list | grep '^-'"
+        elif filter_state == "failed":
+            cmd = "launchctl list"
+        else:
+            cmd = "launchctl list"
     elif os_info.family in (OSFamily.LINUX_ALPINE,):
-        cmd = "rc-status -a"
+        # Alpine uses OpenRC
+        if filter_state == "running":
+            cmd = "rc-status -a | grep -E '^\\[.*\\]\\s+started'"
+        elif filter_state == "stopped":
+            cmd = "rc-status -a | grep -E '^\\[.*\\]\\s+stopped'"
+        elif filter_state == "failed":
+            cmd = "rc-status -a | grep -E '^\\[.*\\]\\s+failed'"
+        else:
+            cmd = "rc-status -a"
     else:
         # systemd
         if filter_state == "running":
             cmd = "systemctl list-units --type=service --state=running --no-pager --no-legend"
+        elif filter_state == "stopped":
+            cmd = "systemctl list-units --type=service --state=inactive --no-pager --no-legend"
         elif filter_state == "failed":
             cmd = "systemctl list-units --type=service --state=failed --no-pager --no-legend"
         else:
@@ -201,48 +221,48 @@ def _build_service_command(
     if os_family == OSFamily.MACOS:
         # macOS uses launchctl
         launchctl_actions = {
-            "start": f"sudo launchctl start {service}",
-            "stop": f"sudo launchctl stop {service}",
-            "restart": f"sudo launchctl stop {service} && sudo launchctl start {service}",
-            "status": f"launchctl list | grep -E '{service}'",
+            "start": f"sudo launchctl start {shlex.quote(service)}",
+            "stop": f"sudo launchctl stop {shlex.quote(service)}",
+            "restart": f"sudo launchctl stop {shlex.quote(service)} && sudo launchctl start {shlex.quote(service)}",
+            "status": f"launchctl list | grep -F {shlex.quote(service)}",
         }
         return launchctl_actions.get(action)
 
     if os_family == OSFamily.LINUX_ALPINE:
         # Alpine uses OpenRC
         rc_actions = {
-            "start": f"sudo rc-service {service} start",
-            "stop": f"sudo rc-service {service} stop",
-            "restart": f"sudo rc-service {service} restart",
-            "reload": f"sudo rc-service {service} reload",
-            "status": f"rc-service {service} status",
-            "enable": f"sudo rc-update add {service} default",
-            "disable": f"sudo rc-update del {service} default",
+            "start": f"sudo rc-service {shlex.quote(service)} start",
+            "stop": f"sudo rc-service {shlex.quote(service)} stop",
+            "restart": f"sudo rc-service {shlex.quote(service)} restart",
+            "reload": f"sudo rc-service {shlex.quote(service)} reload",
+            "status": f"rc-service {shlex.quote(service)} status",
+            "enable": f"sudo rc-update add {shlex.quote(service)} default",
+            "disable": f"sudo rc-update del {shlex.quote(service)} default",
         }
         return rc_actions.get(action)
 
     if os_family == OSFamily.FREEBSD:
         # FreeBSD uses service
         bsd_actions = {
-            "start": f"sudo service {service} start",
-            "stop": f"sudo service {service} stop",
-            "restart": f"sudo service {service} restart",
-            "reload": f"sudo service {service} reload",
-            "status": f"service {service} status",
-            "enable": f"sudo sysrc {service}_enable=YES",
-            "disable": f"sudo sysrc {service}_enable=NO",
+            "start": f"sudo service {shlex.quote(service)} start",
+            "stop": f"sudo service {shlex.quote(service)} stop",
+            "restart": f"sudo service {shlex.quote(service)} restart",
+            "reload": f"sudo service {shlex.quote(service)} reload",
+            "status": f"service {shlex.quote(service)} status",
+            "enable": f"sudo sysrc {shlex.quote(service)}_enable=YES",
+            "disable": f"sudo sysrc {shlex.quote(service)}_enable=NO",
         }
         return bsd_actions.get(action)
 
     # Default: systemd (most Linux)
     systemd_actions = {
-        "start": f"sudo systemctl start {service}",
-        "stop": f"sudo systemctl stop {service}",
-        "restart": f"sudo systemctl restart {service}",
-        "reload": f"sudo systemctl reload {service}",
-        "status": f"systemctl status {service} --no-pager",
-        "enable": f"sudo systemctl enable {service}",
-        "disable": f"sudo systemctl disable {service}",
+        "start": f"sudo systemctl start {shlex.quote(service)}",
+        "stop": f"sudo systemctl stop {shlex.quote(service)}",
+        "restart": f"sudo systemctl restart {shlex.quote(service)}",
+        "reload": f"sudo systemctl reload {shlex.quote(service)}",
+        "status": f"systemctl status {shlex.quote(service)} --no-pager",
+        "enable": f"sudo systemctl enable {shlex.quote(service)}",
+        "disable": f"sudo systemctl disable {shlex.quote(service)}",
     }
     return systemd_actions.get(action)
 
@@ -250,17 +270,23 @@ def _build_service_command(
 def _parse_status_result(service: str, result: SSHResult) -> ToolResult:
     """Parse service status output."""
 
-    stdout = result.stdout.lower()
-    stderr = result.stderr.lower()
+    stdout = (result.stdout or "").lower()
+    stderr = (result.stderr or "").lower()
 
     # Determine status from output
     if result.exit_code == 0:
         if "running" in stdout or "active (running)" in stdout:
             status = "running"
+        elif "activating" in stdout:
+            status = "activating"
+        elif "failed" in stdout:
+            status = "failed"
+        elif "inactive" in stdout or "dead" in stdout:
+            status = "inactive"
         elif "active" in stdout:
             status = "active"
         else:
-            status = "active"
+            status = "unknown"
     elif result.exit_code == 3:
         # systemctl returns 3 for stopped services
         status = "stopped"
@@ -287,20 +313,17 @@ def _parse_status_result(service: str, result: SSHResult) -> ToolResult:
     )
 
 
-def _parse_service_list(output: str, os_family: OSFamily) -> list[dict]:
+def _parse_service_list(output: str, os_family: OSFamily) -> list[dict[str, str | bool | None]]:
     """Parse service list output."""
-    services = []
+    services: list[dict[str, str | bool | None]] = []
 
     for line in output.strip().split("\n"):
         if not line.strip():
             continue
 
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-
         if os_family == OSFamily.MACOS:
             # launchctl format: PID Status Label
+            parts = line.split()
             if len(parts) >= 3:
                 services.append(
                     {
@@ -309,9 +332,33 @@ def _parse_service_list(output: str, os_family: OSFamily) -> list[dict]:
                         "status": "running" if parts[0] != "-" else "stopped",
                     }
                 )
+        elif os_family == OSFamily.LINUX_ALPINE:
+            # OpenRC format: [runlevel] status service_name
+            # Example: [default] [started] cron
+            line = line.strip()
+            if line.startswith("[") and "] " in line:
+                # Extract runlevel and the rest
+                runlevel_end = line.find("] ")
+                if runlevel_end > 0:
+                    rest = line[runlevel_end + 2:].strip()
+                    if rest.startswith("[") and "] " in rest:
+                        # Extract status and service name
+                        status_end = rest.find("] ")
+                        if status_end > 0:
+                            status = rest[1:status_end]  # Remove brackets
+                            service_name = rest[status_end + 2:].strip()
+                            if service_name:
+                                services.append(
+                                    {
+                                        "name": service_name,
+                                        "status": status,
+                                        "active": status == "started",
+                                    }
+                                )
         else:
             # systemd format: UNIT LOAD ACTIVE SUB DESCRIPTION...
-            if ".service" in parts[0]:
+            parts = line.split()
+            if len(parts) >= 4 and ".service" in parts[0]:
                 name = parts[0].replace(".service", "")
                 status = parts[3] if len(parts) > 3 else "unknown"
                 services.append(

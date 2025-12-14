@@ -112,6 +112,9 @@ def _to_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
         return value.value
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return _to_json_safe(to_dict(), _seen | {obj_id})
     if is_dataclass(value) and not isinstance(value, type):
         return {k: _to_json_safe(v, _seen) for k, v in asdict(value).items()}
     if isinstance(value, dict):

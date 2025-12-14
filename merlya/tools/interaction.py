@@ -224,7 +224,7 @@ async def request_elevation(
             )
 
         permissions = await ctx.get_permissions()
-        elevation = await permissions.prepare_command(host, command)  # type: ignore[attr-defined]
+        elevation = await permissions.prepare_command(host, command)
 
         # SECURITY: Store input_data (password) in a secure cache, don't expose to LLM
         # Generate a unique reference ID if there's sensitive input data

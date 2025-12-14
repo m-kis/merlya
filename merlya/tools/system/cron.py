@@ -6,6 +6,8 @@ List and manage crontab entries on remote hosts.
 
 from __future__ import annotations
 
+import re
+import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -16,6 +18,8 @@ from merlya.tools.security.base import execute_security_command
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+
+CronEntryDict = dict[str, str]
 
 
 @dataclass
@@ -63,7 +67,7 @@ async def list_cron(
     """
     logger.info(f"📋 Listing cron jobs on {host}...")
 
-    entries: list[dict] = []
+    entries: list[CronEntryDict] = []
 
     # Get user crontabs (empty string = current user)
     users = [user] if user else [""]
@@ -142,22 +146,30 @@ async def add_cron(
             error="❌ Invalid command",
         )
 
-    # Escape command for shell
-    safe_command = command.replace("'", "'\"'\"'")
-
-    # Build the cron line
-    cron_line = f"{schedule} {safe_command}"
+    # Build the cron line safely
+    cron_line = f"{schedule} {command}"
     if comment:
+        # Sanitize comment: strip newlines and special characters
         safe_comment = comment.replace("\n", " ")[:100]
         cron_line = f"# {safe_comment}\n{cron_line}"
 
-    # Add to crontab
-    user_flag = f"-u {user}" if user else ""
-    cmd = f"""
-(crontab {user_flag} -l 2>/dev/null; echo '{cron_line}') | crontab {user_flag} -
-"""
+    # Get current crontab and add new entry safely using subprocess
+    user_flag = ["-u", user] if user else []
 
-    result = await execute_security_command(ctx, host, cmd, timeout=30)
+    # Get current crontab
+    get_cmd = ["crontab", *user_flag, "-l"]
+    get_result = await execute_security_command(ctx, host, " ".join(get_cmd), timeout=15)
+
+    # Build new crontab content
+    current_crontab = get_result.stdout if get_result.exit_code == 0 else ""
+    new_crontab = current_crontab
+    if new_crontab and not new_crontab.endswith("\n"):
+        new_crontab += "\n"
+    new_crontab += cron_line + "\n"
+
+    # Set new crontab using stdin
+    set_cmd = ["crontab", *user_flag, "-"]
+    result = await execute_security_command(ctx, host, " ".join(set_cmd), timeout=30, input_data=new_crontab)
 
     if result.exit_code != 0:
         return ToolResult(
@@ -200,13 +212,14 @@ async def remove_cron(
     Returns:
         ToolResult with removed entries or preview.
     """
-    # Escape pattern for grep
-    safe_pattern = pattern.replace("'", "'\"'\"'")
+    # Escape pattern for grep using shlex.quote to prevent shell injection
+    safe_pattern = shlex.quote(pattern)
 
-    user_flag = f"-u {user}" if user else ""
+    # Safely escape user flag to prevent command injection
+    user_flag = f"-u {shlex.quote(user)}" if user else ""
 
     # Find matching entries
-    find_cmd = f"crontab {user_flag} -l 2>/dev/null | grep -n '{safe_pattern}'"
+    find_cmd = f"crontab {user_flag} -l 2>/dev/null | grep -n {safe_pattern}"
     result = await execute_security_command(ctx, host, find_cmd, timeout=15)
 
     if result.exit_code != 0 or not result.stdout.strip():
@@ -233,7 +246,7 @@ async def remove_cron(
 
     # Actually remove
     remove_cmd = (
-        f"crontab {user_flag} -l 2>/dev/null | grep -v '{safe_pattern}' | crontab {user_flag} -"
+        f"crontab {user_flag} -l 2>/dev/null | grep -v {safe_pattern} | crontab {user_flag} -"
     )
     result = await execute_security_command(ctx, host, remove_cmd, timeout=30)
 
@@ -260,13 +273,14 @@ async def _get_user_crontab(
     ctx: SharedContext,
     host: str,
     user: str,
-) -> list[dict]:
+) -> list[CronEntryDict]:
     """Get crontab for a specific user."""
-    user_flag = f"-u {user}" if user else ""
+    # Safely escape user flag to prevent command injection
+    user_flag = f"-u {shlex.quote(user)}" if user else ""
     cmd = f"crontab {user_flag} -l 2>/dev/null"
     result = await execute_security_command(ctx, host, cmd, timeout=15)
 
-    entries = []
+    entries: list[CronEntryDict] = []
     effective_user = user or "current"
 
     if result.exit_code == 0 and result.stdout:
@@ -280,9 +294,9 @@ async def _get_user_crontab(
     return entries
 
 
-async def _get_system_crontabs(ctx: SharedContext, host: str) -> list[dict]:
+async def _get_system_crontabs(ctx: SharedContext, host: str) -> list[CronEntryDict]:
     """Get system crontabs from /etc/cron.*."""
-    entries = []
+    entries: list[CronEntryDict] = []
 
     # Check /etc/crontab
     crontab_cmd = "cat /etc/crontab 2>/dev/null"
@@ -309,7 +323,7 @@ async def _get_system_crontabs(ctx: SharedContext, host: str) -> list[dict]:
     return entries
 
 
-def _parse_cron_line(line: str, has_user_field: bool = False) -> dict | None:
+def _parse_cron_line(line: str, has_user_field: bool = False) -> CronEntryDict | None:
     """Parse a crontab line into structured data."""
     line = line.strip()
 
@@ -325,14 +339,28 @@ def _parse_cron_line(line: str, has_user_field: bool = False) -> dict | None:
 
     # Handle special schedules (@hourly, @daily, etc.)
     if line.startswith("@"):
-        parts = line.split(None, 1)
-        if len(parts) >= 2:
-            return {
-                "schedule": parts[0],
-                "command": parts[1],
-                "user": "",
-            }
-        return None
+        if has_user_field:
+            # System crontab format: split into at most 3 parts (schedule, user, command)
+            parts = line.split(None, 2)
+            if len(parts) >= 3:
+                return {
+                    "schedule": parts[0],
+                    "user": parts[1],
+                    "command": parts[2],
+                }
+            # If missing command, return None
+            return None
+        else:
+            # User crontab format: split into at most 2 parts (schedule, command)
+            parts = line.split(None, 1)
+            if len(parts) >= 2:
+                return {
+                    "schedule": parts[0],
+                    "user": "",
+                    "command": parts[1],
+                }
+            # If missing command, return None
+            return None
 
     # Standard cron format: m h dom mon dow [user] command
     parts = line.split()
@@ -360,7 +388,7 @@ def _parse_cron_line(line: str, has_user_field: bool = False) -> dict | None:
 
 
 def _is_valid_schedule(schedule: str) -> bool:
-    """Validate cron schedule format."""
+    """Validate cron schedule format with strict regex."""
     # Special schedules
     special = {
         "@reboot",
@@ -375,12 +403,20 @@ def _is_valid_schedule(schedule: str) -> bool:
     if schedule in special:
         return True
 
+    # Strict regex for cron fields (only digits, spaces, asterisks, slashes, commas, hyphens)
+    cron_field_pattern = r"^[\d\*/,\-]+$"
+
     # Standard 5-field format
     parts = schedule.split()
     if len(parts) != 5:
         return False
 
-    # Basic validation of each field
+    # Validate each field with strict regex
+    for part in parts:
+        if not re.match(cron_field_pattern, part):
+            return False
+
+    # Additional validation of each field structure
     return all(_is_valid_cron_field(part, i) for i, part in enumerate(parts))
 
 

@@ -233,6 +233,10 @@ Add a server and automatically test the connection.
 /secret set github-token ghp_xxxxx
 /mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${github-token}
 
+# Slack - Team communication
+/secret set slack-bot-token xoxb-your-bot-token
+/mcp add slack npx -y @modelcontextprotocol/server-slack --env=SLACK_BOT_TOKEN=${slack-bot-token}
+
 # Filesystem - Local file access
 /mcp add fs npx -y @modelcontextprotocol/server-filesystem /home/user/projects
 
