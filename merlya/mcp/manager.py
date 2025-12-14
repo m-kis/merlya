@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from mcp.client.session_group import ClientSessionGroup
-from mcp.client.stdio import StdioServerParameters
+from mcp.client.stdio import StdioServerParameters, get_default_environment
 
 from merlya.config.models import MCPServerConfig
 
@@ -70,6 +70,7 @@ class MCPToolInfo:
     name: str
     description: str | None
     server: str
+    input_schema: dict[str, Any] | None = None
 
 
 class MCPManager:
@@ -127,6 +128,17 @@ class MCPManager:
         """Reset the singleton instance (for testing)."""
         cls._instance = None
         cls._instance_lock = None
+
+    def get_stats(self) -> dict[str, int]:
+        """Return basic MCP manager stats for health checks."""
+        total_servers = len(self.config.mcp.servers)
+        loaded_servers = sum(1 for server in self.config.mcp.servers.values() if server.enabled)
+        active_servers = len(self._connected)
+        return {
+            "total_servers": total_servers,
+            "loaded_servers": loaded_servers,
+            "active_servers": active_servers,
+        }
 
     async def close(self) -> None:
         """Close all MCP sessions."""
@@ -230,11 +242,17 @@ class MCPManager:
             if server and server_prefix != server:
                 continue
 
+            # Extract input schema for LLM to know required parameters
+            schema = None
+            if hasattr(tool, "inputSchema") and tool.inputSchema:
+                schema = dict(tool.inputSchema)
+
             tools.append(
                 MCPToolInfo(
                     name=name,
                     description=tool.description,
                     server=server_prefix,
+                    input_schema=schema,
                 )
             )
         return sorted(tools, key=lambda t: t.name)
@@ -292,14 +310,18 @@ class MCPManager:
         if name in self._connected:
             return await self._ensure_group()
 
+        # IMPORTANT: Initialize group BEFORE acquiring lock to avoid deadlock.
+        # _ensure_group has its own lock, calling it inside our lock would deadlock.
+        group = await self._ensure_group()
+
         async with self._get_lock():
+            # Double-check after acquiring lock
             if name in self._connected:
-                return await self._ensure_group()
+                return group
 
             params = self._build_server_params(name, self.config.mcp.servers[name])
             self._component_prefix = name
             try:
-                group = await self._ensure_group()
                 # Suppress warnings about missing optional MCP features
                 with suppress_mcp_capability_warnings():
                     await group.connect_to_server(params)
@@ -310,12 +332,28 @@ class MCPManager:
                 self._component_prefix = None
 
     def _build_server_params(self, _name: str, server: MCPServerConfig) -> StdioServerParameters:
-        """Create stdio params with resolved environment."""
-        env = self._resolve_env(server.env)
+        """
+        Create stdio params with resolved environment.
+
+        Merges custom env vars with the default MCP environment (PATH, HOME, etc.)
+        to ensure subprocess can find executables like npx, python, etc.
+        """
+        # Start with the default environment (includes PATH, HOME, etc.)
+        # This is crucial - without it, subprocess can't find executables
+        merged_env: dict[str, str] | None = None
+
+        if server.env:
+            # Resolve custom env vars (${VAR} syntax)
+            custom_env = self._resolve_env(server.env)
+            # Merge with default environment
+            merged_env = {**get_default_environment(), **custom_env}
+            logger.debug(f"🔧 MCP env merged: {list(custom_env.keys())} added to default env")
+        # If no custom env, pass None to let SDK use get_default_environment()
+
         return StdioServerParameters(
             command=server.command,
             args=server.args,
-            env=env,
+            env=merged_env,
             cwd=server.cwd,
         )
 

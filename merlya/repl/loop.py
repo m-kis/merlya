@@ -427,25 +427,21 @@ class REPL:
         undefined_mentions: list[str] = []
 
         for mention in mentions:
-            # Try as variable first (variables are non-sensitive, OK to expand)
+            # Host references must never be expanded or replaced
+            host = await self.ctx.hosts.get_by_name(mention)
+            if host:
+                continue
+
+            # Check if it's a known secret (never expand secrets)
+            if self.ctx.secrets.has(mention):
+                continue
+
+            # Try as variable (variables are non-sensitive, OK to expand)
             var = await self.ctx.variables.get(mention)
             if var:
                 text = text.replace(f"@{mention}", var.value)
                 continue
 
-            # Check if it's a known secret
-            if self.ctx.secrets.has(mention):
-                # SECURITY: Do NOT expand secrets here!
-                # Secrets are resolved only in ssh_execute at execution time.
-                continue
-
-            # Check if it's a known host
-            host = await self.ctx.hosts.get_by_name(mention)
-            if host:
-                # Keep as host reference (agent will handle)
-                continue
-
-            # Unknown mention - track for prompting
             undefined_mentions.append(mention)
 
         # Prompt for undefined mentions (issue #40)

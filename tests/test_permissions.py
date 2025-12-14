@@ -151,6 +151,22 @@ async def test_sudo_nopasswd_avoids_prompt() -> None:
     assert ui.secret_calls == []
 
 
+def test_doas_with_password_uses_stdin_not_command_injection() -> None:
+    """doas_with_password must not embed the password in the command string."""
+    ctx = _make_ctx(_StubUI())
+    pm = PermissionManager(ctx)
+
+    cmd, input_data = pm.elevate_command(
+        "cat /etc/shadow",
+        capabilities={"is_root": False},
+        method="doas_with_password",
+        password="s3cr3t",
+    )
+
+    assert "s3cr3t" not in cmd
+    assert input_data == "s3cr3t\n"
+
+
 class TestPermissionManagerPasswordCache:
     """Tests for PermissionManager password cache functionality."""
 

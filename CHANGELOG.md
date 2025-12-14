@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2025-02-19
+
+### Added
+
+- SSH circuit breaker surfaced to the agent with retry messaging to avoid command storms.
+- System health/startup checks now cover MCP servers, skills registry, ONNX readiness, and tier-aware parser initialization.
+- CLI `/hosts check` now records host health status and captures OS info on success.
+
+### Changed
+
+- Refactored agent tool registration into dedicated modules (system, files, MCP) to keep modules under 600 LOC.
+- System tools package reorganized into submodules with backward-compatible proxies for `ssh_execute` patching in tests.
+- Router target clarification prompts ensure ambiguous execution requests pick local vs inventory hosts before using tools.
+- Permissions heuristics expanded (journalctl/dmesg, more log paths) with hardened sudo/doas prefix stripping.
+
+### Fixed
+
+- `ssh_execute` now auto-elevates when permission errors are returned in stdout or when privileged commands fail silently.
+- Cron schedule validation tightened to reject injection attempts and malformed specs.
+- Fast-path detection avoids treating PID queries as host lookups; JSON serialization handles objects exposing `to_dict()`.
+- MCP command testing reports `TimeoutError` correctly; `doas` elevation no longer embeds passwords in the command string.
+
 ## [0.7.1] - 2025-12-12
 
 ### Added
@@ -44,6 +66,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clear guidelines for bash vs ssh_execute usage
   - Zero-config mode documentation
 
+## [0.7.2] - 2025-12-13
+
+### Added
+
+- **New System Tools** (`merlya/tools/system/`)
+  - Network: `check_network`, `check_port`, `dns_lookup`, `ping`, `traceroute`
+  - Services: `list_services`, `manage_service` (systemd/init support)
+  - Health: `health_summary` for quick host health check
+  - Logs: `grep_logs`, `tail_logs` with journalctl support
+  - Cron: `list_cron`, `add_cron`, `remove_cron`
+
+- **MCP Tool Schema Exposure** (`merlya/mcp/manager.py`, `merlya/agent/tools.py`)
+  - LLM now sees full parameter schemas for MCP tools
+  - `list_mcp_tools` returns required/optional parameters
+  - Improved `call_mcp_tool` docstring with Context7 usage pattern
+
+- **Enhanced `/scan` Command** (`merlya/commands/handlers/system.py`)
+  - `--services`: Include running services list
+  - `--network`: Include network diagnostics
+  - `health_summary` added to default system scan
+
+- **SSH Verification Hints** (`merlya/tools/core/verification.py`)
+  - State-changing commands return verification suggestions
+  - Agent can confirm actions succeeded (e.g., service restart)
+
+### Fixed
+
+- **MCP Deadlock** (`merlya/mcp/manager.py`)
+  - Fix deadlock in `_ensure_connected` by calling `_ensure_group` before acquiring lock
+  - `asyncio.Lock()` is not reentrant, caused hang on MCP tool calls
+
+- **MCP Environment Variables** (`merlya/mcp/manager.py`)
+  - Custom env vars now merged with `get_default_environment()` instead of replacing
+  - Fixes missing PATH causing `npx` and other executables not found
+
+- **MCP Auto-Test** (`merlya/commands/handlers/mcp.py`)
+  - `/mcp add` now automatically tests connection after adding
+  - `--no-test` flag to skip auto-test
+  - Better error messages for timeout, missing env vars
+
+### Changed
+
+- **SSH Module Refactoring** (`merlya/tools/core/`)
+  - Split `ssh.py` into focused modules: connection, elevation, patterns, errors
+  - Better separation of concerns
+  - Improved error handling and password security
+
 ## [Unreleased]
 
 ### Fixed
@@ -55,6 +124,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Wrong cached passphrase is cleared on failure
 
 ### Added
+
+- **@hostname Resolution** (`merlya/tools/core/tools.py`)
+  - `@pine64` in commands now resolved to actual hostname/IP
+  - Resolution order: inventory → DNS → user prompt
+  - Follows sysadmin logic for unknown hosts
+  - Works in both `ssh_execute` and `bash` tools
 
 - **Session Message Persistence**
   - Messages now persisted to SQLite for session resumption
@@ -383,7 +458,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy with vulnerability reporting process
 - Architecture Decision Records (ADR)
 
-[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/m-kis/merlya/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/m-kis/merlya/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/m-kis/merlya/releases/tag/v0.7.0
 [0.6.3]: https://github.com/m-kis/merlya/releases/tag/v0.6.3

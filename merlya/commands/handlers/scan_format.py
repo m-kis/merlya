@@ -16,10 +16,13 @@ class ScanOptions:
 
     scan_type: str = "full"  # full, system, security, quick
     output_json: bool = False
-    all_disks: bool = False
+    all_disks: bool = True  # Check all mounted filesystems by default
     include_docker: bool = True
     include_updates: bool = True
     include_logins: bool = True
+    include_network: bool = True  # Network diagnostics (ping, dns)
+    include_services: bool = True  # Running services list
+    include_cron: bool = True  # Cron jobs list
     show_all: bool = False  # Show all ports/users (no truncation)
 
 
@@ -55,6 +58,12 @@ def parse_scan_options(args: list[str]) -> ScanOptions:
             opts.include_docker = False
         elif arg == "--no-updates":
             opts.include_updates = False
+        elif arg == "--no-network":
+            opts.include_network = False
+        elif arg == "--no-services":
+            opts.include_services = False
+        elif arg == "--no-cron":
+            opts.include_cron = False
         elif arg == "--show-all":
             opts.show_all = True
 
@@ -120,7 +129,7 @@ def format_scan_output(result: ScanResult, host: Any, opts: ScanOptions | None =
     return "\n".join(lines)
 
 
-def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all: bool) -> None:  # noqa: ARG001
+def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all: bool) -> None:
     """Format system section of scan output."""
     lines.append("### 🖥️ System")
     lines.append("")
@@ -186,6 +195,30 @@ def _format_system_section(lines: list[str], sys_data: dict[str, Any], show_all:
             lines.append("- ⚠️ **Docker:** not running")
 
     lines.append("")
+
+    # Health summary
+    if "health" in sys_data:
+        _format_health_section(lines, sys_data["health"])
+
+    # Network diagnostics
+    if "network" in sys_data:
+        _format_network_section(lines, sys_data["network"])
+
+    # Running services
+    if "services" in sys_data:
+        _format_running_services(lines, sys_data["services"], show_all)
+
+    # Cron jobs
+    if "cron" in sys_data:
+        _format_cron_jobs(lines, sys_data["cron"], show_all)
+
+    # Top processes (full scan only)
+    if "processes" in sys_data:
+        _format_top_processes(lines, sys_data["processes"], show_all)
+
+    # Recent errors (full scan only)
+    if "logs" in sys_data:
+        _format_recent_errors(lines, sys_data["logs"], show_all)
 
 
 def _format_security_section(lines: list[str], sec_data: dict[str, Any], show_all: bool) -> None:
@@ -317,4 +350,209 @@ def _format_users(lines: list[str], users: dict[str, Any], show_all: bool) -> No
     if issues:
         for issue in issues[:3]:
             lines.append(f"   ⚠️ {issue}")
+    lines.append("")
+
+
+def _format_health_section(lines: list[str], health: dict[str, Any]) -> None:
+    """Format health summary section."""
+    lines.append("**Health Summary:**")
+    lines.append("")
+
+    # Overall summary
+    summary = health.get("summary", {})
+    if summary:
+        total = summary.get("total", 0)
+        healthy = summary.get("healthy", 0)
+        warning = summary.get("warning", 0)
+        critical = summary.get("critical", 0)
+        lines.append(f"Total: {total} | ✅ {healthy} | ⚠️ {warning} | 🔴 {critical}")
+        lines.append("")
+
+    # Per-host status (hosts is a list of dicts)
+    hosts = health.get("hosts", [])
+    for host_info in hosts:
+        host_name = host_info.get("name", "unknown")
+        score = host_info.get("score", 0)
+        reachable = host_info.get("reachable", False)
+
+        if not reachable:
+            lines.append(f"- 🔴 `{host_name}`: unreachable")
+        elif score >= 80:
+            lines.append(f"- ✅ `{host_name}`: healthy (score: {score})")
+        elif score >= 50:
+            lines.append(f"- ⚠️ `{host_name}`: degraded (score: {score})")
+        else:
+            lines.append(f"- 🔴 `{host_name}`: critical (score: {score})")
+
+        # Show warnings if any
+        warnings = host_info.get("warnings", [])
+        for warn in warnings[:3]:
+            lines.append(f"    ⚠️ {warn}")
+
+    lines.append("")
+
+
+def _format_network_section(lines: list[str], network: dict[str, Any]) -> None:
+    """Format network diagnostics section."""
+    lines.append("**Network:**")
+    lines.append("")
+
+    # Gateway/ping
+    gateway_data = network.get("gateway")
+    # Handle both string and dict formats
+    if isinstance(gateway_data, dict):
+        gateway_ip = gateway_data.get("gateway", "")
+        rtt = gateway_data.get("rtt_ms")
+        reachable = gateway_data.get("reachable", False)
+        if gateway_ip and reachable:
+            if rtt:
+                lines.append(f"- ✅ Gateway: `{gateway_ip}` ({rtt:.1f}ms)")
+            else:
+                lines.append(f"- ✅ Gateway: `{gateway_ip}`")
+        elif gateway_ip:
+            lines.append(f"- ⚠️ Gateway: `{gateway_ip}` (unreachable)")
+        else:
+            lines.append("- ⚠️ Gateway: not detected")
+    elif gateway_data:
+        latency = network.get("gateway_latency")
+        if latency:
+            lines.append(f"- ✅ Gateway: `{gateway_data}` (latency: {latency})")
+        else:
+            lines.append(f"- ✅ Gateway: `{gateway_data}`")
+    else:
+        lines.append("- ⚠️ Gateway: not detected")
+
+    # DNS resolution
+    dns_ok = network.get("dns_resolution", False)
+    if dns_ok:
+        lines.append("- ✅ DNS: resolving")
+    else:
+        lines.append("- ⚠️ DNS: not resolving")
+
+    # Internet connectivity
+    internet = network.get("internet", False)
+    if internet:
+        lines.append("- ✅ Internet: connected")
+    else:
+        lines.append("- ⚠️ Internet: no connectivity")
+
+    # Interfaces summary
+    interfaces = network.get("interfaces", [])
+    if interfaces:
+        lines.append(f"- 📶 Interfaces: {len(interfaces)} active")
+
+    lines.append("")
+
+
+def _format_running_services(lines: list[str], services: dict[str, Any], show_all: bool) -> None:
+    """Format running services list."""
+    svc_list = services.get("services", [])
+    total = services.get("total", len(svc_list))
+
+    lines.append(f"**Running Services:** {total}")
+    lines.append("")
+
+    if svc_list:
+        max_items = len(svc_list) if show_all else 15
+        for svc in svc_list[:max_items]:
+            name = svc.get("name", "unknown")
+            status = svc.get("status", "")
+            lines.append(f"  - `{name}` [{status}]")
+
+        if not show_all and len(svc_list) > max_items:
+            lines.append(f"  *... and {len(svc_list) - max_items} more (use --show-all)*")
+
+    lines.append("")
+
+
+def _format_cron_jobs(lines: list[str], cron_data: dict[str, Any], show_all: bool) -> None:
+    """Format cron jobs list."""
+    jobs = cron_data.get("jobs", [])
+    total = cron_data.get("total", len(jobs))
+
+    lines.append(f"**Cron Jobs:** {total}")
+    lines.append("")
+
+    if jobs:
+        max_items = len(jobs) if show_all else 10
+        for job in jobs[:max_items]:
+            schedule = job.get("schedule", "?")
+            command = job.get("command", "?")
+            human = job.get("human_schedule", "")
+            user = job.get("user", "")
+            # Truncate long commands
+            if len(command) > 50 and not show_all:
+                command = command[:47] + "..."
+            user_str = f" ({user})" if user else ""
+            lines.append(f"  - `{schedule}`{user_str}: {command}")
+            if human:
+                lines.append(f"    _{human}_")
+
+        if not show_all and len(jobs) > max_items:
+            lines.append(f"  *... and {len(jobs) - max_items} more (use --show-all)*")
+
+    lines.append("")
+
+
+def _format_top_processes(
+    lines: list[str],
+    proc_data: list[dict[str, Any]] | dict[str, Any] | None,
+    show_all: bool,
+) -> None:
+    """Format top processes list."""
+    processes: list[dict[str, Any]] = []
+    if isinstance(proc_data, dict):
+        raw = proc_data.get("processes")
+        if isinstance(raw, list):
+            processes = [p for p in raw if isinstance(p, dict)]
+    elif isinstance(proc_data, list):
+        processes = [p for p in proc_data if isinstance(p, dict)]
+
+    if not processes:
+        return
+
+    lines.append("**Top Processes (CPU):**")
+    lines.append("")
+
+    max_items = len(processes) if show_all else 10
+    for proc in processes[:max_items]:
+        user = proc.get("user", "?")
+        cpu = proc.get("cpu", 0)
+        mem = proc.get("mem", 0)
+        cmd = proc.get("command", proc.get("cmd", "?"))
+        # Truncate long commands
+        if len(cmd) > 40 and not show_all:
+            cmd = cmd[:37] + "..."
+        lines.append(f"  - `{cpu:.1f}%` CPU, `{mem:.1f}%` MEM ({user}): {cmd}")
+
+    if not show_all and len(processes) > max_items:
+        lines.append(f"  *... and {len(processes) - max_items} more (use --show-all)*")
+
+    lines.append("")
+
+
+def _format_recent_errors(lines: list[str], log_data: dict[str, Any], show_all: bool) -> None:
+    """Format recent log errors."""
+    log_lines = log_data.get("lines", [])
+    count = log_data.get("count", len(log_lines))
+
+    if not log_lines:
+        lines.append("**Recent Errors:** none")
+        lines.append("")
+        return
+
+    icon = "🔴" if count > 10 else ("⚠️" if count > 0 else "✅")
+    lines.append(f"{icon} **Recent Errors:** {count}")
+    lines.append("")
+
+    max_items = len(log_lines) if show_all else 5
+    for line in log_lines[:max_items]:
+        # Truncate long lines
+        if len(line) > 80 and not show_all:
+            line = line[:77] + "..."
+        lines.append(f"  `{line}`")
+
+    if not show_all and len(log_lines) > max_items:
+        lines.append(f"  *... and {len(log_lines) - max_items} more (use --show-all)*")
+
     lines.append("")

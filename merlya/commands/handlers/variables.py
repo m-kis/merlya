@@ -378,3 +378,88 @@ async def cmd_secret_delete(ctx: SharedContext, args: list[str]) -> CommandResul
         success=True,
         message=ctx.t("commands.secret.deleted", name=args[0]),
     )
+
+
+@subcommand(
+    "secret",
+    "clear-elevation",
+    "Clear stored elevation passwords",
+    "/secret clear-elevation [<host>|--all]",
+)
+async def cmd_secret_clear_elevation(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """
+    Clear stored elevation (sudo/su) passwords.
+
+    These passwords are cached when using sudo_with_password or su methods.
+    Use this to force re-prompting for password.
+
+    Examples:
+        /secret clear-elevation           - List elevation passwords
+        /secret clear-elevation myhost    - Clear password for myhost
+        /secret clear-elevation --all     - Clear all elevation passwords
+    """
+    # List all elevation secrets
+    all_secrets = ctx.secrets.list_keys()
+    elevation_secrets = [s for s in all_secrets if s.startswith("elevation:")]
+
+    if not args:
+        # Just list them
+        if not elevation_secrets:
+            return CommandResult(
+                success=True,
+                message="No stored elevation passwords.",
+            )
+
+        lines = ["**Stored elevation passwords:**"]
+        for secret in elevation_secrets:
+            # Format: elevation:hostname:password -> hostname
+            parts = secret.split(":")
+            host = parts[1] if len(parts) >= 2 else secret
+            lines.append(f"  - `{host}`")
+        lines.append("\nUse `/secret clear-elevation <host>` or `--all` to clear.")
+        return CommandResult(success=True, message="\n".join(lines))
+
+    if "--all" in args:
+        # Clear all elevation passwords
+        count = 0
+        for secret in elevation_secrets:
+            ctx.secrets.delete(secret)
+            count += 1
+
+        # Also clear permission manager cache
+        try:
+            permissions = await ctx.get_permissions()
+            permissions.clear_cache()
+        except Exception:
+            pass
+
+        if count == 0:
+            return CommandResult(success=True, message="No elevation passwords to clear.")
+        return CommandResult(
+            success=True,
+            message=f"✅ Cleared {count} elevation password(s).",
+        )
+
+    # Clear specific host
+    host = args[0]
+    secret_key = f"elevation:{host}:password"
+
+    if secret_key not in elevation_secrets:
+        return CommandResult(
+            success=False,
+            message=f"No stored elevation password for '{host}'.",
+        )
+
+    ctx.secrets.delete(secret_key)
+
+    # Clear from permission manager cache too
+    try:
+        permissions = await ctx.get_permissions()
+        permissions.clear_cache(host)
+    except Exception:
+        pass
+
+    return CommandResult(
+        success=True,
+        message=f"✅ Cleared elevation password for '{host}'.",
+    )
