@@ -151,7 +151,7 @@ async def download(
 Close the connection.
 
 ```python
-async def close() -> None
+async def close(self) -> None
 ```
 
 ---

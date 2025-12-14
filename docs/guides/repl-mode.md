@@ -69,6 +69,7 @@ Mentions are automatically expanded before processing.
 | `/hosts add <name>` | Add a new host (interactive) |
 | `/scan` | Scan for infrastructure |
 | `/model show` | Show current model/router status |
+| `/language <code>` | Set the REPL language (e.g., `/language fr`) |
 | `/exit` | Exit the REPL |
 
 ### Examples

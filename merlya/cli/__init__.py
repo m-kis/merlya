@@ -383,6 +383,7 @@ def _config_show(config: object) -> None:
             "provider": config.model.provider,
             "model": config.model.model,
             "api_key_env": config.model.api_key_env,
+            "base_url": getattr(config.model, "base_url", None),
         },
         "router": {
             "type": config.router.type,
