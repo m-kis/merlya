@@ -20,7 +20,7 @@ class TestSSHViaParameter:
     async def test_via_resolves_jump_host_from_inventory(self) -> None:
         """Test that 'via' parameter resolves jump host from inventory."""
         from merlya.persistence.models import Host
-        from merlya.tools.core.tools import ssh_execute
+        from merlya.tools.core import ssh_execute
 
         # Mock context
         mock_ctx = MagicMock()
@@ -90,7 +90,7 @@ class TestSSHViaParameter:
     async def test_via_uses_direct_hostname_when_not_in_inventory(self) -> None:
         """Test that 'via' uses hostname directly when not in inventory."""
         from merlya.persistence.models import Host
-        from merlya.tools.core.tools import ssh_execute
+        from merlya.tools.core import ssh_execute
 
         mock_ctx = MagicMock()
         mock_ctx.hosts = AsyncMock()
@@ -142,7 +142,7 @@ class TestSSHViaParameter:
     async def test_via_takes_priority_over_inventory_jump_host(self) -> None:
         """Test that 'via' parameter overrides inventory jump_host."""
         from merlya.persistence.models import Host
-        from merlya.tools.core.tools import ssh_execute
+        from merlya.tools.core import ssh_execute
 
         mock_ctx = MagicMock()
         mock_ctx.hosts = AsyncMock()
@@ -203,7 +203,7 @@ class TestSSHViaParameter:
     async def test_no_via_uses_inventory_jump_host(self) -> None:
         """Test that without 'via', inventory jump_host is used."""
         from merlya.persistence.models import Host
-        from merlya.tools.core.tools import ssh_execute
+        from merlya.tools.core import ssh_execute
 
         mock_ctx = MagicMock()
         mock_ctx.hosts = AsyncMock()
@@ -266,7 +266,7 @@ class TestSSHViaParameter:
     async def test_no_jump_host_without_via_or_inventory(self) -> None:
         """Test that no jump host is used when neither via nor inventory config."""
         from merlya.persistence.models import Host
-        from merlya.tools.core.tools import ssh_execute
+        from merlya.tools.core import ssh_execute
 
         mock_ctx = MagicMock()
         mock_ctx.hosts = AsyncMock()

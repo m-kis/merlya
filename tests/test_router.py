@@ -157,6 +157,13 @@ class TestIntentClassifier:
         assert "MY_VAR" in entities["variables"]
         assert "config_value" in entities["variables"]
 
+    def test_extract_entities_mixedcase_treated_as_variable(self):
+        """CamelCase or mixed-case mentions should not be treated as hosts."""
+        classifier = IntentClassifier(use_embeddings=False)
+        entities = classifier.extract_entities("quel est la valeur de @MotDePasseTopSecret")
+        assert "MotDePasseTopSecret" in entities["variables"]
+        assert "MotDePasseTopSecret" not in entities["hosts"]
+
     def test_extract_entities_files(self):
         """Test entity extraction for file paths."""
         classifier = IntentClassifier(use_embeddings=False)

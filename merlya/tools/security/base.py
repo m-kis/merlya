@@ -107,6 +107,7 @@ async def execute_security_command(
     command: str,
     timeout: int = 60,
     connect_timeout: int | None = None,
+    input_data: str | None = None,
 ) -> SSHResult:
     """
     Execute a command on a host using shared SSH pool and inventory resolution.
@@ -117,6 +118,7 @@ async def execute_security_command(
         command: Command to execute.
         timeout: Command timeout in seconds.
         connect_timeout: Connection timeout in seconds.
+        input_data: Optional stdin data.
 
     Returns:
         SSHResult with stdout, stderr, and exit_code.
@@ -143,6 +145,7 @@ async def execute_security_command(
         host=target,
         command=command,
         timeout=timeout,
+        input_data=input_data,
         username=username,
         private_key=private_key,
         options=options,

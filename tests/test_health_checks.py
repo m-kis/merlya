@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -131,7 +131,7 @@ class TestCheckRam:
 
     def test_returns_health_check_and_tier(self) -> None:
         """Test that check_ram returns HealthCheck and tier."""
-        with patch("merlya.health.checks.psutil.virtual_memory") as mock_vm:
+        with patch("merlya.health.system_checks.psutil.virtual_memory") as mock_vm:
             mock_vm.return_value = MagicMock(available=8 * 1024**3)  # 8GB
 
             check, tier = check_ram()
@@ -142,7 +142,7 @@ class TestCheckRam:
 
     def test_high_ram_performance_tier(self) -> None:
         """Test performance tier with high RAM."""
-        with patch("merlya.health.checks.psutil.virtual_memory") as mock_vm:
+        with patch("merlya.health.system_checks.psutil.virtual_memory") as mock_vm:
             mock_vm.return_value = MagicMock(available=8 * 1024**3)  # 8GB
 
             check, tier = check_ram()
@@ -152,7 +152,7 @@ class TestCheckRam:
 
     def test_low_ram_economy_tier(self) -> None:
         """Test economy tier with low RAM."""
-        with patch("merlya.health.checks.psutil.virtual_memory") as mock_vm:
+        with patch("merlya.health.system_checks.psutil.virtual_memory") as mock_vm:
             mock_vm.return_value = MagicMock(available=1 * 1024**3)  # 1GB
 
             check, tier = check_ram()
@@ -241,8 +241,114 @@ class TestRunStartupChecks:
 
             mock_llm.side_effect = mock_llm_coro
 
-            result = await run_startup_checks(skip_llm_ping=True)
+            result = await run_startup_checks(include_optional=True)
 
             assert isinstance(result, StartupHealth)
             assert len(result.checks) > 0
             assert result.model_tier is not None
+
+    @pytest.mark.asyncio
+    async def test_uses_ram_tier_when_no_override(self) -> None:
+        """Use the RAM-derived tier for tier-aware checks when no override is provided."""
+        captured: dict[str, str | None] = {"tier": None}
+
+        def fake_check_onnx_model(tier: str | None = None) -> HealthCheck:
+            captured["tier"] = tier
+            return HealthCheck(name="onnx_model", status=CheckStatus.OK, message="OK")
+
+        with (
+            patch("merlya.health.system_checks.check_ram") as mock_ram,
+            patch("merlya.health.system_checks.check_disk_space") as mock_disk,
+            patch("merlya.health.infrastructure.check_ssh_available") as mock_ssh,
+            patch("merlya.health.infrastructure.check_keyring") as mock_keyring,
+            patch(
+                "merlya.health.service_checks.check_parser_service", new_callable=AsyncMock
+            ) as mock_parser,
+            patch(
+                "merlya.health.connectivity.check_llm_provider", new_callable=AsyncMock
+            ) as mock_llm,
+            patch("merlya.health.service_checks.check_session_manager") as mock_session,
+            patch("merlya.health.skill_checks.check_skills_registry") as mock_skills,
+            patch("merlya.health.mcp_checks.check_mcp_servers") as mock_mcp,
+            patch("merlya.health.ml_checks.check_onnx_model", new=fake_check_onnx_model),
+        ):
+            mock_ram.return_value = (
+                HealthCheck(name="ram", status=CheckStatus.OK, message="OK"),
+                "performance",
+            )
+            mock_disk.return_value = HealthCheck(name="disk", status=CheckStatus.OK, message="OK")
+            mock_ssh.return_value = HealthCheck(name="ssh", status=CheckStatus.OK, message="OK")
+            mock_keyring.return_value = HealthCheck(
+                name="keyring", status=CheckStatus.OK, message="OK"
+            )
+            mock_parser.return_value = HealthCheck(
+                name="parser", status=CheckStatus.OK, message="OK"
+            )
+            mock_llm.return_value = HealthCheck(name="llm", status=CheckStatus.OK, message="OK")
+            mock_session.return_value = HealthCheck(
+                name="session", status=CheckStatus.OK, message="OK"
+            )
+            mock_skills.return_value = HealthCheck(
+                name="skills",
+                status=CheckStatus.OK,
+                message="OK",
+                details={"stats": {"total": 0}},
+            )
+            mock_mcp.return_value = HealthCheck(name="mcp", status=CheckStatus.OK, message="OK")
+
+            await run_startup_checks(include_optional=True)
+
+        assert captured["tier"] == "performance"
+
+    @pytest.mark.asyncio
+    async def test_maps_llm_fallback_tier_to_lightweight(self) -> None:
+        """Map 'llm_fallback' to 'lightweight' for local tier-aware checks."""
+        captured: dict[str, str | None] = {"tier": None}
+
+        def fake_check_onnx_model(tier: str | None = None) -> HealthCheck:
+            captured["tier"] = tier
+            return HealthCheck(name="onnx_model", status=CheckStatus.OK, message="OK")
+
+        with (
+            patch("merlya.health.system_checks.check_ram") as mock_ram,
+            patch("merlya.health.system_checks.check_disk_space") as mock_disk,
+            patch("merlya.health.infrastructure.check_ssh_available") as mock_ssh,
+            patch("merlya.health.infrastructure.check_keyring") as mock_keyring,
+            patch(
+                "merlya.health.service_checks.check_parser_service", new_callable=AsyncMock
+            ) as mock_parser,
+            patch(
+                "merlya.health.connectivity.check_llm_provider", new_callable=AsyncMock
+            ) as mock_llm,
+            patch("merlya.health.service_checks.check_session_manager") as mock_session,
+            patch("merlya.health.skill_checks.check_skills_registry") as mock_skills,
+            patch("merlya.health.mcp_checks.check_mcp_servers") as mock_mcp,
+            patch("merlya.health.ml_checks.check_onnx_model", new=fake_check_onnx_model),
+        ):
+            mock_ram.return_value = (
+                HealthCheck(name="ram", status=CheckStatus.WARNING, message="Low RAM"),
+                "llm_fallback",
+            )
+            mock_disk.return_value = HealthCheck(name="disk", status=CheckStatus.OK, message="OK")
+            mock_ssh.return_value = HealthCheck(name="ssh", status=CheckStatus.OK, message="OK")
+            mock_keyring.return_value = HealthCheck(
+                name="keyring", status=CheckStatus.OK, message="OK"
+            )
+            mock_parser.return_value = HealthCheck(
+                name="parser", status=CheckStatus.OK, message="OK"
+            )
+            mock_llm.return_value = HealthCheck(name="llm", status=CheckStatus.OK, message="OK")
+            mock_session.return_value = HealthCheck(
+                name="session", status=CheckStatus.OK, message="OK"
+            )
+            mock_skills.return_value = HealthCheck(
+                name="skills",
+                status=CheckStatus.OK,
+                message="OK",
+                details={"stats": {"total": 0}},
+            )
+            mock_mcp.return_value = HealthCheck(name="mcp", status=CheckStatus.OK, message="OK")
+
+            await run_startup_checks(include_optional=True)
+
+        assert captured["tier"] == "lightweight"

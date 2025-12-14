@@ -55,7 +55,12 @@ class ConsoleUI:
         quiet: bool = False,
     ) -> None:
         """Initialize console."""
-        self.console = Console(theme=theme or MERLYA_THEME, quiet=quiet)
+        # force_terminal=True enables hyperlinks (OSC 8) for clickable links
+        self.console = Console(
+            theme=theme or MERLYA_THEME,
+            quiet=quiet,
+            force_terminal=True,
+        )
         self._active_status: Any = None
         self.auto_confirm = auto_confirm
         self.quiet = quiet
@@ -65,8 +70,8 @@ class ConsoleUI:
         self.console.print(*args, **kwargs)
 
     def markdown(self, text: str) -> None:
-        """Render markdown text."""
-        self.console.print(Markdown(text))
+        """Render markdown text with clickable hyperlinks."""
+        self.console.print(Markdown(text, hyperlinks=True))
 
     def panel(self, content: str, title: str | None = None, style: str = "info") -> None:
         """Display a panel."""

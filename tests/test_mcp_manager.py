@@ -87,3 +87,86 @@ async def test_resolve_env_prefers_value_over_default(monkeypatch: pytest.Monkey
     resolved = manager._resolve_env({"PORT": "${MY_PORT:-8080}"})
 
     assert resolved["PORT"] == "9090"
+
+
+@pytest.mark.asyncio
+async def test_build_server_params_merges_with_default_env():
+    """Ensure custom env vars are merged with default MCP environment (PATH, HOME, etc.)."""
+    from mcp.client.stdio import get_default_environment
+
+    from merlya.config.models import MCPServerConfig
+
+    config = Config()
+    config._path = Path(tempfile.mkdtemp()) / "config.yaml"
+    secrets = DummySecrets(value="my-token")
+
+    manager = MCPManager(config, secrets)
+    server_config = MCPServerConfig(
+        command="npx",
+        args=["-y", "some-mcp-server"],
+        env={"API_KEY": "${TOKEN}"},
+    )
+
+    params = manager._build_server_params("test", server_config)
+
+    # Should have merged custom env with default
+    assert params.env is not None
+    assert "API_KEY" in params.env
+    assert params.env["API_KEY"] == "my-token"
+    # Should also have PATH from default environment
+    assert "PATH" in params.env
+    assert params.env["PATH"] == get_default_environment()["PATH"]
+
+
+@pytest.mark.asyncio
+async def test_build_server_params_uses_none_when_no_custom_env():
+    """Ensure env=None when no custom env, letting SDK use defaults."""
+    from merlya.config.models import MCPServerConfig
+
+    config = Config()
+    config._path = Path(tempfile.mkdtemp()) / "config.yaml"
+    secrets = DummySecrets(value=None)
+
+    manager = MCPManager(config, secrets)
+    server_config = MCPServerConfig(
+        command="npx",
+        args=["-y", "some-mcp-server"],
+        env={},  # Empty env
+    )
+
+    params = manager._build_server_params("test", server_config)
+
+    # Should be None to let SDK use get_default_environment()
+    assert params.env is None
+
+
+def test_mcp_tool_info_includes_schema():
+    """Ensure MCPToolInfo can store input schema for LLM usage."""
+    from merlya.mcp.manager import MCPToolInfo
+
+    # Test with schema
+    tool_with_schema = MCPToolInfo(
+        name="context7.get-library-docs",
+        description="Get documentation for a library",
+        server="context7",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "context7CompatibleLibraryID": {"type": "string"},
+                "topic": {"type": "string"},
+            },
+            "required": ["context7CompatibleLibraryID"],
+        },
+    )
+
+    assert tool_with_schema.input_schema is not None
+    assert "required" in tool_with_schema.input_schema
+    assert "context7CompatibleLibraryID" in tool_with_schema.input_schema["required"]
+
+    # Test without schema (backwards compatibility)
+    tool_without_schema = MCPToolInfo(
+        name="simple.tool",
+        description="A simple tool",
+        server="simple",
+    )
+    assert tool_without_schema.input_schema is None

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from merlya.common.validation import validate_file_path as common_validate_file_path
 from merlya.persistence.models import Host
 
 if TYPE_CHECKING:
@@ -53,12 +54,21 @@ def validate_tag(tag: str) -> tuple[bool, str]:
     return True, ""
 
 
+# Use centralized validation with module-specific constraints
 def validate_file_path(file_path: Path) -> tuple[bool, str]:
     """
     Validate file path for security (prevent path traversal attacks).
 
+    This function uses centralized validation with additional constraints
+    specific to hosts import/export operations.
+
     Returns (is_valid, error_message).
     """
+    # First validate with centralized function
+    is_valid, error_msg = common_validate_file_path(file_path)
+    if not is_valid:
+        return False, error_msg
+    # Additional module-specific constraints
     try:
         resolved = file_path.resolve()
         is_allowed = any(

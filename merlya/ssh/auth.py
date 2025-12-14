@@ -453,7 +453,12 @@ class SSHAuthManager:
                     await self._store_passphrase(key_path, host_id, current_passphrase)
                 return
 
-            except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError, ValueError, TypeError) as e:
+            except (
+                asyncssh.KeyEncryptionError,
+                asyncssh.KeyImportError,
+                ValueError,
+                TypeError,
+            ) as e:
                 error_msg = str(e).lower()
                 logger.debug(f"Key loading exception: type={type(e).__name__}, msg='{error_msg}'")
                 is_passphrase_error = self._is_passphrase_error(error_msg)

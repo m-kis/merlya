@@ -19,9 +19,9 @@ from typing import Any
 from loguru import logger
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse
 from pydantic_ai.messages import (
-    SystemPromptPart,
     ToolCallPart,
     ToolReturnPart,
+    UserPromptPart,
 )
 
 from merlya.config.constants import HARD_MAX_HISTORY_MESSAGES
@@ -30,6 +30,7 @@ from merlya.config.constants import HARD_MAX_HISTORY_MESSAGES
 LOOP_DETECTION_WINDOW = 10  # Look at last N tool calls
 LOOP_THRESHOLD_SAME_CALL = 3  # Same tool+args called N times = loop
 LOOP_THRESHOLD_PATTERN = 4  # Same 2-3 tool alternation pattern
+MAX_TOOL_CALLS_SINCE_LAST_USER = 50  # Prevent command explosions per user request
 
 # Type alias for history processor function
 HistoryProcessor = Callable[[list[ModelMessage]], list[ModelMessage]]
@@ -291,6 +292,36 @@ def extract_recent_tool_signatures(
     return signatures[-window:] if len(signatures) > window else signatures
 
 
+def _find_last_user_message_index(messages: list[ModelMessage]) -> int:
+    """Find the index of the last real user message (not loop breaker)."""
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                # Skip loop breaker messages
+                if isinstance(part, UserPromptPart) and "LOOP DETECTED" not in part.content:
+                    return i
+    return 0
+
+
+def _has_loop_breaker_since_last_user_message(messages: list[ModelMessage]) -> bool:
+    """Check if a loop breaker was already injected since the last user message.
+
+    When loading a conversation with old loops, we don't want to immediately
+    re-trigger the loop breaker. This allows the user to try again after
+    they send a new message.
+    """
+    last_user_idx = _find_last_user_message_index(messages)
+
+    # Check messages AFTER the last user message for loop breaker
+    for msg in messages[last_user_idx + 1 :]:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart) and "LOOP DETECTED" in part.content:
+                    return True
+    return False
+
+
 def detect_loop(
     messages: list[ModelMessage],
     threshold_same: int = LOOP_THRESHOLD_SAME_CALL,
@@ -304,6 +335,9 @@ def detect_loop(
     2. Last N calls are all identical (consecutive)
     3. Alternating pattern (A-B-A-B or A-B-C-A-B-C)
 
+    Only considers tool calls made AFTER the last user message to avoid
+    false positives when loading conversations with old repetitive patterns.
+
     Args:
         messages: Message history to analyze.
         threshold_same: Number of identical calls to trigger loop detection.
@@ -312,7 +346,26 @@ def detect_loop(
     Returns:
         Tuple of (is_loop, description).
     """
-    signatures = extract_recent_tool_signatures(messages)
+    # Skip if we already injected a loop breaker since last user message
+    # This prevents re-triggering within the same user request
+    if _has_loop_breaker_since_last_user_message(messages):
+        return False, None
+
+    # Only analyze messages AFTER the last user message
+    # This prevents false positives from old repetitive calls in loaded conversations
+    last_user_idx = _find_last_user_message_index(messages)
+    recent_messages = messages[last_user_idx:]
+
+    # Guardrail: too many tool calls in a single user request (even if not repetitive)
+    tool_calls_since_user = 0
+    for msg in recent_messages:
+        if isinstance(msg, ModelResponse):
+            tool_calls_since_user += sum(1 for part in msg.parts if isinstance(part, ToolCallPart))
+
+    if tool_calls_since_user >= MAX_TOOL_CALLS_SINCE_LAST_USER:
+        return True, f"Too many tool calls ({tool_calls_since_user}) since last user message"
+
+    signatures = extract_recent_tool_signatures(recent_messages)
 
     if len(signatures) < threshold_same:
         return False, None
@@ -357,14 +410,17 @@ def inject_loop_breaker(
     loop_description: str,
 ) -> list[ModelMessage]:
     """
-    Inject a system message to help the agent break out of a loop.
+    Inject a user message to help the agent break out of a loop.
+
+    Uses UserPromptPart instead of SystemPromptPart because some providers
+    (like Mistral) don't allow system messages after tool responses.
 
     Args:
         messages: Current message history.
         loop_description: Description of the detected loop.
 
     Returns:
-        Modified message history with loop breaker injected.
+        Modified message history with loop breaker appended.
     """
     breaker_text = (
         f"⚠️ LOOP DETECTED: {loop_description}. "
@@ -377,21 +433,10 @@ def inject_loop_breaker(
 
     logger.warning(f"🔄 {loop_description} - injecting loop breaker")
 
-    # Find a good insertion point (before the last ModelRequest)
-    # We inject as a SystemPromptPart in an existing ModelRequest
+    # Append as a new ModelRequest with UserPromptPart
+    # This is safer than injecting into existing requests with ToolReturnParts
     modified = list(messages)
-
-    # Add to the last ModelRequest if possible
-    for i in range(len(modified) - 1, -1, -1):
-        if isinstance(modified[i], ModelRequest):
-            # Create a new ModelRequest with the system prompt prepended
-            original_req = modified[i]
-            new_parts = [SystemPromptPart(content=breaker_text), *original_req.parts]
-            modified[i] = ModelRequest(parts=new_parts)
-            break
-    else:
-        # No ModelRequest found, prepend as new request
-        modified.insert(0, ModelRequest(parts=[SystemPromptPart(content=breaker_text)]))
+    modified.append(ModelRequest(parts=[UserPromptPart(content=breaker_text)]))
 
     return modified
 
