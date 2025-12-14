@@ -446,7 +446,9 @@ class TestHandleUserMessage:
         response.suggestions = []
         agent.run = AsyncMock(return_value=response)
 
-        out = await handle_user_message(mock_context, agent, "donne moi des infos sur PID 123", route_result)
+        out = await handle_user_message(
+            mock_context, agent, "donne moi des infos sur PID 123", route_result
+        )
 
         assert out.handled_by == "agent"
         agent.run.assert_called_once()

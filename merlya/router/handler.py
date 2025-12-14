@@ -232,8 +232,7 @@ async def handle_user_message(
         if kind == "local":
             clarified_input = (
                 "LOCAL EXECUTION CONTEXT: this request targets the local machine. "
-                "Use bash for commands; do NOT use ssh_execute.\n\n"
-                + user_input
+                "Use bash for commands; do NOT use ssh_execute.\n\n" + user_input
             )
             return await handle_agent(ctx, agent, clarified_input, route_result)
 

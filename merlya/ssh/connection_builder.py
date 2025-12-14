@@ -242,7 +242,9 @@ class SSHConnectionBuilder:
         import asyncssh
 
         # Build connection options
-        options = await self.build_ssh_options(host, username, private_key, opts, host_name, auth_manager)
+        options = await self.build_ssh_options(
+            host, username, private_key, opts, host_name, auth_manager
+        )
 
         # Setup jump tunnel if needed
         tunnel: Any | None = None

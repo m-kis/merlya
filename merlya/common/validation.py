@@ -87,7 +87,8 @@ def validate_hostname(hostname: str) -> tuple[bool, str]:
 
     # Check for valid characters
     import re
-    hostname_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+
+    hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
 
     if not re.match(hostname_pattern, hostname):
         return False, f"Invalid hostname format: {hostname}"
@@ -109,7 +110,8 @@ def validate_email(email: str) -> tuple[bool, str]:
         return False, "Email cannot be empty"
 
     import re
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 
     if not re.match(email_pattern, email):
         return False, f"Invalid email format: {email}"
@@ -138,7 +140,8 @@ def validate_username(username: str) -> tuple[bool, str]:
 
     # Check for valid characters (alphanumeric, underscore, hyphen)
     import re
-    username_pattern = r'^[a-zA-Z0-9_-]+$'
+
+    username_pattern = r"^[a-zA-Z0-9_-]+$"
 
     if not re.match(username_pattern, username):
         return False, f"Username contains invalid characters: {username}"
@@ -164,7 +167,8 @@ def validate_service_name(service_name: str) -> tuple[bool, str]:
 
     # Check for valid characters (alphanumeric, underscore, hyphen, dot)
     import re
-    service_pattern = r'^[a-zA-Z0-9_.-]+$'
+
+    service_pattern = r"^[a-zA-Z0-9_.-]+$"
 
     if not re.match(service_pattern, service_name):
         return False, f"Service name contains invalid characters: {service_name}"

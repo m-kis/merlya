@@ -35,4 +35,3 @@ class TestGetFileInfo:
         assert "\ufffd" in content
         assert file_hash == "abcdabcdabcdabcd"
         assert size == len(raw_bytes)
-

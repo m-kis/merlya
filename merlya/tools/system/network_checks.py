@@ -57,7 +57,9 @@ async def check_gateway(ctx: SharedContext, host: str, *, ping_fn: _PingFn) -> d
     }
 
 
-async def check_dns(ctx: SharedContext, host: str, *, dns_lookup_fn: _DNSLookupFn) -> dict[str, Any]:
+async def check_dns(
+    ctx: SharedContext, host: str, *, dns_lookup_fn: _DNSLookupFn
+) -> dict[str, Any]:
     """Check DNS resolution."""
     cmd = "grep '^nameserver' /etc/resolv.conf 2>/dev/null | head -1 | awk '{print $2}'"
     ns_result = await execute_security_command(ctx, host, cmd, timeout=5)
@@ -84,4 +86,3 @@ async def check_internet(ctx: SharedContext, host: str, *, ping_fn: _PingFn) -> 
             }
 
     return {"reachable": False, "tested_targets": targets}
-

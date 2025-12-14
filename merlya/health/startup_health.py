@@ -66,9 +66,7 @@ class StartupHealth:
 
     def _compute_has_warnings(self) -> None:
         """Compute has_warnings from checks."""
-        self.has_warnings = any(
-            check.status == CheckStatus.WARNING for check in self.checks
-        )
+        self.has_warnings = any(check.status == CheckStatus.WARNING for check in self.checks)
 
     def _compute_capabilities(self) -> None:
         """Compute system capabilities from health checks."""

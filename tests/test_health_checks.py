@@ -261,8 +261,12 @@ class TestRunStartupChecks:
             patch("merlya.health.system_checks.check_disk_space") as mock_disk,
             patch("merlya.health.infrastructure.check_ssh_available") as mock_ssh,
             patch("merlya.health.infrastructure.check_keyring") as mock_keyring,
-            patch("merlya.health.service_checks.check_parser_service", new_callable=AsyncMock) as mock_parser,
-            patch("merlya.health.connectivity.check_llm_provider", new_callable=AsyncMock) as mock_llm,
+            patch(
+                "merlya.health.service_checks.check_parser_service", new_callable=AsyncMock
+            ) as mock_parser,
+            patch(
+                "merlya.health.connectivity.check_llm_provider", new_callable=AsyncMock
+            ) as mock_llm,
             patch("merlya.health.service_checks.check_session_manager") as mock_session,
             patch("merlya.health.skill_checks.check_skills_registry") as mock_skills,
             patch("merlya.health.mcp_checks.check_mcp_servers") as mock_mcp,
@@ -310,8 +314,12 @@ class TestRunStartupChecks:
             patch("merlya.health.system_checks.check_disk_space") as mock_disk,
             patch("merlya.health.infrastructure.check_ssh_available") as mock_ssh,
             patch("merlya.health.infrastructure.check_keyring") as mock_keyring,
-            patch("merlya.health.service_checks.check_parser_service", new_callable=AsyncMock) as mock_parser,
-            patch("merlya.health.connectivity.check_llm_provider", new_callable=AsyncMock) as mock_llm,
+            patch(
+                "merlya.health.service_checks.check_parser_service", new_callable=AsyncMock
+            ) as mock_parser,
+            patch(
+                "merlya.health.connectivity.check_llm_provider", new_callable=AsyncMock
+            ) as mock_llm,
             patch("merlya.health.service_checks.check_session_manager") as mock_session,
             patch("merlya.health.skill_checks.check_skills_registry") as mock_skills,
             patch("merlya.health.mcp_checks.check_mcp_servers") as mock_mcp,

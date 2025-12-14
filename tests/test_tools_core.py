@@ -896,10 +896,13 @@ class TestSSHExecute:
         execute_ssh_command = AsyncMock(return_value=denied)
         execute_with_elevation = AsyncMock(return_value=(elevated_ok, "sudo_with_password"))
 
-        with patch.object(ssh_module, "execute_ssh_command", execute_ssh_command), patch.object(
-            ssh_module, "execute_with_elevation", execute_with_elevation
+        with (
+            patch.object(ssh_module, "execute_ssh_command", execute_ssh_command),
+            patch.object(ssh_module, "execute_with_elevation", execute_with_elevation),
         ):
-            result = await ssh_execute(mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager")
+            result = await ssh_execute(
+                mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager"
+            )
 
         assert result.success is True
         assert result.data["stdout"] == "ok"
@@ -929,10 +932,13 @@ class TestSSHExecute:
         execute_ssh_command = AsyncMock(return_value=denied)
         execute_with_elevation = AsyncMock(return_value=(elevated_ok, "sudo"))
 
-        with patch.object(ssh_module, "execute_ssh_command", execute_ssh_command), patch.object(
-            ssh_module, "execute_with_elevation", execute_with_elevation
+        with (
+            patch.object(ssh_module, "execute_ssh_command", execute_ssh_command),
+            patch.object(ssh_module, "execute_with_elevation", execute_with_elevation),
         ):
-            result = await ssh_execute(mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager")
+            result = await ssh_execute(
+                mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager"
+            )
 
         assert result.success is True
         assert result.data["stdout"] == "ok"

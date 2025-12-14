@@ -6,4 +6,3 @@ def test_system_tools_package_exports_list_cron() -> None:
 
     assert hasattr(system, "list_cron")
     assert callable(system.list_cron)
-

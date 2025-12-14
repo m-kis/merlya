@@ -197,7 +197,9 @@ async def sync_file(
         # Create backup if requested
         if backup:
             # Get timestamp safely
-            timestamp_result = await execute_security_command(ctx, dest_host, "date +%Y%m%d%H%M%S", timeout=10)
+            timestamp_result = await execute_security_command(
+                ctx, dest_host, "date +%Y%m%d%H%M%S", timeout=10
+            )
             if timestamp_result.exit_code == 0:
                 timestamp = timestamp_result.stdout.strip()
                 backup_path = f"{dest_path}.bak.{timestamp}"
@@ -255,7 +257,7 @@ async def _get_file_info(
         size = len(content_bytes)
 
         # Decode bytes to string with deterministic encoding
-        content = content_bytes.decode('utf-8', errors='replace')
+        content = content_bytes.decode("utf-8", errors="replace")
 
         return content, file_hash, size
 
