@@ -9,3 +9,7 @@ CORS_ORIGIN = "https://m-kis.github.io"
 [[durable_objects.bindings]]
 name = "RATE_LIMITER_DO"
 class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RateLimiter"]
