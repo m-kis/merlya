@@ -7,6 +7,8 @@ Verify that actions produce expected results.
 from __future__ import annotations
 
 import re
+import shlex
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -156,10 +158,18 @@ def get_verification_hint(command: str) -> VerificationHint | None:
             expect_stdout = rule.expect_stdout
 
             for i, group in enumerate(match.groups(), 1):
-                if group:
-                    verify_cmd = verify_cmd.replace(f"${i}", group)
-                    if expect_stdout:
-                        expect_stdout = expect_stdout.replace(f"${i}", group)
+                # Always replace the placeholder, using empty string if group is None
+                safe_group = group or ""
+                # Escape for shell command context
+                verify_cmd = verify_cmd.replace(f"${i}", shlex.quote(safe_group))
+                # For expect_stdout, decide based on context
+                if expect_stdout:
+                    # If expect_stdout contains shell patterns (grep, etc.), escape it
+                    # Otherwise keep raw value for direct comparison
+                    if any(shell_keyword in expect_stdout for shell_keyword in ['grep', 'test', 'echo', 'stat', 'dpkg', 'rpm', 'ufw', 'docker']):
+                        expect_stdout = expect_stdout.replace(f"${i}", shlex.quote(safe_group))
+                    else:
+                        expect_stdout = expect_stdout.replace(f"${i}", safe_group)
 
             return VerificationHint(
                 command=verify_cmd,
@@ -215,16 +225,23 @@ def add_verification_to_result(
 
     Returns:
         Tool result with verification hint added to data.
+        Returns a new ToolResult object without mutating the input.
     """
     hint = get_verification_hint(command)
     if hint and result.success:
-        # Add hint to result data for LLM to use
-        if result.data:
-            result.data["_verification_hint"] = {
-                "command": hint.command,
-                "expect_stdout": hint.expect_stdout,
-                "description": hint.description,
-            }
+        # Create a deep copy to avoid mutating the input parameter
+        new_result = deepcopy(result)
+
+        # Initialize data if it's None or empty
+        if not new_result.data:
+            new_result.data = {}
+
+        new_result.data["_verification_hint"] = {
+            "command": hint.command,
+            "expect_stdout": hint.expect_stdout,
+            "description": hint.description,
+        }
         logger.debug(f"🔍 Verification hint: {hint.command}")
+        return new_result
 
     return result

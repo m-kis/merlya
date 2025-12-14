@@ -7,6 +7,7 @@ Consolidated health view across one or multiple hosts.
 from __future__ import annotations
 
 import asyncio
+import shlex
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -125,7 +126,7 @@ async def health_summary(
     summary = HealthSummary(total_hosts=len(host_entries))
 
     for result in results:
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             logger.warning(f"⚠️ Health check exception: {result}")
             continue
 
@@ -306,9 +307,10 @@ async def _check_critical_services(
     timeout: int,
 ) -> None:
     """Check status of critical services."""
-    services_to_check = " ".join(CRITICAL_SERVICES)
+    # Use shlex.quote to safely escape each service name and prevent command injection
+    quoted_services = " ".join(shlex.quote(svc) for svc in CRITICAL_SERVICES)
     cmd = f"""
-for svc in {services_to_check}; do
+for svc in {quoted_services}; do
     if systemctl is-active --quiet "$svc" 2>/dev/null; then
         echo "$svc:active"
     elif systemctl list-unit-files "$svc.service" 2>/dev/null | grep -q enabled; then

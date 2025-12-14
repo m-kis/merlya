@@ -17,6 +17,7 @@ and referenced via @elevation:host:password tokens to prevent leakage.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
@@ -39,6 +40,22 @@ ELEVATION_PRIORITY = {
     "sudo_with_password": 3,  # Needs password
     "su": 4,  # Needs root password - last resort
 }
+
+_SUDO_PREFIX_RE = re.compile(
+    r"^\s*sudo(?:"
+    r"(?:\s+-(?:n|S|E|H|k|i|s)\b)"
+    r"|(?:\s+-u\s+\S+)"
+    r"|(?:\s+-p\s+\S+)"
+    r")*\s+(?P<rest>.+)$",
+    re.IGNORECASE,
+)
+_DOAS_PREFIX_RE = re.compile(
+    r"^\s*doas(?:"
+    r"(?:\s+-(?:n|s)\b)"
+    r"|(?:\s+-u\s+\S+)"
+    r")*\s+(?P<rest>.+)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -305,6 +322,8 @@ class PermissionManager:
     def requires_elevation(self, command: str) -> bool:
         """Heuristically determine if a command likely needs elevation."""
         root_cmds = [
+            "journalctl",
+            "dmesg",
             "systemctl",
             "service",
             "apt",
@@ -334,6 +353,8 @@ class PermissionManager:
             "/etc/sudoers",
             "/var/log/auth.log",
             "/var/log/secure",
+            "/var/log/syslog",
+            "/var/log/kern.log",
         ]
 
         cmd_lower = command.lower()
@@ -572,9 +593,16 @@ class PermissionManager:
         if capabilities.get("is_root"):
             return command, None
 
-        stripped = command.strip()
-        if stripped.startswith(("sudo ", "doas ", "su ", "su -")):
-            return command, None
+        # Normalize any pre-elevated command (e.g., LLM adds sudo/doas) to ensure
+        # we can apply the selected method deterministically and avoid hanging
+        # on interactive password prompts.
+        m = _SUDO_PREFIX_RE.match(command)
+        if m:
+            command = m.group("rest")
+        else:
+            m = _DOAS_PREFIX_RE.match(command)
+            if m:
+                command = m.group("rest")
 
         if method == "sudo":
             # NOPASSWD sudo
@@ -592,17 +620,11 @@ class PermissionManager:
             return f"doas {command}", None
 
         if method == "doas_with_password":
-            # doas doesn't have -S like sudo, it reads from /dev/tty
-            # We need to use expect or script to provide password
-            # Fallback: just use doas and let it prompt
             if password:
-                # Use script to provide password via pseudo-terminal
-                escaped_cmd = command.replace("'", "'\\''")
-                escaped_pwd = password.replace("'", "'\\''")
-                return (
-                    f"printf '%s\\n' '{escaped_pwd}' | doas sh -c '{escaped_cmd}'",
-                    None,
-                )
+                # doas reads the password from /dev/tty; the SSH layer must allocate a PTY
+                # when providing stdin (see SSHPool._execute_once).
+                escaped_cmd = command.replace("'", "'\"'\"'")
+                return f"doas sh -c '{escaped_cmd}'", f"{password}\n"
             return f"doas {command}", None
 
         if method == "su":

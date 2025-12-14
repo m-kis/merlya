@@ -279,11 +279,17 @@ class SkillRegistry:
             Dictionary with stats.
         """
         with self._lock:
+            total = len(self._skills)
             builtin = sum(1 for s in self._skills.values() if s.builtin)
+            user_defined = total - builtin
             return {
-                "total": len(self._skills),
+                "total": total,
                 "builtin": builtin,
-                "user": len(self._skills) - builtin,
+                "user": user_defined,
+                # Backward/forward compatibility keys used by health checks and UI.
+                "user_defined": user_defined,
+                "enabled": total,  # no per-skill disable flag yet
+                "loaded": 1 if total > 0 else 0,
             }
 
 

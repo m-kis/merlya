@@ -22,7 +22,7 @@ class SSHResultProtocol(Protocol):
     exit_code: int
 
 
-@dataclass(frozen=True)
+@dataclass
 class _DummyFailedResult:
     """Dummy result for forced elevation (skips initial attempt)."""
 
@@ -55,16 +55,25 @@ class ElevationPayload:
     input: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict) -> ElevationPayload | None:
+    def from_dict(cls, data: dict[str, object]) -> ElevationPayload | None:
         """Create from dictionary, returns None if data is empty."""
         if not data:
             return None
+
+        def _get_str(key: str, default: str = "") -> str:
+            value = data.get(key)
+            return value if isinstance(value, str) else default
+
+        def _get_opt_str(key: str) -> str | None:
+            value = data.get(key)
+            return value if isinstance(value, str) else None
+
         return cls(
-            command=data.get("command", ""),
-            base_command=data.get("base_command", ""),
-            method=data.get("method"),
-            input_ref=data.get("input_ref"),
-            input=data.get("input"),
+            command=_get_str("command", ""),
+            base_command=_get_str("base_command", ""),
+            method=_get_opt_str("method"),
+            input_ref=_get_opt_str("input_ref"),
+            input=_get_opt_str("input"),
         )
 
 

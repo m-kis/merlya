@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -874,6 +874,70 @@ class TestSSHExecute:
 
         assert result.success is True
         assert result.data["via"] == "bastion"
+
+    @pytest.mark.asyncio
+    async def test_ssh_execute_auto_elevates_on_stdout_permission_denied(
+        self, mock_shared_context: MagicMock
+    ) -> None:
+        """Permission errors may appear in stdout (e.g., journalctl); auto-elevation must still trigger."""
+        from merlya.ssh.pool import SSHResult
+        from merlya.tools.core import ssh as ssh_module
+
+        mock_shared_context.hosts.get_by_name = AsyncMock(return_value=None)
+        mock_shared_context.get_ssh_pool = AsyncMock(return_value=MagicMock())
+
+        denied = SSHResult(
+            stdout="Hint: You are not authorized to view the system journal.",
+            stderr="",
+            exit_code=1,
+        )
+        elevated_ok = SSHResult(stdout="ok", stderr="", exit_code=0)
+
+        execute_ssh_command = AsyncMock(return_value=denied)
+        execute_with_elevation = AsyncMock(return_value=(elevated_ok, "sudo_with_password"))
+
+        with patch.object(ssh_module, "execute_ssh_command", execute_ssh_command), patch.object(
+            ssh_module, "execute_with_elevation", execute_with_elevation
+        ):
+            result = await ssh_execute(mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager")
+
+        assert result.success is True
+        assert result.data["stdout"] == "ok"
+        assert result.data["elevation"] == "sudo_with_password"
+        execute_with_elevation.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ssh_execute_auto_elevates_on_privileged_command_silent_failure(
+        self, mock_shared_context: MagicMock
+    ) -> None:
+        """If a privileged command fails without explicit stderr, ssh_execute should still attempt elevation."""
+        from merlya.ssh.pool import SSHResult
+        from merlya.tools.core import ssh as ssh_module
+
+        mock_shared_context.hosts.get_by_name = AsyncMock(return_value=None)
+        mock_shared_context.get_ssh_pool = AsyncMock(return_value=MagicMock())
+
+        class _Perms:
+            def requires_elevation(self, _cmd: str) -> bool:
+                return True
+
+        mock_shared_context.get_permissions = AsyncMock(return_value=_Perms())
+
+        denied = SSHResult(stdout="", stderr="", exit_code=1)
+        elevated_ok = SSHResult(stdout="ok", stderr="", exit_code=0)
+
+        execute_ssh_command = AsyncMock(return_value=denied)
+        execute_with_elevation = AsyncMock(return_value=(elevated_ok, "sudo"))
+
+        with patch.object(ssh_module, "execute_ssh_command", execute_ssh_command), patch.object(
+            ssh_module, "execute_with_elevation", execute_with_elevation
+        ):
+            result = await ssh_execute(mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager")
+
+        assert result.success is True
+        assert result.data["stdout"] == "ok"
+        assert result.data["elevation"] == "sudo"
+        execute_with_elevation.assert_awaited_once()
 
 
 # ==============================================================================

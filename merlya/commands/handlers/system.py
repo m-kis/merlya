@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from merlya.commands.handlers.scan_format import (
     ScanOptions,
@@ -22,6 +22,15 @@ from merlya.ssh.pool import SSHConnectionOptions
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+    from merlya.persistence.models import Host
+
+
+class _ScanHostResult(TypedDict):
+    host_name: str
+    success: bool
+    error: str | None
+    result: ScanResult | None
+    host: Host | None
 
 # Limit concurrent SSH channels to avoid MaxSessions limit (default 10 in OpenSSH)
 MAX_CONCURRENT_SSH_CHANNELS = 6
@@ -137,7 +146,7 @@ async def _scan_hosts_parallel(
     # Limit concurrent host scans
     host_semaphore = asyncio.Semaphore(5)
 
-    async def scan_one_host(host_name: str) -> dict:
+    async def scan_one_host(host_name: str) -> _ScanHostResult:
         async with host_semaphore:
             host = await ctx.hosts.get_by_name(host_name)
             if not host:
@@ -211,17 +220,20 @@ async def _scan_hosts_parallel(
     successes = 0
 
     for item in scan_results:
-        if item["success"]:
+        if item["success"] and item["result"] is not None and item["host"] is not None:
             successes += 1
-            results.append(item["result"])
+            scan_result = item["result"]
+            host_entry = item["host"]
+            results.append(scan_result)
             if opts.output_json:
                 outputs.append(
-                    f"```json\n{json.dumps(scan_to_dict(item['result'], item['host']), indent=2)}\n```"
+                    f"```json\n{json.dumps(scan_to_dict(scan_result, host_entry), indent=2)}\n```"
                 )
             else:
-                outputs.append(format_scan_output(item["result"], item["host"], opts))
+                outputs.append(format_scan_output(scan_result, host_entry, opts))
         else:
-            outputs.append(f"❌ `{item['host_name']}`: {item['error']}")
+            error = item["error"] or "Unknown error"
+            outputs.append(f"❌ `{item['host_name']}`: {error}")
 
     # Summary
     summary = f"\n---\n**Summary:** {successes}/{len(host_names)} hosts scanned successfully"

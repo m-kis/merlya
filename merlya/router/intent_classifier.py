@@ -149,6 +149,7 @@ TOOL_KEYWORDS: dict[str, list[str]] = {
         "ram",
         "disk",
         "process",
+        "pid",
         "service",
         "uptime",
         "load",
@@ -257,8 +258,14 @@ class IntentClassifier:
         # LRU cache using OrderedDict for O(1) operations
         self._embedding_cache: OrderedDict[str, NDArray[np.float32]] = OrderedDict()
 
-    async def load_model(self, model_path: Path | None = None) -> bool:
-        """Load ONNX embedding model."""
+    async def load_model(self, model_path: Path | None = None, *, allow_download: bool = True) -> bool:
+        """Load ONNX embedding model.
+
+        Args:
+            model_path: Optional explicit model path override.
+            allow_download: If True, missing assets are downloaded automatically.
+                Health checks should set this to False to avoid unexpected network downloads.
+        """
         if not self.use_embeddings:
             return True
 
@@ -267,21 +274,42 @@ class IntentClassifier:
             from tokenizers import Tokenizer  # noqa: F401 - check availability
 
             selected_model = self._select_model_id(self._model_id, self._tier)
-            model_path = model_path or self._resolve_model_path(selected_model)
-            tokenizer_path = model_path.parent / "tokenizer.json"
-            data_path = model_path.with_name(f"{model_path.name}_data")
+            selected_path = model_path or self._resolve_model_path(selected_model)
+            tokenizer_path = selected_path.parent / "tokenizer.json"
+            data_path = selected_path.with_name(f"{selected_path.name}_data")
 
-            if not model_path.exists() or not tokenizer_path.exists():
-                await self._download_model(selected_model, model_path, tokenizer_path)
+            if (not selected_path.exists() or not tokenizer_path.exists()) and not allow_download:
+                return self._disable_embeddings(selected_path, tokenizer_path)
+
+            if not selected_path.exists() or not tokenizer_path.exists():
+                downloaded = await self._download_model(selected_model, selected_path, tokenizer_path)
+                if not downloaded:
+                    from merlya.config.tiers import get_router_model_id
+
+                    fallback_model = get_router_model_id(self._tier)
+                    if fallback_model and fallback_model != selected_model:
+                        logger.warning(
+                            f"⚠️ Falling back to default router model for tier '{self._tier}': {fallback_model}"
+                        )
+                        selected_model = fallback_model
+                        selected_path = self._resolve_model_path(selected_model)
+                        tokenizer_path = selected_path.parent / "tokenizer.json"
+                        data_path = selected_path.with_name(f"{selected_path.name}_data")
+
+                        if not allow_download:
+                            return self._disable_embeddings(selected_path, tokenizer_path)
+
+                        await self._download_model(selected_model, selected_path, tokenizer_path)
             elif not data_path.exists():
-                await self._download_external_data(selected_model, model_path)
+                if allow_download:
+                    await self._download_external_data(selected_model, selected_path)
 
-            if not model_path.exists() or not tokenizer_path.exists():
-                return self._disable_embeddings(model_path, tokenizer_path)
+            if not selected_path.exists() or not tokenizer_path.exists():
+                return self._disable_embeddings(selected_path, tokenizer_path)
 
             # Load in thread to avoid blocking
             self._session, self._tokenizer = await asyncio.to_thread(
-                self._load_onnx_and_tokenizer, model_path, tokenizer_path
+                self._load_onnx_and_tokenizer, selected_path, tokenizer_path
             )
 
             # Pre-compute intent embeddings
@@ -329,7 +357,7 @@ class IntentClassifier:
         model_id: str,
         model_path: Path,
         tokenizer_path: Path,
-    ) -> None:
+    ) -> bool:
         """Download ONNX embedding model and tokenizer (plus external data if present)."""
         try:
             target_dir = model_path.parent
@@ -346,8 +374,10 @@ class IntentClassifier:
             await self._download_external_data(model_id, model_path)
 
             logger.info(f"✅ Downloaded ONNX model to {model_path}")
+            return True
         except Exception as e:
             logger.warning(f"⚠️ Could not download ONNX model: {e}")
+            return False
 
     async def _download_external_data(self, model_id: str, model_path: Path) -> None:
         """Download external data sidecar if the model uses one."""

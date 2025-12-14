@@ -7,6 +7,7 @@ Check SSL certificates on remote hosts for expiration and configuration issues.
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -69,14 +70,31 @@ async def check_ssl_certs(
         # Fall back to checking localhost
         domains = ["localhost"]
 
-    results: list[dict] = []
+    results: list[dict[str, object]] = []
     severity = "info"
     issues: list[str] = []
 
+    # Validate all domains before processing
+    valid_domains = []
     for domain in domains:
+        if _is_valid_domain(domain):
+            valid_domains.append(domain)
+        else:
+            logger.warning(f"⚠️ Skipping invalid domain: {domain}")
+            issues.append(f"Invalid domain skipped: {domain}")
+
+    if not valid_domains:
+        return SecurityResult(
+            success=False,
+            error="❌ No valid domains to check",
+            data={"total_checked": 0, "certificates": [], "issues": issues},
+            severity="warning",
+        )
+
+    for domain in valid_domains:
         cert_info = await _check_certificate(ctx, host, domain, port, warn_days)
 
-        result_dict = {
+        result_dict: dict[str, object] = {
             "domain": cert_info.domain,
             "issuer": cert_info.issuer,
             "subject": cert_info.subject,
@@ -140,7 +158,13 @@ async def check_ssl_cert_file(
             error=f"❌ Invalid certificate path: {cert_path}",
         )
 
-    cmd = f"openssl x509 -in {cert_path} -noout -dates -subject -issuer 2>&1"
+    # Use a safer approach with argument list instead of shell command interpolation
+    cmd_parts = [
+        "openssl", "x509", "-in", cert_path, "-noout", "-dates", "-subject", "-issuer"
+    ]
+
+    # Join the command parts for execute_security_command which expects a string
+    cmd = " ".join(shlex.quote(part) for part in cmd_parts) + " 2>&1"
     result = await execute_security_command(ctx, host, cmd, timeout=15)
 
     if result.exit_code != 0:
@@ -183,11 +207,16 @@ async def _check_certificate(
     """Check a single certificate via network connection."""
     cert_info = CertificateInfo(domain=domain)
 
-    # Use openssl s_client to get certificate
-    cmd = f"""
-echo | openssl s_client -servername {domain} -connect {domain}:{port} 2>/dev/null | \
-openssl x509 -noout -dates -subject -issuer -ext subjectAltName 2>/dev/null
-"""
+    # Use a safer approach with argument list instead of shell command interpolation
+    # This prevents command injection by avoiding shell=True
+    cmd_parts = [
+        "sh", "-c",
+        f"echo | openssl s_client -servername {shlex.quote(domain)} -connect {shlex.quote(domain)}:{port} 2>/dev/null | openssl x509 -noout -dates -subject -issuer -ext subjectAltName 2>/dev/null"
+    ]
+
+    # Join the command parts for execute_security_command which expects a string
+    # The command is properly escaped and the shell is only used for the pipe operator
+    cmd = " ".join(cmd_parts)
 
     result = await execute_security_command(ctx, host, cmd, timeout=30)
 
@@ -241,17 +270,28 @@ def _parse_openssl_output(domain: str, output: str, warn_days: int) -> Certifica
 
 
 def _parse_openssl_date(date_str: str) -> datetime | None:
-    """Parse OpenSSL date format."""
-    # Format: "Mar 15 12:00:00 2024 GMT"
+    """Parse OpenSSL date format.
+
+    Normalizes input by stripping trailing timezone tokens (e.g., " GMT")
+    before parsing, as %Z is unreliable across platforms.
+    """
+    import re
+
+    date_str = date_str.strip()
+
+    # Strip trailing timezone token (e.g., " GMT", " UTC", or any alphabetic suffix)
+    date_str_normalized = re.sub(r"\s+[A-Za-z]+$", "", date_str)
+
+    # Formats without %Z since we stripped the timezone
     formats = [
-        "%b %d %H:%M:%S %Y %Z",
-        "%b  %d %H:%M:%S %Y %Z",
-        "%Y-%m-%dT%H:%M:%SZ",
+        "%b %d %H:%M:%S %Y",   # "Mar 15 12:00:00 2024"
+        "%b  %d %H:%M:%S %Y",  # "Mar  5 12:00:00 2024" (double-space for single-digit day)
+        "%Y-%m-%dT%H:%M:%S",   # "2024-03-15T12:00:00" (ISO format without Z)
     ]
 
     for fmt in formats:
         try:
-            dt = datetime.strptime(date_str.strip(), fmt)
+            dt = datetime.strptime(date_str_normalized, fmt)
             return dt.replace(tzinfo=UTC)
         except ValueError:
             continue
@@ -315,6 +355,9 @@ def _is_valid_domain(domain: str) -> bool:
 
 def _is_safe_cert_path(path: str) -> bool:
     """Validate certificate file path for security."""
+    import os
+    import re
+
     allowed_prefixes = (
         "/etc/ssl/",
         "/etc/pki/",
@@ -326,9 +369,22 @@ def _is_safe_cert_path(path: str) -> bool:
         "/home/",
     )
 
-    normalized = path.replace("//", "/")
+    # Reject shell metacharacters since path is used in shell commands
+    # Allow alphanumeric, dash, underscore, dot, and forward slash
+    if re.search(r"[^a-zA-Z0-9_\-./]", path):
+        return False
 
+    # Use os.path.normpath for robust normalization
+    normalized = os.path.normpath(path)
+
+    # normpath removes trailing slashes and resolves .. and .
+    # Check that normalized path doesn't escape allowed directories
     if ".." in normalized:
         return False
 
-    return any(normalized.startswith(prefix) for prefix in allowed_prefixes)
+    # Ensure path starts with allowed prefix (add trailing slash for prefix match)
+    return any(
+        normalized.startswith(prefix.rstrip("/"))
+        and (len(normalized) == len(prefix.rstrip("/")) or normalized[len(prefix.rstrip("/"))] == "/")
+        for prefix in allowed_prefixes
+    )

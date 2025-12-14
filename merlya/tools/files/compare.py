@@ -6,7 +6,9 @@ Compare files between hosts or between host and local.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -194,9 +196,19 @@ async def sync_file(
 
         # Create backup if requested
         if backup:
-            backup_cmd = f"cp {dest_path} {dest_path}.bak.$(date +%Y%m%d%H%M%S)"
-            await execute_security_command(ctx, dest_host, backup_cmd, timeout=30)
-            logger.info(f"📁 Created backup of {dest_path}")
+            # Get timestamp safely
+            timestamp_result = await execute_security_command(ctx, dest_host, "date +%Y%m%d%H%M%S", timeout=10)
+            if timestamp_result.exit_code == 0:
+                timestamp = timestamp_result.stdout.strip()
+                backup_path = f"{dest_path}.bak.{timestamp}"
+                # Use shlex.quote to properly escape paths and prevent command injection
+                safe_dest = shlex.quote(dest_path)
+                safe_backup = shlex.quote(backup_path)
+                backup_cmd = f"cp {safe_dest} {safe_backup}"
+                await execute_security_command(ctx, dest_host, backup_cmd, timeout=30)
+                logger.info(f"📁 Created backup of {dest_path}")
+            else:
+                logger.warning("⚠️ Failed to create backup: could not get timestamp")
 
     except FileNotFoundError:
         pass  # Destination doesn't exist, that's OK
@@ -237,29 +249,56 @@ async def _get_file_info(
         if not local_path.exists():
             raise FileNotFoundError(f"❌ Local file not found: {path}")
 
-        content = local_path.read_text()
-        file_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-        size = local_path.stat().st_size
+        # Read file as raw bytes to ensure consistent hashing
+        content_bytes = local_path.read_bytes()
+        file_hash = hashlib.sha256(content_bytes).hexdigest()[:16]
+        size = len(content_bytes)
+
+        # Decode bytes to string with deterministic encoding
+        content = content_bytes.decode('utf-8', errors='replace')
 
         return content, file_hash, size
 
-    # Remote file
-    cmd = f"cat {path} 2>/dev/null && echo '---MERLYA_HASH---' && sha256sum {path} 2>/dev/null | cut -c1-16 && stat -c%s {path} 2>/dev/null"
+    # Remote file - use shell escaping to prevent command injection
+    # Use base64 encoding to preserve exact file content (including trailing newlines)
+    # Format: base64_content<NUL>sha256_hash<NUL>size
+    safe_path = shlex.quote(path)
+    cmd = (
+        f"if [ -f {safe_path} ]; then "
+        f"base64 -w0 {safe_path} && "
+        f"printf '\\0' && "
+        f"sha256sum {safe_path} | cut -c1-16 && "
+        f"printf '\\0' && "
+        f"stat -c%s {safe_path}; "
+        f"else exit 1; fi"
+    )
     result = await execute_security_command(ctx, host, cmd, timeout=60)
 
     if result.exit_code != 0:
         raise FileNotFoundError(f"❌ File not found on {host}: {path}")
 
-    # Parse output
-    parts = result.stdout.split("---MERLYA_HASH---")
-    if len(parts) < 2:
+    # Parse output using NUL separators
+    parts = result.stdout.split("\0")
+    if len(parts) < 3:
         raise FileNotFoundError(f"❌ Failed to read file on {host}: {path}")
 
-    content = parts[0].rstrip("\n")
-    hash_and_size = parts[1].strip().split("\n")
+    # Decode base64 content to preserve exact bytes.
+    # Decode to text with replacement to avoid failing on non-UTF8 files (binary logs, locale encodings, etc.).
+    try:
+        content_bytes = base64.b64decode(parts[0])
+    except ValueError as e:
+        raise FileNotFoundError(f"❌ Failed to decode file content on {host}: {path}") from e
 
-    file_hash = hash_and_size[0] if hash_and_size else ""
-    size = int(hash_and_size[1]) if len(hash_and_size) > 1 else len(content)
+    content = content_bytes.decode("utf-8", errors="replace")
+
+    file_hash = parts[1].strip()
+    if not file_hash:
+        raise FileNotFoundError(f"❌ Failed to compute hash on {host}: {path}")
+
+    try:
+        size = int(parts[2].strip())
+    except ValueError as e:
+        raise FileNotFoundError(f"❌ Failed to read file size on {host}: {path}") from e
 
     return content, file_hash, size
 
@@ -295,6 +334,17 @@ def _is_safe_path(path: str) -> bool:
 
     # Reject path traversal
     if ".." in path:
+        return False
+
+    # Reject shell metacharacters that could enable command injection
+    # Even though we use shlex.quote, defense in depth is important
+    # Explicitly reject dangerous shell metacharacters
+    shell_metacharacters = set(";|&$`\\\"'<>(){}[]!#*?~ \n\t\r")
+    if any(c in shell_metacharacters for c in path):
+        return False
+
+    # Reject newlines and other control characters
+    if any(ord(c) < 32 for c in path):
         return False
 
     # Reject dangerous paths

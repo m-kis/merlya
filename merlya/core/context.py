@@ -147,12 +147,13 @@ class SharedContext:
             raise RuntimeError("Router not initialized. Call init_router() first.")
         return self._router
 
-    async def get_permissions(self) -> object:
+    async def get_permissions(self) -> PermissionManager:
         """Get permission manager (lazy)."""
         if self._permissions is None:
             from merlya.security import PermissionManager
 
             self._permissions = PermissionManager(self)
+        assert self._permissions is not None
         return self._permissions
 
     @property
