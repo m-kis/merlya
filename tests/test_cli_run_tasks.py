@@ -51,4 +51,3 @@ def test_load_tasks_from_file_returns_empty_list_for_empty_yaml(tmp_path):
     tasks = load_tasks_from_file(str(task_file))
 
     assert tasks == []
-
