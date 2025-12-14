@@ -1,13 +1,16 @@
-site_name: Merlya Documentation
+site_name: Merlya - AI Infrastructure Assistant
 site_url: https://m-kis.github.io/merlya/
-site_author: Merlya Team
-site_description: AI-powered infrastructure assistant - Documentation
+site_author: Cedric (M-KIS)
+site_description: >-
+  Merlya is an AI-powered CLI tool for DevOps and SysAdmins.
+  Manage infrastructure with natural language, SSH connections,
+  host inventory, and multiple LLM providers.
 
 repo_name: m-kis/merlya
 repo_url: https://github.com/m-kis/merlya
 edit_uri: edit/main/docs/
 
-copyright: Copyright &copy; 2025 Merlya
+copyright: Copyright &copy; 2025 Merlya - MIT + Commons Clause
 
 theme:
   name: material
@@ -52,9 +55,12 @@ theme:
 
 plugins:
   - search:
-      lang: en
+      lang:
+        - en
+        - fr
   - minify:
       minify_html: true
+  - social
 
 markdown_extensions:
   - abbr
@@ -100,10 +106,32 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/m-kis/merlya
+      name: Merlya on GitHub
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/merlya/
+      name: Merlya on PyPI
   rag_api_url: https://merlya-docs-rag.cedric-merlin-565.workers.dev/ask
   generator: false
+  # SEO
+  meta:
+    - name: keywords
+      content: merlya, ai, infrastructure, devops, sysadmin, ssh, cli, automation, llm, pydantic-ai
+    - name: author
+      content: Cedric (M-KIS)
+    - property: og:type
+      content: website
+    - property: og:title
+      content: Merlya - AI Infrastructure Assistant
+    - property: og:description
+      content: AI-powered CLI tool for DevOps. Manage infrastructure with natural language.
+    - property: og:image
+      content: https://merlya.fr/static/media/logo.41177386c9cd7ecf8aaa.png
+    - name: twitter:card
+      content: summary
+    - name: twitter:title
+      content: Merlya - AI Infrastructure Assistant
+    - name: twitter:description
+      content: AI-powered CLI tool for DevOps and SysAdmins
 
 extra_css:
   - assets/stylesheets/extra.css
