@@ -5,3 +5,7 @@ compatibility_date = "2024-12-01"
 
 [vars]
 CORS_ORIGIN = "https://m-kis.github.io"
+
+[[durable_objects.bindings]]
+name = "RATE_LIMITER_DO"
+class_name = "RateLimiter"

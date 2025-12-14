@@ -2,14 +2,15 @@
  * Merlya Docs RAG Worker
  *
  * Secure documentation chatbot with:
- * - Rate limiting (10 requests/minute per IP)
+ * - Distributed rate limiting (10 requests/minute per IP)
  * - Prompt injection protection
- * - Cost optimization (GPT-3.5-turbo)
+ * - Cost optimization with timeout handling
  */
 
 interface Env {
   OPENAI_API_KEY: string;
   CORS_ORIGIN: string;
+  RATE_LIMITER_DO: DurableObjectNamespace;
 }
 
 interface AskRequest {
@@ -183,35 +184,148 @@ ${DOCS_CONTEXT}
 
 Respond in the same language as the question (French or English).`;
 
-// Simple in-memory rate limiter using Map
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+// Durable Object Rate Limiter - Distributed across multiple Worker instances
+class RateLimiter {
+  private state: DurableObjectState;
+  private storage: DurableObjectStorage;
+  
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+    this.storage = state.storage;
+  }
 
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    
+    if (url.pathname === '/check') {
+      const ip = request.headers.get('CF-Connecting-IP');
+      if (!ip) {
+        return new Response(JSON.stringify({ error: 'No client IP' }), { status: 400 });
+      }
+      return await this.checkRateLimit(ip);
+    }
+    
+    return new Response('Not found', { status: 404 });
+  }
 
-  // Clean up old entries periodically
-  if (rateLimitMap.size > 10000) {
-    for (const [key, val] of rateLimitMap.entries()) {
-      if (val.resetTime < now) rateLimitMap.delete(key);
+  private async checkRateLimit(ip: string): Promise<Response> {
+    const now = Date.now();
+    const windowMs = RATE_LIMIT_WINDOW * 1000;
+    
+    // Clean up expired entries periodically
+    await this.cleanupExpiredEntries();
+    
+    // Get current rate limit entry for this IP
+    const entry = await this.storage.get<{ count: number; resetTime: number }>(`rateLimit:${ip}`);
+    
+    if (!entry || entry.resetTime < now) {
+      // New window - create fresh entry
+      const newEntry = { count: 1, resetTime: now + windowMs };
+      await this.storage.put(`rateLimit:${ip}`, newEntry);
+      
+      return new Response(JSON.stringify({
+        allowed: true,
+        remaining: RATE_LIMIT_REQUESTS - 1,
+        resetIn: RATE_LIMIT_WINDOW
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (entry.count >= RATE_LIMIT_REQUESTS) {
+      // Rate limited - return remaining time
+      const resetIn = Math.ceil((entry.resetTime - now) / 1000);
+      return new Response(JSON.stringify({
+        allowed: false,
+        remaining: 0,
+        resetIn
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Increment counter atomically
+    const updatedEntry = { ...entry, count: entry.count + 1 };
+    await this.storage.put(`rateLimit:${ip}`, updatedEntry);
+    
+    const resetIn = Math.ceil((entry.resetTime - now) / 1000);
+    return new Response(JSON.stringify({
+      allowed: true,
+      remaining: RATE_LIMIT_REQUESTS - entry.count - 1,
+      resetIn
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
+  private async cleanupExpiredEntries(): Promise<void> {
+    const now = Date.now();
+    
+    // Clean up entries older than 1 hour to prevent storage bloat
+    const cutoffTime = now - (60 * 60 * 1000); // 1 hour ago
+    
+    // List all rate limit entries
+    const keys = await this.storage.list({ prefix: 'rateLimit:' });
+    
+    let cleanedCount = 0;
+    for (const [key, value] of keys) {
+      const entry = value as { count: number; resetTime: number };
+      if (entry.resetTime < cutoffTime) {
+        await this.storage.delete(key);
+        cleanedCount++;
+      }
+    }
+    
+    // Log cleanup periodically
+    if (cleanedCount > 0) {
+      console.log(`Rate limiter cleanup: removed ${cleanedCount} expired entries`);
     }
   }
+}
 
-  if (!entry || entry.resetTime < now) {
-    // New window
-    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW * 1000 });
-    return { allowed: true, remaining: RATE_LIMIT_REQUESTS - 1, resetIn: RATE_LIMIT_WINDOW };
+// Client-side rate limit check function
+async function checkRateLimit(ip: string, env: Env): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
+  try {
+    // Create a deterministic ID for the Durable Object based on IP hash
+    const ipHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
+    const hashArray = Array.from(new Uint8Array(ipHash));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const doId = hashHex.substring(0, 32); // Use first 32 chars as DO ID
+    
+    const rateLimiterId = env.RATE_LIMITER_DO.idFromName(doId);
+    const stub = env.RATE_LIMITER_DO.get(rateLimiterId);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    try {
+      const response = await stub.fetch('/check', {
+        method: 'POST',
+        headers: {
+          'CF-Connecting-IP': ip,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        // If DO is unavailable, fail closed (deny request) for security
+        console.error('Rate limiter DO unavailable:', response.status);
+        return { allowed: false, remaining: 0, resetIn: 60 };
+      }
+      
+      return await response.json();
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      throw fetchError;
+    }
+  } catch (error) {
+    // Network error - fail closed for security
+    console.error('Rate limiter error:', error);
+    return { allowed: false, remaining: 0, resetIn: 60 };
   }
-
-  if (entry.count >= RATE_LIMIT_REQUESTS) {
-    // Rate limited
-    const resetIn = Math.ceil((entry.resetTime - now) / 1000);
-    return { allowed: false, remaining: 0, resetIn };
-  }
-
-  // Increment counter
-  entry.count++;
-  return { allowed: true, remaining: RATE_LIMIT_REQUESTS - entry.count, resetIn: Math.ceil((entry.resetTime - now) / 1000) };
 }
 
 function detectPromptInjection(input: string): boolean {
@@ -228,9 +342,13 @@ function sanitizeInput(input: string): string {
 }
 
 function getClientIP(request: Request): string {
-  return request.headers.get('CF-Connecting-IP') ||
-         request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-         'unknown';
+  // SECURITY: Only use CF-Connecting-IP to prevent spoofing via X-Forwarded-For
+  const cfIP = request.headers.get('CF-Connecting-IP');
+  if (!cfIP) {
+    console.warn('No CF-Connecting-IP header found');
+    return 'unknown';
+  }
+  return cfIP;
 }
 
 export default {
@@ -255,11 +373,11 @@ export default {
       return jsonResponse({ error: "Not found" }, 404, corsOrigin);
     }
 
-    // Get client IP for rate limiting
+    // Get client IP for rate limiting (SECURITY: using only CF-Connecting-IP)
     const clientIP = getClientIP(request);
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(clientIP);
+    // Check rate limit using distributed Durable Object
+    const rateLimit = await checkRateLimit(clientIP, env);
     if (!rateLimit.allowed) {
       return jsonResponse(
         { error: `Rate limit exceeded. Try again in ${rateLimit.resetIn} seconds.` },
@@ -295,44 +413,60 @@ export default {
         );
       }
 
-      // Call OpenAI with cheapest model
+      // Call OpenAI with current model and timeout
       const messages: OpenAIMessage[] = [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: question },
       ];
 
-      const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-3.5-turbo",  // Cheapest model (~$0.0005/1K tokens)
-          messages,
-          max_tokens: 500,         // Reduced for cost
-          temperature: 0.3,        // Lower = more focused responses
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      if (!openaiResponse.ok) {
-        const errorText = await openaiResponse.text();
-        console.error("OpenAI error:", openaiResponse.status, errorText);
-        return jsonResponse({ error: "AI service temporarily unavailable" }, 503, corsOrigin);
-      }
+      try {
+        const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",  // Updated to current cost-effective model
+            messages,
+            max_tokens: 500,         // Reduced for cost
+            temperature: 0.3,        // Lower = more focused responses
+          }),
+          signal: controller.signal
+        });
 
-      const data = await openaiResponse.json() as OpenAIResponse;
-      const answer = data.choices[0]?.message?.content || "Sorry, I couldn't generate an answer.";
+        clearTimeout(timeoutId);
 
-      return jsonResponse(
-        { answer },
-        200,
-        corsOrigin,
-        {
-          "X-RateLimit-Remaining": String(rateLimit.remaining),
-          "X-RateLimit-Reset": String(rateLimit.resetIn)
+        if (!openaiResponse.ok) {
+          const errorText = await openaiResponse.text();
+          console.error("OpenAI error:", openaiResponse.status, errorText);
+          return jsonResponse({ error: "AI service temporarily unavailable" }, 503, corsOrigin);
         }
-      );
+
+        const data = await openaiResponse.json() as OpenAIResponse;
+        const answer = data.choices[0]?.message?.content || "Sorry, I couldn't generate an answer.";
+
+        return jsonResponse(
+          { answer },
+          200,
+          corsOrigin,
+          {
+            "X-RateLimit-Remaining": String(rateLimit.remaining),
+            "X-RateLimit-Reset": String(rateLimit.resetIn)
+          }
+        );
+
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          console.error("OpenAI request timeout");
+          return jsonResponse({ error: "AI service timeout" }, 504, corsOrigin);
+        }
+        throw fetchError;
+      }
 
     } catch (error) {
       console.error("Error:", error);
@@ -340,6 +474,8 @@ export default {
     }
   },
 };
+
+export { RateLimiter };
 
 function jsonResponse(
   data: object,

@@ -87,16 +87,33 @@
           body: JSON.stringify({ question })
         });
 
-        const data = await response.json();
-
         // Remove loading message
         const loadingEl = document.getElementById(loadingId);
         if (loadingEl) loadingEl.remove();
 
-        if (data.error) {
-          addMessage('Sorry, I encountered an error. Please try again later.', 'bot error');
+        if (!response.ok) {
+          // Try to parse error response safely
+          let errorMessage = 'Sorry, I encountered an error. Please try again later.';
+          try {
+            const errorData = await response.json();
+            if (errorData.error) {
+              errorMessage = errorData.error;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            }
+          } catch (parseErr) {
+            // If JSON parsing fails, use generic message
+            errorMessage = `Request failed with status ${response.status}. Please try again later.`;
+          }
+          addMessage(errorMessage, 'bot error');
         } else {
-          addMessage(data.answer, 'bot');
+          // Parse successful response
+          const data = await response.json();
+          if (data.error) {
+            addMessage('Sorry, I encountered an error. Please try again later.', 'bot error');
+          } else {
+            addMessage(data.answer, 'bot');
+          }
         }
       } catch (err) {
         // Remove loading message
