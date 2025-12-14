@@ -33,12 +33,12 @@ Change interface language.
 
 ## Host Management
 
-### `/hosts list [--tag TAG]`
+### `/hosts list [--tag=<tag>]`
 List all hosts in inventory.
 
 ```bash
 /hosts list
-/hosts list --tag production
+/hosts list --tag=production
 ```
 
 ### `/hosts show <name>`
@@ -48,13 +48,12 @@ Show details for a specific host.
 /hosts show web01
 ```
 
-### `/hosts add <name> <hostname> [options]`
-Add a new host to inventory.
+### `/hosts add <name> [--test]`
+Add a new host to inventory (interactive prompts for hostname, port, username).
 
 ```bash
-/hosts add web01 10.0.1.5
-/hosts add web01 10.0.1.5 --user admin --port 2222
-/hosts add web01 10.0.1.5 --jump bastion
+/hosts add web01
+/hosts add web01 --test
 ```
 
 ### `/hosts delete <name>`
@@ -78,6 +77,22 @@ Remove a tag from a host.
 /hosts untag web01 staging
 ```
 
+### `/hosts edit <name>`
+Edit a host interactively (hostname/port/user/tags).
+
+```bash
+/hosts edit web01
+```
+
+### `/hosts check [<name>|--tag=<tag>|--all]`
+Check SSH connectivity to hosts (supports `--parallel`).
+
+```bash
+/hosts check
+/hosts check web01
+/hosts check --tag=production --parallel
+```
+
 ### `/hosts import <file>`
 Import hosts from a file.
 
@@ -88,11 +103,13 @@ Supported formats:
 - **TOML** - Host definitions with `[hosts.name]` sections
 - **CSV** - Columns: name, hostname, port, username, tags
 - **SSH config** - `~/.ssh/config` format
+- **/etc/hosts** - `/etc/hosts` format
 
 ```bash
 /hosts import hosts.toml
-/hosts import ~/.ssh/config
+/hosts import ~/.ssh/config --format=ssh
 /hosts import inventory.yaml
+/hosts import /etc/hosts --format=etc_hosts
 ```
 
 **TOML Example:**
@@ -149,6 +166,21 @@ Get a variable value.
 ### `/variable delete <name>`
 Delete a variable.
 
+### `/variable import <file> [--merge|--replace] [--dry-run]`
+Import variables (and optionally hosts) from YAML/JSON/`.env` style files.
+
+```bash
+/variable import vars.yml
+/variable import vars.env --dry-run
+```
+
+### `/variable export <file> [--include-secrets]`
+Export variables to a file (YAML/JSON/`.env`), optionally prompting for secrets.
+
+```bash
+/variable export vars.yml
+```
+
 ## Secrets
 
 Secrets are stored securely in the system keyring.
@@ -169,35 +201,74 @@ Delete a secret.
 
 ## Conversations
 
-### `/conversations list [--limit N]`
+Merlya stores conversation history and lets you resume or export it.
+
+### `/conv list [--limit=<n>]`
 List saved conversations.
 
 ```bash
-/conversations list
-/conversations list --limit 10
+/conv list
+/conv list --limit=10
 ```
 
-### `/conversations load <id>`
+### `/conv show <id>`
+Show conversation details.
+
+```bash
+/conv show abc123
+```
+
+### `/conv load <id>`
 Load a previous conversation.
 
 ```bash
-/conversations load abc123
+/conv load abc123
 ```
 
-### `/conversations search <query>`
+### `/conv delete <id>`
+Delete a conversation.
+
+```bash
+/conv delete abc123
+```
+
+### `/conv rename <id> <title>`
+Rename a conversation.
+
+```bash
+/conv rename abc123 "Server maintenance"
+```
+
+### `/conv search <query>`
 Search conversations.
 
 ```bash
-/conversations search "disk usage"
+/conv search "disk usage"
+```
+
+### `/conv export <id> <file>`
+Export a conversation to a file.
+
+```bash
+/conv export abc123 ./incident.md
 ```
 
 ## Model Management
 
-### `/model`
-Show current LLM configuration.
+### `/model show`
+Show current provider/model/router status.
 
-### `/model set <provider:model>`
+### `/model provider <name>`
+Change LLM provider (prompts for API key if missing).
+
+### `/model model <name>`
 Change the LLM model.
+
+### `/model test`
+Test LLM connectivity.
+
+### `/model router <show|local|llm>`
+Configure intent router.
 
 ## MCP (Model Context Protocol)
 
@@ -288,14 +359,6 @@ Show sample configuration snippets with common MCP servers.
 /mcp examples
 ```
 
-```bash
-/model set openrouter:anthropic/claude-3.5-sonnet
-/model set ollama:llama3.2
-```
-
-### `/model test`
-Test LLM connectivity.
-
 ## SSH Management
 
 ### `/ssh connect <host>`
@@ -305,11 +368,25 @@ Test SSH connection to a host.
 /ssh connect web01
 ```
 
-### `/ssh key add <name> <path>`
-Add an SSH key.
+### `/ssh exec <host> <command>`
+Execute a command over SSH.
 
-### `/ssh key list`
-List configured SSH keys.
+```bash
+/ssh exec web01 "uptime"
+```
+
+### `/ssh disconnect <host>`
+Disconnect from a host.
+
+```bash
+/ssh disconnect web01
+```
+
+### `/ssh config <host>`
+Interactive SSH configuration for a host.
+
+### `/ssh test <host>`
+Test SSH connectivity (diagnostics).
 
 ## System
 
@@ -329,11 +406,8 @@ Set log level.
 /log level info
 ```
 
-### `/log dir`
-Show log directory location.
-
-### `/log clear`
-Clear old log files.
+### `/log show`
+Show recent log entries.
 
 ## Skills
 
@@ -374,20 +448,34 @@ Interactive wizard to create a new skill.
 
 ## Audit
 
-### `/audit list [--limit N] [--host HOST]`
-List recent command executions.
+### `/audit recent [limit]`
+Show recent audit events.
 
 ```bash
-/audit list
-/audit list --limit 50
-/audit list --host web01
+/audit recent
+/audit recent 50
 ```
 
-### `/audit show <id>`
-Show details of a specific audit entry.
+### `/audit export [file]`
+Export audit logs to JSON.
 
 ```bash
-/audit show abc123
+/audit export
+/audit export ./audit.json
+```
+
+### `/audit filter <type>`
+Filter audit events by type.
+
+```bash
+/audit filter ssh
+```
+
+### `/audit stats`
+Show audit statistics.
+
+```bash
+/audit stats
 ```
 
 ## Using @ Mentions
@@ -417,5 +505,6 @@ Some commands have shorter aliases:
 |---------|-------|
 | `/help` | `/h` |
 | `/exit` | `/quit`, `/q` |
-| `/hosts list` | `/hl` |
-| `/conversations` | `/conv` |
+| `/language` | `/lang` |
+| `/variable` | `/var` |
+| `/conv` | `/conversation` |

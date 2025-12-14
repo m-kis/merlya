@@ -14,6 +14,8 @@ import sys
 
 from loguru import logger
 
+from merlya import __version__ as MERLYA_VERSION
+
 # Disable tokenizers parallelism warnings in forked processes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
@@ -32,9 +34,6 @@ def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
     if sys.platform != "win32":
         loop.add_signal_handler(signal.SIGINT, lambda: handle_signal(signal.SIGINT))
         loop.add_signal_handler(signal.SIGTERM, lambda: handle_signal(signal.SIGTERM))
-
-
-__version__ = "0.7.2"
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -57,7 +56,7 @@ Examples:
         "-v",
         "--version",
         action="version",
-        version=f"%(prog)s {__version__}",
+        version=f"%(prog)s {MERLYA_VERSION}",
     )
 
     parser.add_argument(
@@ -289,6 +288,7 @@ def _config_set(config: object, key: str, value: str) -> None:
         "api_key": "api_key_env",
         "api_key_env": "api_key_env",
         "model": "model",
+        "base_url": "base_url",
         "level": "console_level",  # logging.level -> logging.console_level
         "console_level": "console_level",
         "file_level": "file_level",
@@ -346,6 +346,7 @@ def _config_get(config: object, key: str) -> None:
         "api_key": "api_key_env",
         "api_key_env": "api_key_env",
         "model": "model",
+        "base_url": "base_url",
         "level": "console_level",  # logging.level -> logging.console_level
         "console_level": "console_level",
         "file_level": "file_level",

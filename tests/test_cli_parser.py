@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from merlya.cli import __version__, create_parser
+from merlya import __version__
+from merlya.cli import create_parser
 
 
 def test_create_parser_sets_version() -> None:

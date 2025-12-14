@@ -42,6 +42,14 @@ Thumbs.db
 # Logs
 *.log
 
+# MkDocs
+site/
+.mkdocs_cache/
+
+# RAG (Cloudflare worker)
+rag/node_modules/
+rag/.wrangler/
+
 # Secrets / Environment
 .env
 .env.local
@@ -51,4 +59,4 @@ Thumbs.db
 
 # Project specific
 .claude/
-.dockerignore
+ARCHITECTURE_DECISIONS.md

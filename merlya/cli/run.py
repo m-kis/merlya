@@ -433,7 +433,15 @@ def load_tasks_from_file(file_path: str) -> list[str]:
             return [str(item) for item in data if item]
 
     # Fall back to text (one command per line)
-    return [line.strip() for line in content.splitlines() if line.strip()]
+    commands: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+        commands.append(stripped)
+    return commands
 
 
 async def run_single(
