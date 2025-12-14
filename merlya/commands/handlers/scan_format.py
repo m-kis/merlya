@@ -494,13 +494,19 @@ def _format_cron_jobs(lines: list[str], cron_data: dict[str, Any], show_all: boo
     lines.append("")
 
 
-def _format_top_processes(lines: list[str], proc_data: list[dict] | Any, show_all: bool) -> None:
+def _format_top_processes(
+    lines: list[str],
+    proc_data: list[dict[str, Any]] | dict[str, Any] | None,
+    show_all: bool,
+) -> None:
     """Format top processes list."""
-    # Handle both list and dict with processes key
+    processes: list[dict[str, Any]] = []
     if isinstance(proc_data, dict):
-        processes = proc_data.get("processes", proc_data)
-    else:
-        processes = proc_data if isinstance(proc_data, list) else []
+        raw = proc_data.get("processes")
+        if isinstance(raw, list):
+            processes = [p for p in raw if isinstance(p, dict)]
+    elif isinstance(proc_data, list):
+        processes = [p for p in proc_data if isinstance(p, dict)]
 
     if not processes:
         return

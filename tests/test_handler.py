@@ -63,6 +63,7 @@ class MockVariable:
 def mock_context() -> MagicMock:
     """Create mock context with repositories."""
     ctx = MagicMock()
+    ctx.t = MagicMock(side_effect=lambda key, **_kwargs: key)
 
     # Mock hosts repository
     ctx.hosts = AsyncMock()
@@ -97,6 +98,7 @@ def mock_context() -> MagicMock:
 
     # Mock UI
     ctx.ui = MagicMock()
+    ctx.ui.prompt = AsyncMock(return_value="")
 
     return ctx
 
@@ -412,7 +414,7 @@ class TestHandleUserMessage:
         """Test agent fallback when no fast path or skill match."""
         route_result = RouterResult(
             mode=AgentMode.DIAGNOSTIC,
-            tools=["core", "system"],
+            tools=["core"],
             # No fast_path, no skill_match
         )
 
@@ -422,6 +424,57 @@ class TestHandleUserMessage:
 
         assert response.handled_by == "agent"
         mock_agent.run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_prompts_for_target_on_ambiguous_ops(self, mock_context: MagicMock) -> None:
+        """If no host is specified for an execution request, prompt for local vs inventory host."""
+        route_result = RouterResult(
+            mode=AgentMode.DIAGNOSTIC,
+            tools=["core", "system"],
+            entities={"hosts": [], "variables": [], "files": []},
+        )
+
+        mock_context.ui.prompt = AsyncMock(return_value="WEB-01")
+        mock_context.hosts.get_by_name = AsyncMock(
+            return_value=MockHost(name="web-01", hostname="10.0.0.1")
+        )
+
+        agent = MagicMock()
+        response = MagicMock()
+        response.message = "Agent response"
+        response.actions_taken = []
+        response.suggestions = []
+        agent.run = AsyncMock(return_value=response)
+
+        out = await handle_user_message(mock_context, agent, "donne moi des infos sur PID 123", route_result)
+
+        assert out.handled_by == "agent"
+        agent.run.assert_called_once()
+        called_input = agent.run.await_args.args[0]
+        assert "On @web-01:" in called_input
+
+    @pytest.mark.asyncio
+    async def test_prompts_for_target_local(self, mock_context: MagicMock) -> None:
+        route_result = RouterResult(
+            mode=AgentMode.DIAGNOSTIC,
+            tools=["core", "system"],
+            entities={"hosts": [], "variables": [], "files": []},
+        )
+
+        mock_context.ui.prompt = AsyncMock(return_value="local")
+
+        agent = MagicMock()
+        response = MagicMock()
+        response.message = "Agent response"
+        response.actions_taken = []
+        response.suggestions = []
+        agent.run = AsyncMock(return_value=response)
+
+        out = await handle_user_message(mock_context, agent, "info PID 123", route_result)
+
+        assert out.handled_by == "agent"
+        called_input = agent.run.await_args.args[0]
+        assert "LOCAL EXECUTION CONTEXT" in called_input
 
     @pytest.mark.asyncio
     async def test_skill_routing_with_high_confidence(

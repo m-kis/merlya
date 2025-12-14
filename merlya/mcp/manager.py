@@ -129,6 +129,17 @@ class MCPManager:
         cls._instance = None
         cls._instance_lock = None
 
+    def get_stats(self) -> dict[str, int]:
+        """Return basic MCP manager stats for health checks."""
+        total_servers = len(self.config.mcp.servers)
+        loaded_servers = sum(1 for server in self.config.mcp.servers.values() if server.enabled)
+        active_servers = len(self._connected)
+        return {
+            "total_servers": total_servers,
+            "loaded_servers": loaded_servers,
+            "active_servers": active_servers,
+        }
+
     async def close(self) -> None:
         """Close all MCP sessions."""
         if self._group is not None:

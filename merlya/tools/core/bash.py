@@ -58,7 +58,9 @@ async def bash_execute(
     try:
         resolved_command, safe_command = await resolve_all_references(command, ctx)
     except Exception as e:
-        logger.error(f"❌ Reference resolution failed: {e}")
+        # Use a truncated version of the command for logging to avoid potential secret leaks
+        safe_display = command[:50] + "..." if len(command) > 50 else command
+        logger.error(f"❌ Reference resolution failed for command: {safe_display}")
         return ToolResult(
             success=False,
             data={"command": command[:50]},  # Safe: original command before resolution
@@ -91,7 +93,8 @@ async def bash_execute(
             )
         except TimeoutError:
             process.kill()
-            await process.wait()  # Cleanup: avoid zombie processes
+            # Drain streams and ensure process is reaped to avoid zombies
+            await process.communicate()
             logger.warning(f"⏱️ Command timed out after {timeout}s")
             return ToolResult(
                 success=False,
@@ -116,9 +119,11 @@ async def bash_execute(
         )
 
     except Exception as e:
+        # Use safe_command when available to avoid leaking secrets, fall back to command
+        display_command = safe_command[:50] if safe_command else command[:50]
         logger.error(f"❌ Local execution failed: {e}")
         return ToolResult(
             success=False,
-            data={"command": safe_command[:50]},  # Use safe_command to avoid secret leak
+            data={"command": display_command},  # Use safe_command to avoid secret leak
             error=str(e),
         )

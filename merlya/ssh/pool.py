@@ -1,7 +1,8 @@
 """
-Merlya SSH - Connection pool.
+Merlya SSH - Connection pool (refactored).
 
 Manages SSH connections with reuse, retry, and circuit breaker.
+This is the refactored version using modular components.
 """
 
 from __future__ import annotations
@@ -9,14 +10,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from merlya.ssh.circuit_breaker import CircuitBreaker
+from merlya.ssh.connection_builder import SSHConnectionBuilder
+from merlya.ssh.mfa_auth import MFAAuthHandler
+from merlya.ssh.pool_connect_mixin import SSHPoolConnectMixin
 from merlya.ssh.sftp import SFTPOperations
 from merlya.ssh.types import (
-    CircuitBreaker,
     SSHConnection,
     SSHConnectionOptions,
     SSHResult,
@@ -25,13 +28,15 @@ from merlya.ssh.types import (
 from merlya.ssh.validation import validate_private_key as _validate_private_key
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
+    from pathlib import Path
+
 
 # Re-export types for backwards compatibility
 __all__ = ["SSHConnection", "SSHConnectionOptions", "SSHPool", "SSHResult"]
 
 
-class SSHPool(SFTPOperations):
+class SSHPool(SSHPoolConnectMixin, SFTPOperations):
     """
     SSH connection pool with reuse, retry, and circuit breaker.
 
@@ -51,6 +56,7 @@ class SSHPool(SFTPOperations):
     DEFAULT_MAX_CONNECTIONS = 50
     DEFAULT_MAX_RETRIES = 3
     DEFAULT_RETRY_DELAY = 1.0  # seconds
+    DEFAULT_MAX_CHANNELS_PER_HOST = 4  # Limit concurrent channel opens per host
 
     _instance: SSHPool | None = None
     _instance_lock: threading.Lock = threading.Lock()
@@ -83,19 +89,33 @@ class SSHPool(SFTPOperations):
         self.retry_delay = retry_delay
         self._connections: dict[str, SSHConnection] = {}
         self._connection_locks: dict[str, asyncio.Lock] = {}
+        self._host_run_semaphores: dict[str, asyncio.Semaphore] = {}
         self._circuit_breakers: dict[str, CircuitBreaker] = {}
         self._pool_lock = asyncio.Lock()
+        self._max_channels_per_host = SSHPool.DEFAULT_MAX_CHANNELS_PER_HOST
+
+        # Initialize modular components
+        self._builder = SSHConnectionBuilder(
+            auto_add_host_keys=auto_add_host_keys,
+            connect_timeout=connect_timeout,
+        )
+        self._mfa_handler = MFAAuthHandler()
+        # Backward-compatible callback attributes (tests and external callers may set these directly)
         self._mfa_callback: Callable[[str], str] | None = None
         self._passphrase_callback: Callable[[str], str] | None = None
+
         self._auth_manager: object | None = None  # SSHAuthManager when set
 
     def set_mfa_callback(self, callback: Callable[[str], str]) -> None:
         """Set callback for MFA prompts."""
         self._mfa_callback = callback
+        self._mfa_handler._mfa_callback = callback
 
     def set_passphrase_callback(self, callback: Callable[[str], str]) -> None:
         """Set callback for SSH key passphrase prompts."""
         self._passphrase_callback = callback
+        self._mfa_handler._passphrase_callback = callback
+        self._builder._passphrase_callback = callback
 
     def has_mfa_callback(self) -> bool:
         """Check if MFA callback is configured."""
@@ -109,14 +129,6 @@ class SSHPool(SFTPOperations):
         """Set the SSH authentication manager."""
         self._auth_manager = manager
 
-    def _get_known_hosts_path(self) -> str | None:
-        """Get path to known_hosts file."""
-        default_path = Path.home() / ".ssh" / "known_hosts"
-        if default_path.exists():
-            return str(default_path)
-        # Return None to use asyncssh defaults (will prompt on new hosts)
-        return None
-
     async def _get_connection_lock(self, key: str) -> asyncio.Lock:
         """Get or create a lock for a connection key."""
         async with self._pool_lock:
@@ -124,13 +136,25 @@ class SSHPool(SFTPOperations):
                 self._connection_locks[key] = asyncio.Lock()
             return self._connection_locks[key]
 
+    def _host_run_key(self, host: str, options: SSHConnectionOptions | None) -> str:
+        """Build a stable key for per-host channel throttling."""
+        port = options.port if options else 22
+        return f"{host}:{port}"
+
+    async def _get_host_run_semaphore(self, key: str) -> asyncio.Semaphore:
+        """Get or create a per-host semaphore to limit concurrent channel opens."""
+        async with self._pool_lock:
+            if key not in self._host_run_semaphores:
+                self._host_run_semaphores[key] = asyncio.Semaphore(self._max_channels_per_host)
+            return self._host_run_semaphores[key]
+
     def _get_circuit_breaker(self, host: str) -> CircuitBreaker:
         """Get or create circuit breaker for a host."""
         if host not in self._circuit_breakers:
             self._circuit_breakers[host] = CircuitBreaker()
         return self._circuit_breakers[host]
 
-    def get_circuit_status(self, host: str) -> dict:
+    def get_circuit_status(self, host: str) -> dict[str, str | int | float]:
         """Get circuit breaker status for a host."""
         cb = self._get_circuit_breaker(host)
         return {
@@ -213,196 +237,12 @@ class SSHPool(SFTPOperations):
                 if len(self._connections) >= self.max_connections:
                     await self._evict_lru_connection()
 
-            # Create new connection
+            # Create new connection using the builder
             conn = await self._create_connection(host, username, private_key, opts, host_name)
             self._connections[key] = conn
 
             logger.info(f"🌐 SSH connected to {host}")
             return conn
-
-    async def _build_ssh_options(
-        self,
-        host: str,
-        username: str | None,
-        private_key: str | None,
-        opts: SSHConnectionOptions,
-        host_name: str | None = None,  # Inventory name for credential lookup
-    ) -> dict[str, object]:
-        """Build SSH connection options."""
-        known_hosts = None if self.auto_add_host_keys else self._get_known_hosts_path()
-
-        options: dict[str, object] = {
-            "host": host,
-            "port": opts.port,
-            "known_hosts": known_hosts,
-            "agent_forwarding": True,
-        }
-
-        if username:
-            options["username"] = username
-
-        # Use auth manager if available (preferred)
-        if self._auth_manager:
-            from merlya.ssh.auth import SSHAuthManager
-
-            if isinstance(self._auth_manager, SSHAuthManager):
-                auth_opts = await self._auth_manager.prepare_auth(
-                    hostname=host,
-                    username=username,
-                    private_key=private_key,
-                    host_name=host_name,
-                )
-                options["preferred_auth"] = auth_opts.preferred_auth
-
-                if auth_opts.client_keys:
-                    options["client_keys"] = auth_opts.client_keys
-                if auth_opts.password:
-                    options["password"] = auth_opts.password
-                if auth_opts.agent_path:
-                    options["agent_path"] = auth_opts.agent_path
-
-                logger.debug(f"Auth prepared via SSHAuthManager: {auth_opts.preferred_auth}")
-                return options
-
-        # Fallback: original behavior when no auth manager
-        options["preferred_auth"] = "publickey,keyboard-interactive"
-
-        if private_key:
-            key_path = Path(private_key).expanduser()
-            import os
-
-            agent_available = os.environ.get("SSH_AUTH_SOCK") is not None
-
-            if agent_available:
-                logger.info("SSH agent available, using agent for authentication")
-            elif key_path.exists():
-                try:
-                    key = await self._load_private_key(key_path)
-                    options["client_keys"] = [key]
-                    logger.debug(f"Private key loaded: {private_key}")
-                except Exception as e:
-                    logger.warning(f"Failed to load private key {private_key}: {e}")
-            else:
-                logger.warning(f"Private key not found: {private_key}")
-
-        return options
-
-    async def _setup_jump_tunnel(self, opts: SSHConnectionOptions) -> object | None:
-        """Setup jump host tunnel if configured."""
-        import asyncssh
-
-        if not opts.jump_host:
-            return None
-
-        known_hosts = None if self.auto_add_host_keys else self._get_known_hosts_path()
-
-        jump_options: dict[str, object] = {
-            "host": opts.jump_host,
-            "port": opts.jump_port or 22,
-            "known_hosts": known_hosts,
-            "agent_forwarding": True,
-        }
-
-        if opts.jump_username:
-            jump_options["username"] = opts.jump_username
-
-        if opts.jump_private_key:
-            jump_key_path = Path(opts.jump_private_key).expanduser()
-            if jump_key_path.exists():
-                jump_key = await self._load_jump_key(jump_key_path)
-                if jump_key:
-                    jump_options["client_keys"] = [jump_key]
-
-        return await asyncssh.connect(**jump_options)
-
-    async def _load_jump_key(self, key_path: Path) -> object | None:
-        """Load jump host private key with passphrase handling."""
-        import asyncssh
-
-        try:
-            return asyncssh.read_private_key(str(key_path))
-        except asyncssh.KeyEncryptionError:
-            if self._passphrase_callback:
-                passphrase = self._passphrase_callback(str(key_path))
-                if passphrase:
-                    return asyncssh.read_private_key(str(key_path), passphrase)
-            logger.warning(f"⚠️ Jump key {key_path} requires passphrase - using agent")
-            return None
-
-    def _create_mfa_client(self) -> type | None:
-        """Create MFA client factory if callback is set."""
-        if not self._mfa_callback:
-            return None
-
-        import asyncssh
-
-        mfa_cb = self._mfa_callback
-
-        class _MFAClient(asyncssh.SSHClient):
-            def kbdint_auth_requested(self) -> str:
-                """Return empty string to let server pick keyboard-interactive method."""
-                logger.debug("🔐 Keyboard-interactive auth requested")
-                return ""
-
-            def kbdint_challenge_received(
-                self,
-                name: str,
-                instructions: str,
-                _lang: str,  # Required by interface
-                prompts: Sequence[tuple[str, bool]],
-            ) -> list[str] | None:
-                """Handle keyboard-interactive (MFA/2FA) challenges."""
-                logger.debug(f"🔐 MFA challenge received: {name or 'Authentication'}")
-                if instructions:
-                    logger.debug(f"   Instructions: {instructions}")
-                responses: list[str] = []
-                for prompt, _echo in prompts:
-                    response = mfa_cb(prompt)
-                    responses.append(response)
-                return responses
-
-        return _MFAClient
-
-    async def _connect_with_options(
-        self,
-        host: str,
-        options: dict[str, object],
-        client_factory: type | None,
-        timeout: int,
-    ) -> object:
-        """Connect with retry on permission denied."""
-        import asyncssh
-
-        logger.debug(f"Connecting to {host} with auth={options.get('preferred_auth')}")
-
-        # Remove internal hint keys before passing to asyncssh
-        connect_opts = {k: v for k, v in options.items() if not k.startswith("_")}
-
-        try:
-            return await asyncio.wait_for(
-                asyncssh.connect(**connect_opts, client_factory=client_factory),
-                timeout=timeout,
-            )
-        except asyncssh.PermissionDenied as e:
-            error_msg = str(e).lower()
-            logger.warning(f"Permission denied: {e}")
-
-            # If MFA/keyboard-interactive failed, don't retry - the issue isn't the key
-            if "keyboard" in error_msg or "interactive" in error_msg:
-                logger.error(f"❌ MFA/2FA authentication failed for {host}")
-                raise
-
-            # Only retry with agent if we had explicit keys and it looks like a key issue
-            if "client_keys" in connect_opts:
-                logger.warning(
-                    f"⚠️ Permission denied with provided key for {host}, retrying with agent"
-                )
-                retry_opts = {k: v for k, v in connect_opts.items() if k != "client_keys"}
-                return await asyncio.wait_for(
-                    asyncssh.connect(**retry_opts, client_factory=client_factory),
-                    timeout=timeout,
-                )
-            raise
 
     async def _create_connection(
         self,
@@ -410,60 +250,35 @@ class SSHPool(SFTPOperations):
         username: str | None,
         private_key: str | None,
         opts: SSHConnectionOptions,
-        host_name: str | None = None,  # Inventory name for credential lookup
+        host_name: str | None = None,
     ) -> SSHConnection:
-        """Create a new SSH connection."""
-        import asyncssh
-
-        # Build connection options
-        options = await self._build_ssh_options(host, username, private_key, opts, host_name)
-
-        # Setup jump tunnel if needed
-        tunnel: object | None = None
+        """Create a new SSH connection (legacy flow; wraps refactored builder)."""
+        tunnel: Any | None = None
         try:
+            options = await self._build_ssh_options(host, username, private_key, opts, host_name)
+
             tunnel = await self._setup_jump_tunnel(opts)
             if tunnel:
                 options["tunnel"] = tunnel
 
-            # Setup MFA client if configured
             client_factory = self._create_mfa_client()
-
-            # Connect with retry
             timeout_val = opts.connect_timeout or self.connect_timeout
-            conn = await self._connect_with_options(host, options, client_factory, timeout_val)
+            ssh_conn = await self._connect_with_options(host, options, client_factory, timeout_val)
 
             return SSHConnection(
                 host=host,
-                connection=conn,  # type: ignore[arg-type]
+                connection=ssh_conn,
                 timeout=self.timeout,
             )
-
-        except (TimeoutError, asyncssh.Error) as e:
-            # Clean up tunnel on connection error
-            if tunnel:
-                try:
-                    tunnel.close()  # type: ignore[attr-defined]
-                    await asyncio.wait_for(tunnel.wait_closed(), timeout=10.0)  # type: ignore[attr-defined]
-                except (TimeoutError, Exception) as cleanup_exc:
-                    logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
-
-            error_msg = (
-                "SSH connection timeout"
-                if isinstance(e, TimeoutError)
-                else f"SSH connection failed: {e}"
-            )
-            logger.error(f"❌ {error_msg} to {host}")
-            raise
         except Exception:
-            # Clean up tunnel on any unexpected error
             if tunnel:
-                try:
-                    tunnel.close()  # type: ignore[attr-defined]
-                    await asyncio.wait_for(tunnel.wait_closed(), timeout=10.0)  # type: ignore[attr-defined]
-                except (TimeoutError, Exception) as cleanup_exc:
-                    logger.debug(f"⚠️ Failed to close jump tunnel: {cleanup_exc}")
-
-            logger.error(f"❌ Unexpected error creating connection to {host}")
+                with contextlib.suppress(Exception):
+                    tunnel.close()
+                # Some asyncssh connections expose wait_closed()
+                with contextlib.suppress(Exception):
+                    wait_closed = getattr(tunnel, "wait_closed", None)
+                    if callable(wait_closed):
+                        await wait_closed()
             raise
 
     def has_connection(
@@ -594,10 +409,26 @@ class SSHPool(SFTPOperations):
             raise RuntimeError(f"Connection to {host} is closed")
 
         try:
-            result = await asyncio.wait_for(
-                conn.connection.run(command, input=input_data),
-                timeout=timeout,
-            )
+            # Throttle concurrent channel opens per host to avoid server-side MaxSessions limits.
+            run_key = self._host_run_key(host, options)
+            semaphore = await self._get_host_run_semaphore(run_key)
+
+            needs_pty = False
+            cmd_stripped = command.lstrip()
+            if input_data and cmd_stripped.startswith(("su ", "su -", "doas ")):
+                needs_pty = True
+
+            run_kwargs: dict[str, Any] = {}
+            if input_data is not None:
+                run_kwargs["input"] = input_data
+            if needs_pty:
+                run_kwargs["term_type"] = "xterm"
+
+            async with semaphore:
+                result = await asyncio.wait_for(
+                    conn.connection.run(command, **run_kwargs),
+                    timeout=timeout,
+                )
 
             # Security: Never log command content (may contain secrets)
             logger.debug(
@@ -683,7 +514,7 @@ class SSHPool(SFTPOperations):
         cls._instance = None
 
     # =========================================================================
-    # Key Validation
+    # Key Validation (delegated to builder)
     # =========================================================================
 
     @staticmethod
@@ -702,36 +533,3 @@ class SSHPool(SFTPOperations):
             Tuple of (success, message).
         """
         return await _validate_private_key(key_path, passphrase)
-
-    # =========================================================================
-    # MFA/2FA Support
-    # =========================================================================
-
-    async def _load_private_key(self, key_path: Path) -> object:
-        """Load a private key, invoking passphrase callback on encryption errors."""
-        import asyncssh
-
-        try:
-            if self._passphrase_callback:
-                try:
-                    key = asyncssh.read_private_key(str(key_path))
-                    logger.debug(f"Key loaded without passphrase: {key_path}")
-                    return key
-                except (asyncssh.KeyEncryptionError, asyncssh.KeyImportError):
-                    logger.debug(f"Key encrypted, requesting passphrase: {key_path}")
-                    passphrase = self._passphrase_callback(str(key_path))
-                    if passphrase:
-                        key = asyncssh.read_private_key(str(key_path), passphrase)
-                        logger.debug(f"Encrypted key loaded: {key_path}")
-                        return key
-                    raise asyncssh.KeyEncryptionError(
-                        "Passphrase required but not provided"
-                    ) from None
-            else:
-                return asyncssh.read_private_key(str(key_path))
-        except asyncssh.KeyImportError as exc:
-            logger.warning(f"Key import failed for {key_path}: {exc}")
-            raise
-        except asyncssh.KeyEncryptionError:
-            logger.warning(f"Key {key_path} is encrypted but no passphrase provided")
-            raise

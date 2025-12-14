@@ -6,6 +6,7 @@ Execute commands on remote hosts via SSH with automatic elevation.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -44,7 +45,7 @@ async def ssh_execute(
     command: str,
     timeout: int = 60,
     connect_timeout: int | None = None,
-    elevation: dict | None = None,
+    elevation: dict[str, object] | None = None,
     via: str | None = None,
     auto_elevate: bool = True,
 ) -> ToolResult:
@@ -83,6 +84,9 @@ async def ssh_execute(
 
         return _build_result(result, exec_ctx, safe_command, elevation_used, force_elevate)
 
+    except asyncio.CancelledError:
+        # Propagate cancellation so REPL Ctrl+C can abort long-running actions/prompts.
+        raise
     except Exception as e:
         return _handle_error(e, host, safe_command, via)
 
@@ -124,7 +128,7 @@ async def _build_context(
     timeout: int,
     connect_timeout: int | None,
     via: str | None,
-    elevation: dict | None,
+    elevation: dict[str, object] | None,
 ) -> ExecutionContext:
     """Build execution context with all required components."""
     host_entry: Host | None = await ctx.hosts.get_by_name(host)
@@ -152,7 +156,7 @@ async def _build_context(
 
 
 def _apply_elevation(
-    ctx: SharedContext, elevation: dict, command: str, exec_ctx: ExecutionContext
+    ctx: SharedContext, elevation: dict[str, object], command: str, exec_ctx: ExecutionContext
 ) -> None:
     """Apply elevation data to execution context."""
     payload = ElevationPayload.from_dict(elevation)
@@ -233,6 +237,26 @@ async def _run_with_elevation(
             result,
             execute_ssh_command,
         )
+    elif auto_elevate and not elevation_used and result.exit_code != 0:
+        # Some commands fail without a clear "permission denied" string.
+        # As a fallback, only attempt elevation for commands that are likely privileged.
+        try:
+            permissions = await ctx.get_permissions()
+            if permissions.requires_elevation(exec_ctx.base_command):
+                logger.info(f"🔒 Privileged command failed on {exec_ctx.host}, elevating...")
+                result, elevation_used = await execute_with_elevation(
+                    ctx,
+                    exec_ctx.ssh_pool,
+                    exec_ctx.host,
+                    exec_ctx.host_entry,
+                    exec_ctx.base_command,
+                    exec_ctx.timeout,
+                    exec_ctx.ssh_opts,
+                    result,
+                    execute_ssh_command,
+                )
+        except Exception:
+            pass
 
     return result, elevation_used
 
@@ -339,8 +363,9 @@ def _should_auto_elevate(
     if result.exit_code == 0 or elevation_used or not auto_elevate:
         return False
 
-    # Check stderr for permission errors
-    if needs_elevation(result.stderr):
+    # Check stderr/stdout for permission errors (some commands log permission issues to stdout)
+    combined = f"{result.stderr}\n{result.stdout}".strip()
+    if combined and needs_elevation(combined):
         return True
 
     # Exit code 2 on privileged paths likely means permission denied

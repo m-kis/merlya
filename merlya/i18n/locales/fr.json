@@ -65,7 +65,9 @@
     "llm": {
       "ok": "{provider} accessible",
       "warning": "Provider inaccessible : {error} (réessai au premier appel)",
-      "error": "Aucune clé API configurée"
+      "error": "Aucune clé API configurée",
+      "invalid_api_key": "❌ Clé API invalide",
+      "rate_limited": "⚠️ Limitation de débit - réessai"
     },
     "ssh": {
       "ok": "SSH disponible (asyncssh + client système)",
@@ -301,7 +303,8 @@
     "confirm_action": "Êtes-vous sûr de vouloir {action} ?",
     "enter_value": "Entrez la valeur pour {field}",
     "select_option": "Sélectionnez une option",
-    "add_host": "Voulez-vous ajouter '{name}' à l'inventaire ?"
+    "add_host": "Voulez-vous ajouter '{name}' à l'inventaire ?",
+    "target_required": "Cette demande nécessite une cible. Tapez 'local' ou le nom exact du serveur (inventaire) (requête : {request})"
   },
   "setup": {
     "title": "⚙️ Configuration de Merlya",

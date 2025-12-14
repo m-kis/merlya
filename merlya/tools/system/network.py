@@ -6,8 +6,8 @@ Network connectivity and diagnostics tools.
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
+import shlex
+import time
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -15,43 +15,33 @@ from loguru import logger
 from merlya.tools.core.models import ToolResult
 from merlya.tools.security.base import execute_security_command
 
+from .network_checks import (
+    check_dns as _check_dns,
+)
+from .network_checks import (
+    check_gateway as _check_gateway,
+)
+from .network_checks import (
+    check_internet as _check_internet,
+)
+from .network_checks import (
+    get_interface_info as _get_interface_info,
+)
+from .network_helpers import (
+    is_valid_domain as _is_valid_domain,
+)
+from .network_helpers import (
+    is_valid_ping_target as _is_valid_ping_target,
+)
+from .network_helpers import (
+    parse_ping_output as _parse_ping_output,
+)
+from .network_helpers import (
+    parse_traceroute_output as _parse_traceroute_output,
+)
+
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
-
-
-@dataclass
-class PingResult:
-    """Result of a ping test."""
-
-    target: str
-    reachable: bool
-    packets_sent: int = 0
-    packets_received: int = 0
-    packet_loss_percent: float = 0.0
-    rtt_min: float = 0.0
-    rtt_avg: float = 0.0
-    rtt_max: float = 0.0
-
-
-@dataclass
-class DNSResult:
-    """Result of a DNS lookup."""
-
-    query: str
-    resolved: bool
-    addresses: list[str] = field(default_factory=list)
-    nameserver: str = ""
-    response_time_ms: float = 0.0
-
-
-@dataclass
-class PortCheckResult:
-    """Result of a port connectivity check."""
-
-    host: str
-    port: int
-    open: bool
-    response_time_ms: float = 0.0
 
 
 async def check_network(
@@ -90,7 +80,7 @@ async def check_network(
 
     # Check gateway connectivity
     if check_gateway:
-        gateway_result = await _check_gateway(ctx, host)
+        gateway_result = await _check_gateway(ctx, host, ping_fn=ping)
         results["gateway"] = gateway_result
         results["checks"].append(
             {
@@ -104,7 +94,7 @@ async def check_network(
 
     # Check DNS
     if check_dns:
-        dns_result = await _check_dns(ctx, host)
+        dns_result = await _check_dns(ctx, host, dns_lookup_fn=dns_lookup)
         results["dns"] = dns_result
         results["checks"].append(
             {
@@ -118,7 +108,7 @@ async def check_network(
 
     # Check internet connectivity
     if check_internet:
-        internet_result = await _check_internet(ctx, host)
+        internet_result = await _check_internet(ctx, host, ping_fn=ping)
         results["internet"] = internet_result
         results["checks"].append(
             {
@@ -184,7 +174,9 @@ async def ping(
             error=f"❌ Invalid ping target: {target}",
         )
 
-    cmd = f"LANG=C ping -c {min(count, 10)} -W {min(timeout, 30)} {target} 2>&1"
+    # Use shlex.quote to safely escape the target and prevent command injection
+    safe_target = shlex.quote(target)
+    cmd = f"LANG=C ping -c {min(count, 10)} -W {min(timeout, 30)} {safe_target} 2>&1"
     result = await execute_security_command(ctx, host, cmd, timeout=timeout * count + 10)
 
     ping_result = _parse_ping_output(target, result.stdout, result.exit_code)
@@ -229,12 +221,15 @@ async def traceroute(
             error=f"❌ Invalid target: {target}",
         )
 
+    # Use shlex.quote to safely escape the target and prevent command injection
+    safe_target = shlex.quote(target)
+
     # Try traceroute, fall back to tracepath
     cmd = f"""
 if command -v traceroute >/dev/null 2>&1; then
-    LANG=C traceroute -m {min(max_hops, 30)} -w 2 {target} 2>&1
+    LANG=C traceroute -m {min(max_hops, 30)} -w 2 {safe_target} 2>&1
 elif command -v tracepath >/dev/null 2>&1; then
-    LANG=C tracepath -m {min(max_hops, 30)} {target} 2>&1
+    LANG=C tracepath -m {min(max_hops, 30)} {safe_target} 2>&1
 else
     echo "No traceroute or tracepath available"
     exit 1
@@ -297,25 +292,32 @@ async def check_port(
             error=f"❌ Invalid target: {target_host}",
         )
 
+    # Use shlex.quote to safely escape the target_host and prevent command injection
+    safe_target_host = shlex.quote(target_host)
+
     # Use timeout + nc or bash /dev/tcp
     cmd = f"""
 if command -v nc >/dev/null 2>&1; then
-    timeout {timeout} nc -zv {target_host} {port} 2>&1
+    timeout {timeout} nc -zv {safe_target_host} {port} 2>&1
 elif command -v timeout >/dev/null 2>&1; then
-    timeout {timeout} bash -c 'echo > /dev/tcp/{target_host}/{port}' 2>&1 && echo "Connection succeeded"
+    timeout {timeout} bash -c 'echo > /dev/tcp/{safe_target_host}/{port}' 2>&1 && echo "Connection succeeded"
 else
     echo "No nc or timeout available"
     exit 1
 fi
 """
 
+    # Measure port connection time
+    start_time = time.monotonic()
     result = await execute_security_command(ctx, host, cmd, timeout=timeout + 5)
+    end_time = time.monotonic()
+    response_time_ms = (end_time - start_time) * 1000
 
     is_open = (
         result.exit_code == 0
-        or "succeeded" in result.stdout.lower()
-        or "open" in result.stdout.lower()
-        or "connected" in result.stdout.lower()
+        or "succeeded" in (result.stdout or "").lower()
+        or "open" in (result.stdout or "").lower()
+        or "connected" in (result.stdout or "").lower()
     )
 
     return ToolResult(
@@ -324,6 +326,7 @@ fi
             "target": target_host,
             "port": port,
             "open": is_open,
+            "response_time_ms": response_time_ms,
             "details": result.stdout[:200] if result.stdout else result.stderr[:200],
         },
     )
@@ -362,25 +365,75 @@ async def dns_lookup(
             error=f"❌ Invalid record type: {record_type}",
         )
 
+    # Use shlex.quote to safely escape the query and prevent command injection
+    safe_query = shlex.quote(query)
+
     # Use dig if available, fall back to host, then nslookup
     cmd = f"""
 if command -v dig >/dev/null 2>&1; then
-    dig +short {record_type} {query} 2>&1
+    dig +short {record_type} {safe_query} 2>&1
 elif command -v host >/dev/null 2>&1; then
-    host -t {record_type} {query} 2>&1
+    host -t {record_type} {safe_query} 2>&1
 else
-    nslookup -type={record_type} {query} 2>&1
+    nslookup -type={record_type} {safe_query} 2>&1
 fi
 """
 
+    # Measure DNS lookup time
+    start_time = time.monotonic()
     result = await execute_security_command(ctx, host, cmd, timeout=15)
+    end_time = time.monotonic()
+    response_time_ms = (end_time - start_time) * 1000
 
-    records = []
+    records: list[str] = []
     if result.exit_code == 0 and result.stdout:
-        for line in result.stdout.strip().split("\n"):
-            line = line.strip()
-            if line and not line.startswith(";"):
-                records.append(line)
+        output = result.stdout.strip()
+
+        # Détection du format et parsing approprié
+        if "has address" in output or "has IPv6" in output:
+            # Format host (ex: "example.com has address 93.184.216.34")
+            for line in output.split("\n"):
+                line = line.strip()
+                if line and ("has address" in line or "has IPv6" in line):
+                    # Extraire le dernier token (l'adresse IP)
+                    tokens = line.split()
+                    if tokens:
+                        address = tokens[-1].strip()
+                        if address:
+                            records.append(address)
+        elif "Answer:" in output or "question" in output.lower():
+            # Format nslookup (ex: "Answer:\nName:    example.com\nAddress: 93.184.216.34")
+            in_answer_section = False
+            for line in output.split("\n"):
+                line = line.strip()
+                if "Answer:" in line:
+                    in_answer_section = True
+                    continue
+                elif in_answer_section and line:
+                    # Dans la section Answer, extraire les adresses
+                    if "Address:" in line or "Addresses:" in line:
+                        # Format: "Address: 93.184.216.34" ou "Addresses: 93.184.216.34,2606:2800:220:1:248:1893:25c8:1946"
+                        address_part = line.split(":", 1)[1].strip()
+                        # Gérer les adresses multiples séparées par des virgules
+                        for addr in address_part.split(","):
+                            addr = addr.strip()
+                            if addr:
+                                records.append(addr)
+                    elif ":" in line and not line.startswith("Name:"):
+                        # Autre format avec adresse après deux-points
+                        parts = line.split(":", 1)
+                        if len(parts) == 2:
+                            addr = parts[1].strip()
+                            if addr:
+                                records.append(addr)
+        else:
+            # Format dig +short (lignes simples ou avec en-têtes dig)
+            # Garder le parsing existant pour les lignes simples
+            for line in output.split("\n"):
+                line = line.strip()
+                # Ignorer les lignes vides et les commentaires
+                if line and not line.startswith(";"):
+                    records.append(line)
 
     return ToolResult(
         success=True,
@@ -389,175 +442,6 @@ fi
             "record_type": record_type,
             "records": records,
             "resolved": len(records) > 0,
+            "response_time_ms": response_time_ms,
         },
     )
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-async def _get_interface_info(ctx: SharedContext, host: str) -> dict:
-    """Get network interface information."""
-    cmd = "ip -4 addr show 2>/dev/null || ifconfig 2>/dev/null"
-    result = await execute_security_command(ctx, host, cmd, timeout=10)
-
-    interfaces = []
-    if result.exit_code == 0:
-        # Simple parsing - get interface names and IPs
-        current_iface = None
-        for line in result.stdout.split("\n"):
-            if not line.startswith(" ") and ":" in line:
-                parts = line.split(":")
-                current_iface = parts[1].strip().split("@")[0] if len(parts) > 1 else parts[0]
-            elif "inet " in line and current_iface:
-                match = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", line)
-                if match:
-                    interfaces.append(
-                        {
-                            "name": current_iface,
-                            "ip": match.group(1),
-                        }
-                    )
-
-    return {"interfaces": interfaces}
-
-
-async def _check_gateway(ctx: SharedContext, host: str) -> dict:
-    """Check default gateway connectivity."""
-    # Get default gateway
-    cmd = "ip route | grep default | awk '{print $3}' | head -1"
-    result = await execute_security_command(ctx, host, cmd, timeout=5)
-
-    gateway = result.stdout.strip() if result.exit_code == 0 else None
-    if not gateway:
-        return {"gateway": None, "reachable": False}
-
-    # Ping gateway
-    ping_result = await ping(ctx, host, gateway, count=2, timeout=2)
-
-    return {
-        "gateway": gateway,
-        "reachable": ping_result.data.get("reachable", False) if ping_result.success else False,
-        "rtt_ms": ping_result.data.get("rtt_avg_ms", 0) if ping_result.success else 0,
-    }
-
-
-async def _check_dns(ctx: SharedContext, host: str) -> dict:
-    """Check DNS resolution."""
-    # Get nameserver
-    cmd = "grep '^nameserver' /etc/resolv.conf 2>/dev/null | head -1 | awk '{print $2}'"
-    ns_result = await execute_security_command(ctx, host, cmd, timeout=5)
-    nameserver = ns_result.stdout.strip() if ns_result.exit_code == 0 else "unknown"
-
-    # Try to resolve a known domain
-    dns_result = await dns_lookup(ctx, host, "google.com", "A")
-
-    return {
-        "nameserver": nameserver,
-        "working": dns_result.data.get("resolved", False) if dns_result.success else False,
-        "test_domain": "google.com",
-    }
-
-
-async def _check_internet(ctx: SharedContext, host: str) -> dict:
-    """Check internet connectivity."""
-    # Try multiple targets
-    targets = ["8.8.8.8", "1.1.1.1"]
-
-    for target in targets:
-        ping_result = await ping(ctx, host, target, count=2, timeout=3)
-        if ping_result.success and ping_result.data.get("reachable"):
-            return {
-                "reachable": True,
-                "tested_target": target,
-                "rtt_ms": ping_result.data.get("rtt_avg_ms", 0),
-            }
-
-    return {"reachable": False, "tested_targets": targets}
-
-
-def _parse_ping_output(target: str, output: str, exit_code: int) -> PingResult:
-    """Parse ping command output."""
-    result = PingResult(target=target, reachable=exit_code == 0)
-
-    # Parse packet statistics
-    # Format: "X packets transmitted, Y received, Z% packet loss"
-    pkt_match = re.search(
-        r"(\d+) packets transmitted, (\d+) (?:packets )?received, (\d+(?:\.\d+)?)% packet loss",
-        output,
-    )
-    if pkt_match:
-        result.packets_sent = int(pkt_match.group(1))
-        result.packets_received = int(pkt_match.group(2))
-        result.packet_loss_percent = float(pkt_match.group(3))
-        result.reachable = result.packets_received > 0
-
-    # Parse RTT statistics
-    # Format: "rtt min/avg/max/mdev = X/Y/Z/W ms"
-    rtt_match = re.search(
-        r"(?:rtt|round-trip) min/avg/max(?:/mdev)? = ([\d.]+)/([\d.]+)/([\d.]+)",
-        output,
-    )
-    if rtt_match:
-        result.rtt_min = float(rtt_match.group(1))
-        result.rtt_avg = float(rtt_match.group(2))
-        result.rtt_max = float(rtt_match.group(3))
-
-    return result
-
-
-def _parse_traceroute_output(output: str) -> list[dict]:
-    """Parse traceroute output into hop list."""
-    hops = []
-
-    for line in output.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("traceroute") or line.startswith("tracepath"):
-            continue
-
-        # Match hop number at start
-        match = re.match(r"^\s*(\d+)\s+(.+)", line)
-        if match:
-            hop_num = int(match.group(1))
-            rest = match.group(2)
-
-            # Check for timeout
-            if "* * *" in rest or rest.strip() == "*":
-                hops.append({"hop": hop_num, "host": "*", "rtt_ms": None})
-            else:
-                # Try to extract host and RTT
-                host_match = re.search(r"([\w\-.]+(?:\s+\([\d.]+\))?)", rest)
-                rtt_match = re.search(r"([\d.]+)\s*ms", rest)
-
-                hops.append(
-                    {
-                        "hop": hop_num,
-                        "host": host_match.group(1) if host_match else "unknown",
-                        "rtt_ms": float(rtt_match.group(1)) if rtt_match else None,
-                    }
-                )
-
-    return hops
-
-
-def _is_valid_ping_target(target: str) -> bool:
-    """Validate ping target to prevent injection."""
-    # Allow IP addresses
-    if re.match(r"^(\d{1,3}\.){3}\d{1,3}$", target):
-        return True
-
-    # Allow valid hostnames
-    if re.match(
-        r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$",
-        target,
-    ):
-        return len(target) <= 253
-
-    return False
-
-
-def _is_valid_domain(domain: str) -> bool:
-    """Validate domain name."""
-    return _is_valid_ping_target(domain)

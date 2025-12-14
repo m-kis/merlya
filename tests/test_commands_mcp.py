@@ -209,10 +209,9 @@ async def test_mcp_add_reports_timeout(
     monkeypatch: pytest.MonkeyPatch, registry: CommandRegistry, ctx: MagicMock
 ):
     """Ensure timeout during test shows appropriate message."""
-    import asyncio
 
     async def _timeout(*_args, **_kwargs):
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     manager = SimpleNamespace(
         add_server=AsyncMock(),

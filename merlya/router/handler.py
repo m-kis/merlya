@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from merlya.agent.main import AgentResponse
     from merlya.core.context import SharedContext
     from merlya.router.classifier import RouterResult
+    from merlya.router.intent_classifier import AgentMode
+else:
+    from merlya.router.intent_classifier import AgentMode
 
 # Constants
 # Minimum confidence score (0.0-1.0) to route to skill instead of LLM agent.
@@ -56,6 +59,106 @@ def _mask_value(value: str, reveal_chars: int = 4) -> str:
     if len(value) <= reveal_chars:
         return REDACTED_PLACEHOLDER
     return value[:reveal_chars] + REDACTED_PLACEHOLDER
+
+
+_EXECUTION_TOOL_CATEGORIES = {"system", "files", "security", "docker", "kubernetes"}
+_NO_TARGET_TOOL_CATEGORIES = {"web_search"}
+_LOCAL_TARGET_ALIASES = {
+    "local",
+    "localhost",
+    "ici",
+    "en local",
+    "ma machine",
+    "mon poste",
+    "this machine",
+    "my machine",
+    "locally",
+}
+
+
+def _normalize_target_input(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def _needs_target_clarification(route_result: RouterResult) -> bool:
+    """Return True if request likely requires execution but no host is specified.
+
+    Security-first: never assume a default remote target.
+    """
+    if route_result.entities.get("hosts"):
+        return False
+
+    tools_set = set(route_result.tools or [])
+    if tools_set & _NO_TARGET_TOOL_CATEGORIES:
+        return False
+
+    # Only prompt when the router believes we're in an execution-oriented mode.
+    if route_result.mode not in {AgentMode.DIAGNOSTIC, AgentMode.REMEDIATION}:
+        return False
+
+    return bool(tools_set & _EXECUTION_TOOL_CATEGORIES)
+
+
+async def _find_similar_inventory_hosts(ctx: SharedContext, query: str) -> list[str]:
+    """Find similar inventory host names for suggestions (no DNS/local resolution)."""
+    try:
+        all_hosts = await ctx.hosts.get_all()
+    except Exception:
+        return []
+
+    q = query.lower()
+    matches: list[str] = []
+    for host in all_hosts:
+        name = getattr(host, "name", "")
+        if not isinstance(name, str):
+            continue
+        nl = name.lower()
+        if q in nl or nl in q:
+            matches.append(name)
+    return matches[:5]
+
+
+async def _clarify_target(
+    ctx: SharedContext,
+    user_input: str,
+) -> tuple[str, str | None] | None:
+    """Ask the user to choose a target: local or an inventory host name.
+
+    Returns:
+        Tuple of (target_type, host_name) where:
+        - ("local", None) for local execution
+        - ("remote", "<exact-inventory-name>") for remote execution
+        None if the user cancels/does not provide a valid target after retries.
+    """
+    max_attempts = 3
+    for _ in range(max_attempts):
+        answer = await ctx.ui.prompt(ctx.t("prompts.target_required", request=user_input))
+        norm = _normalize_target_input(answer)
+        if not norm:
+            continue
+
+        if norm in _LOCAL_TARGET_ALIASES:
+            return "local", None
+
+        candidate = answer.strip()
+        if candidate.startswith("@"):
+            candidate = candidate[1:].strip()
+
+        if not candidate:
+            continue
+
+        host = await ctx.hosts.get_by_name(candidate)
+        if host:
+            # Enforce exact inventory name (case-preserving) even if user input differs.
+            return "remote", host.name
+
+        suggestions = await _find_similar_inventory_hosts(ctx, candidate)
+        ctx.ui.warning(ctx.t("errors.host.not_found", name=candidate))
+        if suggestions:
+            ctx.ui.muted(ctx.t("errors.host.similar_hosts", hosts=", ".join(suggestions)))
+        ctx.ui.muted(ctx.t("commands.help.usage_hint") + " /hosts")
+
+    return None
 
 
 @dataclass
@@ -116,6 +219,28 @@ async def handle_user_message(
     if route_result.is_fast_path:
         logger.debug(f"⚡ Using fast path: {route_result.fast_path}")
         return await handle_fast_path(ctx, route_result)
+
+    # 1.5 Clarify target for ambiguous execution requests (security-first).
+    if _needs_target_clarification(route_result):
+        target = await _clarify_target(ctx, user_input)
+        if not target:
+            return HandlerResponse(
+                message=ctx.t("agent.action_cancelled"),
+                handled_by="clarifier",
+            )
+        kind, chosen_host = target
+        if kind == "local":
+            clarified_input = (
+                "LOCAL EXECUTION CONTEXT: this request targets the local machine. "
+                "Use bash for commands; do NOT use ssh_execute.\n\n"
+                + user_input
+            )
+            return await handle_agent(ctx, agent, clarified_input, route_result)
+
+        if chosen_host:
+            route_result.entities.setdefault("hosts", [])
+            route_result.entities["hosts"] = [chosen_host]
+            user_input = f"On @{chosen_host}: {user_input}"
 
     # 2. Skill flow - skill matched with good confidence
     if route_result.is_skill_match and route_result.skill_confidence >= SKILL_CONFIDENCE_THRESHOLD:

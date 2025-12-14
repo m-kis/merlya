@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2025-02-19
+
+### Added
+
+- SSH circuit breaker surfaced to the agent with retry messaging to avoid command storms.
+- System health/startup checks now cover MCP servers, skills registry, ONNX readiness, and tier-aware parser initialization.
+- CLI `/hosts check` now records host health status and captures OS info on success.
+
+### Changed
+
+- Refactored agent tool registration into dedicated modules (system, files, MCP) to keep modules under 600 LOC.
+- System tools package reorganized into submodules with backward-compatible proxies for `ssh_execute` patching in tests.
+- Router target clarification prompts ensure ambiguous execution requests pick local vs inventory hosts before using tools.
+- Permissions heuristics expanded (journalctl/dmesg, more log paths) with hardened sudo/doas prefix stripping.
+
+### Fixed
+
+- `ssh_execute` now auto-elevates when permission errors are returned in stdout or when privileged commands fail silently.
+- Cron schedule validation tightened to reject injection attempts and malformed specs.
+- Fast-path detection avoids treating PID queries as host lookups; JSON serialization handles objects exposing `to_dict()`.
+- MCP command testing reports `TimeoutError` correctly; `doas` elevation no longer embeds passwords in the command string.
+
 ## [0.7.1] - 2025-12-12
 
 ### Added

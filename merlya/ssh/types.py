@@ -127,6 +127,8 @@ TRANSIENT_ERROR_PATTERNS = (
     "network is unreachable",
     "no route to host",
     "resource temporarily unavailable",
+    "open failed",
+    "channel open failed",
     "errno 54",  # Connection reset by peer (macOS)
     "errno 104",  # Connection reset by peer (Linux)
     "errno 32",  # Broken pipe

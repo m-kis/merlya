@@ -334,16 +334,33 @@ async def _test_newly_added_server(
         )
 
     except ValueError as e:
-        # Missing environment variables
-        logger.warning(f"⚠️ MCP test failed for {name}: {e}")
-        return CommandResult(
-            success=False,
-            message=(
-                f"⚠️ MCP server '{name}' added but configuration error:\n"
-                f"❌ {e}\n\n"
-                f"💡 Fix: Use `/secret set <name>` then reference with `--env=KEY=${{name}}`"
-            ),
+        # Check if the error is specifically about missing environment variables
+        error_msg = str(e).lower()
+        is_missing_env_error = any(
+            keyword in error_msg
+            for keyword in ["missing", "env", "secret", "variable", "environment"]
         )
+
+        logger.warning(f"⚠️ MCP test failed for {name}: {e}")
+
+        if is_missing_env_error:
+            return CommandResult(
+                success=False,
+                message=(
+                    f"⚠️ MCP server '{name}' added but configuration error:\n"
+                    f"❌ {e}\n\n"
+                    f"💡 Fix: Use `/secret set <name>` then reference with `--env=KEY=${{name}}`"
+                ),
+            )
+        else:
+            return CommandResult(
+                success=False,
+                message=(
+                    f"⚠️ MCP server '{name}' added but configuration error:\n"
+                    f"❌ {e}\n\n"
+                    f"The server is saved. Debug with `/mcp show {name}` and retry with `/mcp test {name}`"
+                ),
+            )
 
     except Exception as e:
         logger.warning(f"⚠️ MCP test failed for {name}: {e}")
