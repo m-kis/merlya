@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2025-12-15
+
+### Added
+
+- MkDocs Material documentation site with structured navigation
+- RAG chatbot worker (Cloudflare) for documentation Q&A
+- Distributed rate limiting with Durable Objects for RAG worker
+- CI workflows for docs deployment and RAG
+- New guides: REPL mode, SSH management, LLM providers, automation
+
+### Changed
+
+- Upgraded RAG model to gpt-4o-mini for cost optimization
+- Centralized version import in CLI from `__init__.py`
+- Added `base_url` config support for LLM providers
+- Skip comment lines in task files for `merlya run`
+
+### Fixed
+
+- RAG worker URL updated to correct docs path
+- Removed hardcoded Cloudflare account_id (security)
+- Fixed TypeScript error handling in RAG worker
+
 ## [0.7.3] - 2025-12-14
 
 ### Changed
