@@ -780,6 +780,16 @@ class TestFastPathDetection:
         # Should not match due to invalid identifier
         assert "target" not in args or args.get("target") != "../etc/passwd"
 
+    def test_detect_no_fast_path_for_pid_queries_fr(self, router: IntentRouter) -> None:
+        """Avoid false positives like 'sur le PID 1234' being treated as host details."""
+        fast_path, args = router._detect_fast_path("donne moi plus d'info sur le PID 3130830")
+        assert fast_path is None
+        assert args == {}
+
+        fast_path, args = router._detect_fast_path("donne moi plus d'info sur process PID 3130830")
+        assert fast_path is None
+        assert args == {}
+
     @pytest.mark.asyncio
     async def test_route_fast_path(self, router: IntentRouter) -> None:
         """Test route with fast path detection."""

@@ -10,96 +10,25 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from dataclasses import dataclass, field
+from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel
 
-from merlya.config.constants import (
-    DEFAULT_REQUEST_LIMIT,
-    DEFAULT_TOOL_CALLS_LIMIT,
-    REQUEST_LIMIT_CHAT,
-    REQUEST_LIMIT_DIAGNOSTIC,
-    REQUEST_LIMIT_QUERY,
-    REQUEST_LIMIT_REMEDIATION,
-    TOOL_CALLS_LIMIT_CHAT,
-    TOOL_CALLS_LIMIT_DIAGNOSTIC,
-    TOOL_CALLS_LIMIT_QUERY,
-    TOOL_CALLS_LIMIT_REMEDIATION,
-)
 from merlya.router.intent_classifier import AgentMode, IntentClassifier
-
-# Fast path intents - operations that can be handled without LLM
-# These are simple database queries or direct operations
-FAST_PATH_INTENTS = frozenset(
-    {
-        "host.list",  # List hosts from inventory
-        "host.details",  # Get details for a specific host
-        "group.list",  # List host groups/tags
-        "skill.list",  # List available skills
-        "var.list",  # List variables
-        "var.get",  # Get a specific variable
-    }
+from merlya.router.models import RouterResult
+from merlya.router.router_primitives import (
+    FAST_PATH_INTENTS,
+    FAST_PATH_PATTERNS,
+    JUMP_HOST_PATTERNS,
+    _LLMClassification,
+    _LLMSkillMatch,
+    extract_json_dict,
+    iter_fast_path_patterns,
 )
 
-# Patterns to detect fast path intents
-FAST_PATH_PATTERNS: dict[str, list[str]] = {
-    "host.list": [
-        r"^(?:liste?|show|display|voir)\s+(?:les?\s+)?(?:hosts?|machines?|serveurs?)",
-        r"^(?:quels?\s+sont\s+)?(?:mes?\s+)?(?:hosts?|machines?|serveurs?)",
-        r"^(?:inventory|inventaire)",
-    ],
-    "host.details": [
-        r"(?:info(?:rmations?)?|details?|détails?)\s+(?:on|about|sur|de)\s+@?(\w[\w.-]*)",
-        r"^@(\w[\w.-]*)\s*$",  # Just a host mention
-    ],
-    "group.list": [
-        r"^(?:liste?|show)\s+(?:les?\s+)?(?:groups?|groupes?|tags?)",
-        r"^(?:quels?\s+sont\s+)?(?:mes?\s+)?(?:groups?|groupes?)",
-    ],
-    "skill.list": [
-        r"^(?:liste?|show)\s+(?:les?\s+)?skills?",
-        r"^(?:quelles?\s+skills?|what\s+skills?)",
-    ],
-    "var.list": [
-        r"^(?:liste?|show)\s+(?:les?\s+)?(?:variables?|vars?)",
-    ],
-    "var.get": [
-        r"(?:valeur|value)\s+(?:de|of)\s+@?(\w[\w_.-]*)",
-    ],
-}
-
-# Mode to tool calls limit mapping
-MODE_TOOL_LIMITS: dict[AgentMode, int] = {
-    AgentMode.DIAGNOSTIC: TOOL_CALLS_LIMIT_DIAGNOSTIC,
-    AgentMode.REMEDIATION: TOOL_CALLS_LIMIT_REMEDIATION,
-    AgentMode.QUERY: TOOL_CALLS_LIMIT_QUERY,
-    AgentMode.CHAT: TOOL_CALLS_LIMIT_CHAT,
-}
-
-# Mode to request limit mapping
-MODE_REQUEST_LIMITS: dict[AgentMode, int] = {
-    AgentMode.DIAGNOSTIC: REQUEST_LIMIT_DIAGNOSTIC,
-    AgentMode.REMEDIATION: REQUEST_LIMIT_REMEDIATION,
-    AgentMode.QUERY: REQUEST_LIMIT_QUERY,
-    AgentMode.CHAT: REQUEST_LIMIT_CHAT,
-}
-
-# Patterns to detect jump host intent (multilingual)
-# These patterns look for "via/through/par/depuis + @hostname or hostname"
-JUMP_HOST_PATTERNS = [
-    # English
-    r"\bvia\s+(?:the\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
-    r"\bthrough\s+(?:the\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
-    r"\busing\s+(?:the\s+)?(?:bastion|jump\s*host?)\s+@?(\w[\w.-]*)",
-    # French
-    r"\bvia\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
-    r"\ben\s+passant\s+par\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
-    r"\bà\s+travers\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
-    r"\bdepuis\s+(?:la\s+)?(?:machine\s+)?@?(\w[\w.-]*)",
-    # Generic bastion/jump patterns
-    r"\bbastion\s*[=:]\s*@?(\w[\w.-]*)",
-    r"\bjump\s*host?\s*[=:]\s*@?(\w[\w.-]*)",
-]
+# Backward compatibility: tests and older code imported this symbol from classifier.py.
+_COMPILED_FAST_PATH = iter_fast_path_patterns()
 
 # Re-export for compatibility
 __all__ = [
@@ -110,64 +39,6 @@ __all__ = [
     "IntentRouter",
     "RouterResult",
 ]
-
-# Pre-compiled fast path patterns for performance
-_COMPILED_FAST_PATH: dict[str, list[re.Pattern[str]]] = {}
-
-
-def _compile_fast_path_patterns() -> None:
-    """Compile fast path patterns once at import time."""
-    global _COMPILED_FAST_PATH
-    if _COMPILED_FAST_PATH:
-        return
-    for intent, patterns in FAST_PATH_PATTERNS.items():
-        _COMPILED_FAST_PATH[intent] = [re.compile(p, re.IGNORECASE) for p in patterns]
-
-
-# Compile patterns at module load
-_compile_fast_path_patterns()
-
-
-@dataclass
-class RouterResult:
-    """Result of intent classification."""
-
-    mode: AgentMode
-    tools: list[str]
-    entities: dict[str, list[str]] = field(default_factory=dict)
-    confidence: float = 0.0
-    delegate_to: str | None = None
-    reasoning: str | None = None  # For LLM fallback explanation
-    credentials_required: bool = False
-    elevation_required: bool = False
-    jump_host: str | None = None  # Detected jump/bastion host for SSH tunneling
-    fast_path: str | None = None  # Fast path intent if detected (e.g., "host.list")
-    fast_path_args: dict[str, str] = field(default_factory=dict)  # Args extracted from pattern
-    skill_match: str | None = None  # Matched skill name if detected
-    skill_confidence: float = 0.0  # Confidence of skill match
-    # Proactive mode: entities mentioned but not found in inventory
-    # Agent should discover alternatives if needed
-    unresolved_hosts: list[str] = field(default_factory=list)
-
-    @property
-    def is_fast_path(self) -> bool:
-        """Check if this is a fast path intent."""
-        return self.fast_path is not None
-
-    @property
-    def is_skill_match(self) -> bool:
-        """Check if a skill was matched with sufficient confidence."""
-        return self.skill_match is not None and self.skill_confidence >= 0.5
-
-    @property
-    def tool_calls_limit(self) -> int:
-        """Get dynamic tool calls limit based on task mode."""
-        return MODE_TOOL_LIMITS.get(self.mode, DEFAULT_TOOL_CALLS_LIMIT)
-
-    @property
-    def request_limit(self) -> int:
-        """Get dynamic request limit based on task mode."""
-        return MODE_REQUEST_LIMITS.get(self.mode, DEFAULT_REQUEST_LIMIT)
 
 
 class IntentRouter:
@@ -352,7 +223,7 @@ class IntentRouter:
         """
         text_stripped = text.strip()
 
-        for intent, patterns in _COMPILED_FAST_PATH.items():
+        for intent, patterns in iter_fast_path_patterns().items():
             for pattern in patterns:
                 match = pattern.search(text_stripped)
                 if match:
@@ -439,36 +310,25 @@ Rules:
             agent = Agent(
                 self._llm_model,
                 system_prompt=system_prompt,
+                output_type=_LLMSkillMatch,
+                retries=1,
             )
 
-            response = await agent.run(f"Does any skill match this request? '{user_input}'")
-
-            # Parse response
-            raw = getattr(response, "data", None)
-            if raw is None and hasattr(response, "output"):
-                raw = response.output
-            if raw is None:
-                raw = str(response)
-
-            import json
-
-            data = json.loads(str(raw))
-
-            skill_name = data.get("skill")
-            confidence = float(data.get("confidence", 0.0))
+            run_result = await agent.run(f"Does any skill match this request? '{user_input}'")
+            match = run_result.output
+            skill_name = match.skill
+            confidence = float(match.confidence)
 
             if skill_name and confidence >= 0.5:
                 # Verify skill exists
                 if registry.get(skill_name):
                     logger.debug(
-                        f"🎯 LLM skill match: {skill_name} ({confidence:.2f}) - {data.get('reason', '')}"
+                        f"🎯 LLM skill match: {skill_name} ({confidence:.2f}) - {match.reason or ''}"
                     )
                     return skill_name, confidence
                 else:
                     logger.warning(f"⚠️ LLM matched non-existent skill: {skill_name}")
 
-        except json.JSONDecodeError as e:
-            logger.debug(f"LLM skill match parse error: {e}")
         except Exception as e:
             logger.warning(f"⚠️ LLM skill matching failed: {e}")
 
@@ -614,11 +474,11 @@ Respond in JSON format:
             agent = Agent(
                 self._llm_model,
                 system_prompt=system_prompt,
+                output_type=_LLMClassification,
+                retries=1,
             )
 
             response = await agent.run(f"Classify this input: {user_input}")
-
-            # Parse JSON response
             return self._parse_llm_response(response, user_input)
 
         except Exception as e:
@@ -631,19 +491,39 @@ Respond in JSON format:
         MAX_LLM_RESPONSE_SIZE = 100_000  # 100KB
 
         try:
-            raw = getattr(response, "data", None)
-            if raw is None and hasattr(response, "output"):
-                raw = response.output
-            if raw is None:
-                raw = str(response)
+            raw_output = getattr(response, "output", None)
+            raw_data = getattr(response, "data", None)
+            raw: object | None
 
-            # P0 Security: Validate size before parsing
-            raw_str = str(raw)
-            if len(raw_str) > MAX_LLM_RESPONSE_SIZE:
-                logger.warning(f"⚠️ LLM response too large: {len(raw_str)} bytes")
+            # Prefer explicit payloads (tests/mocks often have .data set while .output is a MagicMock).
+            if isinstance(raw_data, (BaseModel, dict, str)):
+                raw = raw_data
+            elif isinstance(raw_output, (BaseModel, dict, str)):
+                raw = raw_output
+            else:
+                raw = raw_output if raw_output is not None else raw_data
+            data: dict[str, Any] | None = None
+
+            if isinstance(raw, BaseModel):
+                data = raw.model_dump()
+            elif isinstance(raw, dict):
+                data = raw
+            elif raw is not None:
+                raw_str = str(raw)
+                # P0 Security: Validate size before parsing
+                if len(raw_str) > MAX_LLM_RESPONSE_SIZE:
+                    logger.warning(f"⚠️ LLM response too large: {len(raw_str)} bytes")
+                    return None
+                data = extract_json_dict(raw_str) or json.loads(raw_str)
+            else:
+                raw_str = str(response)
+                if len(raw_str) > MAX_LLM_RESPONSE_SIZE:
+                    logger.warning(f"⚠️ LLM response too large: {len(raw_str)} bytes")
+                    return None
+                data = extract_json_dict(raw_str) or json.loads(raw_str)
+
+            if data is None:
                 return None
-
-            data = json.loads(raw_str)
 
             # Validate mode before creating enum
             mode_str = data.get("mode", "chat")

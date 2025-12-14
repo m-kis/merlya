@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
+from merlya.common.validation import validate_file_path as common_validate_file_path
+
 # Constants
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 ALLOWED_IMPORT_DIRS = [Path.home(), Path("/etc")]
@@ -31,12 +33,22 @@ SENSITIVE_VALUE_PATTERNS = [
 ]
 
 
+# Use centralized validation with module-specific constraints
 def validate_file_path(file_path: Path) -> tuple[bool, str]:
     """
     Validate file path for security (prevent path traversal and unsafe file access).
 
+    This function uses centralized validation with additional constraints
+    specific to variables import/export operations.
+
     Returns (is_valid, error_message).
     """
+    # First validate with centralized function
+    is_valid, error_msg = common_validate_file_path(file_path)
+    if not is_valid:
+        return False, error_msg
+
+    # Additional module-specific constraints for variables
     try:
         resolved = file_path.resolve()
 

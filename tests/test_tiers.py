@@ -74,12 +74,12 @@ class TestRouterModels:
     def test_get_router_model_id_with_enum(self):
         """Test get_router_model_id with enum."""
         assert get_router_model_id(ModelTier.PERFORMANCE) == "Xenova/bge-m3"
-        assert get_router_model_id(ModelTier.BALANCED) == "Xenova/gte-multilingual-base"
+        assert get_router_model_id(ModelTier.BALANCED) == "Xenova/multilingual-e5-base"
 
     def test_get_router_model_id_with_string(self):
         """Test get_router_model_id with string."""
         assert get_router_model_id("performance") == "Xenova/bge-m3"
-        assert get_router_model_id("balanced") == "Xenova/gte-multilingual-base"
+        assert get_router_model_id("balanced") == "Xenova/multilingual-e5-base"
 
     def test_get_router_model_id_default(self):
         """Test get_router_model_id defaults to balanced."""
