@@ -8,7 +8,7 @@
   <meta property="og:description" content="{{ config.site_description | e }}" />
   <meta property="og:url" content="{{ page.canonical_url | e }}" />
   <script>
-    window.__MERLYA_RAG_API_URL = "{{ config.extra.get('rag_api_url', '') | e }}";
+    window.__MERLYA_RAG_API_URL = {{ config.extra.get('rag_api_url') | default('', true) | tojson }};
   </script>
 {% endblock %}
 
