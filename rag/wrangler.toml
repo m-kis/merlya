@@ -1,7 +1,7 @@
 name = "merlya-rag"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
-account_id = "551a8b7bc2e3348ede61a4ce256349a7"
+# account_id: set via CLOUDFLARE_ACCOUNT_ID env var or wrangler login
 
 [vars]
 CORS_ORIGIN = "https://m-kis.github.io"
