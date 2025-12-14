@@ -1,0 +1,137 @@
+site_name: Merlya Documentation
+site_url: https://m-kis.github.io/merlya/
+site_author: Merlya Team
+site_description: AI-powered infrastructure assistant - Documentation
+
+repo_name: m-kis/merlya
+repo_url: https://github.com/m-kis/merlya
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2025 Merlya
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/robot-outline
+
+plugins:
+  - search:
+      lang: en
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/m-kis/merlya
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/merlya/
+  rag_api_url: https://merlya-docs-rag.cedric-merlin-565.workers.dev/ask
+  generator: false
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra_javascript:
+  - assets/javascripts/chat.js
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Guides:
+      - REPL Mode: guides/repl-mode.md
+      - SSH Management: guides/ssh-management.md
+      - LLM Providers: guides/llm-providers.md
+      - Automation: guides/automation.md
+      - Extending Merlya: extending.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Slash Commands (REPL): commands.md
+      - Non-Interactive Mode: reference/non-interactive.md
+      - Configuration: reference/configuration.md
+      - Configuration (In-Depth): configuration.md
+      - Tools: tools.md
+      - SSH & Jump Hosts: ssh.md
+      - API: reference/api.md
+  - Architecture:
+      - Overview: architecture.md
+      - Decisions: architecture/decisions.md

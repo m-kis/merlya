@@ -200,7 +200,7 @@ The agent detects repetitive patterns (same tool called 3+ times, A-B-A-B altern
 | `OPENAI_API_KEY` | OpenAI key |
 | `OPENROUTER_API_KEY` | OpenRouter key |
 | `MERLYA_ROUTER_FALLBACK` | LLM fallback model |
-| `MERLYA_LOG_LEVEL` | Log level (debug, info, warning, error) |
+| `MERLYA_ROUTER_MODEL` | Override local router model |
 
 ## Installation for Contributors
 
@@ -236,7 +236,7 @@ Key principles: DRY/KISS/YAGNI, SOLID, SoC, LoD, no files > ~600 lines, coverage
 
 ## Documentation
 
-📚 **Full documentation**: [https://m-kis.github.io/merlya-docs/](https://m-kis.github.io/merlya-docs/)
+📚 **Full documentation**: [https://m-kis.github.io/merlya/](https://m-kis.github.io/merlya/)
 
 Local files:
 - [docs/architecture.md](docs/architecture.md): architecture and decisions
@@ -263,5 +263,5 @@ See [SECURITY.md](SECURITY.md). Do not publish vulnerabilities in public issues:
 ---
 
 <p align="center">
-  Made with love by <a href="https://github.com/m-kis">M-KIS</a>
+  Made by <a href="https://github.com/m-kis">M-KIS</a>
 </p>

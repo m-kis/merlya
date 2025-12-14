@@ -431,52 +431,45 @@ Use dot-separated hierarchical keys:
 
 ## Documentation
 
-The documentation is hosted in a **separate repository**: [merlya-docs](https://github.com/m-kis/merlya-docs).
+Documentation lives in this repository and is built with **MkDocs Material**.
 
 ### Structure
 
 ```text
-merlya-docs/
-├── mkdocs.yml          # MkDocs configuration + navigation
-├── docs/               # Markdown source files
+merlya/
+├── mkdocs.yml              # MkDocs configuration + navigation
+├── docs/                   # Markdown source files
 │   ├── index.md
 │   ├── getting-started/
 │   ├── guides/
-│   └── reference/      # CLI, configuration, API docs
+│   ├── reference/          # CLI, configuration, API docs
+│   └── architecture/
 └── .github/workflows/
-    └── docs.yml        # Auto-deploy to GitHub Pages
+    └── docs.yml            # Build + deploy to GitHub Pages
 ```
 
 ### Updating Documentation
 
-1. Clone the docs repository:
+1. Install documentation dependencies:
 
    ```bash
-   git clone https://github.com/m-kis/merlya-docs.git
+   pip install -e ".[docs]"
    ```
 
-2. Edit files in `docs/`:
+2. Preview locally:
 
    ```bash
-   cd merlya-docs
-   # Edit docs/reference/cli.md, docs/guides/*, etc.
-   ```
-
-3. Preview locally (optional):
-
-   ```bash
-   pip install -r requirements.txt
    mkdocs serve  # Opens http://localhost:8000
    ```
 
-4. Commit and push:
+3. Commit and push (Conventional Commits):
 
    ```bash
-   git add . && git commit -m "docs: description"
-   git push origin main
+   git add . && git commit -m "docs: update documentation"
+   git push
    ```
 
-The documentation is **automatically deployed** to GitHub Pages on push to main.
+The documentation is **automatically deployed** to GitHub Pages on push to `main`.
 
 ### When to Update Documentation
 

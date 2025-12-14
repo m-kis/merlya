@@ -79,6 +79,12 @@ dev = [
     "ruff>=0.8",
     "types-PyYAML>=6.0",
 ]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocs-minify-plugin>=0.8.0",
+    "pymdown-extensions>=10.0",
+]
 # All optional features
 all = [
     "merlya[router]",
