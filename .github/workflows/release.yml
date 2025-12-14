@@ -79,6 +79,9 @@ jobs:
           fi
           echo "✅ Version verified: $PACKAGE_VERSION"
 
+      - name: Clean dist
+        run: rm -rf dist
+
       - name: Build package
         run: |
           python -m build
