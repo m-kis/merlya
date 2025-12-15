@@ -9,6 +9,8 @@ Merlya supports multiple LLM providers, from cloud APIs to local models.
 | **OpenRouter** | 100+ models | Free tier, many models | Variable latency |
 | **Anthropic** | Claude 3.5 Sonnet/Haiku | Great reasoning | Paid API |
 | **OpenAI** | GPT-4o, GPT-4o-mini | Fast, reliable | Paid API |
+| **Mistral** | Mistral Large, Small | European, great quality | Paid API |
+| **Groq** | Llama, Mixtral | Extremely fast inference | Paid API |
 | **Ollama** | Llama, Qwen, Mistral | Free, private (local or cloud) | Setup required |
 
 ---
@@ -98,6 +100,54 @@ merlya config set model.base_url https://your-endpoint.openai.azure.com
 
 ---
 
+## Mistral
+
+European AI provider with strong multilingual support.
+
+### Setup
+
+```bash
+export MISTRAL_API_KEY="..."
+merlya config set model.provider mistral
+merlya config set model.model mistral-large-latest
+```
+
+### Recommended Models
+
+| Model | Speed | Quality | Cost |
+|-------|-------|---------|------|
+| `mistral-large-latest` | Fast | Excellent | $$ |
+| `mistral-small-latest` | Very fast | Great | $ |
+| `codestral-latest` | Fast | Great for code | $$ |
+
+Get your API key at: [console.mistral.ai](https://console.mistral.ai/)
+
+---
+
+## Groq
+
+Ultra-fast inference with custom LPU hardware.
+
+### Setup
+
+```bash
+export GROQ_API_KEY="..."
+merlya config set model.provider groq
+merlya config set model.model llama-3.3-70b-versatile
+```
+
+### Recommended Models
+
+| Model | Speed | Quality | Cost |
+|-------|-------|---------|------|
+| `llama-3.3-70b-versatile` | Very fast | Excellent | $ |
+| `llama-3.1-8b-instant` | Ultra fast | Good | $ |
+| `mixtral-8x7b-32768` | Fast | Great | $ |
+
+Get your API key at: [console.groq.com](https://console.groq.com/)
+
+---
+
 ## Ollama (Local + Cloud)
 
 Ollama supports both **local** and **cloud** deployment.
@@ -163,14 +213,16 @@ OLLAMA_GPU_LAYERS=0 ollama serve
 On first run, Merlya's [setup wizard](../getting-started/quickstart.md#setup-wizard) offers:
 
 ```
-╭─────────────────────────────────────────────────────────────────╮
-│                      LLM Configuration                          │
-├─────────────────────────────────────────────────────────────────┤
-│  1. OpenRouter (recommended) - Free models available            │
-│  2. Anthropic - Claude models                                   │
-│  3. OpenAI - GPT models                                         │
-│  4. Ollama - Local models (no API key needed)                   │
-╰─────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────╮
+│                      LLM Configuration                            │
+├───────────────────────────────────────────────────────────────────┤
+│  1. OpenRouter (recommended - multi-model)                        │
+│  2. Anthropic (Claude direct)                                     │
+│  3. OpenAI (GPT models)                                           │
+│  4. Mistral (Mistral AI)                                          │
+│  5. Groq (fast inference)                                         │
+│  6. Ollama (local models)                                         │
+╰───────────────────────────────────────────────────────────────────╯
 ```
 
 ---
@@ -209,8 +261,10 @@ Override settings with environment variables:
 
 ```bash
 export OPENROUTER_API_KEY=or-xxx
-export OPENAI_API_KEY=sk-xxx
 export ANTHROPIC_API_KEY=sk-ant-xxx
+export OPENAI_API_KEY=sk-xxx
+export MISTRAL_API_KEY=xxx
+export GROQ_API_KEY=gsk_xxx
 export OLLAMA_API_KEY=xxx  # For cloud Ollama only
 export OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
