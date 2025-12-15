@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/logo.png" alt="Merlya Logo" width="280">
+</div>
+
 # Merlya
 
 **AI-powered infrastructure assistant for DevOps and SRE teams.**
