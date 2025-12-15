@@ -41,6 +41,7 @@ theme:
     - navigation.expand
     - navigation.path
     - navigation.top
+    - navigation.indexes
     - search.suggest
     - search.highlight
     - search.share

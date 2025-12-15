@@ -52,7 +52,44 @@ export OPENAI_API_KEY="..."
 merlya run "Vérifie l'espace disque sur @web-01"
 ```
 
-Prêt à commencer ? Consultez le [Guide d'installation](getting-started/installation.md).
+## Documentation
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch:{ .lg .middle } **Démarrage**
+
+    ---
+
+    - [Installation](getting-started/installation.md)
+    - [Démarrage rapide](getting-started/quickstart.md)
+    - [Configuration](getting-started/configuration.md)
+
+-   :material-book-open-variant:{ .lg .middle } **Guides**
+
+    ---
+
+    - [Mode REPL](guides/repl-mode.md)
+    - [Gestion SSH](guides/ssh-management.md)
+    - [Fournisseurs LLM](guides/llm-providers.md)
+    - [Automatisation](guides/automation.md)
+
+-   :material-file-document:{ .lg .middle } **Référence**
+
+    ---
+
+    - [CLI](reference/cli.md)
+    - [Commandes slash](commands.md)
+    - [Outils](tools.md)
+    - [Configuration](reference/configuration.md)
+
+-   :material-cog:{ .lg .middle } **Architecture**
+
+    ---
+
+    - [Vue d'ensemble](architecture.md)
+    - [Décisions (ADR)](architecture/decisions.md)
+
+</div>
 
 [Commencer :material-arrow-right:](getting-started/installation.md){ .md-button .md-button--primary }
 [Voir sur GitHub :material-github:](https://github.com/m-kis/merlya){ .md-button }
