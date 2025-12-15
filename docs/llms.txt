@@ -1,5 +1,5 @@
 # Merlya - AI Infrastructure Assistant
-# https://docs.merlya.fr
+# https://merlya.m-kis.fr
 
 > Merlya is an AI-powered CLI tool for DevOps, SRE, and SysAdmins.
 > It combines LLM capabilities with practical infrastructure management.
@@ -71,7 +71,7 @@ pip install merlya[all]     # All extras including router
 
 ## Links
 
-- Documentation: https://docs.merlya.fr/
+- Documentation: https://merlya.m-kis.fr/
 - GitHub: https://github.com/m-kis/merlya
 - PyPI: https://pypi.org/project/merlya/
 
