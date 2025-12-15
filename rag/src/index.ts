@@ -165,7 +165,7 @@ pip install merlya[all]     # All extras
 ## Links
 - GitHub: https://github.com/m-kis/merlya
 - PyPI: https://pypi.org/project/merlya/
-- Docs: https://m-kis.github.io/merlya/
+- Docs: https://docs.merlya.fr/
 `;
 
 // Hardened system prompt with injection protection
