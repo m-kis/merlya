@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="Logo Merlya" width="280">
+  <img src="../assets/logo.png" alt="Logo Merlya" width="280">
 </div>
 
 # Merlya
