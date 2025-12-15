@@ -17,9 +17,7 @@ Merlya helps infrastructure professionals by providing:
 ## Installation
 
 ```bash
-pip install merlya          # Standard installation
-pip install merlya[router]  # With ONNX router for model selection
-pip install merlya[all]     # All extras including router
+pip install merlya
 ```
 
 ## Quick Start
