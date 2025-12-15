@@ -55,6 +55,42 @@ theme:
   favicon: assets/logo.png
 
 plugins:
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: fr
+          name: Français
+          build: true
+          nav_translations:
+            Home: Accueil
+            Getting Started: Démarrage
+            Installation: Installation
+            Quick Start: Démarrage rapide
+            Configuration: Configuration
+            Guides: Guides
+            REPL Mode: Mode REPL
+            SSH Management: Gestion SSH
+            LLM Providers: Fournisseurs LLM
+            Automation: Automatisation
+            Extending Merlya: Extensions
+            Reference: Référence
+            CLI: CLI
+            Slash Commands (REPL): Commandes slash (REPL)
+            Non-Interactive Mode: Mode non-interactif
+            Configuration (In-Depth): Configuration (approfondie)
+            Tools: Outils
+            SSH & Jump Hosts: SSH & Jump Hosts
+            API: API
+            Architecture: Architecture
+            Overview: Vue d'ensemble
+            Decisions: Décisions
   - search:
       lang:
         - en

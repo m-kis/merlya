@@ -82,6 +82,8 @@ export MERLYA_ROUTER_FALLBACK=openai:gpt-4o-mini
 | `openrouter` | 100+ models, free tier available (default) |
 | `anthropic` | Claude models |
 | `openai` | GPT models |
+| `mistral` | Mistral AI models |
+| `groq` | Ultra-fast inference |
 | `ollama` | Local or cloud models |
 
 ### API Keys
