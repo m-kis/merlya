@@ -186,11 +186,9 @@ Respond in the same language as the question (French or English).`;
 
 // Durable Object Rate Limiter - Distributed across multiple Worker instances
 class RateLimiter {
-  private state: DurableObjectState;
   private storage: DurableObjectStorage;
-  
-  constructor(state: DurableObjectState, env: Env) {
-    this.state = state;
+
+  constructor(state: DurableObjectState, _env: Env) {
     this.storage = state.storage;
   }
 
