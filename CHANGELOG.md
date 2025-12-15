@@ -5,10 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.4] - 2025-12-15
+## [0.7.5] - 2025-12-15
 
 ### Added
 
+- French documentation (i18n) with mkdocs-static-i18n plugin
+- Mistral and Groq providers in documentation and CLI help
 - MkDocs Material documentation site with structured navigation
 - RAG chatbot worker (Cloudflare) for documentation Q&A
 - Distributed rate limiting with Durable Objects for RAG worker
@@ -17,16 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Simplified installation**: `pip install merlya` now includes everything (ONNX router, all providers)
+- Removed `[router]` and `[all]` optional extras - no longer needed
 - Upgraded RAG model to gpt-4o-mini for cost optimization
 - Centralized version import in CLI from `__init__.py`
 - Added `base_url` config support for LLM providers
 - Skip comment lines in task files for `merlya run`
+- Documentation domain migrated to merlya.m-kis.fr
 
 ### Fixed
 
 - RAG worker URL updated to correct docs path
 - Removed hardcoded Cloudflare account_id (security)
 - Fixed TypeScript error handling in RAG worker
+- French logo path in i18n documentation
 
 ## [0.7.3] - 2025-12-14
 
@@ -492,7 +498,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy with vulnerability reporting process
 - Architecture Decision Records (ADR)
 
-[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.5...HEAD
+[0.7.5]: https://github.com/m-kis/merlya/compare/v0.7.4...v0.7.5
+[0.7.3]: https://github.com/m-kis/merlya/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/m-kis/merlya/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/m-kis/merlya/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/m-kis/merlya/releases/tag/v0.7.0
