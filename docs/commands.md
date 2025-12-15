@@ -138,14 +138,46 @@ Export hosts to a file.
 ## Scanning
 
 ### `/scan <host> [options]`
-Scan a host for system information and security.
+Scan a host for system information and security issues.
+
+**Scan Types:**
 
 ```bash
-/scan web01
-/scan @web01 --full       # Full scan
-/scan web01 --security    # Security-focused scan
+/scan web01               # Full scan (default)
+/scan web01 --full        # Complete system + security scan
+/scan web01 --quick       # Fast check: CPU, memory, disk, ports
+/scan web01 --security    # Security checks only
 /scan web01 --system      # System info only
 ```
+
+**Output Options:**
+
+```bash
+/scan web01 --json        # Output as JSON
+/scan web01 --show-all    # Show all ports/users/services (no truncation)
+```
+
+**Skip Options:**
+
+```bash
+/scan web01 --no-docker   # Skip Docker checks
+/scan web01 --no-updates  # Skip pending updates check
+/scan web01 --no-network  # Skip network diagnostics
+/scan web01 --no-services # Skip services list
+/scan web01 --no-cron     # Skip cron jobs list
+```
+
+**Multi-Host Scanning:**
+
+```bash
+/scan @web01 @db01 --quick           # Scan multiple hosts
+/scan --tag=production --parallel    # Scan all hosts with tag in parallel
+/scan --all --quick                  # Scan entire inventory
+```
+
+**System Checks:** CPU, memory, disk, Docker, services, network, cron, processes, logs
+
+**Security Checks:** Open ports, SSH config, users, SSH keys, sudo config, critical services, failed logins, pending updates
 
 ## Variables
 
@@ -181,6 +213,13 @@ Export variables to a file (YAML/JSON/`.env`), optionally prompting for secrets.
 /variable export vars.yml
 ```
 
+### `/variable template <file>`
+Generate a template file for variable import.
+
+```bash
+/variable template vars-template.yml
+```
+
 ## Secrets
 
 Secrets are stored securely in the system keyring.
@@ -198,6 +237,15 @@ Set a secret (prompts for value).
 
 ### `/secret delete <name>`
 Delete a secret.
+
+### `/secret clear-elevation [<host>|--all]`
+Clear stored elevation (sudo/su) passwords.
+
+```bash
+/secret clear-elevation           # List stored elevation passwords
+/secret clear-elevation web01     # Clear for specific host
+/secret clear-elevation --all     # Clear all elevation passwords
+```
 
 ## Conversations
 
@@ -446,6 +494,22 @@ Interactive wizard to create a new skill.
 # - System prompt
 ```
 
+### `/skill template <name> [description]`
+Generate a skill template YAML file.
+
+```bash
+/skill template disk_audit "Audit disk usage across hosts"
+# Creates ~/.merlya/skills/disk_audit.yaml
+```
+
+### `/skill run <name> [hosts]`
+Run a skill manually.
+
+```bash
+/skill run disk_audit
+/skill run security_check @web01 @db01
+```
+
 ## Audit
 
 ### `/audit recent [limit]`
@@ -456,12 +520,15 @@ Show recent audit events.
 /audit recent 50
 ```
 
-### `/audit export [file]`
-Export audit logs to JSON.
+### `/audit export [file] [--since <hours>] [--limit <n>]`
+Export audit logs to JSON (SIEM-compatible format).
 
 ```bash
-/audit export
-/audit export ./audit.json
+/audit export                           # Export to default file
+/audit export ./audit.json              # Export to specific file
+/audit export --since 24                # Last 24 hours only
+/audit export --limit 1000              # Limit to 1000 events
+/audit export audit.json --since 48 --limit 500
 ```
 
 ### `/audit filter <type>`
