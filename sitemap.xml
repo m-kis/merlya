@@ -1,79 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://docs.merlya.fr/</loc>
+         <loc>https://merlya.m-kis.fr/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/architecture/</loc>
+         <loc>https://merlya.m-kis.fr/architecture/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/commands/</loc>
+         <loc>https://merlya.m-kis.fr/commands/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/configuration/</loc>
+         <loc>https://merlya.m-kis.fr/configuration/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/extending/</loc>
+         <loc>https://merlya.m-kis.fr/extending/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/ssh/</loc>
+         <loc>https://merlya.m-kis.fr/ssh/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/tools/</loc>
+         <loc>https://merlya.m-kis.fr/tools/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/architecture/decisions/</loc>
+         <loc>https://merlya.m-kis.fr/architecture/decisions/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/getting-started/configuration/</loc>
+         <loc>https://merlya.m-kis.fr/getting-started/configuration/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/getting-started/installation/</loc>
+         <loc>https://merlya.m-kis.fr/getting-started/installation/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/getting-started/quickstart/</loc>
+         <loc>https://merlya.m-kis.fr/getting-started/quickstart/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/guides/automation/</loc>
+         <loc>https://merlya.m-kis.fr/guides/automation/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/guides/llm-providers/</loc>
+         <loc>https://merlya.m-kis.fr/guides/llm-providers/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/guides/repl-mode/</loc>
+         <loc>https://merlya.m-kis.fr/guides/repl-mode/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/guides/ssh-management/</loc>
+         <loc>https://merlya.m-kis.fr/guides/ssh-management/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/reference/api/</loc>
+         <loc>https://merlya.m-kis.fr/reference/api/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/reference/cli/</loc>
+         <loc>https://merlya.m-kis.fr/reference/cli/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/reference/configuration/</loc>
+         <loc>https://merlya.m-kis.fr/reference/configuration/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
     <url>
-         <loc>https://docs.merlya.fr/reference/non-interactive/</loc>
+         <loc>https://merlya.m-kis.fr/reference/non-interactive/</loc>
          <lastmod>2025-12-15</lastmod>
     </url>
 </urlset>
