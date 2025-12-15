@@ -52,7 +52,44 @@ export OPENAI_API_KEY="..."
 merlya run "Check disk usage on @web-01"
 ```
 
-Ready to get started? See the [Installation Guide](getting-started/installation.md).
+## Documentation
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch:{ .lg .middle } **Getting Started**
+
+    ---
+
+    - [Installation](getting-started/installation.md)
+    - [Quick Start](getting-started/quickstart.md)
+    - [Configuration](getting-started/configuration.md)
+
+-   :material-book-open-variant:{ .lg .middle } **Guides**
+
+    ---
+
+    - [REPL Mode](guides/repl-mode.md)
+    - [SSH Management](guides/ssh-management.md)
+    - [LLM Providers](guides/llm-providers.md)
+    - [Automation](guides/automation.md)
+
+-   :material-file-document:{ .lg .middle } **Reference**
+
+    ---
+
+    - [CLI Reference](reference/cli.md)
+    - [Slash Commands](commands.md)
+    - [Tools](tools.md)
+    - [Configuration](reference/configuration.md)
+
+-   :material-cog:{ .lg .middle } **Architecture**
+
+    ---
+
+    - [Overview](architecture.md)
+    - [Decisions (ADR)](architecture/decisions.md)
+
+</div>
 
 [Get Started :material-arrow-right:](getting-started/installation.md){ .md-button .md-button--primary }
 [View on GitHub :material-github:](https://github.com/m-kis/merlya){ .md-button }
