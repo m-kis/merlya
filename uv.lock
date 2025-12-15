@@ -1975,6 +1975,7 @@ dependencies = [
     { name = "loguru" },
     { name = "mcp" },
     { name = "numpy" },
+    { name = "onnxruntime" },
     { name = "openai" },
     { name = "prompt-toolkit" },
     { name = "psutil" },
@@ -1983,14 +1984,11 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "secretstorage", marker = "sys_platform == 'linux'" },
+    { name = "tokenizers" },
     { name = "urllib3" },
 ]
 
 [package.optional-dependencies]
-all = [
-    { name = "onnxruntime" },
-    { name = "tokenizers" },
-]
 dev = [
     { name = "mypy" },
     { name = "pytest" },
@@ -2006,10 +2004,6 @@ docs = [
     { name = "mkdocs-static-i18n" },
     { name = "pymdown-extensions" },
 ]
-router = [
-    { name = "onnxruntime" },
-    { name = "tokenizers" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -2023,14 +2017,13 @@ requires-dist = [
     { name = "keyrings-alt", marker = "sys_platform == 'linux'", specifier = ">=5.0" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "mcp", specifier = ">=1.23.0" },
-    { name = "merlya", extras = ["router"], marker = "extra == 'all'" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocs-minify-plugin", marker = "extra == 'docs'", specifier = ">=0.8.0" },
     { name = "mkdocs-static-i18n", marker = "extra == 'docs'", specifier = ">=1.2.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "onnxruntime", marker = "extra == 'router'", specifier = ">=1.19" },
+    { name = "onnxruntime", specifier = ">=1.19" },
     { name = "openai", specifier = ">=1.50" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "psutil", specifier = ">=6.1" },
@@ -2044,11 +2037,11 @@ requires-dist = [
     { name = "rich", specifier = ">=14.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
     { name = "secretstorage", marker = "sys_platform == 'linux'", specifier = ">=3.3" },
-    { name = "tokenizers", marker = "extra == 'router'", specifier = ">=0.20" },
+    { name = "tokenizers", specifier = ">=0.20" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "urllib3", specifier = ">=2.6.0" },
 ]
-provides-extras = ["router", "dev", "docs", "all"]
+provides-extras = ["dev", "docs"]
 
 [[package]]
 name = "mistralai"

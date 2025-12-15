@@ -14,17 +14,6 @@ La méthode recommandée pour installer Merlya est via pip :
 pip install merlya
 ```
 
-### Options d'installation
-
-```bash
-pip install merlya          # Installation standard
-pip install merlya[router]  # Avec routeur ONNX local
-pip install merlya[all]     # Tous les extras
-```
-
-!!! note "Compatibilité Python"
-    ONNX n'a pas encore de wheels Python 3.14 : utilisez Python ≤ 3.13 pour `[router]`.
-
 ## Installation depuis les sources
 
 Pour la dernière version de développement :

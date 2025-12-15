@@ -99,15 +99,9 @@ Merlya est un assistant CLI autonome qui comprend le contexte de votre infrastru
 ## Installation (utilisateurs finaux)
 
 ```bash
-pip install merlya          # Installation standard
-pip install merlya[router]  # Avec router ONNX local
-pip install merlya[all]     # Tous les extras
-
-# Lancer l’assistant
+pip install merlya
 merlya
 ```
-
-> ONNX n'a pas encore de roues Python 3.14 : utilisez Python ≤ 3.13 pour `[router]`.
 
 ### Installation Docker
 
