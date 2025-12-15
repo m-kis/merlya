@@ -2,11 +2,56 @@
 
 {% block extrahead %}
   {{ super() }}
+  <!-- SEO Meta Tags -->
   <meta name="description" content="{{ config.site_description | e }}" />
+  <meta name="keywords" content="merlya, ai, infrastructure, devops, sysadmin, ssh, cli, automation, llm" />
+  <meta name="author" content="Cedric (M-KIS)" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="{{ page.canonical_url | e }}" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
   <meta property="og:site_name" content="{{ config.site_name | e }}" />
   <meta property="og:title" content="{{ (page.title ~ ' - ' ~ config.site_name) | e }}" />
   <meta property="og:description" content="{{ config.site_description | e }}" />
   <meta property="og:url" content="{{ page.canonical_url | e }}" />
+  <meta property="og:image" content="https://merlya.fr/static/media/logo.41177386c9cd7ecf8aaa.png" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="fr_FR" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="{{ (page.title ~ ' - ' ~ config.site_name) | e }}" />
+  <meta name="twitter:description" content="{{ config.site_description | e }}" />
+  <meta name="twitter:image" content="https://merlya.fr/static/media/logo.41177386c9cd7ecf8aaa.png" />
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Merlya",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows",
+    "description": "{{ config.site_description | e }}",
+    "url": "{{ config.site_url | e }}",
+    "author": {
+      "@type": "Person",
+      "name": "Cedric",
+      "url": "https://github.com/m-kis"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "softwareVersion": "0.7.4",
+    "downloadUrl": "https://pypi.org/project/merlya/",
+    "license": "https://opensource.org/licenses/MIT"
+  }
+  </script>
+
+  <!-- RAG API URL -->
   <script>
     window.__MERLYA_RAG_API_URL = {{ config.extra.get('rag_api_url') | default('', true) | tojson }};
   </script>
