@@ -29,14 +29,16 @@ merlya
 ### LLM Provider Selection
 
 ```
-╭─────────────────────────────────────────────────────────────────╮
-│                      LLM Configuration                           │
-├─────────────────────────────────────────────────────────────────┤
-│  1. OpenRouter (recommended) - Free models available             │
-│  2. Anthropic - Claude models                                    │
-│  3. OpenAI - GPT models                                          │
-│  4. Ollama - Local models (no API key needed)                    │
-╰─────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────╮
+│                      LLM Configuration                            │
+├───────────────────────────────────────────────────────────────────┤
+│  1. OpenRouter (recommended - multi-model)                        │
+│  2. Anthropic (Claude direct)                                     │
+│  3. OpenAI (GPT models)                                           │
+│  4. Mistral (Mistral AI)                                          │
+│  5. Groq (fast inference)                                         │
+│  6. Ollama (local models)                                         │
+╰───────────────────────────────────────────────────────────────────╯
 
 Select provider [1]:
 ```
