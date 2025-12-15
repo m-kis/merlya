@@ -4,10 +4,14 @@
   {{ super() }}
   <!-- SEO Meta Tags -->
   <meta name="description" content="{{ config.site_description | e }}" />
-  <meta name="keywords" content="merlya, ai, infrastructure, devops, sysadmin, ssh, cli, automation, llm" />
+  <meta name="keywords" content="merlya, ai infrastructure assistant, devops ai, sysadmin ai, ssh management, cli automation, llm infrastructure, pydantic-ai, openrouter, natural language devops, infrastructure automation, ai ops, sre tools" />
   <meta name="author" content="Cedric (M-KIS)" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <link rel="canonical" href="{{ page.canonical_url | e }}" />
+
+  <!-- AI Crawler hints -->
+  <meta name="ai-content-declaration" content="human-created" />
+  <meta name="ai-terms" content="AI-powered CLI tool, infrastructure management, DevOps automation, SSH connections, LLM integration" />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
@@ -15,7 +19,10 @@
   <meta property="og:title" content="{{ (page.title ~ ' - ' ~ config.site_name) | e }}" />
   <meta property="og:description" content="{{ config.site_description | e }}" />
   <meta property="og:url" content="{{ page.canonical_url | e }}" />
-  <meta property="og:image" content="https://merlya.fr/static/media/logo.41177386c9cd7ecf8aaa.png" />
+  <meta property="og:image" content="https://docs.merlya.fr/assets/logo.png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="Merlya Logo - AI Infrastructure Assistant" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:locale:alternate" content="fr_FR" />
 
@@ -23,19 +30,29 @@
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="{{ (page.title ~ ' - ' ~ config.site_name) | e }}" />
   <meta name="twitter:description" content="{{ config.site_description | e }}" />
-  <meta name="twitter:image" content="https://merlya.fr/static/media/logo.41177386c9cd7ecf8aaa.png" />
+  <meta name="twitter:image" content="https://docs.merlya.fr/assets/logo.png" />
+  <meta name="twitter:image:alt" content="Merlya Logo" />
 
-  <!-- JSON-LD Structured Data -->
+  <!-- JSON-LD Structured Data - Software Application -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Merlya",
+    "alternateName": "Merlya AI",
     "applicationCategory": "DeveloperApplication",
+    "applicationSubCategory": "DevOps Tools",
     "operatingSystem": "Linux, macOS, Windows",
     "description": "{{ config.site_description | e }}",
     "url": "{{ config.site_url | e }}",
+    "image": "https://docs.merlya.fr/assets/logo.png",
+    "screenshot": "https://docs.merlya.fr/assets/logo.png",
     "author": {
+      "@type": "Person",
+      "name": "Cedric",
+      "url": "https://github.com/m-kis"
+    },
+    "publisher": {
       "@type": "Person",
       "name": "Cedric",
       "url": "https://github.com/m-kis"
@@ -43,11 +60,95 @@
     "offers": {
       "@type": "Offer",
       "price": "0",
-      "priceCurrency": "USD"
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
     },
     "softwareVersion": "0.7.4",
     "downloadUrl": "https://pypi.org/project/merlya/",
-    "license": "https://opensource.org/licenses/MIT"
+    "installUrl": "https://pypi.org/project/merlya/",
+    "softwareRequirements": "Python 3.10+",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "keywords": ["AI", "DevOps", "Infrastructure", "SSH", "CLI", "Automation", "LLM", "SRE", "SysAdmin"],
+    "featureList": [
+      "Natural language interface for infrastructure tasks",
+      "SSH connection management with MFA support",
+      "Multiple LLM providers (OpenRouter, OpenAI, Anthropic, Ollama)",
+      "Host discovery from SSH config and known_hosts",
+      "Security scanning with severity scoring",
+      "REPL mode with autocompletion"
+    ]
+  }
+  </script>
+
+  <!-- JSON-LD Structured Data - Documentation -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "{{ page.title | e }}",
+    "description": "{{ config.site_description | e }}",
+    "url": "{{ page.canonical_url | e }}",
+    "author": {
+      "@type": "Person",
+      "name": "Cedric"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Cedric"
+    },
+    "inLanguage": ["en", "fr"],
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Merlya Documentation",
+      "url": "https://docs.merlya.fr/"
+    },
+    "about": {
+      "@type": "SoftwareApplication",
+      "name": "Merlya"
+    }
+  }
+  </script>
+
+  <!-- JSON-LD Structured Data - FAQ for common questions -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is Merlya?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Merlya is an AI-powered CLI tool for DevOps, SRE, and SysAdmins. It combines LLM capabilities with practical infrastructure management, offering natural language interface for SSH connections, host management, and security scanning."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I install Merlya?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Install Merlya using pip: 'pip install merlya' for standard installation, 'pip install merlya[router]' with ONNX router, or 'pip install merlya[all]' for all extras."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which LLM providers does Merlya support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Merlya supports OpenRouter (default, with free tier), OpenAI (GPT-4o), Anthropic (Claude), Ollama (local deployment), and LiteLLM (proxy for multiple providers)."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is Merlya free to use?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, Merlya is open source under MIT License with Commons Clause. You can use free LLM providers like OpenRouter's free tier or local Ollama for zero-cost operation."
+        }
+      }
+    ]
   }
   </script>
 
@@ -56,4 +157,3 @@
     window.__MERLYA_RAG_API_URL = {{ config.extra.get('rag_api_url') | default('', true) | tojson }};
   </script>
 {% endblock %}
-
