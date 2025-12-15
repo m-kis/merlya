@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://merlya.fr/static/media/logo.41177386c9cd7ecf8aaa.png" alt="Merlya Logo" width="120">
+  <img src="https://merlya.m-kis.fr/assets/logo.png" alt="Merlya Logo" width="120">
 </p>
 
 <h1 align="center">Merlya</h1>
@@ -196,9 +196,11 @@ L'agent détecte les patterns répétitifs (même outil appelé 3+ fois, alterna
 
 | Variable | Description |
 |----------|-------------|
+| `OPENROUTER_API_KEY` | Clé OpenRouter (provider par défaut) |
 | `ANTHROPIC_API_KEY` | Clé Anthropic |
 | `OPENAI_API_KEY` | Clé OpenAI |
-| `OPENROUTER_API_KEY` | Clé OpenRouter |
+| `MISTRAL_API_KEY` | Clé Mistral |
+| `GROQ_API_KEY` | Clé Groq |
 | `MERLYA_ROUTER_FALLBACK` | Modèle de fallback LLM |
 | `MERLYA_ROUTER_MODEL` | Override du modèle de router local |
 
@@ -236,7 +238,7 @@ Principes clés : DRY/KISS/YAGNI, SOLID, SoC, LoD, pas de fichiers > ~600 lignes
 
 ## Documentation
 
-📚 **Documentation complète** : [https://m-kis.github.io/merlya/](https://m-kis.github.io/merlya/)
+📚 **Documentation complète** : [https://merlya.m-kis.fr/](https://merlya.m-kis.fr/)
 
 Fichiers locaux :
 - [docs/architecture.md](docs/architecture.md) : architecture et décisions
