@@ -1,5 +1,5 @@
 site_name: Merlya - AI Infrastructure Assistant
-site_url: https://docs.merlya.fr/
+site_url: https://merlya.m-kis.fr/
 site_author: Cedric (M-KIS)
 site_description: >-
   Merlya is an AI-powered CLI tool for DevOps and SysAdmins.
@@ -125,7 +125,7 @@ extra:
     - property: og:description
       content: AI-powered CLI tool for DevOps and SysAdmins. Manage infrastructure with natural language, SSH connections, and multiple LLM providers.
     - property: og:image
-      content: https://docs.merlya.fr/assets/logo.png
+      content: https://merlya.m-kis.fr/assets/logo.png
     - name: twitter:card
       content: summary
     - name: twitter:title
