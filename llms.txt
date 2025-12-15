@@ -1,0 +1,80 @@
+# Merlya - AI Infrastructure Assistant
+# https://docs.merlya.fr
+
+> Merlya is an AI-powered CLI tool for DevOps, SRE, and SysAdmins.
+> It combines LLM capabilities with practical infrastructure management.
+
+## Overview
+
+Merlya helps infrastructure professionals by providing:
+- Natural language interface for infrastructure tasks
+- SSH connection management with pooling and MFA/2FA support
+- Multiple LLM provider support (OpenRouter, OpenAI, Anthropic, Ollama)
+- Host discovery from SSH config, known_hosts, /etc/hosts, Ansible inventory
+- Security scanning with severity scoring
+- REPL mode with autocompletion and @ mentions
+
+## Installation
+
+```bash
+pip install merlya          # Standard installation
+pip install merlya[router]  # With ONNX router for model selection
+pip install merlya[all]     # All extras including router
+```
+
+## Quick Start
+
+1. Run `merlya` - setup wizard runs automatically on first launch
+2. Select LLM provider (OpenRouter recommended - has free tier)
+3. Enter API key (stored securely in system keyring)
+4. Import hosts from SSH config or known_hosts
+5. Start chatting with your infrastructure!
+
+## Key Features
+
+### LLM Providers
+- **OpenRouter** (default): Access to 100+ models, free tier available
+- **OpenAI**: GPT-4o, GPT-4o-mini
+- **Anthropic**: Claude 3.5 Sonnet, Claude 3.5 Haiku
+- **Ollama**: Local (free) or cloud deployment
+- **LiteLLM**: Proxy for multiple providers
+
+### Host Management
+- Add, edit, delete hosts with `/hosts` commands
+- Tag hosts for organization
+- Import/export in JSON, YAML, CSV, SSH config formats
+- Auto-discover from SSH config and known_hosts
+
+### SSH Operations
+- Connect with `/ssh connect <host>`
+- Execute remote commands with `/ssh exec <host> <command>`
+- MFA/2FA support for secure connections
+- Connection pooling for efficiency
+
+### Security Scanning
+- Scan hosts with `/scan <host>`
+- Check CPU, memory, disk usage
+- Audit SSH configuration
+- Review user accounts and services
+- Check for available updates
+
+### Conversation History
+- Persistent conversation storage
+- Search history with `/conv search`
+- Export conversations to JSON or Markdown
+
+## Configuration
+
+- Config file: `~/.merlya/config.yaml`
+- API keys: stored in system keyring (secure)
+- Hosts database: SQLite for reliability
+
+## Links
+
+- Documentation: https://docs.merlya.fr/
+- GitHub: https://github.com/m-kis/merlya
+- PyPI: https://pypi.org/project/merlya/
+
+## License
+
+MIT License with Commons Clause
