@@ -71,9 +71,7 @@ Merlya is an AI-powered infrastructure assistant CLI tool for DevOps and SRE tea
 
 ## Installation
 \`\`\`bash
-pip install merlya          # Standard
-pip install merlya[router]  # With ONNX router
-pip install merlya[all]     # All extras
+pip install merlya
 \`\`\`
 
 ## Quick Start
