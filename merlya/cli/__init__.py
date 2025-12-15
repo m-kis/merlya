@@ -48,7 +48,12 @@ Examples:
   merlya run "Check disk space"             Execute single command
   merlya run --file tasks.yml               Execute from file
   merlya run --yes "Restart nginx"          Skip confirmations
-  merlya config set llm.provider openai     Set configuration
+  merlya config set model.provider openai   Set LLM provider
+  merlya config set model.model gpt-4o      Set LLM model
+  merlya config show                        Show all settings
+
+LLM Providers: openrouter (default), anthropic, openai, mistral, groq, ollama
+Documentation: https://merlya.m-kis.fr/
         """,
     )
 
