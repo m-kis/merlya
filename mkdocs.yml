@@ -60,7 +60,6 @@ plugins:
         - fr
   - minify:
       minify_html: true
-  - social
 
 markdown_extensions:
   - abbr
