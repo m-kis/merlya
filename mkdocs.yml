@@ -51,7 +51,7 @@ theme:
     - content.tabs.link
   icon:
     repo: fontawesome/brands/github
-  logo: assets/logo.png
+    logo: material/console
   favicon: assets/logo.png
 
 plugins:
