@@ -348,7 +348,7 @@ def _is_tool_result_success(content: Any) -> bool:
         if "success" in content:
             return bool(content["success"])
         # Check for error field
-        if "error" in content and content["error"]:
+        if content.get("error"):
             return False
         # Check exit_code if present
         if "exit_code" in content:
