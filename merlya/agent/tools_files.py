@@ -88,8 +88,7 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
             return {"success": True, "message": result.data}
         if check_recoverable_error(result.error):
             raise ModelRetry(
-                f"Cannot write to '{path}' on '{host}'. "
-                "Check the path exists or verify host name."
+                f"Cannot write to '{path}' on '{host}'. Check the path exists or verify host name."
             )
         return {"success": False, "error": result.error}
 
