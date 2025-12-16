@@ -18,7 +18,8 @@
     "spinner": {
       "routing": "🧠 Analyse de la requête...",
       "agent": "⚡ Exécution du plan..."
-    }
+    },
+    "routing_cancelled": "Routage annulé"
   },
   "welcome_screen": {
     "title": "Bienvenue",

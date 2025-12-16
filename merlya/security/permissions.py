@@ -87,6 +87,7 @@ class PermissionManager:
         self.ctx = ctx
         self._cache: dict[str, dict[str, Any]] = {}  # Capabilities cache
         self._declined_methods: dict[str, set[str]] = {}  # host -> declined methods
+        self._failed_methods: dict[str, set[str]] = {}  # host -> methods that failed (bad password)
         self._consented_methods: dict[str, str] = {}  # host -> consented method
         self._detection_locks: dict[str, asyncio.Lock] = {}  # Per-host lock for detection
         self._locks_lock = asyncio.Lock()  # Protects _detection_locks dict creation
@@ -171,6 +172,20 @@ class PermissionManager:
                 method=capabilities["elevation_method"] or "none",
             )
             return capabilities
+
+    def get_cached_capabilities(self, host: str) -> dict[str, Any] | None:
+        """Get in-memory cached capabilities for a host.
+
+        This returns only the in-memory cache, not persisted capabilities.
+        Use detect_capabilities() to get fresh or persisted capabilities.
+
+        Args:
+            host: Host name to look up.
+
+        Returns:
+            Capabilities dict if cached, None otherwise.
+        """
+        return self._cache.get(host)
 
     async def _load_cached_capabilities(self, host: str) -> dict[str, Any] | None:
         """Load cached capabilities from host metadata if not expired."""
@@ -283,9 +298,42 @@ class PermissionManager:
                 capabilities["sudo_nopasswd"] = True
                 available.append((ELEVATION_PRIORITY["sudo"], "sudo", False))
             else:
-                available.append(
-                    (ELEVATION_PRIORITY["sudo_with_password"], "sudo_with_password", True)
+                # Test if user CAN use sudo (even with password)
+                # sudo -l -n returns different errors:
+                # - "not in sudoers" / "not allowed" -> sudo won't work at all
+                # - "password is required" (EN) / "nécessaire de saisir" (FR) -> needs password
+                sudo_check_ok, sudo_check_output = await _run("sudo -l -n 2>&1")
+                output_lower = sudo_check_output.lower()
+                # Check for password-required messages in multiple languages
+                password_required = any(
+                    msg in output_lower
+                    for msg in [
+                        "password is required",  # English
+                        "nécessaire de saisir",  # French
+                        "mot de passe",  # French generic
+                        "contraseña",  # Spanish
+                        "passwort",  # German
+                    ]
                 )
+                not_authorized = any(
+                    msg in output_lower
+                    for msg in [
+                        "not in sudoers",
+                        "not allowed",
+                        "pas autorisé",  # French
+                        "pas dans le fichier sudoers",  # French
+                    ]
+                )
+                if sudo_check_ok or (password_required and not not_authorized):
+                    # User is in sudoers, just needs password
+                    available.append(
+                        (ELEVATION_PRIORITY["sudo_with_password"], "sudo_with_password", True)
+                    )
+                    capabilities["sudo_needs_password"] = True
+                else:
+                    # User not in sudoers at all
+                    logger.debug(f"🔒 User not authorized for sudo on {host}: {sudo_check_output[:100]}")
+                    capabilities["sudo_not_authorized"] = True
 
         # Check doas (test NOPASSWD)
         ok, doas_path = await _run("which doas")
@@ -423,8 +471,9 @@ class PermissionManager:
             logger.debug(f"🔒 Using cached elevation method {method} for {host}")
             return await self._prepare_with_method(host, command, caps, method)
 
-        # Get declined methods for this host
+        # Get declined and failed methods for this host
         declined = self._declined_methods.get(host, set())
+        failed = self._failed_methods.get(host, set())
 
         # Try each available method in priority order
         for method_info in available:
@@ -433,6 +482,11 @@ class PermissionManager:
             # Skip already declined methods
             if method in declined:
                 logger.debug(f"🔒 Skipping declined method {method} for {host}")
+                continue
+
+            # Skip methods that failed (wrong password)
+            if method in failed:
+                logger.debug(f"🔒 Skipping failed method {method} for {host} (wrong password?)")
                 continue
 
             # Ask for consent
@@ -528,10 +582,62 @@ class PermissionManager:
         """Store elevation password (alias for store_password for compatibility)."""
         self.store_password(host, password, method)
 
+    def mark_method_failed(self, host: str, method: str) -> None:
+        """Mark an elevation method as failed (e.g., wrong password/timeout).
+
+        This prevents the system from retrying the same method and clears any
+        cached password from the keyring for security. Also clears the consented
+        method so the system tries the next available method.
+
+        Security: The password is removed from keyring immediately to prevent
+        repeated failed attempts with the same (wrong) password.
+
+        Args:
+            host: Host name.
+            method: Elevation method that failed.
+        """
+        if host not in self._failed_methods:
+            self._failed_methods[host] = set()
+        self._failed_methods[host].add(method)
+
+        # Clear the consented method so we try the next one
+        if self._consented_methods.get(host) == method:
+            del self._consented_methods[host]
+            logger.debug(f"🔒 Cleared consented method {method} for {host}")
+
+        # Clear the stored (wrong) password from keyring - SECURITY CRITICAL
+        # Do not log the password or any details about it
+        password_key = self._password_key(host, method)
+        self._secrets.remove(password_key)
+        logger.debug(f"🔒 Marked {method} as failed for {host}, cleared cached credentials")
+
+    def is_method_failed(self, host: str, method: str) -> bool:
+        """Check if an elevation method has previously failed for a host.
+
+        Args:
+            host: Host name.
+            method: Elevation method to check.
+
+        Returns:
+            True if method has failed (bad password/timeout).
+        """
+        return method in self._failed_methods.get(host, set())
+
+    def clear_failed_methods(self, host: str | None = None) -> None:
+        """Clear failed method tracking for a host (or all hosts).
+
+        Use this when the user wants to retry elevation with new credentials.
+        """
+        if host:
+            self._failed_methods.pop(host, None)
+        else:
+            self._failed_methods.clear()
+
     def clear_cache(self, host: str | None = None) -> None:
-        """Clear cached consent and password for a host (or all hosts)."""
+        """Clear cached consent, failures, and passwords for a host (or all hosts)."""
         if host:
             self._declined_methods.pop(host, None)
+            self._failed_methods.pop(host, None)
             self._consented_methods.pop(host, None)
             self._cache.pop(host, None)
             # Remove passwords from keyring (both user and root)
@@ -539,6 +645,7 @@ class PermissionManager:
             self._secrets.remove(self._password_key(host, "su"))
         else:
             self._declined_methods.clear()
+            self._failed_methods.clear()
             self._consented_methods.clear()
             self._cache.clear()
             # Remove all elevation passwords from keyring

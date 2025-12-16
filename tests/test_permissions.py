@@ -81,6 +81,7 @@ async def test_su_without_password_when_privileged_group() -> None:
             "groups": _StubResult("wheel users"),
             "which sudo": _StubResult("/usr/bin/sudo"),
             "sudo -n true": _StubResult("", exit_code=1),
+            "sudo -l -n 2>&1": _StubResult("sudo: a password is required", exit_code=1),
             "which doas": _StubResult("", exit_code=1),
             "which su": _StubResult("/bin/su"),
         }
@@ -123,6 +124,39 @@ async def test_su_prompts_when_no_privileged_group() -> None:
     assert result.needs_password is True
     assert result.input_data is None
     assert result.note == "password_needed"
+
+
+@pytest.mark.asyncio
+async def test_sudo_not_in_sudoers_falls_back_to_su() -> None:
+    """When sudo exists but user is not in sudoers, fall back to su."""
+
+    ui = _StubUI(confirm=True, secrets=["rootpw"])
+    ctx = _make_ctx(ui)
+
+    async def fake_execute(_host: str, cmd: str):
+        mapping = {
+            "whoami": _StubResult("cedric"),
+            "groups": _StubResult("users"),  # Not in privileged group
+            "which sudo": _StubResult("/usr/bin/sudo"),
+            "sudo -n true": _StubResult("", exit_code=1),
+            # User NOT in sudoers - different error message
+            "sudo -l -n 2>&1": _StubResult(
+                "cedric is not in the sudoers file. This incident will be reported.",
+                exit_code=1,
+            ),
+            "which doas": _StubResult("", exit_code=1),
+            "which su": _StubResult("/bin/su"),
+        }
+        return mapping.get(cmd, _StubResult("", exit_code=1))
+
+    pm = PermissionManager(ctx)
+    pm._execute = fake_execute  # type: ignore[assignment]
+
+    result = await pm.prepare_command("host", "systemctl restart nginx")
+
+    # Should fall back to su since user is not in sudoers
+    assert result.method == "su"
+    assert result.needs_password is True
 
 
 @pytest.mark.asyncio
@@ -249,3 +283,115 @@ class TestPermissionManagerLocking:
         lock1 = await pm._get_host_lock("host1")
         lock2 = await pm._get_host_lock("host2")
         assert lock1 is not lock2
+
+
+class TestPermissionManagerFailedMethods:
+    """Tests for failed method tracking (prevents retry loops)."""
+
+    def test_mark_method_failed_tracks_failure(self) -> None:
+        """Test that mark_method_failed tracks the failed method."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        assert not pm.is_method_failed("host1", "sudo_with_password")
+
+        pm.mark_method_failed("host1", "sudo_with_password")
+
+        assert pm.is_method_failed("host1", "sudo_with_password")
+        assert not pm.is_method_failed("host1", "su")  # Other methods not affected
+        assert not pm.is_method_failed("host2", "sudo_with_password")  # Other hosts not affected
+
+    def test_mark_method_failed_clears_password(self) -> None:
+        """Test that mark_method_failed clears cached password from keyring."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        # Cache a password first
+        pm.cache_password("host1", "wrongpassword", "sudo_with_password")
+        assert pm._get_cached_password("host1") is not None
+
+        # Mark as failed should clear the password
+        pm.mark_method_failed("host1", "sudo_with_password")
+
+        assert pm._get_cached_password("host1") is None
+
+    def test_mark_method_failed_clears_su_root_password(self) -> None:
+        """Test that mark_method_failed clears root password for su method."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        # Cache root password for su
+        pm.cache_password("host1", "wrongrootpwd", "su")
+        # Verify it's stored with the root key
+        assert ctx.secrets.get("elevation:host1:root:password") is not None
+
+        # Mark su as failed should clear the root password
+        pm.mark_method_failed("host1", "su")
+
+        assert ctx.secrets.get("elevation:host1:root:password") is None
+
+    def test_mark_method_failed_clears_consented_method(self) -> None:
+        """Test that mark_method_failed clears the consented method."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        # Simulate a consented method
+        pm._consented_methods["host1"] = "sudo_with_password"
+        assert pm._consented_methods.get("host1") == "sudo_with_password"
+
+        # Mark as failed should clear the consented method
+        pm.mark_method_failed("host1", "sudo_with_password")
+
+        assert "host1" not in pm._consented_methods
+
+    def test_mark_method_failed_does_not_clear_other_consented_method(self) -> None:
+        """Test that mark_method_failed doesn't clear consented if different method."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        # Simulate consented to su
+        pm._consented_methods["host1"] = "su"
+
+        # Mark sudo_with_password as failed should not affect su consent
+        pm.mark_method_failed("host1", "sudo_with_password")
+
+        assert pm._consented_methods.get("host1") == "su"
+
+    def test_clear_failed_methods_single_host(self) -> None:
+        """Test clearing failed methods for a single host."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        pm.mark_method_failed("host1", "sudo_with_password")
+        pm.mark_method_failed("host1", "su")
+        pm.mark_method_failed("host2", "sudo_with_password")
+
+        pm.clear_failed_methods("host1")
+
+        assert not pm.is_method_failed("host1", "sudo_with_password")
+        assert not pm.is_method_failed("host1", "su")
+        assert pm.is_method_failed("host2", "sudo_with_password")  # Other host not affected
+
+    def test_clear_failed_methods_all_hosts(self) -> None:
+        """Test clearing failed methods for all hosts."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        pm.mark_method_failed("host1", "sudo_with_password")
+        pm.mark_method_failed("host2", "su")
+
+        pm.clear_failed_methods()
+
+        assert not pm.is_method_failed("host1", "sudo_with_password")
+        assert not pm.is_method_failed("host2", "su")
+
+    def test_clear_cache_also_clears_failed_methods(self) -> None:
+        """Test that clear_cache also clears failed method tracking."""
+        ctx = _make_ctx(_StubUI())
+        pm = PermissionManager(ctx)
+
+        pm.mark_method_failed("host1", "sudo_with_password")
+
+        pm.clear_cache("host1")
+
+        assert not pm.is_method_failed("host1", "sudo_with_password")

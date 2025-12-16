@@ -174,3 +174,37 @@ def log_security(message: str) -> None:
 def log_critical(message: str) -> None:
     """Log critical alert."""
     logger.critical(f"{LogEmoji.CRITICAL} {message}")
+
+
+def enable_http_debug() -> None:
+    """
+    Enable HTTP request/response debugging for API troubleshooting.
+
+    This enables logging for httpx (used by LLM providers) to see
+    the full request/response cycle. Useful for debugging tool_call_id
+    issues with providers like Mistral.
+
+    Usage:
+        from merlya.core.logging import enable_http_debug
+        enable_http_debug()
+    """
+    import logging
+
+    # Enable httpx logging
+    httpx_logger = logging.getLogger("httpx")
+    httpx_logger.setLevel(logging.DEBUG)
+
+    # Create a handler that outputs to stderr
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(
+        logging.Formatter("🌐 HTTP | %(asctime)s | %(message)s", datefmt="%H:%M:%S")
+    )
+    httpx_logger.addHandler(handler)
+
+    # Also enable httpcore for lower-level details
+    httpcore_logger = logging.getLogger("httpcore")
+    httpcore_logger.setLevel(logging.DEBUG)
+    httpcore_logger.addHandler(handler)
+
+    logger.info("🌐 HTTP debug logging enabled - all API requests will be logged")

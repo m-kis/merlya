@@ -53,4 +53,11 @@ def register_web_tools(agent: Agent[Any, Any]) -> None:
         )
         if result.success:
             return cast("dict[str, Any]", result.data)
-        raise ModelRetry(f"Web search failed: {getattr(result, 'error', 'unknown error')}")
+        # Only retry on rate limiting - network errors aren't recoverable by retrying
+        error_msg = getattr(result, "error", "") or ""
+        if "rate limit" in error_msg.lower():
+            raise ModelRetry("Rate limited. Try a different query or wait.")
+        return {"error": error_msg or "Web search failed", "results": []}
+
+
+__all__ = ["register_web_tools"]

@@ -9,9 +9,12 @@ from pydantic_ai.messages import (
 )
 
 from merlya.agent.history import (
+    _is_tool_result_success,
     create_history_processor,
     create_loop_aware_history_processor,
+    detect_consecutive_failures,
     detect_loop,
+    detect_tool_overuse,
     extract_recent_tool_signatures,
     find_safe_truncation_point,
     get_tool_call_count,
@@ -43,6 +46,18 @@ def _make_tool_return(tool_call_id: str, content: str = "result") -> ModelReques
     """Create a request with a tool return."""
     return ModelRequest(
         parts=[ToolReturnPart(tool_call_id=tool_call_id, tool_name="test_tool", content=content)]
+    )
+
+
+def _make_tool_return_with_result(
+    tool_call_id: str, tool_name: str, success: bool, error: str | None = None
+) -> ModelRequest:
+    """Create a request with a tool return containing a result dict."""
+    content = {"success": success}
+    if error:
+        content["error"] = error
+    return ModelRequest(
+        parts=[ToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)]
     )
 
 
@@ -481,3 +496,154 @@ class TestCreateLoopAwareHistoryProcessor:
                         break
 
         assert not has_breaker, "Loop breaker should NOT be injected when disabled"
+
+
+class TestIsToolResultSuccess:
+    """Tests for _is_tool_result_success function."""
+
+    def test_none_is_success(self) -> None:
+        """None content should be considered success."""
+        assert _is_tool_result_success(None) is True
+
+    def test_dict_with_success_true(self) -> None:
+        """Dict with success=True should be success."""
+        assert _is_tool_result_success({"success": True, "data": "foo"}) is True
+
+    def test_dict_with_success_false(self) -> None:
+        """Dict with success=False should be failure."""
+        assert _is_tool_result_success({"success": False, "error": "oops"}) is False
+
+    def test_dict_with_error_field(self) -> None:
+        """Dict with error field should be failure."""
+        assert _is_tool_result_success({"error": "something went wrong"}) is False
+
+    def test_dict_with_exit_code_zero(self) -> None:
+        """Dict with exit_code=0 should be success."""
+        assert _is_tool_result_success({"exit_code": 0, "stdout": "ok"}) is True
+
+    def test_dict_with_exit_code_nonzero(self) -> None:
+        """Dict with exit_code!=0 should be failure."""
+        assert _is_tool_result_success({"exit_code": 1, "stderr": "error"}) is False
+
+    def test_string_with_error_keyword(self) -> None:
+        """String containing error keywords should be failure."""
+        assert _is_tool_result_success("Error: connection refused") is False
+        assert _is_tool_result_success("Permission denied") is False
+        assert _is_tool_result_success("Timeout occurred") is False
+
+    def test_string_without_error(self) -> None:
+        """Normal string output should be success."""
+        assert _is_tool_result_success("Command completed successfully") is True
+
+
+class TestDetectConsecutiveFailures:
+    """Tests for detect_consecutive_failures function."""
+
+    def test_no_failures_returns_false(self) -> None:
+        """Should return False when no failures."""
+        messages = [_make_user_request("do stuff")]
+        for i in range(3):
+            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
+            messages.append(_make_tool_return_with_result(f"call_{i}", "ssh_execute", success=True))
+
+        is_failing, _ = detect_consecutive_failures(messages, threshold=4)
+        assert is_failing is False
+
+    def test_detects_consecutive_failures(self) -> None:
+        """Should detect when same tool fails consecutively."""
+        messages = [_make_user_request("check server")]
+        for i in range(4):
+            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
+            messages.append(
+                _make_tool_return_with_result(
+                    f"call_{i}", "ssh_execute", success=False, error="Connection refused"
+                )
+            )
+
+        is_failing, desc = detect_consecutive_failures(messages, threshold=4)
+        assert is_failing is True
+        assert desc is not None
+        assert "ssh_execute" in desc
+        assert "failed" in desc
+
+    def test_mixed_tools_not_consecutive(self) -> None:
+        """Should not trigger if different tools fail."""
+        messages = [_make_user_request("check stuff")]
+        tools = ["ssh_execute", "bash_execute", "file_read", "http_get"]
+        for i, tool in enumerate(tools):
+            messages.append(_make_tool_call(f"call_{i}", tool))
+            messages.append(
+                _make_tool_return_with_result(f"call_{i}", tool, success=False, error="Error")
+            )
+
+        is_failing, _ = detect_consecutive_failures(messages, threshold=4)
+        assert is_failing is False
+
+
+class TestDetectToolOveruse:
+    """Tests for detect_tool_overuse function."""
+
+    def test_no_overuse_returns_false(self) -> None:
+        """Should return False when tool not overused."""
+        messages = [_make_user_request("do stuff")]
+        for i in range(3):
+            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
+            messages.append(_make_tool_return_with_result(f"call_{i}", "ssh_execute", success=True))
+
+        is_overusing, _ = detect_tool_overuse(messages, threshold=6)
+        assert is_overusing is False
+
+    def test_detects_overuse_with_failures(self) -> None:
+        """Should detect when same tool used many times with failures."""
+        messages = [_make_user_request("check server")]
+        for i in range(6):
+            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
+            # 4 failures, 2 successes
+            success = i < 2
+            messages.append(
+                _make_tool_return_with_result(
+                    f"call_{i}",
+                    "ssh_execute",
+                    success=success,
+                    error=None if success else "Connection error",
+                )
+            )
+
+        is_overusing, desc = detect_tool_overuse(messages, threshold=6)
+        assert is_overusing is True
+        assert desc is not None
+        assert "ssh_execute" in desc
+
+    def test_no_trigger_without_failures(self) -> None:
+        """Should not trigger if tool succeeds (even if used many times)."""
+        messages = [_make_user_request("check many servers")]
+        for i in range(8):
+            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
+            messages.append(_make_tool_return_with_result(f"call_{i}", "ssh_execute", success=True))
+
+        is_overusing, _ = detect_tool_overuse(messages, threshold=6)
+        assert is_overusing is False
+
+
+class TestDetectLoopWithFailures:
+    """Tests for detect_loop with failure detection integration."""
+
+    def test_detects_ssh_consecutive_failures(self) -> None:
+        """Should detect SSH failing consecutively even with different commands."""
+        messages = [_make_user_request("check cloudflared status")]
+
+        # SSH fails 4 times with different commands
+        commands = ["systemctl status", "cloudflared list", "cloudflared info", "cloudflared --help"]
+        for i, cmd in enumerate(commands):
+            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"command": cmd}))
+            messages.append(
+                _make_tool_return_with_result(
+                    f"call_{i}", "ssh_execute", success=False, error="Connection refused"
+                )
+            )
+
+        is_loop, desc = detect_loop(messages)
+        assert is_loop is True
+        assert desc is not None
+        assert "ssh_execute" in desc
+        assert "failed" in desc

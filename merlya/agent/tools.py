@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 from pydantic_ai import Agent, ModelRetry, RunContext
 
+from merlya.agent.tools_common import check_recoverable_error
 from merlya.agent.tools_files import register_file_tools
 from merlya.agent.tools_mcp import register_mcp_tools
 from merlya.agent.tools_security import register_security_tools
@@ -138,38 +139,40 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         """
         Execute a command on a host via SSH.
 
-        IMPORTANT - ELEVATION IS AUTOMATIC:
+        ELEVATION IS AUTOMATIC:
         - Do NOT prefix commands with 'sudo' - just run the command as-is
         - If permission denied, Merlya automatically retries with elevation
         - The user will be prompted for password if needed (handled internally)
 
-        NEVER do this:
-        - ssh_execute(command="sudo systemctl restart nginx")  # WRONG
-        - ssh_execute(command="echo password | sudo -S ...")   # FORBIDDEN
+        FORBIDDEN (security risk - will be BLOCKED):
+        - ssh_execute(command="sudo systemctl restart nginx")  # Don't add sudo
+        - ssh_execute(command="echo password | sudo -S ...")   # No plaintext passwords
+        - ssh_execute(command="mysql -p'password' ...")        # No embedded passwords
 
-        CORRECT usage:
-        - ssh_execute(command="systemctl restart nginx")  # Auto-elevation if needed
+        CORRECT:
+        - ssh_execute(command="systemctl restart nginx")  # Auto-elevation
+        - ssh_execute(command="mongosh -u admin -p @db-password")  # Use @secret refs
 
         Args:
-            host: Host name or hostname (target machine).
-            command: Command WITHOUT sudo prefix. Can contain @secret-name references.
+            host: Host name or hostname (target machine). Accepts @hostname format.
+            command: Command WITHOUT sudo prefix. Use @secret-name for passwords.
             timeout: Command timeout in seconds (default: 60).
-            via: Optional jump host/bastion to tunnel through (e.g., "bastion").
+            via: Jump host/bastion for tunneling. Use when user says "via", "through",
+                 or "en passant par" another host (e.g., via="bastion", via="@jump").
             elevation: Optional elevation data from request_elevation (rarely needed).
 
         Returns:
             Command output with stdout, stderr, exit_code, elevation method, and verification hint.
-            When a verification hint is present, you SHOULD run the verification command to confirm
-            the action succeeded (e.g., after restart, verify service is active).
+            When a verification hint is present, you SHOULD run the verification command.
 
         Example:
             # Simple command (auto-elevates if permission denied)
             ssh_execute(host="web-server", command="systemctl restart nginx")
 
-            # Via bastion
+            # Via bastion (user said "via bastion" or "through @jump")
             ssh_execute(host="db-server", command="df -h", via="bastion")
 
-            # With secrets (resolved automatically)
+            # With secrets (resolved automatically at execution time)
             ssh_execute(host="db", command="mongosh -u admin -p @db-password")
         """
         from merlya.subagents.timeout import touch_activity
@@ -197,6 +200,10 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
                 "🔌 Circuit breaker open: too many SSH failures for this host. "
                 "STOP issuing more ssh_execute calls to this host, wait for the retry window or reset the circuit."
             )
+
+        # Check for recoverable errors (host not found, etc.)
+        if not result.success and check_recoverable_error(result.error):
+            raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
 
         response: dict[str, Any] = {
             "success": result.success,

@@ -138,12 +138,22 @@ class ConsoleUI:
 
     @contextmanager
     def spinner(self, message: str, spinner: str = "dots") -> Any:
-        """Show a spinner while executing a task."""
+        """Show a spinner while executing a task.
+
+        Note: The spinner does not block signals, but network I/O operations
+        may not be immediately interruptible. Use timeouts to ensure operations
+        can be cancelled within a reasonable time.
+        """
         status = self.console.status(f"[{ACCENT_COLOR}]{message}[/{ACCENT_COLOR}]", spinner=spinner)
         self._active_status = status
         try:
             with status:
                 yield
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            # Ensure spinner is stopped on interruption
+            status.stop()
+            self._active_status = None
+            raise
         finally:
             # Ensure spinner is stopped before any prompt overlays
             status.stop()

@@ -32,6 +32,10 @@ LOOP_THRESHOLD_SAME_CALL = 3  # Same tool+args called N times = loop
 LOOP_THRESHOLD_PATTERN = 4  # Same 2-3 tool alternation pattern
 MAX_TOOL_CALLS_SINCE_LAST_USER = 50  # Prevent command explosions per user request
 
+# Failure detection thresholds
+CONSECUTIVE_FAILURES_THRESHOLD = 4  # Same tool fails 4 times in a row
+SAME_TOOL_OVERUSE_THRESHOLD = 6  # Same tool called 6+ times (even with different args)
+
 # Type alias for history processor function
 HistoryProcessor = Callable[[list[ModelMessage]], list[ModelMessage]]
 
@@ -292,6 +296,170 @@ def extract_recent_tool_signatures(
     return signatures[-window:] if len(signatures) > window else signatures
 
 
+def _extract_tool_results(
+    messages: list[ModelMessage],
+) -> list[tuple[str, str, bool]]:
+    """
+    Extract tool calls paired with their success/failure status.
+
+    Args:
+        messages: Message history to analyze.
+
+    Returns:
+        List of (tool_name, tool_call_id, success) tuples in order of execution.
+    """
+    # Build mapping of tool_call_id -> (tool_name, args)
+    call_info: dict[str, tuple[str, Any]] = {}
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart) and part.tool_call_id:
+                    call_info[part.tool_call_id] = (part.tool_name, part.args)
+
+    # Extract results in order
+    results: list[tuple[str, str, bool]] = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:  # type: ignore[assignment]
+                if isinstance(part, ToolReturnPart) and part.tool_call_id:
+                    tool_call_id = part.tool_call_id
+                    if tool_call_id in call_info:
+                        tool_name = call_info[tool_call_id][0]
+                        success = _is_tool_result_success(part.content)
+                        results.append((tool_name, tool_call_id, success))
+
+    return results
+
+
+def _is_tool_result_success(content: Any) -> bool:
+    """
+    Determine if a tool result indicates success.
+
+    Checks for common success indicators in tool results:
+    - dict with "success": True/False
+    - string containing error keywords
+    """
+    if content is None:
+        return True  # Assume success if no content
+
+    # Handle dict results (ToolResult-like)
+    if isinstance(content, dict):
+        # Check explicit success field
+        if "success" in content:
+            return bool(content["success"])
+        # Check for error field
+        if "error" in content and content["error"]:
+            return False
+        # Check exit_code if present
+        if "exit_code" in content:
+            return bool(content["exit_code"] == 0)
+        return True
+
+    # Handle string results
+    if isinstance(content, str):
+        lower = content.lower()
+        # Common error indicators
+        error_indicators = [
+            "error:",
+            "failed:",
+            "permission denied",
+            "connection refused",
+            "timeout",
+            "not found",
+            "no such file",
+            "cannot connect",
+            "authentication failed",
+        ]
+        return not any(indicator in lower for indicator in error_indicators)
+
+    return True  # Default to success for unknown types
+
+
+def detect_consecutive_failures(
+    messages: list[ModelMessage],
+    threshold: int = CONSECUTIVE_FAILURES_THRESHOLD,
+) -> tuple[bool, str | None]:
+    """
+    Detect if a tool is failing consecutively.
+
+    This catches situations where SSH or other tools fail repeatedly
+    even with different commands/arguments.
+
+    Args:
+        messages: Message history to analyze.
+        threshold: Number of consecutive failures to trigger.
+
+    Returns:
+        Tuple of (is_failing, description).
+    """
+    # Only analyze messages after last user message
+    last_user_idx = _find_last_user_message_index(messages)
+    recent_messages = messages[last_user_idx:]
+
+    results = _extract_tool_results(recent_messages)
+    if len(results) < threshold:
+        return False, None
+
+    # Check last N results for consecutive failures of same tool
+    last_n = results[-threshold:]
+    if all(not success for _, _, success in last_n):
+        # All failures - check if same tool
+        tool_names = {name for name, _, _ in last_n}
+        if len(tool_names) == 1:
+            tool_name = tool_names.pop()
+            return (
+                True,
+                f"Tool '{tool_name}' failed {threshold} times consecutively",
+            )
+
+    return False, None
+
+
+def detect_tool_overuse(
+    messages: list[ModelMessage],
+    threshold: int = SAME_TOOL_OVERUSE_THRESHOLD,
+) -> tuple[bool, str | None]:
+    """
+    Detect if a single tool is being used excessively.
+
+    This catches situations where the agent keeps trying variations
+    of the same tool without making progress.
+
+    Args:
+        messages: Message history to analyze.
+        threshold: Number of calls to same tool to trigger.
+
+    Returns:
+        Tuple of (is_overusing, description).
+    """
+    # Only analyze messages after last user message
+    last_user_idx = _find_last_user_message_index(messages)
+    recent_messages = messages[last_user_idx:]
+
+    results = _extract_tool_results(recent_messages)
+    if len(results) < threshold:
+        return False, None
+
+    # Count tool usage
+    tool_counter = Counter(name for name, _, _ in results)
+    if not tool_counter:
+        return False, None
+
+    most_used, count = tool_counter.most_common(1)[0]
+
+    # Check if most used tool dominates AND has failures
+    if count >= threshold:
+        # Count failures for this tool
+        failures = sum(1 for name, _, success in results if name == most_used and not success)
+        if failures >= threshold // 2:  # At least half are failures
+            return (
+                True,
+                f"Tool '{most_used}' called {count} times with {failures} failures",
+            )
+
+    return False, None
+
+
 def _find_last_user_message_index(messages: list[ModelMessage]) -> int:
     """Find the index of the last real user message (not loop breaker)."""
     for i in range(len(messages) - 1, -1, -1):
@@ -328,12 +496,14 @@ def detect_loop(
     threshold_pattern: int = LOOP_THRESHOLD_PATTERN,
 ) -> tuple[bool, str | None]:
     """
-    Detect if the agent is stuck in a loop.
+    Detect if the agent is stuck in a loop or failing repeatedly.
 
-    Detects three types of loops:
+    Detects five types of issues:
     1. Same exact tool+args called N times (total in window)
     2. Last N calls are all identical (consecutive)
     3. Alternating pattern (A-B-A-B or A-B-C-A-B-C)
+    4. Consecutive failures of the same tool (even with different args)
+    5. Same tool overused with many failures
 
     Only considers tool calls made AFTER the last user message to avoid
     false positives when loading conversations with old repetitive patterns.
@@ -364,6 +534,16 @@ def detect_loop(
 
     if tool_calls_since_user >= MAX_TOOL_CALLS_SINCE_LAST_USER:
         return True, f"Too many tool calls ({tool_calls_since_user}) since last user message"
+
+    # NEW: Check for consecutive failures (same tool fails repeatedly)
+    is_failing, failure_desc = detect_consecutive_failures(messages)
+    if is_failing and failure_desc:
+        return True, failure_desc
+
+    # NEW: Check for tool overuse with failures
+    is_overusing, overuse_desc = detect_tool_overuse(messages)
+    if is_overusing and overuse_desc:
+        return True, overuse_desc
 
     signatures = extract_recent_tool_signatures(recent_messages)
 
@@ -422,14 +602,24 @@ def inject_loop_breaker(
     Returns:
         Modified message history with loop breaker appended.
     """
-    breaker_text = (
-        f"⚠️ LOOP DETECTED: {loop_description}. "
-        "You are repeating the same actions without progress. "
-        "STOP and try a DIFFERENT approach: "
-        "1) If a command fails, explain WHY it failed and suggest alternatives. "
-        "2) If you need information you can't get, ask the user. "
-        "3) Do NOT retry the same command with the same arguments."
-    )
+    # Customize message based on failure type
+    if "failed" in loop_description.lower() or "failures" in loop_description.lower():
+        breaker_text = (
+            f"⚠️ LOOP DETECTED: {loop_description}. "
+            "The tool is repeatedly failing. STOP and: "
+            "1) Explain what error you're getting and why it might be failing. "
+            "2) Ask the user if they want to try a different approach or fix the issue. "
+            "3) Do NOT keep retrying - the underlying problem needs to be resolved first."
+        )
+    else:
+        breaker_text = (
+            f"⚠️ LOOP DETECTED: {loop_description}. "
+            "You are repeating the same actions without progress. "
+            "STOP and try a DIFFERENT approach: "
+            "1) If a command fails, explain WHY it failed and suggest alternatives. "
+            "2) If you need information you can't get, ask the user. "
+            "3) Do NOT retry the same command with the same arguments."
+        )
 
     logger.warning(f"🔄 {loop_description} - injecting loop breaker")
 
