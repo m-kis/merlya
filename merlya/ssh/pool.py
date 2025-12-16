@@ -415,7 +415,9 @@ class SSHPool(SSHPoolConnectMixin, SFTPOperations):
 
             needs_pty = False
             cmd_stripped = command.lstrip()
-            if input_data and cmd_stripped.startswith(("su ", "su -", "doas ")):
+            # Enable PTY for commands that read passwords from stdin
+            # sudo -S also needs PTY on some systems with requiretty or PAM config
+            if input_data and cmd_stripped.startswith(("su ", "su -", "doas ", "sudo -S")):
                 needs_pty = True
 
             run_kwargs: dict[str, Any] = {}
