@@ -28,7 +28,7 @@ from merlya.config.constants import HARD_MAX_HISTORY_MESSAGES
 
 # Loop detection thresholds
 LOOP_DETECTION_WINDOW = 10  # Look at last N tool calls
-LOOP_THRESHOLD_SAME_CALL = 3  # Same tool+args called N times = loop
+LOOP_THRESHOLD_SAME_CALL = 4  # Same tool+args called N times = loop (was 3, increased)
 LOOP_THRESHOLD_PATTERN = 4  # Same 2-3 tool alternation pattern
 MAX_TOOL_CALLS_SINCE_LAST_USER = 50  # Prevent command explosions per user request
 
@@ -585,6 +585,42 @@ def detect_loop(
     return False, None
 
 
+def _extract_last_error_context(messages: list[ModelMessage]) -> str | None:
+    """
+    Extract the last error message from tool results for context.
+
+    Returns a summary of the last failure to help the LLM understand
+    what went wrong without repeating the same action.
+    """
+    # Scan from end to find last tool return with error
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    content = part.content
+                    if isinstance(content, dict):
+                        # Check for error field
+                        if content.get("error"):
+                            error = str(content["error"])[:200]
+                            return f"Last error: {error}"
+                        # Check for stderr with content
+                        if content.get("stderr"):
+                            stderr = str(content["stderr"])[:200]
+                            return f"Last stderr: {stderr}"
+                        # Check for exit_code != 0
+                        if content.get("exit_code", 0) != 0:
+                            stdout = str(content.get("stdout", ""))[:100]
+                            return f"Exit code {content['exit_code']}: {stdout}"
+                    elif isinstance(content, str):
+                        lower = content.lower()
+                        if any(
+                            kw in lower
+                            for kw in ["error", "failed", "denied", "refused", "timeout"]
+                        ):
+                            return f"Last output: {content[:200]}"
+    return None
+
+
 def inject_loop_breaker(
     messages: list[ModelMessage],
     loop_description: str,
@@ -602,23 +638,31 @@ def inject_loop_breaker(
     Returns:
         Modified message history with loop breaker appended.
     """
+    # Extract last error for context
+    error_context = _extract_last_error_context(messages)
+    error_hint = f"\n\n📋 {error_context}" if error_context else ""
+
     # Customize message based on failure type
     if "failed" in loop_description.lower() or "failures" in loop_description.lower():
         breaker_text = (
             f"⚠️ LOOP DETECTED: {loop_description}. "
             "The tool is repeatedly failing. STOP and: "
-            "1) Explain what error you're getting and why it might be failing. "
-            "2) Ask the user if they want to try a different approach or fix the issue. "
-            "3) Do NOT keep retrying - the underlying problem needs to be resolved first."
+            "1) Explain the SPECIFIC error from the output above and why it's happening. "
+            "2) This is NOT a connection issue if SSH connected successfully. "
+            "3) Ask the user if they want to try a different approach or fix the underlying issue. "
+            "4) Do NOT keep retrying the same command."
+            f"{error_hint}"
         )
     else:
         breaker_text = (
             f"⚠️ LOOP DETECTED: {loop_description}. "
             "You are repeating the same actions without progress. "
-            "STOP and try a DIFFERENT approach: "
-            "1) If a command fails, explain WHY it failed and suggest alternatives. "
-            "2) If you need information you can't get, ask the user. "
-            "3) Do NOT retry the same command with the same arguments."
+            "STOP and analyze: "
+            "1) The command executed but returned an error - explain WHAT error. "
+            "2) SSH connection is working if you see 'Reusing SSH connection'. "
+            "3) Suggest a DIFFERENT command or ask the user for guidance. "
+            "4) Do NOT retry the exact same command."
+            f"{error_hint}"
         )
 
     logger.warning(f"🔄 {loop_description} - injecting loop breaker")
