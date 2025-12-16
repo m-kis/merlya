@@ -8,7 +8,7 @@
 
   const RAG_API_URL =
     (typeof window !== 'undefined' && window.__MERLYA_RAG_API_URL) ||
-    'https://merlya-docs-rag.cedric-merlin-565.workers.dev/ask';
+    'https://merlya-rag.cold-bar-16e7.workers.dev/ask';
 
   // Create chat widget HTML
   function createChatWidget() {
