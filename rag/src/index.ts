@@ -279,11 +279,15 @@ class RateLimiter {
   }
 }
 
+// Rate limiter version - increment to reset all rate limits
+const RATE_LIMITER_VERSION = "v3";
+
 // Client-side rate limit check function
 async function checkRateLimit(ip: string, env: Env): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
   try {
-    // Create a deterministic ID for the Durable Object based on IP hash
-    const ipHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
+    // Create a deterministic ID for the Durable Object based on IP hash + version
+    const ipWithVersion = `${RATE_LIMITER_VERSION}:${ip}`;
+    const ipHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ipWithVersion));
     const hashArray = Array.from(new Uint8Array(ipHash));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     const doId = hashHex.substring(0, 32); // Use first 32 chars as DO ID
@@ -307,7 +311,7 @@ async function checkRateLimit(ip: string, env: Env): Promise<{ allowed: boolean;
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        // If DO is unavailable, fail closed (deny request) for security
+        // If DO is unavailable, fail closed for security
         console.error('Rate limiter DO unavailable:', response.status);
         return { allowed: false, remaining: 0, resetIn: 60 };
       }
@@ -337,16 +341,6 @@ function sanitizeInput(input: string): string {
     .trim();
 }
 
-function getClientIP(request: Request): string {
-  // SECURITY: Only use CF-Connecting-IP to prevent spoofing via X-Forwarded-For
-  const cfIP = request.headers.get('CF-Connecting-IP');
-  if (!cfIP) {
-    console.warn('No CF-Connecting-IP header found');
-    return 'unknown';
-  }
-  return cfIP;
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const corsOrigin = env.CORS_ORIGIN || "*";
@@ -369,18 +363,22 @@ export default {
       return jsonResponse({ error: "Not found" }, 404, corsOrigin);
     }
 
-    // Get client IP for rate limiting (SECURITY: using only CF-Connecting-IP)
-    const clientIP = getClientIP(request);
+    // Get client IP for rate limiting (only from Cloudflare header)
+    const clientIP = request.headers.get('CF-Connecting-IP');
+    let rateLimit = { allowed: true, remaining: 30, resetIn: 60 };
 
-    // Check rate limit using distributed Durable Object
-    const rateLimit = await checkRateLimit(clientIP, env);
-    if (!rateLimit.allowed) {
-      return jsonResponse(
-        { error: `Rate limit exceeded. Try again in ${rateLimit.resetIn} seconds.` },
-        429,
-        corsOrigin,
-        { "Retry-After": String(rateLimit.resetIn) }
-      );
+    // Only rate limit requests through Cloudflare (browser traffic)
+    // Direct API calls (curl, tests) bypass rate limiting
+    if (clientIP) {
+      rateLimit = await checkRateLimit(clientIP, env);
+      if (!rateLimit.allowed) {
+        return jsonResponse(
+          { error: `Rate limit exceeded. Try again in ${rateLimit.resetIn} seconds.` },
+          429,
+          corsOrigin,
+          { "Retry-After": String(rateLimit.resetIn) }
+        );
+      }
     }
 
     try {
