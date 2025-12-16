@@ -180,8 +180,16 @@ async def execute_with_elevation(
             logger.warning(f"🔒 Skipping {method} for {host} (previously failed)")
             # Try fallback chain directly
             return await _try_fallback_chain(
-                ctx, ssh_pool, host, host_entry, base_command,
-                timeout, ssh_opts, method, initial_result, execute_fn,
+                ctx,
+                ssh_pool,
+                host,
+                host_entry,
+                base_command,
+                timeout,
+                ssh_opts,
+                method,
+                initial_result,
+                execute_fn,
             )
 
         result = await execute_fn(ssh_pool, host, host_entry, cmd, timeout, input_data, ssh_opts)
@@ -278,13 +286,16 @@ async def _try_fallback_chain(
 
     # Filter out methods that have already failed (prevents infinite loops)
     candidates = [
-        m for m in _ELEVATION_ORDER[start_idx:]
+        m
+        for m in _ELEVATION_ORDER[start_idx:]
         if m in available_set and not permissions.is_method_failed(host, m)
     ]
 
     if not candidates:
         logger.warning(f"🔒 No more elevation methods available for {host}")
-        ctx.ui.warning(f"No elevation methods left for {host}. Use `/ssh elevation reset {host}` to retry.")
+        ctx.ui.warning(
+            f"No elevation methods left for {host}. Use `/ssh elevation reset {host}` to retry."
+        )
         return result, current_method
 
     # Show available fallbacks once
@@ -307,8 +318,16 @@ async def _try_fallback_chain(
         # VERIFY elevation works before proceeding
         ctx.ui.info(f"🔐 Verifying {next_method}...")
         verified = await _verify_elevation(
-            ctx, ssh_pool, host, host_entry, next_method, password,
-            caps, timeout, ssh_opts, execute_fn
+            ctx,
+            ssh_pool,
+            host,
+            host_entry,
+            next_method,
+            password,
+            caps,
+            timeout,
+            ssh_opts,
+            execute_fn,
         )
 
         if not verified:
