@@ -2,7 +2,7 @@
  * Merlya Docs RAG Worker
  *
  * Secure documentation chatbot with:
- * - Distributed rate limiting (10 requests/minute per IP)
+ * - Distributed rate limiting (30 requests/minute per IP)
  * - Prompt injection protection
  * - Cost optimization with timeout handling
  */
@@ -31,7 +31,7 @@ interface OpenAIResponse {
 }
 
 // Rate limit configuration
-const RATE_LIMIT_REQUESTS = 10;  // Max requests
+const RATE_LIMIT_REQUESTS = 30;  // Max requests
 const RATE_LIMIT_WINDOW = 60;    // Per minute (seconds)
 
 // Prompt injection patterns to block
