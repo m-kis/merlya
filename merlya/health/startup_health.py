@@ -73,9 +73,22 @@ class StartupHealth:
         self.capabilities = {}
 
         # Check for ONNX router capability
+        # ONNX is considered available if:
+        # - Model is present (status=OK)
+        # - OR model can be downloaded (status=WARNING with can_download=True)
         onnx_check = self.get_check("onnx_model")
-        if onnx_check and onnx_check.status == CheckStatus.OK:
-            self.capabilities["onnx_router"] = True
+        if onnx_check:
+            if onnx_check.status == CheckStatus.OK:
+                self.capabilities["onnx_router"] = True
+            elif (
+                onnx_check.status == CheckStatus.WARNING
+                and onnx_check.details
+                and onnx_check.details.get("can_download", False)
+            ):
+                # Model missing but downloadable - router should try to download
+                self.capabilities["onnx_router"] = True
+            else:
+                self.capabilities["onnx_router"] = False
         else:
             self.capabilities["onnx_router"] = False
 

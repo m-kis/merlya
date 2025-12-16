@@ -101,6 +101,12 @@ async def bash_execute(
                 error=f"⏱️ Command timed out after {timeout}s",
                 data={"command": safe_command[:50], "timeout": timeout},
             )
+        except asyncio.CancelledError:
+            # Handle Ctrl+C: kill subprocess and propagate cancellation
+            process.kill()
+            await process.communicate()  # Drain streams to avoid zombies
+            logger.debug("🛑 Command cancelled by user")
+            raise
 
         stdout_str = stdout.decode("utf-8", errors="replace")
         stderr_str = stderr.decode("utf-8", errors="replace")

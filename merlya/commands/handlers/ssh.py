@@ -36,10 +36,15 @@ async def cmd_ssh(_ctx: SharedContext, args: list[str]) -> CommandResult:
             "  `/ssh config <host>` - Configure SSH (user, key, port, jump)\n"
             "  `/ssh test <host>` - Test connection with diagnostics\n"
             "  `/ssh disconnect [host]` - Disconnect\n\n"
+            "**Elevation Commands:**\n"
+            "  `/ssh elevation detect <host>` - Detect sudo/doas/su capabilities\n"
+            "  `/ssh elevation status <host>` - Show elevation status and failed methods\n"
+            "  `/ssh elevation reset [host]` - Clear failed methods (retry with new password)\n\n"
             "**Features:**\n"
             "  - Key discovery (inventory + ~/.ssh/config), jump hosts, ssh-agent\n"
             "  - Encrypted keys/passphrases (keyring-backed), MFA/2FA\n"
-            "  - No username/password prompt if inventory or active connection covers it",
+            "  - Auto-healing elevation (tries sudo → doas → su until success)\n"
+            "  - Passwords stored in keyring, verified before caching",
             show_help=True,
         )
 
@@ -560,3 +565,107 @@ def _build_error_troubleshooting(error_msg: str, hostname: str) -> list[str]:
         lines.append("  - Check host connectivity and SSH configuration")
 
     return lines
+
+
+@subcommand(
+    "ssh", "elevation", "Manage elevation settings", "/ssh elevation <reset|detect|status> [host]"
+)
+async def cmd_ssh_elevation(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Manage SSH elevation (sudo/su) settings.
+
+    Subcommands:
+        reset [host]  - Clear failed elevation methods (allows retry with new password)
+        detect <host> - Force re-detection of elevation capabilities (clears cache)
+        status [host] - Show elevation status for a host
+    """
+    if not args:
+        return CommandResult(
+            success=False,
+            message="Usage: `/ssh elevation <reset|detect|status> [host]`",
+        )
+
+    action = args[0].lower()
+    host = args[1] if len(args) > 1 else None
+
+    permissions = await ctx.get_permissions()
+
+    if action == "reset":
+        permissions.clear_failed_methods(host)
+        if host:
+            msg = f"🔒 Elevation methods reset for {host}. Will retry on next command."
+        else:
+            msg = "🔒 Elevation methods reset for all hosts. Will retry on next command."
+        return CommandResult(success=True, message=msg)
+
+    elif action == "detect":
+        if not host:
+            return CommandResult(
+                success=False,
+                message="Usage: `/ssh elevation detect <host>`",
+            )
+        # Clear failed methods first
+        permissions.clear_failed_methods(host)
+        # Force re-detection (bypass cache)
+        ctx.ui.info(f"🔍 Re-detecting elevation capabilities for {host}...")
+        caps = await permissions.detect_capabilities(host, force_refresh=True)
+
+        method = caps.get("elevation_method", "none")
+        user = caps.get("user", "unknown")
+        has_sudo = caps.get("has_sudo", False)
+        nopasswd = caps.get("sudo_nopasswd", False)
+        sudo_not_authorized = caps.get("sudo_not_authorized", False)
+
+        # Build informative output (no password prompts - runtime handles that)
+        lines = [f"🔒 Elevation capabilities for {host}:"]
+        lines.append(f"  User: {user}")
+        lines.append(f"  Sudo: {'yes' if has_sudo else 'no'}")
+        if has_sudo:
+            if nopasswd:
+                lines.append("  NOPASSWD: yes ✅")
+            elif sudo_not_authorized:
+                lines.append("  NOPASSWD: no (user NOT in sudoers) ❌")
+            else:
+                lines.append("  NOPASSWD: no (password required)")
+
+        # Show available methods
+        available_methods = caps.get("available_methods", [])
+        if available_methods:
+            methods_str = ", ".join(m["method"] for m in available_methods)
+            lines.append(f"  Available: {methods_str}")
+        lines.append(f"  Selected: {method}")
+
+        # Note about runtime behavior
+        if method in ("sudo_with_password", "su"):
+            lines.append("")
+            lines.append("  ℹ️ Password will be requested when running elevated commands.")
+            lines.append("     If it fails, Merlya will try fallback methods automatically.")
+
+        return CommandResult(success=True, message="\n".join(lines))
+
+    elif action == "status":
+        if not host:
+            return CommandResult(
+                success=False,
+                message="Usage: `/ssh elevation status <host>`",
+            )
+        # Get cached capabilities (may be None if not yet detected)
+        cached_caps = permissions.get_cached_capabilities(host)
+        failed = permissions._failed_methods.get(host, set())
+
+        lines = [f"🔒 Elevation status for {host}:"]
+        if cached_caps:
+            lines.append(f"  Detected: {', '.join(k for k, v in cached_caps.items() if v)}")
+        else:
+            lines.append("  Not yet detected (will probe on first elevated command)")
+
+        if failed:
+            lines.append(f"  Failed methods: {', '.join(failed)}")
+        else:
+            lines.append("  No failed methods")
+
+        return CommandResult(success=True, message="\n".join(lines))
+
+    return CommandResult(
+        success=False,
+        message="Unknown action. Use: `/ssh elevation <reset|detect|status> [host]`",
+    )

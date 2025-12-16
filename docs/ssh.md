@@ -213,16 +213,26 @@ Host key verification failed
 
 ## Privilege Elevation
 
-Merlya automatically handles privilege elevation (sudo, doas, su) on remote hosts.
+Merlya automatically handles privilege elevation (sudo, doas, su) on remote hosts with an auto-healing fallback system.
 
 ### Automatic Detection
 
 When connecting to a host, Merlya detects available elevation methods:
 
 1. **sudo NOPASSWD** - Tests `sudo -n true` (non-interactive)
-2. **doas** - Common on BSD systems
-3. **sudo with password** - Standard sudo requiring password
-4. **su** - Last resort, requires root password
+2. **doas NOPASSWD** - Common on BSD systems
+3. **sudo with password** - User is in sudoers, needs password
+4. **doas with password** - doas available, needs password
+5. **su** - Last resort, requires root password
+
+### Smart sudo Detection
+
+Merlya distinguishes between:
+
+- **sudo available** - User is in sudoers, just needs password
+- **sudo not authorized** - User is NOT in sudoers → falls back to su
+
+This prevents failed attempts with sudo when su is the only option.
 
 ### Method Priority
 
@@ -230,7 +240,32 @@ When connecting to a host, Merlya detects available elevation methods:
 1. sudo (NOPASSWD)      - Best: no password needed
 2. doas (NOPASSWD)      - Common on BSD
 3. sudo_with_password   - Fallback with password
-4. su                   - Last resort
+4. doas_with_password   - Alternative with password
+5. su                   - Last resort (root password)
+```
+
+### Auto-Healing Fallback
+
+When an elevation method fails (wrong password), Merlya:
+
+1. **Verifies** the password with a test command (`whoami`)
+2. **Marks failed** methods to avoid retry loops
+3. **Tries next** method in the chain automatically
+4. **Caches** passwords only after verification succeeds
+
+This ensures Merlya eventually finds a working elevation method.
+
+### Elevation Commands
+
+```bash
+# Detect elevation capabilities on a host
+/ssh elevation detect <host>
+
+# Show elevation status and failed methods
+/ssh elevation status <host>
+
+# Reset failed methods to retry with new password
+/ssh elevation reset [host]
 ```
 
 ### Password Handling
@@ -238,8 +273,9 @@ When connecting to a host, Merlya detects available elevation methods:
 Elevation passwords are stored securely:
 
 1. **Keyring storage** - macOS Keychain, Linux Secret Service
-2. **Reference tokens** - Commands use `@elevation:hostname:password`
-3. **Safe logging** - Logs show `@elevation:...`, never actual passwords
+2. **Verification first** - Passwords tested before caching
+3. **Reference tokens** - Commands use `@elevation:hostname:password`
+4. **Safe logging** - Logs show `@elevation:...`, never actual passwords
 
 ### Usage in Commands
 
@@ -249,7 +285,8 @@ Merlya handles elevation automatically:
 > Read /var/log/secure on @web01
 # Merlya detects "Permission denied"
 # Prompts for elevation if needed
-# Retries with sudo/doas/su
+# Verifies password works
+# Caches for future commands
 ```
 
 You can also explicitly request elevation:
@@ -287,13 +324,33 @@ Per-host elevation settings are cached in host metadata:
 
 **Solutions:**
 - Check user has sudo/doas access on target
+- Run `/ssh elevation detect <host>` to check capabilities
 - Verify `/etc/sudoers` configuration
 - Try explicit elevation: `run as root`
+
+#### Wrong password loops
+
+Merlya prevents infinite loops by tracking failed methods:
+
+```bash
+# Check which methods have failed
+/ssh elevation status <host>
+
+# Reset to try again with correct password
+/ssh elevation reset <host>
+```
+
+#### User not in sudoers
+
+If `/ssh elevation detect` shows "user NOT in sudoers":
+- Merlya will automatically fall back to su
+- Or add the user to sudoers on the remote host
 
 #### Password prompt loops
 
 **Solutions:**
 - Clear cached password: `/secret delete elevation:hostname:password`
+- Reset elevation: `/ssh elevation reset <host>`
 - Check password is correct
 - Verify sudo doesn't require TTY (`requiretty` in sudoers)
 
