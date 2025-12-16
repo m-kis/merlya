@@ -314,7 +314,11 @@ Rules:
                 retries=1,
             )
 
-            run_result = await agent.run(f"Does any skill match this request? '{user_input}'")
+            # Add timeout to prevent indefinite hangs
+            run_result = await asyncio.wait_for(
+                agent.run(f"Does any skill match this request? '{user_input}'"),
+                timeout=self.LLM_CLASSIFICATION_TIMEOUT,
+            )
             match = run_result.output
             skill_name = match.skill
             confidence = float(match.confidence)
@@ -329,6 +333,10 @@ Rules:
                 else:
                     logger.warning(f"⚠️ LLM matched non-existent skill: {skill_name}")
 
+        except TimeoutError:
+            logger.warning(
+                f"⚠️ LLM skill matching timed out after {self.LLM_CLASSIFICATION_TIMEOUT}s"
+            )
         except Exception as e:
             logger.warning(f"⚠️ LLM skill matching failed: {e}")
 
@@ -435,6 +443,9 @@ Rules:
 
         return None
 
+    # Timeout for LLM classification calls (in seconds)
+    LLM_CLASSIFICATION_TIMEOUT = 15.0
+
     async def _classify_with_llm(self, user_input: str) -> RouterResult | None:
         """
         Use LLM for intent classification when embedding confidence is low.
@@ -450,6 +461,8 @@ Rules:
 
         try:
             from pydantic_ai import Agent
+
+            logger.debug(f"🧠 LLM classification starting with {self._llm_model}")
 
             # Create classification prompt
             system_prompt = """You are an intent classifier for an infrastructure management AI.
@@ -478,9 +491,19 @@ Respond in JSON format:
                 retries=1,
             )
 
-            response = await agent.run(f"Classify this input: {user_input}")
+            # Add timeout to prevent indefinite hangs
+            response = await asyncio.wait_for(
+                agent.run(f"Classify this input: {user_input}"),
+                timeout=self.LLM_CLASSIFICATION_TIMEOUT,
+            )
+            logger.debug("🧠 LLM classification completed")
             return self._parse_llm_response(response, user_input)
 
+        except TimeoutError:
+            logger.warning(
+                f"⚠️ LLM classification timed out after {self.LLM_CLASSIFICATION_TIMEOUT}s"
+            )
+            return None
         except Exception as e:
             logger.warning(f"⚠️ LLM classification failed: {e}")
             return None

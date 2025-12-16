@@ -326,8 +326,14 @@ class REPL:
                 # Route and process with agent
                 if not self.router:
                     raise RuntimeError("Router not initialized")
-                with self.ctx.ui.spinner(self.ctx.t("ui.spinner.routing")):
-                    route_result = await self.router.route(user_input)
+                try:
+                    with self.ctx.ui.spinner(self.ctx.t("ui.spinner.routing")):
+                        route_result = await self.router.route(user_input)
+                except asyncio.CancelledError:
+                    # Handle Ctrl+C during routing
+                    self.ctx.ui.newline()
+                    self.ctx.ui.warning(self.ctx.t("ui.routing_cancelled"))
+                    continue
 
                 # Expand @ mentions (only for non-fast-path)
                 if not route_result.is_fast_path:
@@ -478,7 +484,7 @@ class REPL:
 
             # Ask what type it should be
             choice = await self.ctx.ui.prompt(
-                f"Define @{mention} as (v)ariable, (s)ecret, or (i)gnore? [v/s/i]",
+                f"Define @{mention} as (v)ariable, (s)ecret, (h)ost, or (i)gnore? [v/s/h/i]",
             )
 
             if not choice:
@@ -511,6 +517,30 @@ class REPL:
                     except Exception as e:
                         logger.error(f"Failed to set secret @{mention}: {e}")
                         self.ctx.ui.error(f"Failed to set @{mention}: {e}")
+                else:
+                    self.ctx.ui.muted(f"Skipped @{mention}")
+
+            elif choice.startswith("h"):
+                # Define as host
+                hostname = await self.ctx.ui.prompt(
+                    f"Enter hostname/IP for @{mention} (e.g., 192.168.1.5):"
+                )
+                if hostname:
+                    try:
+                        from merlya.persistence.models import Host
+
+                        # Parse hostname:port if provided
+                        port = 22
+                        if ":" in hostname:
+                            hostname, port_str = hostname.rsplit(":", 1)
+                            port = int(port_str)
+
+                        host = Host(name=mention, hostname=hostname, port=port)
+                        await self.ctx.hosts.create(host)
+                        self.ctx.ui.success(f"Host @{mention} added ({hostname}:{port}).")
+                    except Exception as e:
+                        logger.error(f"Failed to add host @{mention}: {e}")
+                        self.ctx.ui.error(f"Failed to add host @{mention}: {e}")
                 else:
                     self.ctx.ui.muted(f"Skipped @{mention}")
 

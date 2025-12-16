@@ -18,7 +18,8 @@
     "spinner": {
       "routing": "🧠 Routing request...",
       "agent": "⚡ Executing plan..."
-    }
+    },
+    "routing_cancelled": "Routing cancelled"
   },
   "welcome_screen": {
     "title": "Welcome",

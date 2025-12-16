@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic_ai import Agent, RunContext  # noqa: TC002
+from pydantic_ai import Agent, ModelRetry, RunContext
+
+from merlya.agent.tools_common import check_recoverable_error
 
 if TYPE_CHECKING:
     from merlya.agent.main import AgentDependencies
@@ -42,6 +44,8 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         )
         if result.success:
             return {"ports": result.data, "severity": result.severity}
+        if check_recoverable_error(result.error):
+            raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
         return {"error": result.error}
 
     @agent.tool
@@ -63,6 +67,8 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         result = await _audit_ssh_keys(ctx.deps.context, host)
         if result.success:
             return {"audit": result.data, "severity": result.severity}
+        if check_recoverable_error(result.error):
+            raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
         return {"error": result.error}
 
     @agent.tool
@@ -84,6 +90,8 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         result = await _check_security_config(ctx.deps.context, host)
         if result.success:
             return {"config": result.data, "severity": result.severity}
+        if check_recoverable_error(result.error):
+            raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
         return {"error": result.error}
 
     @agent.tool
@@ -105,6 +113,8 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         result = await _check_users(ctx.deps.context, host)
         if result.success:
             return {"users": result.data, "severity": result.severity}
+        if check_recoverable_error(result.error):
+            raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
         return {"error": result.error}
 
     @agent.tool
@@ -126,4 +136,6 @@ def register_security_tools(agent: Agent[Any, Any]) -> None:
         result = await _check_sudo_config(ctx.deps.context, host)
         if result.success:
             return {"sudo": result.data, "severity": result.severity}
+        if check_recoverable_error(result.error):
+            raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
         return {"error": result.error}

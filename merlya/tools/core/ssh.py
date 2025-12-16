@@ -54,7 +54,7 @@ async def ssh_execute(
 
     Args:
         ctx: Shared context.
-        host: Host name or hostname.
+        host: Host name or hostname. Accepts @hostname format (@ will be stripped).
         command: Command to execute. Can contain @secret-name references.
         timeout: Command timeout in seconds.
         connect_timeout: Optional connection timeout.
@@ -63,6 +63,11 @@ async def ssh_execute(
         auto_elevate: Auto-retry with elevation on permission errors.
     """
     safe_command = command
+
+    # Strip @ prefix from host if present (LLM may pass @hostname format)
+    if host.startswith("@"):
+        host = host[1:]
+        logger.debug(f"🖥️ Stripped @ prefix, using host: {host}")
 
     try:
         # Validate and prepare command

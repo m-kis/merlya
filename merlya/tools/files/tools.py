@@ -35,6 +35,17 @@ class FileResult:
     error: str | None = None
 
 
+def _normalize_host(host_name: str) -> str:
+    """Normalize host name by stripping @ prefix if present.
+
+    The LLM may pass @hostname format which needs to be stripped
+    before resolving against the inventory.
+    """
+    if host_name.startswith("@"):
+        return host_name[1:]
+    return host_name
+
+
 def _validate_path(path: str) -> str | None:
     """Validate and sanitize file path. Returns error message or None if valid."""
     if not path:
@@ -74,6 +85,9 @@ async def read_file(
         FileResult with file content.
     """
     from merlya.ssh import SSHPool
+
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
 
     # Validate path
     if error := _validate_path(path):
@@ -138,6 +152,9 @@ async def write_file(
     """
     from merlya.ssh import SSHPool
 
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
+
     # Validate inputs
     if error := _validate_path(path):
         return FileResult(success=False, error=error)
@@ -201,6 +218,9 @@ async def list_directory(
         FileResult with directory listing.
     """
     from merlya.ssh import SSHPool
+
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
 
     # Validate path
     if error := _validate_path(path):
@@ -276,6 +296,9 @@ async def file_exists(
     """
     from merlya.ssh import SSHPool
 
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
+
     # Validate path
     if error := _validate_path(path):
         return FileResult(success=False, error=error)
@@ -310,6 +333,9 @@ async def file_info(
         FileResult with file metadata.
     """
     from merlya.ssh import SSHPool
+
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
 
     # Validate path
     if error := _validate_path(path):
@@ -375,6 +401,9 @@ async def search_files(
     """
     from merlya.ssh import SSHPool
 
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
+
     # Validate inputs
     if error := _validate_path(path):
         return FileResult(success=False, error=error)
@@ -434,6 +463,9 @@ async def delete_file(
         FileResult with operation status.
     """
     from merlya.ssh import SSHPool
+
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
 
     # Validate path
     if error := _validate_path(path):
@@ -496,6 +528,9 @@ async def upload_file(
         FileResult with transfer status.
     """
     from pathlib import Path
+
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
 
     # Validate paths
     if error := _validate_path(local_path):
@@ -562,6 +597,9 @@ async def download_file(
         FileResult with transfer status.
     """
     from pathlib import Path
+
+    # Normalize host name (strip @ prefix if present)
+    host_name = _normalize_host(host_name)
 
     # Validate remote path
     if error := _validate_path(remote_path):

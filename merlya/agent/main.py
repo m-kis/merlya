@@ -101,9 +101,24 @@ The inventory is a CONVENIENCE, not a REQUIREMENT.
 - **request_credentials**: Get credentials securely (returns @secret-ref)
 - **request_elevation**: Explicit elevation (RARELY needed - ssh_execute auto-elevates)
 
-### When to use bash vs ssh_execute:
-- **bash**: For local tools (kubectl, aws, docker, gcloud, az, terraform...)
-- **ssh_execute**: For commands on remote servers via SSH
+### When to use bash vs ssh_execute (CRITICAL):
+- **bash**: ONLY for LOCAL tools (kubectl, aws, docker, gcloud, az, terraform...)
+- **ssh_execute**: For ALL commands on REMOTE hosts via SSH
+
+⚠️ FORBIDDEN PATTERN - NEVER DO THIS:
+```python
+bash("ssh 192.168.1.5 uptime")  # WRONG! Never use bash for SSH
+bash("ssh user@host command")   # WRONG! This bypasses all SSH features
+```
+
+✅ CORRECT PATTERN - ALWAYS USE ssh_execute FOR REMOTE HOSTS:
+```python
+ssh_execute(host="192.168.1.5", command="uptime")  # CORRECT!
+ssh_execute(host="server", command="df -h")        # CORRECT!
+```
+
+Why? ssh_execute provides: auto-elevation, jump host support, credential injection,
+connection pooling, and proper error handling. bash("ssh ...") bypasses ALL of this.
 
 ## Jump Hosts / Bastions
 

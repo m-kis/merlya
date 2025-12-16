@@ -69,6 +69,11 @@ Documentation: https://merlya.m-kis.fr/
         action="store_true",
         help="Enable verbose logging",
     )
+    parser.add_argument(
+        "--debug-http",
+        action="store_true",
+        help="Enable HTTP request/response debugging (useful for API issues)",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -149,12 +154,15 @@ Documentation: https://merlya.m-kis.fr/
     return parser
 
 
-def run_repl_mode(verbose: bool = False) -> None:
+def run_repl_mode(verbose: bool = False, debug_http: bool = False) -> None:
     """Run interactive REPL mode."""
-    from merlya.core.logging import configure_logging
+    from merlya.core.logging import configure_logging, enable_http_debug
     from merlya.repl import run_repl
 
     configure_logging(console_level="DEBUG" if verbose else "INFO")
+
+    if debug_http:
+        enable_http_debug()
 
     async def _run_with_cleanup() -> None:
         """Run REPL with proper cleanup on interruption."""
@@ -419,7 +427,10 @@ def main() -> None:
             run_config_command(args)
         else:
             # Default: interactive REPL mode
-            run_repl_mode(verbose=args.verbose if hasattr(args, "verbose") else False)
+            run_repl_mode(
+                verbose=getattr(args, "verbose", False),
+                debug_http=getattr(args, "debug_http", False),
+            )
 
     except KeyboardInterrupt:
         logger.info("Interrupted by user")

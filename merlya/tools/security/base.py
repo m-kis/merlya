@@ -123,6 +123,10 @@ async def execute_security_command(
     Returns:
         SSHResult with stdout, stderr, and exit_code.
     """
+    # Normalize host name (strip @ prefix if present)
+    if host_name.startswith("@"):
+        host_name = host_name[1:]
+
     host_entry = await ctx.hosts.get_by_name(host_name)
     ssh_pool = await ctx.get_ssh_pool()
 
