@@ -633,7 +633,12 @@ class TestDetectLoopWithFailures:
         messages = [_make_user_request("check cloudflared status")]
 
         # SSH fails 4 times with different commands
-        commands = ["systemctl status", "cloudflared list", "cloudflared info", "cloudflared --help"]
+        commands = [
+            "systemctl status",
+            "cloudflared list",
+            "cloudflared info",
+            "cloudflared --help",
+        ]
         for i, cmd in enumerate(commands):
             messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"command": cmd}))
             messages.append(

@@ -332,7 +332,9 @@ class PermissionManager:
                     capabilities["sudo_needs_password"] = True
                 else:
                     # User not in sudoers at all
-                    logger.debug(f"🔒 User not authorized for sudo on {host}: {sudo_check_output[:100]}")
+                    logger.debug(
+                        f"🔒 User not authorized for sudo on {host}: {sudo_check_output[:100]}"
+                    )
                     capabilities["sudo_not_authorized"] = True
 
         # Check doas (test NOPASSWD)
