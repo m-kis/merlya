@@ -51,8 +51,6 @@ class ElevationPayload:
     base_command: str
     method: str | None = None
     input_ref: str | None = None
-    # Deprecated - for backwards compatibility only
-    input: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> ElevationPayload | None:
@@ -73,7 +71,6 @@ class ElevationPayload:
             base_command=_get_str("base_command", ""),
             method=_get_opt_str("method"),
             input_ref=_get_opt_str("input_ref"),
-            input=_get_opt_str("input"),
         )
 
 

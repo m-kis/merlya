@@ -171,15 +171,12 @@ def _apply_elevation(
     exec_ctx.base_command = payload.base_command or command
     exec_ctx.elevation_method = payload.method
 
-    # Get password from secure cache
+    # Get password from secure cache (only secure path allowed)
     if payload.input_ref and hasattr(ctx, "_elevation_cache"):
         cached = ctx._elevation_cache.get(payload.input_ref)
         if cached:
             exec_ctx.input_data = cached.get("input_data")
             del ctx._elevation_cache[payload.input_ref]
-    elif payload.input:
-        logger.warning("⚠️ SECURITY: Raw password in elevation (deprecated).")
-        exec_ctx.input_data = payload.input
 
 
 async def _run_with_elevation(
