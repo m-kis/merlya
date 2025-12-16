@@ -1,55 +1,55 @@
-# Les secrets : la ligne rouge des agents IA d'infrastructure
+# Secrets: The Red Line for Infrastructure AI Agents
 
-> Comment Merlya garantit que vos mots de passe ne finissent jamais dans les logs, le LLM, ou en clair sur le disque.
+> How Merlya guarantees your passwords never end up in logs, the LLM, or stored in plaintext.
 
-## Le problème avec les agents IA actuels
+## The Problem with Current AI Agents
 
-En tant qu'ingénieur infrastructure, j'ai testé de nombreux agents IA : OpenHands, Gemini CLI, SHAI, et d'autres. À chaque fois, les mêmes inquiétudes revenaient :
+As an infrastructure engineer, I've tested many AI agents: OpenHands, Gemini CLI, SHAI, and others. The same concerns kept coming back:
 
-- **Des décisions prises "parce que le modèle pense que c'est mieux"** — sans justification ni traçabilité
-- **Des commandes exécutées implicitement** — sans confirmation explicite pour les opérations destructives
-- **Des secrets manipulés comme des variables quelconques** — affichés dans les logs, envoyés aux APIs
-- **Très peu de traces exploitables** — impossible de faire un audit post-incident
+- **Decisions made "because the model thinks it's better"** — no justification or traceability
+- **Commands executed implicitly** — no explicit confirmation for destructive operations
+- **Secrets handled like regular variables** — displayed in logs, sent to APIs
+- **Very few usable traces** — impossible to do a post-incident audit
 
-Ces problèmes ne sont pas anecdotiques. Dans un environnement de production, ils sont rédhibitoires.
+These problems aren't anecdotal. In a production environment, they're deal-breakers.
 
-## L'architecture "Secret-Zero-Trust" de Merlya
+## Merlya's "Secret-Zero-Trust" Architecture
 
-Merlya a été conçu avec une philosophie simple : **le LLM ne doit jamais voir les secrets**.
+Merlya was designed with a simple philosophy: **the LLM must never see secrets**.
 
-### Le flux des secrets
+### The Secrets Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        FLUX DES SECRETS                         │
+│                        SECRETS FLOW                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. Utilisateur entre le mot de passe                           │
-│     └── prompt_secret() → Keyring système                       │
+│  1. User enters password                                        │
+│     └── prompt_secret() → System Keyring                        │
 │                                                                 │
-│  2. Merlya stocke une RÉFÉRENCE                                 │
-│     └── @db:password (pas la valeur !)                          │
+│  2. Merlya stores a REFERENCE                                   │
+│     └── @db:password (not the value!)                           │
 │                                                                 │
-│  3. LLM génère une commande                                     │
+│  3. LLM generates a command                                     │
 │     └── "mysql -p @db:password -e 'SELECT 1'"                   │
 │                                                                 │
-│  4. Résolution TARDIVE (execution-time)                         │
+│  4. LATE resolution (execution-time)                            │
 │     └── resolve_all_references() → mysql -p secretvalue         │
 │                                                                 │
-│  5. Retour au LLM                                               │
+│  5. Return to LLM                                               │
 │     └── "mysql -p *** -e 'SELECT 1'" (safe_command)             │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Le secret n'est jamais :
-- Affiché dans les logs
-- Envoyé au LLM
-- Stocké en clair sur le disque
+The secret is never:
+- Displayed in logs
+- Sent to the LLM
+- Stored in plaintext on disk
 
-### Couche 1 : Stockage sécurisé via Keyring
+### Layer 1: Secure Storage via Keyring
 
-Les secrets sont stockés dans le **keyring système** de votre OS :
+Secrets are stored in your **OS system keyring**:
 
 | OS | Backend |
 |----|---------|
@@ -63,14 +63,14 @@ def set(self, name: str, value: str) -> None:
     if self._keyring_available:
         keyring.set_password(SERVICE_NAME, name, value)
     else:
-        self._memory_store[name] = value  # Fallback avec warning
+        self._memory_store[name] = value  # Fallback with warning
 ```
 
-Si le keyring n'est pas disponible (conteneur Docker sans accès), Merlya utilise un stockage en mémoire avec un **avertissement explicite** : les secrets seront perdus à la fermeture.
+If the keyring isn't available (Docker container without access), Merlya uses in-memory storage with an **explicit warning**: secrets will be lost on exit.
 
-### Couche 2 : Références au lieu de valeurs
+### Layer 2: References Instead of Values
 
-Quand vous entrez un mot de passe, Merlya ne le retourne jamais au LLM. À la place, il génère une **référence** :
+When you enter a password, Merlya never returns it to the LLM. Instead, it generates a **reference**:
 
 ```python
 # merlya/tools/interaction.py
@@ -79,16 +79,16 @@ for name, val in values.items():
     if name.lower() in {"password", "token", "secret", "key"}:
         secret_key = f"{key_prefix}:{name}"
         secret_store.set(secret_key, val)
-        safe_values[name] = f"@{secret_key}"  # Référence, pas valeur !
+        safe_values[name] = f"@{secret_key}"  # Reference, not value!
     else:
         safe_values[name] = val
 ```
 
-Le LLM voit `@db:password`, jamais `MonSuperMotDePasse123!`.
+The LLM sees `@db:password`, never `MySuperPassword123!`.
 
-### Couche 3 : Résolution tardive
+### Layer 3: Late Resolution
 
-Les références `@secret-name` sont résolues **uniquement au moment de l'exécution**, après que le LLM a donné son instruction :
+`@secret-name` references are resolved **only at execution time**, after the LLM has given its instruction:
 
 ```python
 # merlya/tools/core/resolve.py
@@ -107,11 +107,11 @@ def resolve_secrets(command: str, secrets: SecretStore) -> tuple[str, str]:
     return resolved, safe
 ```
 
-La commande résolue (`resolved`) est exécutée mais **jamais loggée ni retournée au LLM**. Seule la version masquée (`safe`) est visible.
+The resolved command (`resolved`) is executed but **never logged or returned to the LLM**. Only the masked version (`safe`) is visible.
 
-### Couche 4 : Détection proactive des mots de passe en clair
+### Layer 4: Proactive Plaintext Password Detection
 
-Merlya **bloque** les commandes qui contiennent des mots de passe en clair :
+Merlya **blocks** commands containing plaintext passwords:
 
 ```python
 # merlya/tools/core/security.py
@@ -120,21 +120,21 @@ UNSAFE_PASSWORD_PATTERNS = (
     re.compile(r"-p['\"][^'\"@]+['\"]"),  # mysql -p'password'
     re.compile(r"--password[=\s]+['\"]?(?!@)[^@\s'\"]+"),  # --password=value
     re.compile(r"sshpass\s+-p\s+['\"]?(?!@)[^'\"@\s]+"),  # sshpass -p password
-    # ... 8 patterns au total
+    # ... 8 patterns total
 )
 
 def detect_unsafe_password(command: str) -> str | None:
     for pattern in UNSAFE_PASSWORD_PATTERNS:
         if pattern.search(command):
-            return "⚠️ SECURITY: Command may contain a plaintext password."
+            return "SECURITY: Command may contain a plaintext password."
     return None
 ```
 
-Si le LLM essaie de générer `mysql -p'secretvalue'` au lieu de `mysql -p @db:password`, la commande est **refusée** avec un message d'erreur clair.
+If the LLM tries to generate `mysql -p'secretvalue'` instead of `mysql -p @db:password`, the command is **rejected** with a clear error message.
 
-### Couche 5 : Sanitization automatique dans les logs
+### Layer 5: Automatic Log Sanitization
 
-Même si un secret passait à travers les autres couches, le système d'audit le masquerait :
+Even if a secret passed through the other layers, the audit system would mask it:
 
 ```python
 # merlya/audit/logger.py
@@ -149,33 +149,33 @@ _SENSITIVE_VALUE_PATTERNS = (
     re.compile(r"^A[KBS]IA[A-Z0-9]{16}$"),  # AWS access key
     re.compile(r"^gh[pousr]_[A-Za-z0-9_]{36,}$"),  # GitHub token
     re.compile(r"^eyJ[A-Za-z0-9_-]*\.eyJ"),  # JWT
-    # ... 9 patterns pour détecter les secrets par leur format
+    # ... 9 patterns to detect secrets by their format
 )
 ```
 
-La sanitization est **récursive** : elle parcourt les dicts et listes imbriqués.
+Sanitization is **recursive**: it traverses nested dicts and lists.
 
-## Comparaison avec d'autres agents
+## Comparison with Other Agents
 
 | Aspect | OpenHands | Gemini CLI | SHAI | Merlya |
 |--------|-----------|------------|------|--------|
-| Secrets dans les logs | ⚠️ Possible | ⚠️ Possible | ⚠️ Possible | ✅ Masqués |
-| Secrets envoyés au LLM | ❌ Oui | ❌ Oui | ❌ Oui | ✅ Jamais (références) |
-| Stockage sécurisé | ❌ Variables env | ❌ Variables env | ❌ Fichier | ✅ Keyring OS |
-| Détection plaintext | ❌ Non | ❌ Non | ❌ Non | ✅ 8 patterns |
-| Audit trail | ⚠️ Basique | ⚠️ Basique | ❌ Minimal | ✅ SQLite + SIEM |
+| Secrets in logs | Possible | Possible | Possible | Masked |
+| Secrets sent to LLM | Yes | Yes | Yes | Never (references) |
+| Secure storage | Env vars | Env vars | File | OS Keyring |
+| Plaintext detection | No | No | No | 8 patterns |
+| Audit trail | Basic | Basic | Minimal | SQLite + SIEM |
 
-## Exemple concret
+## Concrete Example
 
-### Ce que vous tapez :
+### What you type:
 ```
-merlya> Connecte-toi à la base MySQL sur db-prod et liste les tables
+merlya> Connect to the MySQL database on db-prod and list tables
 ```
 
-### Ce que le LLM voit :
+### What the LLM sees:
 ```
-User: Connecte-toi à la base MySQL sur db-prod et liste les tables
-Assistant: Je vais demander les credentials MySQL puis lister les tables.
+User: Connect to the MySQL database on db-prod and list tables
+Assistant: I'll request MySQL credentials then list the tables.
 
 Tool call: request_credentials(service="mysql", host="db-prod")
 Tool result: {"username": "admin", "password": "@mysql:db-prod:password"}
@@ -183,33 +183,33 @@ Tool result: {"username": "admin", "password": "@mysql:db-prod:password"}
 Tool call: ssh_execute(host="db-prod", command="mysql -u admin -p @mysql:db-prod:password -e 'SHOW TABLES'")
 Tool result: {
   "stdout": "Tables_in_mydb\nusers\norders\nproducts",
-  "command": "mysql -u admin -p *** -e 'SHOW TABLES'"  // <- Masqué !
+  "command": "mysql -u admin -p *** -e 'SHOW TABLES'"  // <- Masked!
 }
 ```
 
-### Ce qui est exécuté réellement :
+### What's actually executed:
 ```bash
-mysql -u admin -p 'MonVraiMotDePasse' -e 'SHOW TABLES'
+mysql -u admin -p 'MyRealPassword' -e 'SHOW TABLES'
 ```
 
-### Ce qui est loggé :
+### What's logged:
 ```
 [AUDIT] COMMAND_EXECUTED: mysql -u admin -p *** -e 'SHOW TABLES' on db-prod
 ```
 
-Le mot de passe n'apparaît **nulle part** sauf dans l'exécution réelle de la commande.
+The password appears **nowhere** except in the actual command execution.
 
 ## Configuration
 
-### Vérifier le statut du keyring
+### Check keyring status
 
 ```bash
 merlya> /secrets
 ```
 
-Affiche :
+Displays:
 ```
-🔐 Secret Store Status
+Secret Store Status
   Backend: keyring (macOS Keychain)
   Stored secrets: 3
     - mysql:db-prod:password
@@ -217,9 +217,9 @@ Affiche :
     - api:monitoring:token
 ```
 
-### Mode non-interactif (CI/CD)
+### Non-interactive mode (CI/CD)
 
-En mode non-interactif, les secrets doivent être fournis via variables d'environnement ou fichiers montés :
+In non-interactive mode, secrets must be provided via environment variables or mounted files:
 
 ```yaml
 # task.yaml
@@ -230,11 +230,11 @@ secrets:
     file: /run/secrets/api_key
 ```
 
-Merlya les charge dans le keyring au démarrage, sans jamais les exposer au LLM.
+Merlya loads them into the keyring at startup, without ever exposing them to the LLM.
 
-## Audit et conformité
+## Audit and Compliance
 
-Chaque accès aux secrets est tracé :
+Every secret access is traced:
 
 ```sql
 SELECT * FROM audit_logs
@@ -249,28 +249,28 @@ ORDER BY created_at DESC;
 | a2 | secret_accessed | set | ssh:bastion:passphrase | 2024-12-16 10:22:30 |
 ```
 
-Export SIEM :
+SIEM export:
 ```bash
 merlya> /audit export --format json --since 24h > audit.json
 ```
 
 ## Conclusion
 
-Les secrets sont la première ligne rouge de tout agent IA d'infrastructure. Merlya implémente une architecture **défense en profondeur** avec 5 couches de protection :
+Secrets are the first red line for any infrastructure AI agent. Merlya implements a **defense in depth** architecture with 5 layers of protection:
 
-1. **Stockage sécurisé** via le keyring OS
-2. **Références** au lieu de valeurs pour le LLM
-3. **Résolution tardive** uniquement à l'exécution
-4. **Détection proactive** des mots de passe en clair
-5. **Sanitization automatique** dans les logs
+1. **Secure storage** via OS keyring
+2. **References** instead of values for the LLM
+3. **Late resolution** only at execution time
+4. **Proactive detection** of plaintext passwords
+5. **Automatic sanitization** in logs
 
-Cette architecture garantit que même si une couche échoue, les autres protègent vos secrets.
+This architecture ensures that even if one layer fails, the others protect your secrets.
 
 ---
 
-*Merlya est un agent IA CLI pour la gestion d'infrastructure, conçu avec la sécurité comme priorité absolue.*
+*Merlya is an AI CLI agent for infrastructure management, designed with security as the absolute priority.*
 
-**Liens utiles :**
-- [Documentation complète](../index.md)
-- [Guide SSH](./ssh-management.md)
+**Useful links:**
+- [Full documentation](../index.md)
+- [SSH Guide](./ssh-management.md)
 - [Configuration](../reference/configuration.md)
