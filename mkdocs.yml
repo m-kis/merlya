@@ -172,7 +172,7 @@ extra_css:
   - assets/stylesheets/extra.css
 
 extra_javascript:
-  - assets/javascripts/chat.js
+  - assets/javascripts/chat.js?v=2
 
 nav:
   - Home: index.md
