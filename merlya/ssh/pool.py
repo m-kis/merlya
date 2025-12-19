@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
+import time
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -34,6 +35,19 @@ if TYPE_CHECKING:
 
 # Re-export types for backwards compatibility
 __all__ = ["SSHConnection", "SSHConnectionOptions", "SSHPool", "SSHResult"]
+
+
+# Password prompt patterns for sudo/su/doas detection
+# These are matched case-insensitively against stdout
+PASSWORD_PROMPT_PATTERNS = (
+    "password:",
+    "[sudo]",
+    "mot de passe",  # French
+    "contraseña",  # Spanish
+    "passwort",  # German
+    "password for",
+    "authenticate:",
+)
 
 
 class SSHPool(SSHPoolConnectMixin, SFTPOperations):
@@ -420,17 +434,29 @@ class SSHPool(SSHPoolConnectMixin, SFTPOperations):
             if input_data and cmd_stripped.startswith(("su ", "su -", "doas ", "sudo -S")):
                 needs_pty = True
 
-            run_kwargs: dict[str, Any] = {}
-            if input_data is not None:
-                run_kwargs["input"] = input_data
-            if needs_pty:
-                run_kwargs["term_type"] = "xterm"
-
             async with semaphore:
-                result = await asyncio.wait_for(
-                    conn.connection.run(command, **run_kwargs),
-                    timeout=timeout,
-                )
+                if needs_pty and input_data:
+                    # PTY + input requires manual stdin handling
+                    # asyncssh's run() with input + term_type doesn't work reliably
+                    # Returns SSHResult directly
+                    pty_result = await self._execute_with_pty_input(
+                        conn, command, input_data, timeout
+                    )
+                    logger.debug(
+                        f"⚡ Executed command on {host} (PTY, length: {len(command)} chars, "
+                        f"exit: {pty_result.exit_code})"
+                    )
+                    return pty_result
+                else:
+                    # Standard execution (no PTY or no input)
+                    run_kwargs: dict[str, Any] = {}
+                    if input_data is not None:
+                        run_kwargs["input"] = input_data
+
+                    result = await asyncio.wait_for(
+                        conn.connection.run(command, **run_kwargs),
+                        timeout=timeout,
+                    )
 
             # Security: Never log command content (may contain secrets)
             logger.debug(
@@ -454,6 +480,163 @@ class SSHPool(SSHPoolConnectMixin, SFTPOperations):
         except TimeoutError:
             logger.warning(f"⚠️ Command timeout on {host}")
             raise
+        except asyncio.CancelledError:
+            # Handle Ctrl+C - propagate for REPL to handle
+            logger.debug(f"🛑 SSH execution cancelled on {host}")
+            raise
+
+    async def _wait_for_prompt(
+        self,
+        process: Any,
+        patterns: tuple[str, ...],
+        timeout: float = 5.0,
+    ) -> tuple[bool, str]:
+        """Wait for password prompt to appear in stdout.
+
+        Reads stdout incrementally until a password prompt pattern is detected
+        or timeout is reached. This replaces the unreliable fixed sleep.
+
+        Args:
+            process: SSH process with stdout.
+            patterns: Tuple of patterns to match (case-insensitive).
+            timeout: Maximum time to wait for prompt.
+
+        Returns:
+            Tuple of (prompt_found, buffer_content).
+        """
+        buffer = ""
+        start = time.monotonic()
+
+        while time.monotonic() - start < timeout:
+            try:
+                # Read with short timeout to allow cancellation
+                if process.stdout:
+                    chunk = await asyncio.wait_for(
+                        process.stdout.read(1024),
+                        timeout=0.3,
+                    )
+                    if chunk:
+                        if isinstance(chunk, bytes):
+                            chunk = chunk.decode("utf-8", errors="replace")
+                        buffer += chunk
+
+                        # Check if any prompt pattern matches
+                        buffer_lower = buffer.lower()
+                        if any(p in buffer_lower for p in patterns):
+                            logger.debug(f"🔑 Password prompt detected: {buffer[-50:]!r}")
+                            return True, buffer
+                else:
+                    # No stdout available, can't detect prompt
+                    break
+            except TimeoutError:
+                # Read timeout, continue waiting
+                continue
+            except asyncio.CancelledError:
+                # Propagate cancellation
+                raise
+
+        logger.debug(f"⚠️ No prompt detected after {timeout}s, buffer: {buffer[-100:]!r}")
+        return False, buffer
+
+    async def _execute_with_pty_input(
+        self,
+        conn: SSHConnection,
+        command: str,
+        input_data: str,
+        timeout: int,
+    ) -> SSHResult:
+        """Execute command with PTY and manual stdin input.
+
+        For commands like su/sudo that need a PTY and password input,
+        asyncssh's run() with input + term_type doesn't work reliably.
+        We need to create a process and manually write to stdin.
+
+        This method:
+        1. Creates a PTY process
+        2. Waits for the password prompt (instead of fixed sleep)
+        3. Writes the password when prompt is detected
+        4. Handles CancelledError for Ctrl+C support
+
+        Note: When PTY is allocated, stderr is merged into stdout.
+        """
+        # Type guard: connection is checked in _execute_once before calling this
+        if conn.connection is None:
+            raise RuntimeError("Connection is closed")
+
+        process: Any = None
+
+        async def _run_with_pty() -> SSHResult:
+            nonlocal process
+            assert conn.connection is not None  # For type checker
+
+            # Create process with PTY
+            async with conn.connection.create_process(
+                command,
+                term_type="xterm",
+                term_size=(80, 24),
+            ) as proc:
+                process = proc
+
+                # Wait for password prompt instead of fixed sleep
+                # This fixes the race condition where 0.3s was sometimes too short
+                prompt_found, prompt_buffer = await self._wait_for_prompt(
+                    proc,
+                    PASSWORD_PROMPT_PATTERNS,
+                    timeout=5.0,
+                )
+
+                if not prompt_found:
+                    # No prompt detected - could be:
+                    # 1. Passwordless sudo (no prompt needed)
+                    # 2. Command already running
+                    # 3. Error message
+                    # Try sending password anyway with a small delay
+                    logger.debug("No prompt detected, trying password anyway")
+                    await asyncio.sleep(0.1)
+
+                # Write password followed by newline
+                password_with_newline = input_data
+                if not password_with_newline.endswith("\n"):
+                    password_with_newline += "\n"
+
+                proc.stdin.write(password_with_newline)
+
+                # Close stdin to signal EOF (important for su/sudo)
+                proc.stdin.write_eof()
+
+                # Collect remaining stdout (stderr is merged into stdout with PTY)
+                stdout_bytes = b""
+                if proc.stdout:
+                    stdout_bytes = await proc.stdout.read()
+
+                # Wait for process to complete
+                await proc.wait()
+
+                # Decode bytes to string
+                stdout_str = prompt_buffer  # Include the prompt we already read
+                if stdout_bytes:
+                    if isinstance(stdout_bytes, bytes):
+                        stdout_str += stdout_bytes.decode("utf-8", errors="replace")
+                    else:
+                        stdout_str += str(stdout_bytes)
+
+                return SSHResult(
+                    stdout=stdout_str,
+                    stderr="",  # Merged into stdout with PTY
+                    exit_code=proc.exit_status or 0,
+                )
+
+        try:
+            return await asyncio.wait_for(_run_with_pty(), timeout=timeout)
+        except asyncio.CancelledError:
+            # Handle Ctrl+C - clean up the process properly
+            logger.debug("🛑 SSH PTY execution cancelled")
+            if process is not None:
+                with contextlib.suppress(Exception):
+                    process.terminate()
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(process.wait(), timeout=2.0)
+            raise  # Re-propagate for REPL to handle
 
     async def _invalidate_connection(
         self,

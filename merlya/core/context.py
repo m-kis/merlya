@@ -18,6 +18,7 @@ from loguru import logger
 from merlya.config import Config, get_config
 from merlya.i18n import I18n, get_i18n
 from merlya.secrets import SecretStore, get_secret_store
+from merlya.secrets.session import SessionPasswordStore, get_session_store
 
 if TYPE_CHECKING:
     from merlya.health import StartupHealth
@@ -73,6 +74,9 @@ class SharedContext:
 
     # Console UI
     _ui: ConsoleUI | None = field(default=None, repr=False)
+
+    # Session passwords (in-memory only, not persisted)
+    _session_passwords: SessionPasswordStore | None = field(default=None, repr=False)
 
     # Non-interactive mode flags
     auto_confirm: bool = field(default=False)
@@ -167,6 +171,24 @@ class SharedContext:
                 quiet=self.quiet,
             )
         return self._ui
+
+    @property
+    def session_passwords(self) -> SessionPasswordStore:
+        """
+        Get session password store (in-memory only).
+
+        Passwords stored here are NOT persisted to keyring.
+        They are cleared when the session ends.
+
+        Use for:
+        - Interactive sudo/su passwords
+        - Temporary credentials
+        - Passwords user doesn't want stored
+        """
+        if self._session_passwords is None:
+            self._session_passwords = get_session_store()
+            self._session_passwords.set_ui(self.ui)
+        return self._session_passwords
 
     async def init_async(self) -> None:
         """
@@ -272,6 +294,11 @@ class SharedContext:
             except Exception as e:
                 logger.debug(f"MCP manager close error: {e}")
             self._mcp_manager = None
+
+        # Clear session passwords (security: don't leave passwords in memory)
+        if self._session_passwords:
+            self._session_passwords.clear()
+            self._session_passwords = None
 
         # Clear singleton reference
         SharedContext._instance = None

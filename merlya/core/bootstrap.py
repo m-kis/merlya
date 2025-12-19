@@ -67,6 +67,9 @@ async def bootstrap(
     # Configure logging from config (respects saved settings)
     _configure_logging_from_config(ctx, verbose=verbose, quiet=quiet)
 
+    # Initialize Logfire observability (if LOGFIRE_TOKEN is set)
+    _init_observability()
+
     # Load API keys from keyring
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
 
@@ -151,3 +154,18 @@ def _configure_logging_from_config(
     )
 
     logger.debug(f"⚙️ Logging configured: console={console_level}, file={file_level}")
+
+
+def _init_observability() -> None:
+    """
+    Initialize Logfire observability if configured.
+
+    Logfire is enabled when LOGFIRE_TOKEN environment variable is set.
+    It provides:
+    - Distributed tracing for PydanticAI agent calls
+    - LLM cost and token tracking
+    - Loguru logs bridged to Logfire dashboard
+    """
+    from merlya.core.observability import init_logfire
+
+    init_logfire()

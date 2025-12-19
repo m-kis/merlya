@@ -26,9 +26,59 @@ class LLMConfig(BaseModel):
     """LLM provider configuration."""
 
     provider: str = Field(default="openrouter", description="LLM provider name")
-    model: str = Field(default="amazon/nova-2-lite-v1:free", description="Model identifier")
+    model: str = Field(default="z-ai/glm-4.6", description="Default/orchestrator model")
     api_key_env: str | None = Field(default=None, description="Environment variable for API key")
     base_url: str | None = Field(default=None, description="Provider base URL (e.g., Ollama)")
+
+    # Request timeout override (optional)
+    # If not set, uses provider-specific defaults from constants.py
+    timeout: int | None = Field(
+        default=None,
+        ge=10,
+        le=600,
+        description="LLM request timeout in seconds (default: provider-specific)",
+    )
+
+    # Agent-specific model overrides (optional)
+    # If not set, uses provider defaults from providers.py
+    reasoning_model: str | None = Field(
+        default=None,
+        description="Override for reasoning agents (diagnostic, security)",
+    )
+    fast_model: str | None = Field(
+        default=None,
+        description="Override for fast agents (query, execution)",
+    )
+
+    def get_orchestrator_model(self) -> str:
+        """Get model for orchestrator (main brain). Uses reasoning_model or default."""
+        return self.reasoning_model or self.model
+
+    def get_reasoning_model(self) -> str:
+        """Get model for reasoning tasks (diagnostic, security)."""
+        from merlya.config.providers import get_model_for_role
+
+        return get_model_for_role(self.provider, "reasoning", self.reasoning_model)
+
+    def get_fast_model(self) -> str:
+        """Get model for fast tasks (query, execution)."""
+        from merlya.config.providers import get_model_for_role
+
+        return get_model_for_role(self.provider, "fast", self.fast_model)
+
+    def get_timeout(self) -> int:
+        """
+        Get LLM request timeout in seconds.
+
+        Returns user-configured timeout if set, otherwise provider-specific default.
+        """
+        if self.timeout is not None:
+            return self.timeout
+
+        from merlya.config.constants import LLM_PROVIDER_TIMEOUTS, LLM_TIMEOUT_DEFAULT
+
+        provider_key = self.provider.lower() if self.provider else ""
+        return LLM_PROVIDER_TIMEOUTS.get(provider_key, LLM_TIMEOUT_DEFAULT)
 
 
 class RouterConfig(BaseModel):

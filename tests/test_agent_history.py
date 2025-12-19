@@ -1,4 +1,4 @@
-"""Tests for merlya.agent.history module."""
+"""Tests for merlya.agent.history module (simplified version)."""
 
 from pydantic_ai import ModelRequest, ModelResponse
 from pydantic_ai.messages import (
@@ -9,17 +9,11 @@ from pydantic_ai.messages import (
 )
 
 from merlya.agent.history import (
-    _is_tool_result_success,
     create_history_processor,
     create_loop_aware_history_processor,
-    detect_consecutive_failures,
-    detect_loop,
-    detect_tool_overuse,
-    extract_recent_tool_signatures,
     find_safe_truncation_point,
     get_tool_call_count,
     get_user_message_count,
-    inject_loop_breaker,
     limit_history,
     validate_tool_pairing,
 )
@@ -46,18 +40,6 @@ def _make_tool_return(tool_call_id: str, content: str = "result") -> ModelReques
     """Create a request with a tool return."""
     return ModelRequest(
         parts=[ToolReturnPart(tool_call_id=tool_call_id, tool_name="test_tool", content=content)]
-    )
-
-
-def _make_tool_return_with_result(
-    tool_call_id: str, tool_name: str, success: bool, error: str | None = None
-) -> ModelRequest:
-    """Create a request with a tool return containing a result dict."""
-    content = {"success": success}
-    if error:
-        content["error"] = error
-    return ModelRequest(
-        parts=[ToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)]
     )
 
 
@@ -178,6 +160,37 @@ class TestFindSafeTruncationPoint:
         # max_messages=2 starts at index 5, no orphaned calls
         assert find_safe_truncation_point(messages, max_messages=2) == 5
 
+    def test_truncation_preserves_orphaned_returns(self) -> None:
+        """Truncation should move earlier to include calls for orphaned returns.
+
+        This tests the fix for the Mistral API error:
+        "Unexpected tool call id POrAwIYLx in tool results"
+
+        When truncating history, if a ToolReturnPart exists after the truncation
+        point but its corresponding ToolCallPart is before the truncation point,
+        we must include the call to avoid API errors.
+        """
+        messages = [
+            _make_user_request("msg1"),  # 0
+            _make_tool_call("call_A"),  # 1 - call that would be discarded
+            _make_user_request("msg2"),  # 2
+            _make_tool_call("call_B"),  # 3 - call that would be discarded
+            _make_tool_return("call_A"),  # 4 - return for discarded call
+            _make_tool_return("call_B"),  # 5 - return for discarded call
+            _make_user_request("msg3"),  # 6
+            _make_assistant_response("resp3"),  # 7
+        ]
+        # max_messages=4 would start at index 4
+        # But call_A (at 1) and call_B (at 3) have returns at 4 and 5
+        # Should move to include both calls
+        result = find_safe_truncation_point(messages, max_messages=4)
+        # Must include call_A at index 1
+        assert result <= 1
+
+        # Verify the truncated history has valid pairing
+        truncated = messages[result:]
+        assert validate_tool_pairing(truncated) is True
+
 
 class TestLimitHistory:
     """Tests for limit_history function."""
@@ -294,137 +307,6 @@ class TestGetUserMessageCount:
         assert get_user_message_count(messages) == 1
 
 
-def _make_tool_call_with_args(
-    tool_call_id: str, tool_name: str = "test_tool", args: dict | None = None
-) -> ModelResponse:
-    """Create an assistant response with a tool call and specific args."""
-    return ModelResponse(
-        parts=[ToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=args or {})]
-    )
-
-
-class TestExtractRecentToolSignatures:
-    """Tests for extract_recent_tool_signatures function."""
-
-    def test_empty_history_returns_empty(self) -> None:
-        """Empty history should return empty list."""
-        assert extract_recent_tool_signatures([]) == []
-
-    def test_no_tools_returns_empty(self) -> None:
-        """History without tools should return empty list."""
-        messages = [
-            _make_user_request("hello"),
-            _make_assistant_response("hi"),
-        ]
-        assert extract_recent_tool_signatures(messages) == []
-
-    def test_extracts_tool_signatures(self) -> None:
-        """Should extract tool name and signature pairs."""
-        messages = [
-            _make_user_request("do stuff"),
-            _make_tool_call_with_args("call_1", "ssh_execute", {"host": "server1"}),
-            _make_tool_return("call_1"),
-            _make_tool_call_with_args("call_2", "list_hosts", {}),
-            _make_tool_return("call_2"),
-        ]
-        sigs = extract_recent_tool_signatures(messages)
-        assert len(sigs) == 2
-        assert sigs[0][0] == "ssh_execute"
-        assert sigs[1][0] == "list_hosts"
-
-    def test_respects_window_size(self) -> None:
-        """Should only return last N signatures."""
-        messages = [_make_tool_call_with_args(f"call_{i}", "tool", {"i": i}) for i in range(10)]
-        # Add returns
-        for i in range(10):
-            messages.append(_make_tool_return(f"call_{i}"))
-        sigs = extract_recent_tool_signatures(messages, window=3)
-        assert len(sigs) == 3
-
-
-class TestDetectLoop:
-    """Tests for detect_loop function."""
-
-    def test_no_loop_with_few_calls(self) -> None:
-        """Should not detect loop with few tool calls."""
-        messages = [
-            _make_tool_call_with_args("call_1", "ssh_execute", {"cmd": "ls"}),
-            _make_tool_return("call_1"),
-        ]
-        is_loop, _ = detect_loop(messages)
-        assert is_loop is False
-
-    def test_detects_same_call_repeated(self) -> None:
-        """Should detect when same tool+args is called repeatedly."""
-        messages = []
-        # Same command repeated 4 times
-        for i in range(4):
-            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"}))
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        is_loop, desc = detect_loop(messages, threshold_same=3)
-        assert is_loop is True
-        assert desc is not None
-        assert "ssh_execute" in desc
-        assert "repeated" in desc
-
-    def test_different_args_not_a_loop(self) -> None:
-        """Different args should not trigger loop detection."""
-        messages = []
-        for i in range(4):
-            messages.append(
-                _make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": f"cmd{i}"})
-            )
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        is_loop, _ = detect_loop(messages, threshold_same=3)
-        assert is_loop is False
-
-    def test_detects_alternating_pattern(self) -> None:
-        """Should detect A-B-A-B alternating pattern."""
-        messages = []
-        # A-B-A-B pattern repeated 5 times (10 total for pattern detection)
-        for i in range(10):
-            tool = "tool_a" if i % 2 == 0 else "tool_b"
-            # Use same args for each tool to ensure signature consistency
-            args = {"x": "a"} if i % 2 == 0 else {"x": "b"}
-            messages.append(_make_tool_call_with_args(f"call_{i}", tool, args))
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        is_loop, desc = detect_loop(messages, threshold_same=10, threshold_pattern=4)
-        assert is_loop is True
-        assert desc is not None
-        assert "Alternating" in desc
-
-
-class TestInjectLoopBreaker:
-    """Tests for inject_loop_breaker function."""
-
-    def test_injects_system_prompt(self) -> None:
-        """Should inject a system prompt to break loop."""
-        from pydantic_ai.messages import UserPromptPart
-
-        messages = [
-            _make_user_request("do stuff"),
-            _make_tool_call("call_1"),
-            _make_tool_return("call_1"),
-        ]
-        result = inject_loop_breaker(messages, "Test loop detected")
-
-        # Check that a new user prompt was appended
-        assert len(result) == len(messages) + 1
-        last_request = result[-1]
-        assert isinstance(last_request, ModelRequest)
-        assert any(isinstance(p, UserPromptPart) for p in last_request.parts)
-
-        # Check content of user prompt
-        for part in last_request.parts:
-            if isinstance(part, UserPromptPart):
-                assert "LOOP DETECTED" in part.content
-                assert "Test loop detected" in part.content
-                break
-
-
 class TestCreateLoopAwareHistoryProcessor:
     """Tests for create_loop_aware_history_processor factory function."""
 
@@ -445,210 +327,77 @@ class TestCreateLoopAwareHistoryProcessor:
         result = processor(messages)
         assert len(result) == 2
 
-    def test_injects_breaker_on_loop(self) -> None:
-        """Processor should inject loop breaker when loop detected."""
-        from pydantic_ai.messages import UserPromptPart
-
-        processor = create_loop_aware_history_processor(max_messages=50)
-
-        # Create a looping pattern
-        messages = []
-        for i in range(5):
-            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"}))
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        result = processor(messages)
-
-        # Check that a user prompt with loop breaker was appended
-        has_breaker = False
-        for msg in result:
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if isinstance(part, UserPromptPart) and "LOOP DETECTED" in part.content:
-                        has_breaker = True
-                        break
-
-        assert has_breaker, "Loop breaker should be injected when loop detected"
-
     def test_no_breaker_when_disabled(self) -> None:
         """Processor should not inject breaker when detection disabled."""
-        from pydantic_ai.messages import UserPromptPart
-
         processor = create_loop_aware_history_processor(
             max_messages=50, enable_loop_detection=False
         )
 
-        # Create a looping pattern
-        messages = []
-        for i in range(5):
-            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"cmd": "mongo"}))
+        # Create many tool calls
+        messages = [_make_user_request("do stuff")]
+        for i in range(100):
+            messages.append(_make_tool_call(f"call_{i}"))
             messages.append(_make_tool_return(f"call_{i}"))
 
         result = processor(messages)
 
-        # Check that no user prompt with loop breaker was added
+        # Check that no breaker message was added (only truncation)
         has_breaker = False
         for msg in result:
             if isinstance(msg, ModelRequest):
                 for part in msg.parts:
-                    if isinstance(part, UserPromptPart) and "LOOP DETECTED" in part.content:
+                    if isinstance(part, UserPromptPart) and "tool calls" in part.content:
                         has_breaker = True
                         break
 
-        assert not has_breaker, "Loop breaker should NOT be injected when disabled"
+        assert not has_breaker, "Breaker should NOT be injected when disabled"
 
+    def test_injects_breaker_at_threshold(self) -> None:
+        """Processor should inject breaker at exactly MAX_TOOL_CALLS_SINCE_LAST_USER."""
+        from merlya.agent.history import MAX_TOOL_CALLS_SINCE_LAST_USER
 
-class TestIsToolResultSuccess:
-    """Tests for _is_tool_result_success function."""
+        processor = create_loop_aware_history_processor(max_messages=200)
 
-    def test_none_is_success(self) -> None:
-        """None content should be considered success."""
-        assert _is_tool_result_success(None) is True
+        # Create exactly threshold number of tool calls
+        messages: list = [_make_user_request("start")]
+        for i in range(MAX_TOOL_CALLS_SINCE_LAST_USER):
+            messages.append(_make_tool_call(f"call_{i}"))
+            messages.append(_make_tool_return(f"call_{i}"))
 
-    def test_dict_with_success_true(self) -> None:
-        """Dict with success=True should be success."""
-        assert _is_tool_result_success({"success": True, "data": "foo"}) is True
+        result = processor(messages)
 
-    def test_dict_with_success_false(self) -> None:
-        """Dict with success=False should be failure."""
-        assert _is_tool_result_success({"success": False, "error": "oops"}) is False
+        # Verify breaker was injected
+        breaker_found = False
+        for msg in result:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, UserPromptPart) and "tool calls" in part.content:
+                        breaker_found = True
+                        break
 
-    def test_dict_with_error_field(self) -> None:
-        """Dict with error field should be failure."""
-        assert _is_tool_result_success({"error": "something went wrong"}) is False
+        assert breaker_found, "Breaker should be injected at threshold"
 
-    def test_dict_with_exit_code_zero(self) -> None:
-        """Dict with exit_code=0 should be success."""
-        assert _is_tool_result_success({"exit_code": 0, "stdout": "ok"}) is True
+    def test_no_breaker_below_threshold(self) -> None:
+        """Processor should NOT inject breaker below threshold."""
+        from merlya.agent.history import MAX_TOOL_CALLS_SINCE_LAST_USER
 
-    def test_dict_with_exit_code_nonzero(self) -> None:
-        """Dict with exit_code!=0 should be failure."""
-        assert _is_tool_result_success({"exit_code": 1, "stderr": "error"}) is False
+        processor = create_loop_aware_history_processor(max_messages=200)
 
-    def test_string_with_error_keyword(self) -> None:
-        """String containing error keywords should be failure."""
-        assert _is_tool_result_success("Error: connection refused") is False
-        assert _is_tool_result_success("Permission denied") is False
-        assert _is_tool_result_success("Timeout occurred") is False
+        # Create one less than threshold
+        messages: list = [_make_user_request("start")]
+        for i in range(MAX_TOOL_CALLS_SINCE_LAST_USER - 1):
+            messages.append(_make_tool_call(f"call_{i}"))
+            messages.append(_make_tool_return(f"call_{i}"))
 
-    def test_string_without_error(self) -> None:
-        """Normal string output should be success."""
-        assert _is_tool_result_success("Command completed successfully") is True
+        result = processor(messages)
 
+        # Verify NO breaker was injected
+        breaker_found = False
+        for msg in result:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, UserPromptPart) and "tool calls" in part.content:
+                        breaker_found = True
+                        break
 
-class TestDetectConsecutiveFailures:
-    """Tests for detect_consecutive_failures function."""
-
-    def test_no_failures_returns_false(self) -> None:
-        """Should return False when no failures."""
-        messages = [_make_user_request("do stuff")]
-        for i in range(3):
-            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
-            messages.append(_make_tool_return_with_result(f"call_{i}", "ssh_execute", success=True))
-
-        is_failing, _ = detect_consecutive_failures(messages, threshold=4)
-        assert is_failing is False
-
-    def test_detects_consecutive_failures(self) -> None:
-        """Should detect when same tool fails consecutively."""
-        messages = [_make_user_request("check server")]
-        for i in range(4):
-            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
-            messages.append(
-                _make_tool_return_with_result(
-                    f"call_{i}", "ssh_execute", success=False, error="Connection refused"
-                )
-            )
-
-        is_failing, desc = detect_consecutive_failures(messages, threshold=4)
-        assert is_failing is True
-        assert desc is not None
-        assert "ssh_execute" in desc
-        assert "failed" in desc
-
-    def test_mixed_tools_not_consecutive(self) -> None:
-        """Should not trigger if different tools fail."""
-        messages = [_make_user_request("check stuff")]
-        tools = ["ssh_execute", "bash_execute", "file_read", "http_get"]
-        for i, tool in enumerate(tools):
-            messages.append(_make_tool_call(f"call_{i}", tool))
-            messages.append(
-                _make_tool_return_with_result(f"call_{i}", tool, success=False, error="Error")
-            )
-
-        is_failing, _ = detect_consecutive_failures(messages, threshold=4)
-        assert is_failing is False
-
-
-class TestDetectToolOveruse:
-    """Tests for detect_tool_overuse function."""
-
-    def test_no_overuse_returns_false(self) -> None:
-        """Should return False when tool not overused."""
-        messages = [_make_user_request("do stuff")]
-        for i in range(3):
-            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
-            messages.append(_make_tool_return_with_result(f"call_{i}", "ssh_execute", success=True))
-
-        is_overusing, _ = detect_tool_overuse(messages, threshold=6)
-        assert is_overusing is False
-
-    def test_detects_overuse_with_failures(self) -> None:
-        """Should detect when same tool used many times with failures."""
-        messages = [_make_user_request("check server")]
-        for i in range(6):
-            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
-            # 4 failures, 2 successes
-            success = i < 2
-            messages.append(
-                _make_tool_return_with_result(
-                    f"call_{i}",
-                    "ssh_execute",
-                    success=success,
-                    error=None if success else "Connection error",
-                )
-            )
-
-        is_overusing, desc = detect_tool_overuse(messages, threshold=6)
-        assert is_overusing is True
-        assert desc is not None
-        assert "ssh_execute" in desc
-
-    def test_no_trigger_without_failures(self) -> None:
-        """Should not trigger if tool succeeds (even if used many times)."""
-        messages = [_make_user_request("check many servers")]
-        for i in range(8):
-            messages.append(_make_tool_call(f"call_{i}", "ssh_execute"))
-            messages.append(_make_tool_return_with_result(f"call_{i}", "ssh_execute", success=True))
-
-        is_overusing, _ = detect_tool_overuse(messages, threshold=6)
-        assert is_overusing is False
-
-
-class TestDetectLoopWithFailures:
-    """Tests for detect_loop with failure detection integration."""
-
-    def test_detects_ssh_consecutive_failures(self) -> None:
-        """Should detect SSH failing consecutively even with different commands."""
-        messages = [_make_user_request("check cloudflared status")]
-
-        # SSH fails 4 times with different commands
-        commands = [
-            "systemctl status",
-            "cloudflared list",
-            "cloudflared info",
-            "cloudflared --help",
-        ]
-        for i, cmd in enumerate(commands):
-            messages.append(_make_tool_call_with_args(f"call_{i}", "ssh_execute", {"command": cmd}))
-            messages.append(
-                _make_tool_return_with_result(
-                    f"call_{i}", "ssh_execute", success=False, error="Connection refused"
-                )
-            )
-
-        is_loop, desc = detect_loop(messages)
-        assert is_loop is True
-        assert desc is not None
-        assert "ssh_execute" in desc
-        assert "failed" in desc
+        assert not breaker_found, "Breaker should NOT be injected below threshold"

@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from merlya.persistence.models import Host
 
 
+# Maximum retries for password verification
+MAX_PASSWORD_RETRIES = 3
+
+
 @dataclass
 class CredentialBundle:
     """Structured credentials returned to the agent."""
@@ -25,6 +29,89 @@ class CredentialBundle:
     host: str | None
     values: dict[str, str]
     stored: bool
+
+
+async def _verify_elevation_password(
+    ctx: SharedContext, host: str, password: str, method: str = "sudo"
+) -> tuple[bool, str]:
+    """
+    Verify an elevation password works by testing with 'sudo -S true' or 'su -c true'.
+
+    Tries sudo first, then falls back to su if sudo fails.
+
+    Args:
+        ctx: Shared context.
+        host: Target host.
+        password: Password to verify.
+        method: "sudo" or "su" (which method to test).
+
+    Returns:
+        Tuple of (success, working_method).
+        working_method is "sudo", "su", or "" if none worked.
+    """
+    try:
+        ssh_pool = await ctx.get_ssh_pool()
+        host_entry = await ctx.hosts.get_by_name(host)
+
+        from merlya.ssh import SSHConnectionOptions
+
+        opts = SSHConnectionOptions()
+        if host_entry:
+            opts.port = host_entry.port
+
+        async def _test_method(cmd: str) -> bool:
+            """Test a specific elevation method."""
+            try:
+                if host_entry:
+                    result = await ssh_pool.execute(
+                        host=host_entry.hostname,
+                        command=cmd,
+                        timeout=10,
+                        input_data=password,
+                        username=host_entry.username,
+                        private_key=host_entry.private_key,
+                        options=opts,
+                        host_name=host,
+                    )
+                else:
+                    result = await ssh_pool.execute(
+                        host=host,
+                        command=cmd,
+                        timeout=10,
+                        input_data=password,
+                        options=opts,
+                        host_name=host,
+                    )
+                return result.exit_code == 0
+            except Exception as e:
+                logger.debug(f"Method test failed: {cmd} - {e}")
+                return False
+
+        # Try sudo first
+        if method == "sudo":
+            if await _test_method("sudo -S true"):
+                logger.debug(f"✅ Password verified for sudo on {host}")
+                return True, "sudo"
+
+            # Sudo failed - try su as fallback
+            logger.debug(f"sudo failed on {host}, trying su...")
+            if await _test_method("su -c 'true'"):
+                logger.debug(f"✅ Password verified for su (root) on {host}")
+                return True, "su"
+
+        # Try su directly if requested
+        elif method == "su":
+            if await _test_method("su -c 'true'"):
+                logger.debug(f"✅ Password verified for su on {host}")
+                return True, "su"
+
+        logger.warning(f"❌ Password verification failed on {host} (tried sudo and su)")
+        return False, ""
+
+    except Exception as e:
+        logger.warning(f"⚠️ Could not verify password for {host}: {e}")
+        # Connection error - don't assume success, let the user retry
+        return False, ""
 
 
 async def request_credentials(
@@ -73,7 +160,11 @@ async def request_credentials(
                 logger.debug(f"Could not resolve host '{host}' for credentials prefill: {exc}")
 
         if fields is None:
-            if service_lower in {"ssh", "ssh_login", "ssh_auth"}:
+            if service_lower in {"sudo", "root", "su", "doas"}:
+                # Elevation services only need password, not username
+                # (uses the current SSH user's password)
+                fields = ["password"]
+            elif service_lower in {"ssh", "ssh_login", "ssh_auth"}:
                 key_based_ssh = bool(
                     (host_entry and host_entry.private_key)
                     or getattr(ctx.config.ssh, "default_key", None)
@@ -166,12 +257,86 @@ async def request_credentials(
         if format_hint:
             ctx.ui.muted(f"Format hint: {format_hint}")
 
+        # For elevation services (sudo/root/su/doas), verify password before storing
+        is_elevation_service = service_lower in {"sudo", "root", "su", "doas"}
+
+        if is_elevation_service and "password" in missing_fields and host:
+            # Special handling: verify password works before storing
+            password_verified = False
+            working_method = ""
+            retries = 0
+
+            while not password_verified and retries < MAX_PASSWORD_RETRIES:
+                if retries > 0:
+                    ctx.ui.warning(
+                        f"❌ Password incorrect. Attempt {retries + 1}/{MAX_PASSWORD_RETRIES}"
+                    )
+
+                password = await ctx.ui.prompt_secret("Password")
+                ctx.ui.muted("🔍 Verifying password (trying sudo, then su)...")
+
+                # Try sudo first, fallback to su
+                password_verified, working_method = await _verify_elevation_password(
+                    ctx, host, password, method="sudo"
+                )
+
+                if password_verified:
+                    values["password"] = password
+                    if working_method == "su":
+                        ctx.ui.success("✅ Password verified (use 'su -c' instead of sudo)")
+                        # Store under root: prefix for su
+                        key_prefix = f"root:{host}"
+                    else:
+                        ctx.ui.success("✅ Password verified (sudo)")
+
+                    # IMPORTANT: Cache the elevation method for this host
+                    # This allows ssh.py to auto-transform commands
+                    from merlya.tools.core.ssh_patterns import set_cached_elevation_method
+
+                    set_cached_elevation_method(host, working_method)
+
+                    # PERSIST to Host model for future sessions
+                    try:
+                        host_entry = await ctx.hosts.get_by_name(host)
+                        if host_entry and host_entry.elevation_method != working_method:
+                            host_entry.elevation_method = working_method
+                            await ctx.hosts.update(host_entry)
+                            logger.info(f"💾 Elevation method '{working_method}' saved for {host}")
+                    except Exception as e:
+                        logger.debug(f"Could not persist elevation method: {e}")
+                else:
+                    retries += 1
+
+            if not password_verified:
+                return CommandResult(
+                    success=False,
+                    message=f"❌ Password verification failed after {MAX_PASSWORD_RETRIES} attempts. "
+                    f"Neither sudo nor su worked with this password.",
+                )
+
+            # Remove password from missing_fields since we handled it
+            missing_fields = [f for f in missing_fields if f != "password"]
+
+            # Store info about which method works
+            values["_elevation_method"] = working_method
+
+        # Prompt for any remaining missing fields (non-password or non-elevation)
         for field in missing_fields:
             prompt = f"{field.capitalize()}"
             secret = await ctx.ui.prompt_secret(prompt)
             values[field] = secret
 
-        if allow_store:
+        # For elevation services, password was already verified - always store
+        # For other services, ask user
+        if is_elevation_service and host:
+            # Password verified - store it automatically
+            # Don't store internal metadata like _elevation_method
+            for name, val in values.items():
+                if not name.startswith("_"):
+                    secret_store.set(f"{key_prefix}:{name}", val)
+            stored = True
+            ctx.ui.success("✅ Verified credentials stored securely")
+        elif allow_store:
             save = await ctx.ui.prompt_confirm(
                 "Store these credentials securely for reuse?", default=False
             )

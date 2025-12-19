@@ -162,54 +162,36 @@ class TestModelModelCommand:
 
     async def test_model_model_change(self, registry: CommandRegistry, mock_context: MagicMock):
         """Test /model model changes the model."""
-        result = await registry.execute(mock_context, "/model model gpt-4o")
-        assert result is not None
-        assert result.success is True
-        assert mock_context.config.model.model == "gpt-4o"
-        mock_context.config.save.assert_called()
-        assert result.data == {"reload_agent": True}
+        with patch("merlya.commands.handlers.model.ensure_provider_env"):
+            result = await registry.execute(mock_context, "/model model gpt-4o")
+            assert result is not None
+            assert result.success is True
+            assert mock_context.config.model.model == "gpt-4o"
+            mock_context.config.save.assert_called()
+            assert result.data == {"reload_agent": True}
 
 
 class TestModelRouterCommand:
-    """Tests for /model router command."""
+    """Tests for /model router command - DEPRECATED."""
 
-    async def test_router_no_args(self, registry: CommandRegistry, mock_context: MagicMock):
-        """Test /model router without args shows usage."""
+    async def test_router_shows_deprecation(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
+        """Test /model router shows deprecation message."""
         result = await registry.execute(mock_context, "/model router")
         assert result is not None
         assert result.success is False
-        assert "Usage" in result.message
+        assert "deprecated" in result.message.lower()
+        assert "Orchestrator" in result.message
 
-    async def test_router_show(self, registry: CommandRegistry, mock_context: MagicMock):
-        """Test /model router show displays router config."""
-        with patch.object(Path, "exists", return_value=False):
-            result = await registry.execute(mock_context, "/model router show")
-            assert result is not None
-            assert result.success is True
-            assert "Router Configuration" in result.message
-
-    async def test_router_local(self, registry: CommandRegistry, mock_context: MagicMock):
-        """Test /model router local sets local router."""
-        result = await registry.execute(mock_context, "/model router local")
-        assert result is not None
-        assert result.success is True
-        assert mock_context.config.router.type == "local"
-        mock_context.config.save.assert_called()
-
-    async def test_router_llm_no_model(self, registry: CommandRegistry, mock_context: MagicMock):
-        """Test /model router llm without model shows usage."""
-        result = await registry.execute(mock_context, "/model router llm")
+    async def test_router_any_args_shows_deprecation(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
+        """Test /model router with any args shows deprecation."""
+        result = await registry.execute(mock_context, "/model router show")
         assert result is not None
         assert result.success is False
-        assert "Usage" in result.message
-
-    async def test_router_llm_with_model(self, registry: CommandRegistry, mock_context: MagicMock):
-        """Test /model router llm sets LLM router."""
-        result = await registry.execute(mock_context, "/model router llm gpt-4o-mini")
-        assert result is not None
-        assert result.success is True
-        assert mock_context.config.router.type == "llm"
-        mock_context.config.save.assert_called()
+        assert "deprecated" in result.message.lower()
 
 
 class TestModelTestCommand:

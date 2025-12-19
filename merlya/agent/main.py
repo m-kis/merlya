@@ -7,17 +7,18 @@ PydanticAI-based agent with ReAct loop.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel
 from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter, ModelRetry, RunContext
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
-from merlya.agent.history import create_loop_aware_history_processor, detect_loop
+from merlya.agent.history import create_loop_aware_history_processor
 from merlya.agent.tools import register_all_tools
+from merlya.agent.tracker import ToolCallTracker
 from merlya.config.constants import (
     DEFAULT_REQUEST_LIMIT,
     DEFAULT_TOOL_CALLS_LIMIT,
@@ -94,12 +95,11 @@ The inventory is a CONVENIENCE, not a REQUIREMENT.
 
 - **bash**: Run commands LOCALLY (kubectl, aws, docker, gcloud, any CLI tool)
   → This is your UNIVERSAL FALLBACK for local operations
-- **ssh_execute**: Run commands on REMOTE hosts via SSH (auto-elevates if permission denied!)
-  → Do NOT prefix with sudo - elevation is automatic
+- **ssh_execute**: Run commands on REMOTE hosts via SSH
+  → Add sudo/doas prefix if permission denied
 - **list_hosts/get_host**: Access inventory (if configured)
 - **ask_user**: Ask for clarification or choices
 - **request_credentials**: Get credentials securely (returns @secret-ref)
-- **request_elevation**: Explicit elevation (RARELY needed - ssh_execute auto-elevates)
 
 ### When to use bash vs ssh_execute (CRITICAL):
 - **bash**: ONLY for LOCAL tools (kubectl, aws, docker, gcloud, az, terraform...)
@@ -117,7 +117,7 @@ ssh_execute(host="192.168.1.5", command="uptime")  # CORRECT!
 ssh_execute(host="server", command="df -h")        # CORRECT!
 ```
 
-Why? ssh_execute provides: auto-elevation, jump host support, credential injection,
+Why? ssh_execute provides: jump host support, credential injection (@secret refs),
 connection pooling, and proper error handling. bash("ssh ...") bypasses ALL of this.
 
 ## Jump Hosts / Bastions
@@ -140,37 +140,48 @@ ssh_execute(command="mongosh -u admin -p @db-password")
 ```
 Merlya resolves secrets at execution time. NEVER embed passwords in commands.
 
-## Privilege Elevation (CRITICAL)
+## Privilege Elevation
 
-ELEVATION IS AUTOMATIC - DO NOT ADD SUDO TO COMMANDS!
+When a command needs root privileges:
 
-How it works:
-1. Run command WITHOUT sudo: `ssh_execute(command="systemctl restart nginx")`
-2. If "permission denied" → Merlya auto-retries with elevation
-3. User is prompted for password (handled internally, you never see it)
+### STEP 1: Check host's elevation_method first!
+Call `get_host(name="X")` and check the `elevation_method` field:
+- `"sudo"` or `"sudo-S"` → use sudo commands
+- `"su"` → use `su -c '<cmd>'` (NOT sudo!)
+- `None` → try sudo first, then fallback to su
 
-CORRECT:
-```python
-ssh_execute(host="server", command="systemctl restart nginx")  # NO sudo!
-ssh_execute(host="server", command="cat /etc/shadow")  # NO sudo!
-```
+### STEP 2: Try the known method (or probe if unknown)
 
-FORBIDDEN (will be blocked):
-```python
-ssh_execute(command="sudo systemctl restart nginx")  # WRONG: don't add sudo
-ssh_execute(command="echo 'password' | sudo -S ...")  # FORBIDDEN: security risk
-```
+**If elevation_method is "sudo" or None:**
+1. Try passwordless: `ssh_execute(host="X", command="sudo <cmd>")`
+2. If password needed: `request_credentials(service="sudo", host="X")`
+3. Then: `ssh_execute(host="X", command="sudo -S <cmd>", stdin="@sudo:X:password")`
+
+**If elevation_method is "su":**
+1. Call: `request_credentials(service="root", host="X")`
+2. Then: `ssh_execute(host="X", command="su -c '<cmd>'", stdin="@root:X:password")`
+
+⚠️ IMPORTANT: Different hosts may use different methods!
+- Server A might use sudo
+- Server B might only have su
+Always check elevation_method per host to avoid timeouts.
+
+⚠️ IMPORTANT:
+- `host` = machine IP/name (e.g., "192.168.1.7")
+- `stdin` = password reference (e.g., "@secret-sudo") - NEVER the host!
+- Call `request_credentials` BEFORE using `stdin` - the secret must exist first!
+
+Note: Commands like `systemctl is-active` return exit code 1 for "inactive" - this is NOT an error.
 
 ## SECURITY: Password Handling (CRITICAL)
 
-NEVER construct password patterns manually. These are BLOCKED:
-- `echo 'password' | sudo -S ...`
-- `mysql -p'password' ...`
-- Any command with plaintext passwords
+NEVER use plaintext passwords in commands. These are BLOCKED:
+- `echo 'mypassword123' | sudo -S ...`
+- `mysql -p'mypassword' ...`
 
-CORRECT:
-- For DB passwords: Use `@secret-name` references → `mongosh -u admin -p @db-password`
-- For elevation: Just run the command without sudo - elevation is automatic
+CORRECT approach - use `@secret-name` references:
+- For DB passwords: `mongosh -u admin -p @db-password`
+- For sudo/su: use the `stdin` parameter (see Privilege Elevation section)
 
 ## Analysis Coherence
 
@@ -197,6 +208,42 @@ Be concise and action-oriented:
 - Report results
 - Propose next steps if needed
 
+## AUTONOMY RULES (CRITICAL)
+
+You are an AUTONOMOUS agent. Complete tasks WITHOUT asking permission at each step.
+
+### DO:
+- Continue executing until the task is COMPLETE
+- Try alternative approaches when one fails
+- Make decisions based on command output
+- Report final results, not intermediate questions
+
+### DON'T:
+- Ask "Do you want me to check the logs?" - JUST CHECK THEM
+- Ask "Should I try a different approach?" - JUST TRY IT
+- Ask "Do you want me to fix this?" - JUST FIX IT
+- Stop after every command to ask for confirmation
+
+### When to ask the user:
+1. DESTRUCTIVE operations (delete, stop, restart critical services)
+2. AMBIGUOUS requests (multiple valid interpretations)
+3. EXTERNAL credentials needed (API keys, passwords you don't have)
+4. After EXHAUSTING alternatives (tried 3+ different approaches)
+
+### Example - WRONG:
+```
+"The service is failing. Do you want me to check the logs?"
+```
+
+### Example - CORRECT:
+```
+"The service is failing. Let me check the logs..."
+*checks logs*
+"Found the error: config syntax issue at line 11. Fixing it now..."
+*fixes config*
+"Fixed. Service is now running."
+```
+
 When you encounter ANY obstacle, your reflex should be:
 "How can I discover the right information and continue?" NOT "I cannot proceed."
 """
@@ -208,6 +255,7 @@ class AgentDependencies:
 
     context: SharedContext
     router_result: RouterResult | None = None
+    tracker: ToolCallTracker = field(default_factory=ToolCallTracker)
 
 
 class AgentResponse(BaseModel):
@@ -400,6 +448,15 @@ class MerlyaAgent:
             if self._active_conversation is None:
                 self._active_conversation = await self._create_conversation(user_input)
 
+            # Extract and apply credential hints from user message
+            # This allows users to say "password for 192.168.1.7 is @pine-pass"
+            # and have the system automatically use that secret when needed
+            from merlya.tools.core.resolve import apply_credential_hints_from_message
+
+            hints_applied = apply_credential_hints_from_message(user_input)
+            if hints_applied:
+                logger.debug(f"🔑 Applied {hints_applied} credential hints from user message")
+
             # PROACTIVE MODE: Check which hosts are not in inventory
             # This helps the agent know it may need to discover alternatives
             if router_result and router_result.entities.get("hosts"):
@@ -420,11 +477,19 @@ class MerlyaAgent:
             # Run the agent - it completes naturally via ReAct loop
             # Loop detection in history processor catches unproductive behavior
             try:
+                # Get timeout from config or use provider-specific default
+                from pydantic_ai.settings import ModelSettings
+
+                timeout = self.context.config.model.get_timeout()
+                model_settings = ModelSettings(timeout=float(timeout))
+                logger.debug(f"🕐 LLM request timeout: {timeout}s")
+
                 result = await self._agent.run(
                     user_input,
                     deps=deps,
                     message_history=self._message_history if self._message_history else None,
                     usage_limits=usage_limits,
+                    model_settings=model_settings,
                 )
             except UsageLimitExceeded as e:
                 # This should rarely happen with high limits
@@ -436,34 +501,40 @@ class MerlyaAgent:
                     actions_taken=[],
                     suggestions=["Découper la tâche en étapes plus petites"],
                 )
+            except UnexpectedModelBehavior as e:
+                # This happens when ModelRetry is raised too many times
+                # (e.g., tool keeps failing or loop detection triggers repeatedly)
+                error_msg = str(e)
+                logger.warning(f"⚠️ Model behavior issue: {error_msg}")
+                await self._persist_history()
+
+                # Provide helpful message based on error type
+                if "exceeded max retries" in error_msg.lower():
+                    return AgentResponse(
+                        message=(
+                            "⚠️ J'ai rencontré des difficultés répétées avec cette commande. "
+                            "Cela peut être dû à:\n"
+                            "- Des erreurs d'authentification (mot de passe incorrect)\n"
+                            "- Une méthode d'élévation incompatible (sudo vs su)\n"
+                            "- Un problème de connexion SSH\n\n"
+                            "Essayez de reformuler la tâche ou vérifiez les identifiants."
+                        ),
+                        actions_taken=[],
+                        suggestions=[
+                            "Vérifier les identifiants avec 'merlya hosts show <host>'",
+                            "Essayer une méthode d'élévation différente",
+                        ],
+                    )
+                # Generic fallback
+                return AgentResponse(
+                    message=f"⚠️ Comportement inattendu: {error_msg}",
+                    actions_taken=[],
+                    suggestions=["Reformuler la demande"],
+                )
 
             # Update history with ALL messages including tool calls
             # This is critical for conversation continuity
             self._message_history = result.all_messages()
-
-            # Check for persistent loop AFTER the run
-            # The history processor injects a warning, but if the LLM ignores it,
-            # we catch it here and return a structured response to the user
-            is_loop, loop_desc = detect_loop(
-                self._message_history,
-                threshold_same=4,  # Strict: 4 identical calls = hard stop
-                threshold_pattern=5,
-            )
-            if is_loop and loop_desc:
-                logger.warning(f"🔄 Persistent loop detected: {loop_desc}")
-                await self._persist_history()
-                return AgentResponse(
-                    message=(
-                        f"Je suis bloqué dans une boucle : {loop_desc}. "
-                        "Je n'arrive pas à progresser avec cette approche."
-                    ),
-                    actions_taken=[],
-                    suggestions=[
-                        "Vérifier les prérequis (service installé, permissions)",
-                        "Essayer une commande différente",
-                        "Fournir plus de contexte sur l'environnement",
-                    ],
-                )
 
             await self._persist_history()
 

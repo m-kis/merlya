@@ -40,6 +40,7 @@ class Host(BaseModel):
     # SSH config
     private_key: str | None = None
     jump_host: str | None = None
+    elevation_method: str | None = None  # "sudo", "sudo-S", "su", "doas"
 
     # Metadata
     tags: list[str] = Field(default_factory=list)

@@ -31,7 +31,12 @@ from merlya.tools.core.security import (
 )
 
 # SSH execution
-from merlya.tools.core.ssh import ssh_execute
+from merlya.tools.core.ssh import (
+    clear_credential_hints,
+    get_credential_hint,
+    set_credential_hint,
+    ssh_execute,
+)
 
 # User interaction
 from merlya.tools.core.user_input import (
@@ -58,8 +63,12 @@ __all__ = [
     "ask_user",
     # Execution
     "bash_execute",
+    # Credential hints
+    "clear_credential_hints",
     # Security functions
     "detect_unsafe_password",
+    # Credential hints
+    "get_credential_hint",
     # Host tools
     "get_host",
     # Resolution functions
@@ -74,6 +83,8 @@ __all__ = [
     "resolve_all_references",
     "resolve_host_references",
     "resolve_secrets",
+    # Credential hints
+    "set_credential_hint",
     "set_variable",
     "ssh_execute",
 ]

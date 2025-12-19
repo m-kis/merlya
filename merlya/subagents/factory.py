@@ -357,8 +357,12 @@ class SubagentInstance:
 
         deps = AgentDependencies(context=self.context)
 
-        # Set model settings with request limit for skills
-        model_settings = ModelSettings(request_limit=REQUEST_LIMIT_SKILL)  # type: ignore[typeddict-unknown-key]
+        # Set model settings with request limit and timeout
+        timeout = self.context.config.model.get_timeout()
+        model_settings = ModelSettings(
+            request_limit=REQUEST_LIMIT_SKILL,  # type: ignore[typeddict-unknown-key]
+            timeout=float(timeout),
+        )
 
         try:
             result = await self.agent.run(

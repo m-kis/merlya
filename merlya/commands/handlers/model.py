@@ -10,12 +10,10 @@ import asyncio
 import os
 import shutil
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from merlya.commands.registry import CommandResult, command, subcommand
 from merlya.config.provider_env import (
-    ensure_openrouter_headers,
     ensure_provider_env,
     ollama_requires_api_key,
 )
@@ -41,22 +39,19 @@ async def cmd_model(ctx: SharedContext, args: list[str]) -> CommandResult:
 async def cmd_model_show(ctx: SharedContext, _args: list[str]) -> CommandResult:
     """Show current model configuration."""
     config = ctx.config.model
-    router_config = ctx.config.router
     key_env = config.api_key_env or f"{config.provider.upper()}_API_KEY"
     has_key = key_env and ctx.secrets.has(key_env)
 
     lines = [
         "**Model Configuration**\n",
-        "**LLM Provider:**",
+        "**Orchestrator:**",
         f"  - Provider: `{config.provider}`",
         f"  - Model: `{config.model}`",
         f"  - API Key: `{'configured' if has_key else 'not set'}` ({key_env})",
-        "",
-        "**Router:**",
-        f"  - Type: `{router_config.type}`",
-        f"  - Tier: `{router_config.tier or 'auto'}`",
-        f"  - LLM Fallback: `{router_config.llm_fallback or 'none'}`",
     ]
+
+    if config.base_url:
+        lines.append(f"  - Base URL: `{config.base_url}`")
 
     return CommandResult(success=True, message="\n".join(lines))
 
@@ -118,22 +113,19 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
         else:
             return CommandResult(success=False, message="API key required for this provider.")
 
-    if provider == "openrouter":
-        ensure_openrouter_headers()
-
     ctx.config.model.provider = provider
     if provider in default_models:
         ctx.config.model.model = default_models[provider]
     if provider in router_fallbacks:
         ctx.config.router.llm_fallback = router_fallbacks[provider]
     ctx.config.model.api_key_env = api_key_env or ""
-    ctx.config.model.base_url = ctx.config.model.base_url or None
+    ctx.config.model.base_url = None  # Reset base_url for new provider
 
     if api_key_env:
         _set_api_key_from_keyring(ctx, api_key_env)
 
-    if provider == "ollama":
-        ensure_provider_env(ctx.config)
+    # Apply provider-specific environment setup (Ollama, OpenRouter, etc.)
+    ensure_provider_env(ctx.config)
     ctx.config.save()
 
     return CommandResult(
@@ -197,8 +189,8 @@ async def cmd_model_model(ctx: SharedContext, args: list[str]) -> CommandResult:
     else:
         api_key_env = ctx.config.model.api_key_env or f"{ctx.config.model.provider.upper()}_API_KEY"
         _set_api_key_from_keyring(ctx, api_key_env)
-        if ctx.config.model.provider == "openrouter":
-            ensure_openrouter_headers()
+        # Apply provider-specific environment setup (OpenRouter, etc.)
+        ensure_provider_env(ctx.config)
     ctx.config.save()
 
     return CommandResult(
@@ -310,72 +302,15 @@ async def cmd_model_test(ctx: SharedContext, _args: list[str]) -> CommandResult:
         )
 
 
-@subcommand("model", "router", "Configure intent router", "/model router <show|local|llm>")
-async def cmd_model_router(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Configure the intent router."""
-    if not args:
-        return CommandResult(
-            success=False,
-            message="Usage:\n"
-            "  `/model router show` - Show router config\n"
-            "  `/model router local` - Use local ONNX model\n"
-            "  `/model router llm <model>` - Use LLM for routing",
-        )
-
-    action = args[0].lower()
-
-    if action == "show":
-        return _show_router_config(ctx)
-    elif action == "local":
-        return _set_local_router(ctx)
-    elif action == "llm":
-        return _set_llm_router(ctx, args)
-    else:
-        return CommandResult(success=False, message=f"Unknown router action: `{action}`")
-
-
-def _show_router_config(ctx: SharedContext) -> CommandResult:
-    """Show router configuration."""
-    router_config = ctx.config.router
-    lines = [
-        "**Router Configuration**\n",
-        f"  - Type: `{router_config.type}`",
-        f"  - Model: `{router_config.model or 'default'}`",
-        f"  - Tier: `{router_config.tier or 'auto'}`",
-        f"  - LLM Fallback: `{router_config.llm_fallback or 'none'}`",
-    ]
-
-    model_path = Path.home() / ".merlya" / "models" / "router.onnx"
-    if model_path.exists():
-        size_mb = model_path.stat().st_size / (1024 * 1024)
-        lines.append(f"\n  ✅ ONNX model loaded ({size_mb:.1f}MB)")
-    else:
-        lines.append("\n  ⚠️ ONNX model not found (using pattern matching)")
-
-    return CommandResult(success=True, message="\n".join(lines))
-
-
-def _set_local_router(ctx: SharedContext) -> CommandResult:
-    """Set router to local ONNX model."""
-    ctx.config.router.type = "local"
-    ctx.config.save()
-    return CommandResult(success=True, message="✅ Router set to local (ONNX embedding model)")
-
-
-def _set_llm_router(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Set router to use LLM."""
-    if len(args) < 2:
-        return CommandResult(
-            success=False,
-            message="Usage: `/model router llm <model>`\nExample: `/model router llm gpt-4o-mini`",
-        )
-    llm_model = args[1]
-    if ":" not in llm_model:
-        llm_model = f"{ctx.config.model.provider}:{llm_model}"
-    ctx.config.router.type = "llm"
-    ctx.config.router.llm_fallback = llm_model
-    ctx.config.save()
-    return CommandResult(success=True, message=f"✅ Router set to LLM ({llm_model})")
+@subcommand("model", "router", "DEPRECATED - Router removed", "/model router")
+async def cmd_model_router(_ctx: SharedContext, _args: list[str]) -> CommandResult:
+    """DEPRECATED: Router has been removed. All routing is now handled by the Orchestrator."""
+    return CommandResult(
+        success=False,
+        message="⚠️ `/model router` is **deprecated**.\n\n"
+        "The intent router has been removed. All requests are now processed by the **Orchestrator**.\n\n"
+        "Use `/model show` to see current configuration.",
+    )
 
 
 async def _ensure_ollama_model(ctx: SharedContext, model: str) -> CommandResult | None:

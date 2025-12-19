@@ -275,11 +275,18 @@ async def _import_csv(ctx: SharedContext, content: str) -> tuple[int, list[str]]
         try:
             tags_raw = row.get("tags", "").split(",") if row.get("tags") else []
             valid_tags = [t.strip() for t in tags_raw if t.strip() and validate_tag(t.strip())[0]]
+            # Normalize elevation_method (empty string -> None)
+            elevation = row.get("elevation_method", "").strip() or None
+            if elevation and elevation.lower() not in ("sudo", "sudo-s", "su", "doas"):
+                elevation = None  # Invalid value, reset to auto
             host = Host(
                 name=row["name"],
                 hostname=row.get("hostname", row.get("host", row["name"])),
                 port=validate_port(row.get("port", "22")),
                 username=row.get("username", row.get("user")),
+                private_key=row.get("private_key") or None,
+                jump_host=row.get("jump_host") or None,
+                elevation_method=elevation,
                 tags=valid_tags,
             )
             await ctx.hosts.create(host)
@@ -365,6 +372,11 @@ def create_host_from_dict(item: dict[str, Any]) -> Host:
     raw_tags = item.get("tags", [])
     valid_tags = [t for t in raw_tags if isinstance(t, str) and validate_tag(t)[0]]
 
+    # Validate elevation_method
+    elevation = item.get("elevation_method", item.get("elevation"))
+    if elevation and elevation.lower() not in ("sudo", "sudo-s", "su", "doas"):
+        elevation = None
+
     return Host(
         name=item["name"],
         hostname=item.get("hostname", item.get("host", item["name"])),
@@ -373,6 +385,7 @@ def create_host_from_dict(item: dict[str, Any]) -> Host:
         tags=valid_tags,
         private_key=item.get("private_key", item.get("key")),
         jump_host=item.get("jump_host", item.get("bastion")),
+        elevation_method=elevation,
     )
 
 
@@ -387,6 +400,8 @@ def host_to_dict(h: Host) -> dict[str, Any]:
         item["private_key"] = h.private_key
     if h.jump_host:
         item["jump_host"] = h.jump_host
+    if h.elevation_method:
+        item["elevation_method"] = h.elevation_method
     return item
 
 
@@ -400,13 +415,21 @@ def serialize_hosts(data: list[dict[str, Any]], file_format: str) -> str:
         return yaml.dump(data, default_flow_style=False)
     elif file_format == "csv":
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=["name", "hostname", "port", "username", "tags"])
+        fieldnames = [
+            "name",
+            "hostname",
+            "port",
+            "username",
+            "private_key",
+            "jump_host",
+            "elevation_method",
+            "tags",
+        ]
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
         for item in data:
             row_item = dict(item)
             row_item["tags"] = ",".join(row_item.get("tags", []))
-            writer.writerow(
-                {k: row_item.get(k, "") for k in ["name", "hostname", "port", "username", "tags"]}
-            )
+            writer.writerow({k: row_item.get(k, "") or "" for k in fieldnames})
         return output.getvalue()
     return json.dumps(data, indent=2)

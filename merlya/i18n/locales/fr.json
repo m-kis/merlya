@@ -17,9 +17,10 @@
   "ui": {
     "spinner": {
       "routing": "🧠 Analyse de la requête...",
-      "agent": "⚡ Exécution du plan..."
+      "agent": "⚡ Traitement en cours..."
     },
-    "routing_cancelled": "Routage annulé"
+    "routing_cancelled": "Routage annulé",
+    "request_cancelled": "Requête annulée"
   },
   "welcome_screen": {
     "title": "Bienvenue",
@@ -50,6 +51,8 @@
     "health_checks": "Vérifications",
     "router_init": "Router : {model} ({dims} dims)",
     "router_fallback": "Router en fallback : {mode}",
+    "router_not_loaded": "Router : non requis (utilisation de l'Orchestrator)",
+    "orchestrator_ready": "🤖 Orchestrator prêt ({provider})",
     "ready_time": "Prêt en {time}s",
     "first_run": "Premier démarrage détecté - lancement de l'assistant de configuration"
   },
@@ -298,7 +301,11 @@
       "api_error": "Erreur API LLM : {error}",
       "rate_limit": "Limite de requêtes dépassée, réessai dans {seconds}s",
       "no_provider": "Aucun provider LLM configuré"
-    }
+    },
+    "use_slash_commands": "Cette opération utilise les commandes slash. Essayez /hosts, /vars, ou /help"
+  },
+  "suggestions": {
+    "try_again": "Essayez de reformuler votre demande"
   },
   "prompts": {
     "confirm_action": "Êtes-vous sûr de vouloir {action} ?",
@@ -355,5 +362,17 @@
     "confirmation_required": "Cette action nécessite une confirmation",
     "action_cancelled": "Action annulée",
     "action_approved": "Action approuvée"
+  },
+  "confirmation": {
+    "local_command": "🔧 Commande locale :",
+    "remote_command": "⚡ Commande sur {target} :",
+    "dangerous_command": "🚨 Commande dangereuse sur {target} :",
+    "warning_destructive": "⚠️ Cette commande est potentiellement destructive !",
+    "options": "[y] Exécuter  [n] Annuler  [a] Toujours oui",
+    "choice_prompt": "Choix",
+    "auto_confirmed": "⚡ Auto-confirmé : {command}",
+    "auto_confirmed_session": "⚡ Auto-confirmé (session) : {command}",
+    "always_yes_enabled": "✅ Auto-confirmation activée pour cette session",
+    "cancelled": "❌ Commande annulée"
   }
 }
