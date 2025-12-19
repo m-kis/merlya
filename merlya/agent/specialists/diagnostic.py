@@ -107,7 +107,9 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
             stdout=result.data.get("stdout", "") if result.data else "",
             stderr=result.data.get("stderr", "") if result.data else "",
             exit_code=result.data.get("exit_code", -1) if result.data else -1,
-            hint=str(result.data.get("hint", "")) if result.data and result.data.get("hint") else None,
+            hint=str(result.data.get("hint", ""))
+            if result.data and result.data.get("hint")
+            else None,
             error=result.error if result.error else None,
         )
 
@@ -133,7 +135,9 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
             stdout=result.data.get("stdout", "") if result.data else "",
             stderr=result.data.get("stderr", "") if result.data else "",
             exit_code=result.data.get("exit_code", -1) if result.data else -1,
-            hint=str(result.data.get("hint", "")) if result.data and result.data.get("hint") else None,
+            hint=str(result.data.get("hint", ""))
+            if result.data and result.data.get("hint")
+            else None,
             error=result.error if result.error else None,
         )
 
