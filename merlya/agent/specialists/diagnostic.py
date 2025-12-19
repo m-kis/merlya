@@ -102,22 +102,14 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
 
         result = await _ssh_execute(ctx.deps.context, host, command, timeout, stdin=effective_stdin)
 
-        # Construire le dictionnaire de données avec les champs obligatoires
-        data = {
-            "success": result.success,
-            "stdout": result.data.get("stdout", "") if result.data else "",
-            "stderr": result.data.get("stderr", "") if result.data else "",
-            "exit_code": result.data.get("exit_code", -1) if result.data else -1,
-        }
-
-        # Ajouter conditionnellement les champs optionnels
-        if result.data and result.data.get("hint"):
-            data["hint"] = str(result.data["hint"])
-        if result.error:
-            data["error"] = result.error
-
-        # Instancier SSHResult une seule fois
-        return SSHResult(**data)
+        return SSHResult(
+            success=result.success,
+            stdout=result.data.get("stdout", "") if result.data else "",
+            stderr=result.data.get("stderr", "") if result.data else "",
+            exit_code=result.data.get("exit_code", -1) if result.data else -1,
+            hint=str(result.data.get("hint", "")) if result.data and result.data.get("hint") else None,
+            error=result.error if result.error else None,
+        )
 
     @agent.tool
     async def bash(
@@ -136,22 +128,14 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
 
         result = await _bash_execute(ctx.deps.context, command, timeout)
 
-        # Construire le dictionnaire de données avec les champs obligatoires
-        data = {
-            "success": result.success,
-            "stdout": result.data.get("stdout", "") if result.data else "",
-            "stderr": result.data.get("stderr", "") if result.data else "",
-            "exit_code": result.data.get("exit_code", -1) if result.data else -1,
-        }
-
-        # Ajouter conditionnellement les champs optionnels
-        if result.data and result.data.get("hint"):
-            data["hint"] = str(result.data["hint"])
-        if result.error:
-            data["error"] = result.error
-
-        # Instancier SSHResult une seule fois
-        return SSHResult(**data)
+        return SSHResult(
+            success=result.success,
+            stdout=result.data.get("stdout", "") if result.data else "",
+            stderr=result.data.get("stderr", "") if result.data else "",
+            exit_code=result.data.get("exit_code", -1) if result.data else -1,
+            hint=str(result.data.get("hint", "")) if result.data and result.data.get("hint") else None,
+            error=result.error if result.error else None,
+        )
 
     @agent.tool
     async def read_file(

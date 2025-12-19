@@ -16,8 +16,8 @@ class SSHResult(TypedDict, total=False):
     stdout: str
     stderr: str
     exit_code: int
-    hint: str  # Optional hint for permission denied
-    error: str  # Optional error message
+    hint: str | None  # Optional hint for permission denied
+    error: str | None  # Optional error message
 
 
 class ScanResult(TypedDict, total=False):
