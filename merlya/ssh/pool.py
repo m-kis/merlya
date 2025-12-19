@@ -38,7 +38,13 @@ if TYPE_CHECKING:
 # Re-export types for backwards compatibility
 from merlya.ssh.prompt_detection import PASSWORD_PROMPT_PATTERNS
 
-__all__ = ["PASSWORD_PROMPT_PATTERNS", "SSHConnection", "SSHConnectionOptions", "SSHPool", "SSHResult"]
+__all__ = [
+    "PASSWORD_PROMPT_PATTERNS",
+    "SSHConnection",
+    "SSHConnectionOptions",
+    "SSHPool",
+    "SSHResult",
+]
 
 
 @dataclass

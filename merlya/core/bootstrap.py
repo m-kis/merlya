@@ -72,8 +72,7 @@ async def bootstrap(
         _init_observability()
     except Exception as e:
         logger.warning(
-            f"Observability initialization failed, continuing without it: {e}",
-            exc_info=True
+            f"Observability initialization failed, continuing without it: {e}", exc_info=True
         )
 
     # Load API keys from keyring

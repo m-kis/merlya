@@ -116,7 +116,9 @@ class ConfirmationState:
         # Check if this exact command was already confirmed
         full_command = command.strip().lower()
         if full_command in self.confirmed_commands:
-            logger.trace(f"⚡ Skipping confirmation (already confirmed): {command[:50]}...")  # Truncated to avoid sensitive data exposure
+            logger.trace(
+                f"⚡ Skipping confirmation (already confirmed): {command[:50]}..."
+            )  # Truncated to avoid sensitive data exposure
             return True
         return False
 
@@ -124,7 +126,9 @@ class ConfirmationState:
         """Mark a command as confirmed (user said 'y')."""
         full_command = command.strip().lower()
         self.confirmed_commands.add(full_command)
-        logger.trace(f"✅ Command confirmed: {command[:50]}...")  # Truncated to avoid sensitive data exposure
+        logger.trace(
+            f"✅ Command confirmed: {command[:50]}..."
+        )  # Truncated to avoid sensitive data exposure
 
     def set_always_yes(self, command: str | None = None) -> None:
         """Set "always yes" for session or specific command prefix."""
@@ -134,7 +138,9 @@ class ConfirmationState:
         else:
             cmd_prefix = command.strip()[:25].lower()
             self.always_yes_patterns.add(cmd_prefix)
-            logger.trace(f"✅ Auto-confirm enabled for: {cmd_prefix}...")  # Truncated to avoid sensitive data exposure
+            logger.trace(
+                f"✅ Auto-confirm enabled for: {cmd_prefix}..."
+            )  # Truncated to avoid sensitive data exposure
 
     def reset(self) -> None:
         """Reset confirmation state (for tests)."""
@@ -217,12 +223,16 @@ async def confirm_command(
     """
     # Check auto-confirm modes
     if auto_confirm or ui.auto_confirm:
-        logger.trace(f"⚡ Auto-confirmed: {command[:50]}...")  # Truncated to avoid sensitive data exposure
+        logger.trace(
+            f"⚡ Auto-confirmed: {command[:50]}..."
+        )  # Truncated to avoid sensitive data exposure
         return ConfirmationResult.EXECUTE
 
     # Check session state
     if state and state.should_skip(command):
-        logger.trace(f"⚡ Auto-confirmed (session): {command[:50]}...")  # Truncated to avoid sensitive data exposure
+        logger.trace(
+            f"⚡ Auto-confirmed (session): {command[:50]}..."
+        )  # Truncated to avoid sensitive data exposure
         return ConfirmationResult.EXECUTE
 
     # Detect danger level

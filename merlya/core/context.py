@@ -199,6 +199,7 @@ class SharedContext:
         """Get ask user cache for input deduplication (lazy init)."""
         if self._ask_user_cache is None:
             from merlya.tools.core.user_input import AskUserCache
+
             self._ask_user_cache = AskUserCache()
         return self._ask_user_cache
 
