@@ -358,52 +358,58 @@ async def resolve_all_references(
     return resolved_command, safe_command
 
 
+# Unified pattern for hostnames and IPv4 addresses
+# Matches: "webserver", "192.168.1.7", "db-prod.local", etc.
+_HOST_PATTERN = r"(?:[a-zA-Z0-9][a-zA-Z0-9._-]*|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+
 # Pattern to extract credential hints from user messages
 # Matches patterns like:
 #   "pour 192.168.1.7 c'est @pine-pass"
+#   "pour webserver c'est @pine-pass"
 #   "password for host1 is @my-secret"
 #   "192.168.1.5 ... @secret-name" (IP followed by @ref in same sentence)
 _CREDENTIAL_HINT_PATTERNS = [
     # French: "pour HOST c'est/cest @secret"
     re.compile(
-        r"pour\s+([a-zA-Z0-9._-]+)\s+(?:c'?est|utilise|avec)\s+@([a-zA-Z][a-zA-Z0-9_-]*)",
+        rf"pour\s+({_HOST_PATTERN})\s+(?:c'?est|utilise|avec)\s+@([a-zA-Z][a-zA-Z0-9_-]*)",
         re.IGNORECASE,
     ),
     # English: "password for HOST is @secret"
     re.compile(
-        r"(?:password|pass|mot de passe|credential)\s+(?:for|de|du|pour)\s+([a-zA-Z0-9._-]+)\s+(?:is|est|:|=)\s*@([a-zA-Z][a-zA-Z0-9_-]*)",
+        rf"(?:password|pass|mot de passe|credential)\s+(?:for|de|du|pour)\s+({_HOST_PATTERN})\s+(?:is|est|:|=)\s*@([a-zA-Z][a-zA-Z0-9_-]*)",
         re.IGNORECASE,
     ),
     # Direct: "HOST ... celui ci @secret" (French: this is the password)
-    # Limited to 30 chars between IP and @secret to avoid cross-sentence matching
+    # Limited to 30 chars between host and @secret to avoid cross-sentence matching
     re.compile(
-        r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^@]{1,30}(?:celui\s+ci|celui-ci)\s+@([a-zA-Z][a-zA-Z0-9_-]*)",
+        rf"({_HOST_PATTERN})[^@]{{1,30}}(?:celui\s+ci|celui-ci)\s+@([a-zA-Z][a-zA-Z0-9_-]*)",
         re.IGNORECASE,
     ),
     # Direct: "HOST ... le pass/password est @secret"
     re.compile(
-        r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^@]{1,40}(?:le\s+)?(?:pass|password)\s+(?:est|c'?est|:)\s*@([a-zA-Z][a-zA-Z0-9_-]*)",
+        rf"({_HOST_PATTERN})[^@]{{1,40}}(?:le\s+)?(?:pass|password)\s+(?:est|c'?est|:)\s*@([a-zA-Z][a-zA-Z0-9_-]*)",
         re.IGNORECASE,
     ),
 ]
 
 # Patterns to detect passwordless sudo/su elevation hints
 # Matches: "pour devenir root sur 192.168.1.5 c'est sudo su sans password"
+#          "pour devenir root sur webserver c'est sudo su sans password"
 # Returns: (host, method) where method is "sudo" for passwordless sudo
 _PASSWORDLESS_ELEVATION_PATTERNS = [
     # French: "sur/pour HOST c'est sudo/sudo su sans password"
     re.compile(
-        r"(?:sur|pour)\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+[^.]*?(?:c'?est\s+)?(?:sudo\s+su|sudo)\s+sans\s+(?:mot de passe|password)",
+        rf"(?:sur|pour)\s+({_HOST_PATTERN})\s+[^.]*?(?:c'?est\s+)?(?:sudo\s+su|sudo)\s+sans\s+(?:mot de passe|password)",
         re.IGNORECASE,
     ),
     # French: "HOST ... sudo sans password"
     re.compile(
-        r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^.]*?(?:sudo\s+su|sudo)\s+sans\s+(?:mot de passe|password)",
+        rf"({_HOST_PATTERN})[^.]*?(?:sudo\s+su|sudo)\s+sans\s+(?:mot de passe|password)",
         re.IGNORECASE,
     ),
     # English: "HOST uses passwordless sudo"
     re.compile(
-        r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+[^.]*?(?:passwordless\s+sudo|sudo\s+without\s+password)",
+        rf"({_HOST_PATTERN})\s+[^.]*?(?:passwordless\s+sudo|sudo\s+without\s+password)",
         re.IGNORECASE,
     ),
 ]
