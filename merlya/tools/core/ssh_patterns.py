@@ -7,7 +7,21 @@ Constants for detecting permission errors and authentication failures.
 from __future__ import annotations
 
 import re
-from typing import NamedTuple
+import shlex
+from typing import Any, NamedTuple, Protocol
+
+
+class SSHExecutor(Protocol):
+    """Protocol for SSH command execution."""
+
+    async def __call__(
+        self,
+        host: str,
+        command: str,
+        timeout: int,
+    ) -> Any:
+        """Execute command on host with timeout, returning result with exit_code."""
+        ...
 
 # Authentication failure indicators (sudo/su password failures)
 # IMPORTANT: Patterns are checked with .lower() - keep all patterns lowercase
@@ -164,9 +178,8 @@ def format_elevated_command(command: str, method: str) -> str:
     elif method == "sudo-S":
         return f"sudo -S {clean_cmd}"
     elif method == "su":
-        # Escape single quotes in command
-        escaped = clean_cmd.replace("'", "'\"'\"'")
-        return f"su -c '{escaped}'"
+        # Use shlex.quote for robust shell escaping
+        return f"su -c {shlex.quote(clean_cmd)}"
     elif method == "doas":
         return f"doas {clean_cmd}"
     else:
@@ -174,7 +187,7 @@ def format_elevated_command(command: str, method: str) -> str:
 
 
 async def detect_elevation_method(
-    execute_fn: object,
+    execute_fn: SSHExecutor,
     host: str,
 ) -> str | None:
     """
@@ -215,7 +228,7 @@ async def detect_elevation_method(
 
     for test_cmd, method, desc in tests:
         try:
-            result = await execute_fn(host, test_cmd, 10)  # type: ignore[operator]
+            result = await execute_fn(host, test_cmd, 10)
             exit_code = getattr(result, "exit_code", -1)
             if hasattr(result, "data") and result.data:
                 exit_code = result.data.get("exit_code", exit_code)
