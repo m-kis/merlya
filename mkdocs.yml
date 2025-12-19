@@ -76,6 +76,7 @@ plugins:
             Guides: Guides
             REPL Mode: Mode REPL
             SSH Management: Gestion SSH
+            Secrets Security: Sécurité des secrets
             LLM Providers: Fournisseurs LLM
             Automation: Automatisation
             Extending Merlya: Extensions
@@ -183,6 +184,7 @@ nav:
   - Guides:
       - REPL Mode: guides/repl-mode.md
       - SSH Management: guides/ssh-management.md
+      - Secrets Security: guides/secrets-security.md
       - LLM Providers: guides/llm-providers.md
       - Automation: guides/automation.md
       - Extending Merlya: extending.md

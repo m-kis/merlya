@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -132,6 +132,35 @@ class TestResolveSecrets:
         assert resolved == "curl -H 'Auth: secret_value' @pine64"
         assert safe == "curl -H 'Auth: ***' @pine64"
 
+    def test_resolve_fallback_legacy_format(self) -> None:
+        """Test fallback from legacy @secret-sudo to structured sudo:host:password."""
+        secrets = MagicMock()
+        # Direct lookup fails, but list_names returns structured keys
+        secrets.get.side_effect = lambda name: (
+            "my_password" if name == "sudo:192.168.1.7:password" else None
+        )
+        secrets.list_names.return_value = ["sudo:192.168.1.7:password", "api-key"]
+
+        resolved, safe = resolve_secrets("echo @secret-sudo | sudo -S cmd", secrets)
+
+        # @secret-sudo should be resolved via fallback to sudo:192.168.1.7:password
+        assert resolved == "echo my_password | sudo -S cmd"
+        assert safe == "echo *** | sudo -S cmd"
+
+    def test_resolve_fallback_sudo_password_format(self) -> None:
+        """Test fallback from @sudo-password to structured sudo:host:password."""
+        secrets = MagicMock()
+        secrets.get.side_effect = lambda name: (
+            "root_pass" if name == "sudo:server:password" else None
+        )
+        secrets.list_names.return_value = ["sudo:server:password"]
+
+        resolved, safe = resolve_secrets("echo @sudo-password | sudo -S cmd", secrets)
+
+        # @sudo-password should be resolved via fallback
+        assert resolved == "echo root_pass | sudo -S cmd"
+        assert safe == "echo *** | sudo -S cmd"
+
 
 # ==============================================================================
 # Tests for resolve_host_references
@@ -217,6 +246,36 @@ class TestResolveHostReferences:
 
         # Should not try to resolve structured refs (they're for secrets)
         assert result == "echo @sudo:host:password"
+
+    @pytest.mark.asyncio
+    async def test_skip_secret_like_references(self) -> None:
+        """Test that secret-like references are NOT resolved as hosts.
+
+        References containing keywords like 'password', 'secret', 'sudo', 'key'
+        should be skipped by host resolution and left for secret resolution.
+        """
+        from merlya.tools.core import resolve_host_references
+
+        ui = MagicMock()
+        ui.prompt = AsyncMock(return_value="10.0.0.50")  # Would be used if asked
+
+        # These should NOT prompt the user - they look like secrets
+        secret_refs = [
+            "echo @sudo-password",
+            "echo @secret-api",
+            "echo @api-key",
+            "echo @db-password",
+            "echo @root-cred",
+            "echo @auth-token",
+        ]
+
+        for cmd in secret_refs:
+            result = await resolve_host_references(cmd, [], ui)
+            # Should keep original - not resolved as host
+            assert result == cmd, f"Should not resolve {cmd} as host"
+
+        # User should NOT have been prompted at all
+        ui.prompt.assert_not_called()
 
 
 # ==============================================================================
@@ -875,76 +934,6 @@ class TestSSHExecute:
         assert result.success is True
         assert result.data["via"] == "bastion"
 
-    @pytest.mark.asyncio
-    async def test_ssh_execute_auto_elevates_on_stdout_permission_denied(
-        self, mock_shared_context: MagicMock
-    ) -> None:
-        """Permission errors may appear in stdout (e.g., journalctl); auto-elevation must still trigger."""
-        from merlya.ssh.pool import SSHResult
-        from merlya.tools.core import ssh as ssh_module
-
-        mock_shared_context.hosts.get_by_name = AsyncMock(return_value=None)
-        mock_shared_context.get_ssh_pool = AsyncMock(return_value=MagicMock())
-
-        denied = SSHResult(
-            stdout="Hint: You are not authorized to view the system journal.",
-            stderr="",
-            exit_code=1,
-        )
-        elevated_ok = SSHResult(stdout="ok", stderr="", exit_code=0)
-
-        execute_ssh_command = AsyncMock(return_value=denied)
-        execute_with_elevation = AsyncMock(return_value=(elevated_ok, "sudo_with_password"))
-
-        with (
-            patch.object(ssh_module, "execute_ssh_command", execute_ssh_command),
-            patch.object(ssh_module, "execute_with_elevation", execute_with_elevation),
-        ):
-            result = await ssh_execute(
-                mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager"
-            )
-
-        assert result.success is True
-        assert result.data["stdout"] == "ok"
-        assert result.data["elevation"] == "sudo_with_password"
-        execute_with_elevation.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_ssh_execute_auto_elevates_on_privileged_command_silent_failure(
-        self, mock_shared_context: MagicMock
-    ) -> None:
-        """If a privileged command fails without explicit stderr, ssh_execute should still attempt elevation."""
-        from merlya.ssh.pool import SSHResult
-        from merlya.tools.core import ssh as ssh_module
-
-        mock_shared_context.hosts.get_by_name = AsyncMock(return_value=None)
-        mock_shared_context.get_ssh_pool = AsyncMock(return_value=MagicMock())
-
-        class _Perms:
-            def requires_elevation(self, _cmd: str) -> bool:
-                return True
-
-        mock_shared_context.get_permissions = AsyncMock(return_value=_Perms())
-
-        denied = SSHResult(stdout="", stderr="", exit_code=1)
-        elevated_ok = SSHResult(stdout="ok", stderr="", exit_code=0)
-
-        execute_ssh_command = AsyncMock(return_value=denied)
-        execute_with_elevation = AsyncMock(return_value=(elevated_ok, "sudo"))
-
-        with (
-            patch.object(ssh_module, "execute_ssh_command", execute_ssh_command),
-            patch.object(ssh_module, "execute_with_elevation", execute_with_elevation),
-        ):
-            result = await ssh_execute(
-                mock_shared_context, "192.168.1.7", "journalctl -xe --no-pager"
-            )
-
-        assert result.success is True
-        assert result.data["stdout"] == "ok"
-        assert result.data["elevation"] == "sudo"
-        execute_with_elevation.assert_awaited_once()
-
 
 # ==============================================================================
 # Tests for ensure_callbacks
@@ -1090,6 +1079,26 @@ class TestBashExecute:
         assert "SECURITY" in result.error
 
     @pytest.mark.asyncio
+    async def test_bash_execute_ssh_command_blocked(self, mock_context: MagicMock) -> None:
+        """Test that SSH commands are blocked - must use ssh_execute instead."""
+        from merlya.tools.core import bash_execute
+
+        # Direct ssh command
+        result = await bash_execute(mock_context, "ssh user@host ls", timeout=10)
+        assert result.success is False
+        assert "ssh_execute" in result.error.lower()
+
+        # sshpass command
+        result = await bash_execute(mock_context, "sshpass -p pass ssh user@host", timeout=10)
+        assert result.success is False
+        assert "ssh_execute" in result.error.lower()
+
+        # Piped to ssh
+        result = await bash_execute(mock_context, "cat file | ssh user@host cat", timeout=10)
+        assert result.success is False
+        assert "ssh_execute" in result.error.lower()
+
+    @pytest.mark.asyncio
     async def test_bash_execute_with_secret(self, mock_context: MagicMock) -> None:
         """Test command with secret resolution."""
         from merlya.tools.core import bash_execute
@@ -1111,3 +1120,38 @@ class TestBashExecute:
 
         assert result.success is True
         assert "error" in result.data["stderr"]
+
+
+class TestSubprocessKilling:
+    """Tests for subprocess cleanup on signal."""
+
+    def test_kill_all_subprocesses_empty(self) -> None:
+        """Test killing when no subprocesses are running."""
+        from merlya.tools.core.bash import kill_all_subprocesses
+
+        killed = kill_all_subprocesses()
+        assert killed == 0
+
+    @pytest.mark.asyncio
+    async def test_subprocess_registry(self) -> None:
+        """Test that subprocesses are registered and unregistered."""
+        from merlya.tools.core.bash import _running_processes, bash_execute
+
+        # Start with clean registry
+        initial_count = len(_running_processes)
+
+        # Create a mock context
+        ctx = MagicMock()
+        ctx.secrets = MagicMock()
+        ctx.secrets.get.return_value = None
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[])
+        ctx.ui = MagicMock()
+        ctx.ui.prompt = AsyncMock(return_value="")
+
+        # Run a quick command
+        result = await bash_execute(ctx, "echo test", timeout=10)
+
+        assert result.success is True
+        # After completion, registry should be back to initial state
+        assert len(_running_processes) == initial_count

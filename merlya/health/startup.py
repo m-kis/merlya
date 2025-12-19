@@ -37,9 +37,7 @@ async def run_startup_checks(
     from merlya.health.connectivity import check_llm_provider
     from merlya.health.infrastructure import check_keyring, check_ssh_available
     from merlya.health.mcp_checks import check_mcp_servers
-    from merlya.health.ml_checks import check_onnx_for_skills, check_onnx_model
     from merlya.health.service_checks import check_parser_service, check_session_manager
-    from merlya.health.skill_checks import check_skills_registry
     from merlya.health.system_checks import check_disk_space, check_ram
 
     results: list[HealthCheck] = []
@@ -103,22 +101,8 @@ async def run_startup_checks(
 
         # Add sync checks separately
         results.append(check_session_manager())
-        skills_check = check_skills_registry(effective_tier)
-        results.append(skills_check)
         results.append(check_mcp_servers(effective_tier))
 
-        # 4. ML-related checks (also optional)
-        results.append(check_onnx_model(effective_tier))
-
-        # Only run skills ONNX check if skills were actually loaded
-        skills_count = 0
-        if skills_check.details and isinstance(skills_check.details, dict):
-            stats = skills_check.details.get("stats")
-            if isinstance(stats, dict):
-                skills_count = int(stats.get("total", 0))
-
-        if skills_count > 0:
-            onnx_skills_result = await check_onnx_for_skills(effective_tier)
-            results.append(onnx_skills_result)
+        # Note: ONNX model check removed - Orchestrator doesn't need ONNX
 
     return StartupHealth(checks=results, model_tier=model_tier)

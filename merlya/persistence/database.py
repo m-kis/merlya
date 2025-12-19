@@ -51,7 +51,8 @@ DEFAULT_DB_PATH = Path.home() / ".merlya" / "merlya.db"
 # v1: Initial schema
 # v2: Added ON DELETE SET NULL/CASCADE to foreign keys
 # v3: Added session_messages table for message history persistence
-SCHEMA_VERSION = 3
+# v4: Added elevation_method to hosts table
+SCHEMA_VERSION = 4
 
 # Migration lock timeout in seconds
 MIGRATION_LOCK_TIMEOUT = 30
@@ -143,6 +144,7 @@ class Database:
                 username TEXT,
                 private_key TEXT,
                 jump_host TEXT,
+                elevation_method TEXT,
                 tags TEXT,
                 metadata TEXT,
                 os_info TEXT,
@@ -362,7 +364,14 @@ class Database:
                 if from_version < 3:
                     logger.info("📦 Running database migration v2 -> v3...")
                     await self._migrate_add_session_messages_v3_internal()
+                    from_version = 3
                     logger.info("✅ Migration v2 -> v3 complete")
+
+                # Migration v3 -> v4: Add elevation_method to hosts
+                if from_version < 4:
+                    logger.info("📦 Running database migration v3 -> v4...")
+                    await self._migrate_add_elevation_method_v4_internal()
+                    logger.info("✅ Migration v3 -> v4 complete")
 
                 # Update schema version (within the same transaction)
                 await conn.execute(
@@ -523,6 +532,21 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)"
         )
         logger.debug("  → sessions table migrated")
+
+    async def _migrate_add_elevation_method_v4_internal(self) -> None:
+        """Add elevation_method column to hosts table (called within transaction)."""
+        conn = self.connection
+
+        # Check if column already exists
+        async with conn.execute("PRAGMA table_info(hosts)") as cursor:
+            columns = [row["name"] for row in await cursor.fetchall()]
+            if "elevation_method" in columns:
+                logger.debug("  → elevation_method column already exists")
+                return
+
+        # Add the column
+        await conn.execute("ALTER TABLE hosts ADD COLUMN elevation_method TEXT")
+        logger.debug("  → elevation_method column added to hosts")
 
     async def execute(self, query: str, params: tuple[Any, ...] | None = None) -> aiosqlite.Cursor:
         """Execute a query."""

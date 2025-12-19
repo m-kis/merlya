@@ -1,6 +1,6 @@
 [project]
 name = "merlya"
-version = "0.7.5"
+version = "0.7.6"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
     { name = "Cedric", email = "infra@merlya.fr" }
@@ -45,8 +45,9 @@ dependencies = [
     "rich>=14.0",
     "prompt-toolkit>=3.0",
 
-    # Logging
+    # Logging & Observability
     "loguru>=0.7",
+    "logfire[system-metrics]>=4.0",
 
     # Persistence
     "aiosqlite>=0.21",

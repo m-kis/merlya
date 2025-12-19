@@ -7,199 +7,31 @@ PydanticAI-based agent with ReAct loop.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel
-from pydantic_ai import Agent, ModelMessage, ModelMessagesTypeAdapter, ModelRetry, RunContext
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai import ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
-from merlya.agent.history import create_loop_aware_history_processor, detect_loop
-from merlya.agent.tools import register_all_tools
+from merlya.agent.agent_factory import create_agent
+from merlya.agent.tracker import ToolCallTracker
 from merlya.config.constants import (
     DEFAULT_REQUEST_LIMIT,
     DEFAULT_TOOL_CALLS_LIMIT,
-    DEFAULT_TOOL_RETRIES,
-    MIN_RESPONSE_LENGTH_WITH_ACTIONS,
     TITLE_MAX_LENGTH,
 )
 from merlya.config.provider_env import ensure_provider_env
+
+# Re-export create_agent from agent_factory
+__all__ = ["AgentDependencies", "AgentResponse", "MerlyaAgent", "create_agent"]
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
     from merlya.persistence.models import Conversation
     from merlya.router import RouterResult
-
-
-# System prompt for the main agent
-SYSTEM_PROMPT = """You are Merlya, an AI-powered infrastructure assistant.
-
-## Core Philosophy: PROACTIVE & AUTONOMOUS
-
-You are a proactive agent. You NEVER block or fail because something is missing.
-Instead, you DISCOVER, ADAPT, and PROPOSE alternatives.
-
-### The Golden Rules:
-
-1. **NEVER SAY "I can't because X is not configured"** - Instead, discover X dynamically
-2. **BASH IS YOUR UNIVERSAL FALLBACK** - If a tool doesn't exist, use bash/ssh_execute
-3. **INVENTORY IS OPTIONAL** - You can work without pre-configured hosts
-4. **DISCOVER AND PROPOSE** - If a resource doesn't exist, find what does and ask the user
-
-### Proactive Discovery Pattern:
-
-When user mentions a resource that doesn't exist (cluster, host, disk, service...):
-
-1. DON'T fail or say "not found"
-2. DO run a discovery command:
-   - **LOCAL tools (use bash)**:
-     - K8s: `bash("kubectl config get-contexts")`, `bash("kubectl get pods -n <ns>")`
-     - AWS: `bash("aws eks list-clusters")`, `bash("aws ec2 describe-instances")`
-     - Docker: `bash("docker ps")`, `bash("docker images")`
-   - **REMOTE hosts (use ssh_execute)**:
-     - Disks: `ssh_execute(host, "lsblk")` or `ssh_execute(host, "df -h")`
-     - Services: `ssh_execute(host, "systemctl list-units --type=service")`
-3. PRESENT alternatives to the user
-4. CONTINUE with user's choice
-
-Example (local kubectl):
-```
-User: "Check pods in namespace rc-ggl"
-You: *bash("kubectl get pods -n rc-ggl")*
-→ namespace not found
-You: *bash("kubectl get namespaces")*
-→ Found: default, production, staging
-You: "Namespace rc-ggl doesn't exist. Available: production, staging. Which one?"
-```
-
-### Zero-Config Mode:
-
-You can operate WITHOUT any inventory configured:
-- User gives IP/hostname directly → connect via SSH
-- User mentions cloud resource → use CLI tools (aws, gcloud, az, kubectl)
-- User mentions local resource → use bash directly
-
-The inventory is a CONVENIENCE, not a REQUIREMENT.
-
-## Execution Principles
-
-1. **BE DIRECT**: Try the most obvious path FIRST
-2. **TRUST USER HINTS**: When user provides hints, use them immediately
-3. **ONE COMMAND IS BETTER**: Prefer one direct command over many exploratory ones
-4. **ASK ONLY FOR DESTRUCTIVE ACTIONS**: delete, stop, restart need confirmation
-
-## Available Tools
-
-- **bash**: Run commands LOCALLY (kubectl, aws, docker, gcloud, any CLI tool)
-  → This is your UNIVERSAL FALLBACK for local operations
-- **ssh_execute**: Run commands on REMOTE hosts via SSH (auto-elevates if permission denied!)
-  → Do NOT prefix with sudo - elevation is automatic
-- **list_hosts/get_host**: Access inventory (if configured)
-- **ask_user**: Ask for clarification or choices
-- **request_credentials**: Get credentials securely (returns @secret-ref)
-- **request_elevation**: Explicit elevation (RARELY needed - ssh_execute auto-elevates)
-
-### When to use bash vs ssh_execute (CRITICAL):
-- **bash**: ONLY for LOCAL tools (kubectl, aws, docker, gcloud, az, terraform...)
-- **ssh_execute**: For ALL commands on REMOTE hosts via SSH
-
-⚠️ FORBIDDEN PATTERN - NEVER DO THIS:
-```python
-bash("ssh 192.168.1.5 uptime")  # WRONG! Never use bash for SSH
-bash("ssh user@host command")   # WRONG! This bypasses all SSH features
-```
-
-✅ CORRECT PATTERN - ALWAYS USE ssh_execute FOR REMOTE HOSTS:
-```python
-ssh_execute(host="192.168.1.5", command="uptime")  # CORRECT!
-ssh_execute(host="server", command="df -h")        # CORRECT!
-```
-
-Why? ssh_execute provides: auto-elevation, jump host support, credential injection,
-connection pooling, and proper error handling. bash("ssh ...") bypasses ALL of this.
-
-## Jump Hosts / Bastions
-
-When accessing hosts "via" or "through" another host:
-```
-ssh_execute(host="target", command="...", via="bastion")
-```
-
-Patterns that require `via`:
-- "Check X on server via bastion"
-- "Access db-01 through @jump"
-- "en passant par @ansible"
-
-## Secrets Handling
-
-Use `@secret-name` references in commands:
-```
-ssh_execute(command="mongosh -u admin -p @db-password")
-```
-Merlya resolves secrets at execution time. NEVER embed passwords in commands.
-
-## Privilege Elevation (CRITICAL)
-
-ELEVATION IS AUTOMATIC - DO NOT ADD SUDO TO COMMANDS!
-
-How it works:
-1. Run command WITHOUT sudo: `ssh_execute(command="systemctl restart nginx")`
-2. If "permission denied" → Merlya auto-retries with elevation
-3. User is prompted for password (handled internally, you never see it)
-
-CORRECT:
-```python
-ssh_execute(host="server", command="systemctl restart nginx")  # NO sudo!
-ssh_execute(host="server", command="cat /etc/shadow")  # NO sudo!
-```
-
-FORBIDDEN (will be blocked):
-```python
-ssh_execute(command="sudo systemctl restart nginx")  # WRONG: don't add sudo
-ssh_execute(command="echo 'password' | sudo -S ...")  # FORBIDDEN: security risk
-```
-
-## SECURITY: Password Handling (CRITICAL)
-
-NEVER construct password patterns manually. These are BLOCKED:
-- `echo 'password' | sudo -S ...`
-- `mysql -p'password' ...`
-- Any command with plaintext passwords
-
-CORRECT:
-- For DB passwords: Use `@secret-name` references → `mongosh -u admin -p @db-password`
-- For elevation: Just run the command without sudo - elevation is automatic
-
-## Analysis Coherence
-
-Before concluding:
-1. Do the numbers add up?
-2. Does conclusion match ALL evidence?
-3. Are there contradictions to investigate?
-
-If analysis is partial, state it explicitly.
-
-## Task Focus
-
-Stay focused on user's request:
-- DON'T explore randomly
-- DON'T run multiple ls commands without purpose
-- DO take direct action toward the goal
-- DO ask for clarification if stuck (don't explore blindly)
-
-## Response Style
-
-Be concise and action-oriented:
-- State what you're doing
-- Execute
-- Report results
-- Propose next steps if needed
-
-When you encounter ANY obstacle, your reflex should be:
-"How can I discover the right information and continue?" NOT "I cannot proceed."
-"""
 
 
 @dataclass
@@ -208,6 +40,7 @@ class AgentDependencies:
 
     context: SharedContext
     router_result: RouterResult | None = None
+    tracker: ToolCallTracker = field(default_factory=ToolCallTracker)
 
 
 class AgentResponse(BaseModel):
@@ -216,120 +49,6 @@ class AgentResponse(BaseModel):
     message: str
     actions_taken: list[str] = []
     suggestions: list[str] = []
-
-
-def create_agent(
-    model: str = "anthropic:claude-3-5-sonnet-latest",
-    max_history_messages: int = 30,
-) -> Agent[AgentDependencies, AgentResponse]:
-    """
-    Create the main Merlya agent.
-
-    Args:
-        model: Model to use (PydanticAI format).
-        max_history_messages: Maximum messages to keep in history.
-
-    Returns:
-        Configured Agent instance.
-    """
-    history_processor = create_loop_aware_history_processor(max_messages=max_history_messages)
-
-    agent = Agent(
-        model,
-        deps_type=AgentDependencies,
-        output_type=AgentResponse,
-        system_prompt=SYSTEM_PROMPT,
-        defer_model_check=True,  # Allow dynamic model names
-        history_processors=[history_processor],
-        retries=DEFAULT_TOOL_RETRIES,  # Allow tool retries for elevation/credential flows
-    )
-
-    register_all_tools(agent)
-
-    @agent.system_prompt
-    def inject_router_context(ctx: RunContext[AgentDependencies]) -> str:
-        """
-        Inject router context as dynamic system prompt.
-
-        Adds contextual information from the intent router to guide
-        the agent's behavior. Includes:
-        - Credential/elevation requirements from router flags
-        - Jump host information for SSH tunneling
-        - Detected operation mode (diagnostic, remediation, etc.)
-
-        Args:
-            ctx: Run context with agent dependencies.
-
-        Returns:
-            Dynamic system prompt string, empty if no router context.
-        """
-        router_result = ctx.deps.router_result
-        if not router_result:
-            return ""
-
-        parts = []
-
-        # Add credentials/elevation context
-        if router_result.credentials_required or router_result.elevation_required:
-            parts.append(
-                f"⚠️ ROUTER CONTEXT: credentials_required={router_result.credentials_required}, "
-                f"elevation_required={router_result.elevation_required}. "
-                "Address these requirements using the appropriate tools before proceeding."
-            )
-
-        # Add jump host context
-        if router_result.jump_host:
-            parts.append(
-                f"🔗 JUMP HOST DETECTED: {router_result.jump_host}. "
-                f'For SSH commands, use via="{router_result.jump_host}" parameter in ssh_execute.'
-            )
-
-        # Add detected mode context
-        if router_result.mode:
-            parts.append(f"📋 Detected mode: {router_result.mode.value}")
-
-        # Add unresolved hosts context (proactive mode)
-        if router_result.unresolved_hosts:
-            hosts_list = ", ".join(router_result.unresolved_hosts)
-            parts.append(
-                f"🔍 PROACTIVE: Hosts not in inventory: {hosts_list}. "
-                "These may be valid hostnames - try direct connection. "
-                "If connection fails, use bash/ssh_execute to discover alternatives."
-            )
-
-        return "\n".join(parts) if parts else ""
-
-    @agent.output_validator
-    def validate_response(
-        _ctx: RunContext[AgentDependencies],
-        output: AgentResponse,
-    ) -> AgentResponse:
-        """Validate the agent response for coherence."""
-        # Check for empty message
-        if not output.message or not output.message.strip():
-            raise ModelRetry(
-                "Response message cannot be empty. Please provide a meaningful response."
-            )
-
-        # Check for overly short responses when actions were taken
-        if output.actions_taken and len(output.message) < MIN_RESPONSE_LENGTH_WITH_ACTIONS:
-            raise ModelRetry(
-                "Response is too brief given the actions taken. "
-                "Please explain what was done and the results."
-            )
-
-        # Warn in logs if message indicates an error but no suggestions provided
-        # Use word boundaries to avoid false positives (e.g., "impossible" in "not impossible")
-        import re
-
-        error_pattern = r"\b(error|failed|cannot|unable|impossible)\b"
-        has_error = re.search(error_pattern, output.message, re.IGNORECASE) is not None
-        if has_error and not output.suggestions:
-            logger.debug("⚠️ Response indicates an error but no suggestions provided")
-
-        return output
-
-    return agent
 
 
 class MerlyaAgent:
@@ -378,112 +97,138 @@ class MerlyaAgent:
         Note:
             The agent runs until completion using the ReAct loop pattern.
             Loop detection (history.py) prevents unproductive behavior.
-            UsageLimits are high failsafes - not workflow controls.
         """
-        # Apply usage limits: use router's dynamic limits if available
-        # These are HIGH limits - just failsafes, not workflow controls
-        # Loop detection (history.py) handles the real safety
-        if usage_limits is None:
-            if router_result is not None:
-                request_limit = router_result.request_limit
-                tool_limit = router_result.tool_calls_limit
-            else:
-                request_limit = DEFAULT_REQUEST_LIMIT
-                tool_limit = DEFAULT_TOOL_CALLS_LIMIT
+        limits = self._compute_usage_limits(router_result, usage_limits)
 
-            usage_limits = UsageLimits(
-                request_limit=request_limit,
-                tool_calls_limit=tool_limit,
-            )
         try:
-            # Create conversation lazily on first user message
             if self._active_conversation is None:
                 self._active_conversation = await self._create_conversation(user_input)
 
-            # PROACTIVE MODE: Check which hosts are not in inventory
-            # This helps the agent know it may need to discover alternatives
-            if router_result and router_result.entities.get("hosts"):
-                unresolved = []
-                for host_name in router_result.entities["hosts"]:
-                    host_entry = await self.context.hosts.get_by_name(host_name)
-                    if not host_entry:
-                        unresolved.append(host_name)
-                if unresolved:
-                    router_result.unresolved_hosts = unresolved
-                    logger.debug(f"🔍 Unresolved hosts (not in inventory): {unresolved}")
+            self._apply_credential_hints(user_input)
+            await self._mark_unresolved_hosts(router_result)
 
-            deps = AgentDependencies(
-                context=self.context,
-                router_result=router_result,
-            )
-
-            # Run the agent - it completes naturally via ReAct loop
-            # Loop detection in history processor catches unproductive behavior
-            try:
-                result = await self._agent.run(
-                    user_input,
-                    deps=deps,
-                    message_history=self._message_history if self._message_history else None,
-                    usage_limits=usage_limits,
-                )
-            except UsageLimitExceeded as e:
-                # This should rarely happen with high limits
-                # If it does, the task is genuinely too complex
-                logger.warning(f"⚠️ Failsafe limit reached: {e}")
-                await self._persist_history()
-                return AgentResponse(
-                    message=f"Tâche trop complexe - limite de sécurité atteinte: {e}",
-                    actions_taken=[],
-                    suggestions=["Découper la tâche en étapes plus petites"],
-                )
-
-            # Update history with ALL messages including tool calls
-            # This is critical for conversation continuity
-            self._message_history = result.all_messages()
-
-            # Check for persistent loop AFTER the run
-            # The history processor injects a warning, but if the LLM ignores it,
-            # we catch it here and return a structured response to the user
-            is_loop, loop_desc = detect_loop(
-                self._message_history,
-                threshold_same=4,  # Strict: 4 identical calls = hard stop
-                threshold_pattern=5,
-            )
-            if is_loop and loop_desc:
-                logger.warning(f"🔄 Persistent loop detected: {loop_desc}")
-                await self._persist_history()
-                return AgentResponse(
-                    message=(
-                        f"Je suis bloqué dans une boucle : {loop_desc}. "
-                        "Je n'arrive pas à progresser avec cette approche."
-                    ),
-                    actions_taken=[],
-                    suggestions=[
-                        "Vérifier les prérequis (service installé, permissions)",
-                        "Essayer une commande différente",
-                        "Fournir plus de contexte sur l'environnement",
-                    ],
-                )
-
-            await self._persist_history()
-
-            return result.output
+            deps = AgentDependencies(context=self.context, router_result=router_result)
+            return await self._run_agent_with_errors(user_input, deps, limits)
 
         except asyncio.CancelledError:
-            # Task was cancelled (e.g., by Ctrl+C)
             logger.debug("Agent task cancelled")
             await self._persist_history()
             raise
-
         except Exception as e:
             logger.error(f"Agent error: {e}")
-            # Don't modify history on error - keep the valid state
             await self._persist_history()
             return AgentResponse(
                 message=f"An error occurred: {e}",
                 actions_taken=[],
                 suggestions=["Try rephrasing your request"],
             )
+
+    def _compute_usage_limits(
+        self,
+        router_result: RouterResult | None,
+        usage_limits: UsageLimits | None,
+    ) -> UsageLimits:
+        """Compute usage limits from router result or defaults."""
+        if usage_limits is not None:
+            return usage_limits
+
+        if router_result is not None:
+            request_limit = router_result.request_limit
+            tool_limit = router_result.tool_calls_limit
+        else:
+            request_limit = DEFAULT_REQUEST_LIMIT
+            tool_limit = DEFAULT_TOOL_CALLS_LIMIT
+
+        return UsageLimits(request_limit=request_limit, tool_calls_limit=tool_limit)
+
+    def _apply_credential_hints(self, user_input: str) -> None:
+        """Extract and apply credential hints from user message."""
+        from merlya.tools.core.resolve import apply_credential_hints_from_message
+
+        hints_applied = apply_credential_hints_from_message(user_input)
+        if hints_applied:
+            logger.debug(f"🔑 Applied {hints_applied} credential hints from user message")
+
+    async def _mark_unresolved_hosts(self, router_result: RouterResult | None) -> None:
+        """Mark hosts not in inventory for proactive discovery."""
+        if not router_result or not router_result.entities.get("hosts"):
+            return
+
+        unresolved = []
+        for host_name in router_result.entities["hosts"]:
+            host_entry = await self.context.hosts.get_by_name(host_name)
+            if not host_entry:
+                unresolved.append(host_name)
+
+        if unresolved:
+            router_result.unresolved_hosts = unresolved
+            logger.debug(f"🔍 Unresolved hosts (not in inventory): {unresolved}")
+
+    async def _run_agent_with_errors(
+        self,
+        user_input: str,
+        deps: AgentDependencies,
+        usage_limits: UsageLimits,
+    ) -> AgentResponse:
+        """Execute agent run with error handling."""
+        from pydantic_ai.settings import ModelSettings
+
+        timeout = self.context.config.model.get_timeout()
+        timeout_value = float(timeout) if timeout is not None else 90.0
+        model_settings = ModelSettings(timeout=timeout_value)
+        logger.debug(f"🕐 LLM request timeout: {timeout_value}s")
+
+        try:
+            result = await self._agent.run(
+                user_input,
+                deps=deps,
+                message_history=self._message_history if self._message_history else None,
+                usage_limits=usage_limits,
+                model_settings=model_settings,
+            )
+        except UsageLimitExceeded as e:
+            logger.warning(f"⚠️ Failsafe limit reached: {e}")
+            await self._persist_history()
+            return AgentResponse(
+                message=f"Task too complex - safety limit reached: {e}",
+                actions_taken=[],
+                suggestions=["Break the task into smaller steps"],
+            )
+        except UnexpectedModelBehavior as e:
+            return await self._handle_model_behavior_error(e)
+
+        self._message_history = result.all_messages()
+        await self._persist_history()
+        return result.output
+
+    async def _handle_model_behavior_error(self, e: UnexpectedModelBehavior) -> AgentResponse:
+        """Handle UnexpectedModelBehavior exceptions with helpful messages."""
+        error_msg = str(e)
+        logger.warning(f"⚠️ Model behavior issue: {error_msg}")
+        await self._persist_history()
+
+        if "exceeded max retries" in error_msg.lower():
+            return AgentResponse(
+                message=(
+                    "⚠️ Encountered repeated issues with this command. "
+                    "This may be due to:\n"
+                    "- Authentication errors (wrong password)\n"
+                    "- Incompatible elevation method (sudo vs su)\n"
+                    "- SSH connection issues\n\n"
+                    "Try rephrasing the task or check the credentials."
+                ),
+                actions_taken=[],
+                suggestions=[
+                    "Check credentials with 'merlya hosts show <host>'",
+                    "Try a different elevation method",
+                ],
+            )
+
+        return AgentResponse(
+            message=f"⚠️ Unexpected behavior: {error_msg}",
+            actions_taken=[],
+            suggestions=["Rephrase the request"],
+        )
 
     def clear_history(self) -> None:
         """Clear conversation history."""

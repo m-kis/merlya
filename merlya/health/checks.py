@@ -18,9 +18,7 @@ from .connectivity import ping_ollama as _ping_ollama
 from .connectivity import ping_openai as _ping_openai
 from .infrastructure import check_keyring, check_ssh_available
 from .mcp_checks import check_mcp_servers
-from .ml_checks import check_onnx_for_skills, check_onnx_model
 from .service_checks import check_parser_service, check_session_manager
-from .skill_checks import check_skills_registry
 from .startup import run_startup_checks
 from .startup_health import StartupHealth
 
@@ -40,12 +38,9 @@ __all__ = [
     "check_keyring",
     "check_llm_provider",
     "check_mcp_servers",
-    "check_onnx_for_skills",
-    "check_onnx_model",
     "check_parser_service",
     "check_ram",
     "check_session_manager",
-    "check_skills_registry",
     "check_ssh_available",
     "check_web_search",
     "run_startup_checks",

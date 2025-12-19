@@ -104,7 +104,7 @@ class ParserService:
 
         if await self._backend.load():
             self._initialized = True
-            logger.info(f"✅ ParserService initialized with backend: {self._backend.name}")
+            logger.debug(f"✅ ParserService initialized with backend: {self._backend.name}")
             return True
 
         # Fallback to heuristic if ONNX fails

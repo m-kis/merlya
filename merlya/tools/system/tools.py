@@ -55,9 +55,7 @@ async def _proxy_ssh_execute(
     command: str,
     timeout: int = 60,
     connect_timeout: int | None = None,
-    elevation: dict[str, object] | None = None,
     via: str | None = None,
-    auto_elevate: bool = True,
 ) -> ToolResult:
     """Proxy to the module-level `ssh_execute` (supports monkeypatching in tests)."""
     return await ssh_execute(
@@ -66,9 +64,7 @@ async def _proxy_ssh_execute(
         command,
         timeout=timeout,
         connect_timeout=connect_timeout,
-        elevation=elevation,
         via=via,
-        auto_elevate=auto_elevate,
     )
 
 

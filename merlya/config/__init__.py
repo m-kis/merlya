@@ -13,6 +13,15 @@ from merlya.config.models import (
     UIConfig,
 )
 from merlya.config.policies import EffectivePolicy, PolicyManager
+from merlya.config.providers import (
+    PROVIDER_DEFAULTS,
+    ProviderModels,
+    get_model_for_role,
+    get_provider_info,
+    get_provider_models,
+    get_pydantic_model_string,
+    list_providers,
+)
 from merlya.config.tiers import (
     PARSER_MODELS,
     ROUTER_MODELS,
@@ -28,6 +37,7 @@ from merlya.config.tiers import (
 
 __all__ = [
     "PARSER_MODELS",
+    "PROVIDER_DEFAULTS",
     "ROUTER_MODELS",
     "Config",
     "EffectivePolicy",
@@ -38,13 +48,19 @@ __all__ = [
     "ModelTier",
     "PolicyConfig",
     "PolicyManager",
+    "ProviderModels",
     "RouterConfig",
     "SSHConfig",
     "UIConfig",
     "get_config",
+    "get_model_for_role",
     "get_parser_model_id",
+    "get_provider_info",
+    "get_provider_models",
+    "get_pydantic_model_string",
     "get_router_model_id",
     "is_model_available",
+    "list_providers",
     "load_config",
     "resolve_model_path",
     "resolve_parser_model_path",

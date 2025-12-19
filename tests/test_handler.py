@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -100,6 +100,9 @@ def mock_context() -> MagicMock:
     ctx.ui = MagicMock()
     ctx.ui.prompt = AsyncMock(return_value="")
 
+    # Explicitly set _orchestrator to None so legacy agent fallback works
+    ctx._orchestrator = None
+
     return ctx
 
 
@@ -141,7 +144,7 @@ class TestHandlerResponse:
         response = HandlerResponse(message="Test")
         assert response.actions_taken is None
         assert response.suggestions is None
-        assert response.handled_by == "unknown"
+        assert response.handled_by == "orchestrator"  # New default in simplified handler
         assert response.raw_data is None
 
     def test_from_agent_response(self) -> None:
@@ -158,18 +161,42 @@ class TestHandlerResponse:
         assert response.suggestions == ["Check logs"]
         assert response.handled_by == "agent"
 
+    def test_from_agent_response_with_empty_lists(self) -> None:
+        """Test that empty lists are preserved as lists (not converted to None) and proper message/handled_by values are set."""
+        agent_response = MagicMock()
+        agent_response.message = "Agent message with empty actions"
+        agent_response.actions_taken = []
+        agent_response.suggestions = []
+
+        response = HandlerResponse.from_agent_response(agent_response)
+
+        # Verify message and handled_by values
+        assert response.message == "Agent message with empty actions"
+        assert response.handled_by == "agent"
+
+        # Verify that empty lists are preserved as lists, not converted to None (list preservation behavior)
+        assert isinstance(response.actions_taken, list)
+        assert isinstance(response.suggestions, list)
+        assert response.actions_taken == []
+        assert response.suggestions == []
+
 
 # ==============================================================================
-# Fast Path Tests
+# Fast Path Tests (DEPRECATED - now handled by slash commands)
 # ==============================================================================
 
 
 class TestHandleFastPath:
-    """Tests for handle_fast_path function."""
+    """Tests for handle_fast_path function (DEPRECATED).
+
+    NOTE: Fast path operations are now handled by slash commands.
+    handle_fast_path() returns a deprecation message directing users
+    to use slash commands instead.
+    """
 
     @pytest.mark.asyncio
-    async def test_host_list(self, mock_context: MagicMock) -> None:
-        """Test host.list fast path."""
+    async def test_deprecated_returns_message(self, mock_context: MagicMock) -> None:
+        """Test that fast path returns deprecation message."""
         route_result = RouterResult(
             mode=AgentMode.QUERY,
             tools=["core"],
@@ -179,200 +206,60 @@ class TestHandleFastPath:
 
         response = await handle_fast_path(mock_context, route_result)
 
-        assert response.handled_by == "fast_path"
-        assert "Host Inventory" in response.message
-        assert "web-01" in response.message
-        assert "Total: 4 hosts" in response.message
+        assert response.handled_by == "deprecated"
+        # Should suggest using slash commands
+        assert "/hosts" in response.suggestions or "/vars" in response.suggestions
 
-    @pytest.mark.asyncio
-    async def test_host_list_empty(self, mock_context: MagicMock) -> None:
-        """Test host.list with empty inventory."""
-        mock_context.hosts.get_all = AsyncMock(return_value=[])
 
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="host.list",
-            fast_path_args={},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert "No hosts in inventory" in response.message
-        assert "/scan" in response.suggestions
-
-    @pytest.mark.asyncio
-    async def test_host_details_found(self, mock_context: MagicMock) -> None:
-        """Test host.details for existing host."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="host.details",
-            fast_path_args={"target": "web-01"},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert response.handled_by == "fast_path"
-        assert "Host: @web-01" in response.message
-        assert "10.0.0.1" in response.message
-
-    @pytest.mark.asyncio
-    async def test_host_details_not_found(self, mock_context: MagicMock) -> None:
-        """Test host.details for non-existent host."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="host.details",
-            fast_path_args={"target": "nonexistent"},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert "not found" in response.message
-
-    @pytest.mark.asyncio
-    async def test_group_list(self, mock_context: MagicMock) -> None:
-        """Test group.list fast path."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="group.list",
-            fast_path_args={},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert response.handled_by == "fast_path"
-        assert "Host Groups" in response.message
-        assert "web" in response.message or "prod" in response.message
-
-    @pytest.mark.asyncio
-    async def test_var_list(self, mock_context: MagicMock) -> None:
-        """Test var.list fast path."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="var.list",
-            fast_path_args={},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert response.handled_by == "fast_path"
-        assert "Variables" in response.message
-        assert "ENV" in response.message
-
-    @pytest.mark.asyncio
-    async def test_var_get_found(self, mock_context: MagicMock) -> None:
-        """Test var.get for existing variable."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="var.get",
-            fast_path_args={"target": "ENV"},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert response.handled_by == "fast_path"
-        assert "ENV" in response.message
-        assert "test_value" in response.message
-
-    @pytest.mark.asyncio
-    async def test_var_get_not_found(self, mock_context: MagicMock) -> None:
-        """Test var.get for non-existent variable."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="var.get",
-            fast_path_args={"target": "NONEXISTENT"},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert "not found" in response.message
-
-    @pytest.mark.asyncio
-    async def test_unknown_fast_path(self, mock_context: MagicMock) -> None:
-        """Test unknown fast path intent."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="unknown.intent",
-            fast_path_args={},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert "Unknown fast path intent" in response.message
+# NOTE: Old fast path tests removed - fast path is now handled by slash commands.
+# handle_fast_path() is deprecated and returns a deprecation message.
 
 
 # ==============================================================================
-# Skill Flow Tests
+# Skill Flow Tests (DEPRECATED - skills have been removed)
 # ==============================================================================
 
 
 class TestHandleSkillFlow:
-    """Tests for handle_skill_flow function."""
+    """Tests for handle_skill_flow function (DEPRECATED).
+
+    NOTE: Skills have been removed from Merlya.
+    handle_skill_flow() always returns None.
+    """
 
     @pytest.mark.asyncio
-    async def test_skill_not_found(self, mock_context: MagicMock) -> None:
-        """Test skill flow when skill not found."""
+    async def test_skill_flow_returns_none(self, mock_context: MagicMock) -> None:
+        """Test skill flow always returns None (skills removed)."""
         route_result = RouterResult(
             mode=AgentMode.DIAGNOSTIC,
             tools=["core"],
-            skill_match="nonexistent_skill",
-            skill_confidence=0.8,
+            skill_match="any_skill",
+            skill_confidence=0.95,
         )
 
-        with patch("merlya.skills.registry.get_registry") as mock_get_registry:
-            mock_registry = MagicMock()
-            mock_registry.get.return_value = None
-            mock_get_registry.return_value = mock_registry
+        response = await handle_skill_flow(mock_context, "test input", route_result)
 
-            response = await handle_skill_flow(mock_context, "test input", route_result)
-
+        # Skills are removed, always returns None
         assert response is None
-
-    @pytest.mark.asyncio
-    async def test_skill_needs_hosts(self, mock_context: MagicMock) -> None:
-        """Test skill flow when hosts are required but not provided."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="disk_audit",
-            skill_confidence=0.8,
-            entities={"hosts": []},
-        )
-
-        mock_skill = MagicMock()
-        mock_skill.name = "disk_audit"
-        mock_skill.description = "Check disk usage"
-        mock_skill.max_hosts = 5
-
-        with patch("merlya.skills.registry.get_registry") as mock_get_registry:
-            mock_registry = MagicMock()
-            mock_registry.get.return_value = mock_skill
-            mock_get_registry.return_value = mock_registry
-
-            response = await handle_skill_flow(mock_context, "check disk", route_result)
-
-        assert response is not None
-        assert "specify target hosts" in response.message
 
 
 # ==============================================================================
-# Handle Agent Tests
+# Handle Agent Tests (DEPRECATED - now uses Orchestrator)
 # ==============================================================================
 
 
 class TestHandleAgent:
-    """Tests for handle_agent function."""
+    """Tests for handle_agent function (DEPRECATED).
+
+    NOTE: handle_agent is deprecated and redirects to handle_user_message.
+    The new architecture uses Orchestrator for LLM processing.
+    """
 
     @pytest.mark.asyncio
-    async def test_agent_response(self, mock_context: MagicMock, mock_agent: MagicMock) -> None:
-        """Test agent handler returns proper response."""
+    async def test_agent_legacy_calls_run(
+        self, mock_context: MagicMock, mock_agent: MagicMock
+    ) -> None:
+        """Test legacy agent handler falls back to agent.run()."""
         route_result = RouterResult(
             mode=AgentMode.DIAGNOSTIC,
             tools=["core", "system"],
@@ -380,153 +267,48 @@ class TestHandleAgent:
 
         response = await handle_agent(mock_context, mock_agent, "test input", route_result)
 
-        assert response.handled_by == "agent"
-        assert response.message == "Agent response"
-        mock_agent.run.assert_called_once_with("test input", route_result)
+        # Legacy handler calls agent.run if agent has run method
+        assert response.handled_by == "agent_legacy"
+        mock_agent.run.assert_called_once()
 
 
 # ==============================================================================
-# Handle User Message Integration Tests
+# Handle User Message Integration Tests (DEPRECATED)
 # ==============================================================================
 
 
 class TestHandleUserMessage:
-    """Tests for handle_user_message main entry point."""
+    """Tests for handle_user_message (DEPRECATED).
+
+    NOTE: handle_user_message is deprecated. The new architecture is:
+    - "/" commands → Slash command dispatch (fast-path)
+    - Free text → Orchestrator (LLM) via handle_message()
+
+    These tests verify the legacy fallback behavior for backward compatibility.
+    """
 
     @pytest.mark.asyncio
-    async def test_fast_path_routing(self, mock_context: MagicMock, mock_agent: MagicMock) -> None:
-        """Test that fast path is used when detected."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="host.list",
-            fast_path_args={},
-        )
-
-        response = await handle_user_message(mock_context, mock_agent, "list hosts", route_result)
-
-        assert response.handled_by == "fast_path"
-        # Agent should NOT be called for fast path
-        mock_agent.run.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_agent_fallback(self, mock_context: MagicMock, mock_agent: MagicMock) -> None:
-        """Test agent fallback when no fast path or skill match."""
+    async def test_legacy_agent_fallback(
+        self, mock_context: MagicMock, mock_agent: MagicMock
+    ) -> None:
+        """Test legacy handler falls back to agent.run()."""
         route_result = RouterResult(
             mode=AgentMode.DIAGNOSTIC,
             tools=["core"],
-            # No fast_path, no skill_match
         )
 
         response = await handle_user_message(
             mock_context, mock_agent, "check server status", route_result
         )
 
-        assert response.handled_by == "agent"
+        # Legacy handler calls agent.run if agent has run method
+        assert response.handled_by == "agent_legacy"
         mock_agent.run.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_prompts_for_target_on_ambiguous_ops(self, mock_context: MagicMock) -> None:
-        """If no host is specified for an execution request, prompt for local vs inventory host."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core", "system"],
-            entities={"hosts": [], "variables": [], "files": []},
-        )
 
-        mock_context.ui.prompt = AsyncMock(return_value="WEB-01")
-        mock_context.hosts.get_by_name = AsyncMock(
-            return_value=MockHost(name="web-01", hostname="10.0.0.1")
-        )
-
-        agent = MagicMock()
-        response = MagicMock()
-        response.message = "Agent response"
-        response.actions_taken = []
-        response.suggestions = []
-        agent.run = AsyncMock(return_value=response)
-
-        out = await handle_user_message(
-            mock_context, agent, "donne moi des infos sur PID 123", route_result
-        )
-
-        assert out.handled_by == "agent"
-        agent.run.assert_called_once()
-        called_input = agent.run.await_args.args[0]
-        assert "On @web-01:" in called_input
-
-    @pytest.mark.asyncio
-    async def test_prompts_for_target_local(self, mock_context: MagicMock) -> None:
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core", "system"],
-            entities={"hosts": [], "variables": [], "files": []},
-        )
-
-        mock_context.ui.prompt = AsyncMock(return_value="local")
-
-        agent = MagicMock()
-        response = MagicMock()
-        response.message = "Agent response"
-        response.actions_taken = []
-        response.suggestions = []
-        agent.run = AsyncMock(return_value=response)
-
-        out = await handle_user_message(mock_context, agent, "info PID 123", route_result)
-
-        assert out.handled_by == "agent"
-        called_input = agent.run.await_args.args[0]
-        assert "LOCAL EXECUTION CONTEXT" in called_input
-
-    @pytest.mark.asyncio
-    async def test_skill_routing_with_high_confidence(
-        self, mock_context: MagicMock, mock_agent: MagicMock
-    ) -> None:
-        """Test skill routing when confidence is high."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="disk_audit",
-            skill_confidence=0.9,  # Above threshold
-            entities={"hosts": []},
-        )
-
-        mock_skill = MagicMock()
-        mock_skill.name = "disk_audit"
-        mock_skill.description = "Check disk usage"
-        mock_skill.max_hosts = 5
-
-        with patch("merlya.skills.registry.get_registry") as mock_get_registry:
-            mock_registry = MagicMock()
-            mock_registry.get.return_value = mock_skill
-            mock_get_registry.return_value = mock_registry
-
-            response = await handle_user_message(
-                mock_context, mock_agent, "check disk", route_result
-            )
-
-        # Should use skill handler (asks for hosts)
-        assert response.handled_by == "skill"
-
-    @pytest.mark.asyncio
-    async def test_skill_routing_low_confidence_falls_to_agent(
-        self, mock_context: MagicMock, mock_agent: MagicMock
-    ) -> None:
-        """Test that low confidence skill match falls back to agent."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="disk_audit",
-            skill_confidence=0.4,  # Below threshold
-        )
-
-        response = await handle_user_message(
-            mock_context, mock_agent, "maybe check disk", route_result
-        )
-
-        # Should fall back to agent due to low confidence
-        assert response.handled_by == "agent"
-        mock_agent.run.assert_called_once()
+# NOTE: Tests for skill routing, target prompts, etc. have been removed
+# as they tested deprecated functionality. Skills have been removed and
+# the new architecture uses Orchestrator for all LLM processing.
 
 
 # ==============================================================================

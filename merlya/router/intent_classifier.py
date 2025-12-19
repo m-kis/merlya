@@ -321,7 +321,7 @@ class IntentClassifier:
 
             self._model_loaded = True
             self._model_id = selected_model
-            logger.info(f"✅ ONNX embedding model loaded: {selected_model}")
+            logger.debug(f"✅ ONNX embedding model loaded: {selected_model}")
             return True
 
         except ImportError as e:
@@ -377,7 +377,7 @@ class IntentClassifier:
 
             await self._download_external_data(model_id, model_path)
 
-            logger.info(f"✅ Downloaded ONNX model to {model_path}")
+            logger.debug(f"✅ Downloaded ONNX model to {model_path}")
             return True
         except Exception as e:
             logger.warning(f"⚠️ Could not download ONNX model: {e}")
@@ -391,7 +391,7 @@ class IntentClassifier:
                 data_src = hf_hub_download(repo_id=model_id, filename=candidate)
                 data_dest = model_path.with_name(f"{model_path.name}_data")
                 Path(data_dest).write_bytes(Path(data_src).read_bytes())
-                logger.info(f"✅ Downloaded ONNX external data to {data_dest}")
+                logger.debug(f"✅ Downloaded ONNX external data to {data_dest}")
                 return
             except Exception:
                 continue
