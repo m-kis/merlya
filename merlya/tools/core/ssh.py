@@ -40,22 +40,21 @@ _VALID_SECRET_KEYWORDS = frozenset({"password", "passwd", "pass", "key", "token"
 def _needs_elevation_password(command: str) -> bool:
     """
     Check if a command requires elevation password.
-    
+
     Detects commands that need password-based elevation:
     - sudo -s (shell mode) and sudo -S (stdin mode) - case insensitive
     - su commands - case insensitive
-    
+
     Args:
         command: The command string to check.
-        
+
     Returns:
         True if the command requires elevation password, False otherwise.
     """
     cmd_lower = command.lower()
     # Check if command starts with sudo and contains -S or -s flag
-    has_sudo_stdin = (
-        cmd_lower.startswith("sudo ") 
-        and (" -s " in cmd_lower or " -s" in cmd_lower or cmd_lower.startswith("sudo -s"))
+    has_sudo_stdin = cmd_lower.startswith("sudo ") and (
+        " -s " in cmd_lower or " -s" in cmd_lower or cmd_lower.startswith("sudo -s")
     )
     return has_sudo_stdin or cmd_lower.startswith("su ")
 
@@ -179,30 +178,28 @@ async def ssh_execute(
             # Check if command needs stdin but it wasn't provided
             # Try to auto-resolve from secrets store for known elevation patterns
             input_data = await _auto_resolve_elevation_password(ctx, host, command)
-            if input_data is None:
-                # Check if command will definitely need password
-                if _needs_elevation_password(command):
-                    # Return error with instructions - don't let it timeout
-                    short_cmd = command[:40] + "..." if len(command) > 40 else command
-                    return ToolResult(
-                        success=False,
-                        error=(
-                            f"🔐 ELEVATION REQUIRED: Command '{short_cmd}' needs a password.\n\n"
-                            f"The password for {host} was not found in the secrets store.\n\n"
-                            f"To fix this:\n"
-                            f"1. Call: request_credentials(service='sudo', host='{host}')\n"
-                            f"2. Then retry with: ssh_execute(host='{host}', command='{short_cmd}', stdin='@sudo:{host}:password')\n\n"
-                            f"⚠️ DO NOT execute without stdin - it will timeout waiting for password input."
-                        ),
-                        data={"host": host, "command": command[:50], "needs_credentials": True},
-                    )
+            if input_data is None and _needs_elevation_password(command):
+                # Return error with instructions - don't let it timeout
+                short_cmd = command[:40] + "..." if len(command) > 40 else command
+                return ToolResult(
+                    success=False,
+                    error=(
+                        f"🔐 ELEVATION REQUIRED: Command '{short_cmd}' needs a password.\n\n"
+                        f"The password for {host} was not found in the secrets store.\n\n"
+                        f"To fix this:\n"
+                        f"1. Call: request_credentials(service='sudo', host='{host}')\n"
+                        f"2. Then retry with: ssh_execute(host='{host}', command='{short_cmd}', stdin='@sudo:{host}:password')\n\n"
+                        f"⚠️ DO NOT execute without stdin - it will timeout waiting for password input."
+                    ),
+                    data={"host": host, "command": command[:50], "needs_credentials": True},
+                )
 
         # Lookup host entry early to get elevation_method
         host_entry: Host | None = await ctx.hosts.get_by_name(host)
 
         # Auto-transform command based on known elevation method
         # Priority: Host model > memory cache
-        host_elevation = getattr(host_entry, 'elevation_method', None) if host_entry else None
+        host_elevation = getattr(host_entry, "elevation_method", None) if host_entry else None
         command = _auto_transform_elevation_command(host, command, host_elevation)
 
         # Build execution context (reuses host_entry lookup)

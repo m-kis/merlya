@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 @dataclass
 class AskUserCache:
     """Cache for user input deduplication."""
+
     responses: dict[str, Any] = None
     counts: dict[str, int] = None
-    
+
     def __post_init__(self):
         if self.responses is None:
             self.responses = {}

@@ -615,12 +615,14 @@ async def run_repl() -> None:
     except Exception as e:
         logger.debug(f"MCPManager init skipped: {e}")
 
-    # Run health checks
-    ctx.ui.info(ctx.t("startup.health_checks"))
+    # Run health checks (only show details in debug mode)
     health = await run_startup_checks()
+    is_debug = ctx.config.general.log_level == "debug"
 
-    for check in health.checks:
-        ctx.ui.health_status(check.name, check.status, check.message)
+    if is_debug:
+        ctx.ui.info(ctx.t("startup.health_checks"))
+        for check in health.checks:
+            ctx.ui.health_status(check.name, check.status, check.message)
 
     if not health.can_start:
         ctx.ui.error("Cannot start: critical checks failed")
@@ -636,7 +638,8 @@ async def run_repl() -> None:
         provider=provider,
         model_override=model_override,
     )
-    ctx.ui.info(ctx.t("startup.orchestrator_ready", provider=provider))
+    if is_debug:
+        ctx.ui.info(ctx.t("startup.orchestrator_ready", provider=provider))
 
     # Run REPL
     repl = REPL(ctx, orchestrator)

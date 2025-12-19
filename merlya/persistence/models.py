@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from merlya.core.types import HostStatus
 
 # Type constraint for elevation methods
-ElevationMethod = Literal['sudo', 'sudo-S', 'su', 'doas']
+ElevationMethod = Literal["sudo", "sudo-S", "su", "doas"]
 
 
 class OSInfo(BaseModel):

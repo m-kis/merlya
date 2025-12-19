@@ -73,14 +73,13 @@ async def bootstrap(
     # Load API keys from keyring
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
 
-    # Run health checks
-    if not quiet:
-        ctx.ui.info(ctx.t("startup.health_checks"))
-
+    # Run health checks (only show details in debug mode)
     health = await run_startup_checks()
     ctx.health = health
+    is_debug = ctx.config.general.log_level == "debug"
 
-    if not quiet:
+    if not quiet and is_debug:
+        ctx.ui.info(ctx.t("startup.health_checks"))
         for check in health.checks:
             ctx.ui.health_status(check.name, check.status, check.message)
 
@@ -91,7 +90,7 @@ async def bootstrap(
     # Initialize router
     await ctx.init_router(health.model_tier)
 
-    if not quiet:
+    if not quiet and is_debug:
         router = ctx.router
         if router and router.classifier.model_loaded:
             dims = router.classifier.embedding_dim or "?"

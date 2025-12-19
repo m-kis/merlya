@@ -23,6 +23,7 @@ class SSHExecutor(Protocol):
         """Execute command on host with timeout, returning result with exit_code."""
         ...
 
+
 # Authentication failure indicators (sudo/su password failures)
 # IMPORTANT: Patterns are checked with .lower() - keep all patterns lowercase
 AUTH_ERROR_PATTERNS: tuple[str, ...] = (
