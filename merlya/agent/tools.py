@@ -59,7 +59,8 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         result = await _list_hosts(ctx.deps.context, tag=tag, limit=limit)
         if result.success:
             return {"hosts": result.data, "count": len(result.data)}
-        raise ModelRetry(f"Failed to list hosts: {result.error}")
+        # Return error info instead of retrying (system error, not recoverable)
+        return {"hosts": [], "count": 0, "error": result.error}
 
     @agent.tool
     async def get_host(
@@ -114,6 +115,36 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         from merlya.subagents.timeout import touch_activity
         from merlya.tools.core import bash_execute as _bash_execute
 
+        # VALIDATION: Block SSH commands - must use ssh_execute instead
+        cmd_lower = command.strip().lower()
+        ssh_patterns = ["ssh ", "ssh\t", "sshpass "]
+        if any(cmd_lower.startswith(p) for p in ssh_patterns) or " | ssh " in cmd_lower:
+            raise ModelRetry(
+                "❌ WRONG TOOL: Use ssh_execute() for remote hosts, not bash('ssh ...')!\n"
+                "CORRECT: ssh_execute(host='192.168.1.7', command='ls -la')\n"
+                "With sudo: ssh_execute(host='192.168.1.7', command='sudo ls -la')\n"
+                "With password: request_credentials(service='sudo', host='...') first, "
+                "then ssh_execute(host='...', command='sudo -S ...', stdin='@sudo:HOST:password')"
+            )
+
+        # Check for loop BEFORE recording (prevents executing duplicate commands)
+        # Return soft error instead of ModelRetry to avoid crashes when retries exhausted
+        would_loop, reason = ctx.deps.tracker.would_loop("local", command)
+        if would_loop:
+            logger.warning(f"🛑 Loop prevented for bash: {reason}")
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+                "loop_detected": True,
+                "error": f"🛑 LOOP DETECTED: {reason}\n"
+                "You have repeated this command too many times. "
+                "Try a DIFFERENT approach or report your findings to the user.",
+            }
+
+        ctx.deps.tracker.record("local", command)
+
         logger.info(f"🖥️ Running locally: {command[:60]}...")
 
         touch_activity()
@@ -134,72 +165,122 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         command: str,
         timeout: int = 60,
         via: str | None = None,
-        elevation: dict[str, Any] | None = None,
+        stdin: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a command on a host via SSH.
 
-        ELEVATION IS AUTOMATIC:
-        - Do NOT prefix commands with 'sudo' - just run the command as-is
-        - If permission denied, Merlya automatically retries with elevation
-        - The user will be prompted for password if needed (handled internally)
-
-        FORBIDDEN (security risk - will be BLOCKED):
-        - ssh_execute(command="sudo systemctl restart nginx")  # Don't add sudo
-        - ssh_execute(command="echo password | sudo -S ...")   # No plaintext passwords
-        - ssh_execute(command="mysql -p'password' ...")        # No embedded passwords
-
-        CORRECT:
-        - ssh_execute(command="systemctl restart nginx")  # Auto-elevation
-        - ssh_execute(command="mongosh -u admin -p @db-password")  # Use @secret refs
-
         Args:
-            host: Host name or hostname (target machine). Accepts @hostname format.
-            command: Command WITHOUT sudo prefix. Use @secret-name for passwords.
+            host: Target machine IP or hostname (e.g., "192.168.1.7", "webserver").
+                  This is the MACHINE to connect to, NOT a password reference!
+            command: Command to execute. Add sudo/doas/su prefix if elevation needed.
             timeout: Command timeout in seconds (default: 60).
-            via: Jump host/bastion for tunneling. Use when user says "via", "through",
-                 or "en passant par" another host (e.g., via="bastion", via="@jump").
-            elevation: Optional elevation data from request_elevation (rarely needed).
+            via: Jump host/bastion for tunneling.
+            stdin: Password for su/sudo -S as @service:host:password reference.
+                   Format: @sudo:192.168.1.7:password or @root:hostname:password
+                   IMPORTANT: Call request_credentials(service='sudo', host='...') FIRST!
+
+        PRIVILEGE ELEVATION:
+
+        ⚠️ FIRST: Check get_host(name='...') → elevation_method field!
+        - "sudo" or "sudo-S" → use sudo
+        - "su" → use su -c (NOT sudo!)
+        - None → try sudo first
+
+        If elevation_method="sudo" or None:
+        1. Try: ssh_execute(host="X", command="sudo cmd")
+        2. If password needed: request_credentials(service="sudo", host="X")
+        3. Then: ssh_execute(host="X", command="sudo -S cmd", stdin="@sudo:X:password")
+
+        If elevation_method="su":
+        1. request_credentials(service="root", host="X")
+        2. ssh_execute(host="X", command="su -c 'cmd'", stdin="@root:X:password")
+
+        ⚠️ COMMON MISTAKE - DON'T DO THIS:
+        - ssh_execute(host="@secret-sudo", ...) ← WRONG! host must be the machine IP/name!
 
         Returns:
-            Command output with stdout, stderr, exit_code, elevation method, and verification hint.
-            When a verification hint is present, you SHOULD run the verification command.
-
-        Example:
-            # Simple command (auto-elevates if permission denied)
-            ssh_execute(host="web-server", command="systemctl restart nginx")
-
-            # Via bastion (user said "via bastion" or "through @jump")
-            ssh_execute(host="db-server", command="df -h", via="bastion")
-
-            # With secrets (resolved automatically at execution time)
-            ssh_execute(host="db", command="mongosh -u admin -p @db-password")
+            Command output with stdout, stderr, exit_code, and verification hint.
         """
         from merlya.subagents.timeout import touch_activity
         from merlya.tools.core import ssh_execute as _ssh_execute
         from merlya.tools.core.security import mask_sensitive_command
         from merlya.tools.core.verification import get_verification_hint
 
+        # VALIDATION: Catch common LLM mistake of passing password reference as host
+        if host.startswith("@") and any(
+            kw in host.lower() for kw in ["secret", "password", "sudo", "root", "cred"]
+        ):
+            raise ModelRetry(
+                f"❌ WRONG: '{host}' is a password reference, not a host!\n"
+                "host = machine IP/name (e.g., '192.168.1.7')\n"
+                "stdin = password reference (e.g., '@secret-sudo')\n"
+                "CORRECT: ssh_execute(host='192.168.1.7', command='sudo -S cmd', stdin='@secret-sudo')"
+            )
+
+        # VALIDATION: Catch 'sudo -S' without stdin parameter
+        # Note: -S flag can be uppercase or lowercase, and can appear in various positions
+        has_sudo_s = (
+            "sudo -S " in command
+            or "sudo -S" in command
+            or ("-S" in command and "sudo" in command.lower())
+        )
+        has_su = command.strip().startswith("su ") or " su -c" in command.lower()
+        needs_stdin = has_sudo_s or has_su
+
+        if needs_stdin and not stdin:
+            raise ModelRetry(
+                f"❌ MISSING stdin! You used 'sudo -S' or 'su' but didn't provide the password.\n"
+                f"REQUIRED: ssh_execute(host='{host}', command='{command[:40]}...', "
+                f"stdin='@sudo:{host}:password')\n"
+                f"If you haven't collected credentials yet, first call:\n"
+                f"request_credentials(service='sudo', host='{host}')"
+            )
+
         via_info = f" via {via}" if via else ""
         # SECURITY: Mask sensitive data before logging
         safe_log_command = mask_sensitive_command(command)
         logger.info(f"Executing on {host}{via_info}: {safe_log_command[:50]}...")
 
+        # Check for loop BEFORE recording (prevents executing duplicate commands)
+        # Return soft error instead of ModelRetry to avoid crashes when retries exhausted
+        would_loop, reason = ctx.deps.tracker.would_loop(host, command)
+        if would_loop:
+            logger.warning(f"🛑 Loop prevented for {host}: {reason}")
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+                "loop_detected": True,
+                "error": f"🛑 LOOP DETECTED: {reason}\n"
+                "You have repeated this command too many times on this host. "
+                "Try a DIFFERENT approach or report your findings to the user.",
+            }
+
+        ctx.deps.tracker.record(host, command)
+
         # Signal activity before and after SSH command
         touch_activity()
 
-        result = await _ssh_execute(
-            ctx.deps.context, host, command, timeout, via=via, elevation=elevation
-        )
+        result = await _ssh_execute(ctx.deps.context, host, command, timeout, via=via, stdin=stdin)
 
         # Signal activity after command completes
         touch_activity()
 
+        # Return soft error for circuit breaker instead of ModelRetry to avoid crashes
         if not result.success and result.error and "circuit breaker open" in result.error.lower():
-            raise ModelRetry(
-                "🔌 Circuit breaker open: too many SSH failures for this host. "
-                "STOP issuing more ssh_execute calls to this host, wait for the retry window or reset the circuit."
-            )
+            logger.warning(f"🔌 Circuit breaker open for {host}")
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+                "circuit_breaker": True,
+                "error": f"🔌 CIRCUIT BREAKER OPEN for {host}: Too many SSH failures.\n"
+                "STOP trying to connect to this host. Wait for the retry window or "
+                "try a different host. The connection appears unstable.",
+            }
 
         # Check for recoverable errors (host not found, etc.)
         if not result.success and check_recoverable_error(result.error):
@@ -210,7 +291,6 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
             "stdout": result.data.get("stdout", "") if result.data else "",
             "stderr": result.data.get("stderr", "") if result.data else "",
             "exit_code": result.data.get("exit_code", -1) if result.data else -1,
-            "elevation": result.data.get("elevation") if result.data else None,
             "via": result.data.get("via") if result.data else None,
         }
 
@@ -283,49 +363,35 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         )
         if result.success:
             bundle = result.data
+            # Build explicit next_step hint for elevation services
+            next_step = None
+            elevation_method = bundle.values.pop("_elevation_method", "sudo")
+            if bundle.service.lower() in {"sudo", "root", "su", "doas"}:
+                password_ref = bundle.values.get("password", "")
+                if password_ref and bundle.host:
+                    # Give explicit instructions based on which method works
+                    if elevation_method == "su":
+                        next_step = (
+                            f"NOW use ssh_execute with stdin parameter (USE su -c, NOT sudo): "
+                            f"ssh_execute(host='{bundle.host}', "
+                            f"command=\"su -c '<your_command>'\", "
+                            f"stdin='{password_ref}')"
+                        )
+                    else:
+                        next_step = (
+                            f"NOW use ssh_execute with stdin parameter: "
+                            f"ssh_execute(host='{bundle.host}', "
+                            f"command='sudo -S <your_command>', "
+                            f"stdin='{password_ref}')"
+                        )
             return {
                 "service": bundle.service,
                 "host": bundle.host,
                 "values": bundle.values,
                 "stored": bundle.stored,
+                "elevation_method": elevation_method,  # "sudo" or "su"
+                "next_step": next_step,
             }
         raise ModelRetry(
             f"Failed to collect credentials: {getattr(result, 'error', result.message)}"
         )
-
-    @agent.tool
-    async def request_elevation(
-        ctx: RunContext[AgentDependencies],
-        command: str,
-        host: str,
-    ) -> dict[str, Any]:
-        """
-        Request privilege elevation explicitly (RARELY NEEDED).
-
-        IMPORTANT: In most cases, you should NOT use this tool!
-        ssh_execute() has auto_elevate=True by default - it automatically
-        retries with elevation when "permission denied" occurs.
-
-        Only use this tool when you need explicit control over the elevation
-        method BEFORE attempting the command.
-
-        Usage (when needed):
-            1. Call request_elevation(host="server", command="systemctl restart nginx")
-            2. Pass the result to ssh_execute:
-               ssh_execute(host="server", command="systemctl restart nginx", elevation=<result>)
-
-        NEVER construct commands like 'echo password | sudo -S' - that is FORBIDDEN.
-
-        Args:
-            command: Command that will require elevation (without sudo prefix).
-            host: Target host for elevation (REQUIRED).
-
-        Returns:
-            Elevation data to pass to ssh_execute(elevation=...).
-        """
-        from merlya.tools.interaction import request_elevation as _request_elevation
-
-        result = await _request_elevation(ctx.deps.context, command=command, host=host)
-        if result.success:
-            return cast("dict[str, Any]", result.data or {})
-        raise ModelRetry(f"Failed to request elevation: {getattr(result, 'error', result.message)}")

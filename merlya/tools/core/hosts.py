@@ -62,6 +62,8 @@ async def list_hosts(
                 "status": h.health_status,
                 "tags": h.tags,
                 "last_seen": str(h.last_seen) if h.last_seen else None,
+                # Elevation method helps LLM choose sudo vs su
+                "elevation_method": h.elevation_method,
             }
             for h in hosts
         ]
@@ -116,6 +118,9 @@ async def get_host(
             "tags": host.tags,
             "health_status": host.health_status,
             "last_seen": str(host.last_seen) if host.last_seen else None,
+            # Elevation method for this host: "sudo", "su", "doas", or None
+            # Use this to choose the correct privilege escalation command
+            "elevation_method": host.elevation_method,
         }
 
         if include_metadata:

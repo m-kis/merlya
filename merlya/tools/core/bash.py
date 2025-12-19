@@ -7,6 +7,8 @@ Execute commands locally on the Merlya host machine.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import weakref
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -17,6 +19,29 @@ from merlya.tools.core.security import is_dangerous_command
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+
+# Global registry of running subprocesses for signal handling
+# Uses WeakSet to avoid memory leaks from completed processes
+_running_processes: weakref.WeakSet[asyncio.subprocess.Process] = weakref.WeakSet()
+
+
+def kill_all_subprocesses() -> int:
+    """Kill all tracked subprocesses. Called by signal handler.
+
+    Returns:
+        Number of processes killed.
+    """
+    killed = 0
+    for process in list(_running_processes):
+        try:
+            if process.returncode is None:  # Still running
+                process.kill()
+                killed += 1
+                logger.debug(f"🛑 Killed subprocess PID {process.pid}")
+        except (ProcessLookupError, OSError):
+            # Process already terminated
+            pass
+    return killed
 
 
 async def bash_execute(
@@ -53,6 +78,21 @@ async def bash_execute(
             data={},
         )
 
+    # BLOCK: Detect SSH commands that should use ssh_execute instead
+    cmd_lower = command.strip().lower()
+    ssh_patterns = ["ssh ", "ssh\t", "sshpass "]
+    if any(cmd_lower.startswith(p) for p in ssh_patterns) or " | ssh " in cmd_lower:
+        return ToolResult(
+            success=False,
+            error=(
+                "❌ WRONG TOOL: Use ssh_execute() for remote commands, not bash('ssh ...')!\n"
+                "Example: ssh_execute(host='192.168.1.7', command='ls -la')\n"
+                "For sudo: ssh_execute(host='192.168.1.7', command='sudo ls -la')\n"
+                "For sudo with password: ssh_execute(host='...', command='sudo -S ...', stdin='@secret-sudo')"
+            ),
+            data={"command": command[:80]},
+        )
+
     # Resolve all @references FIRST (hosts then secrets)
     # This must happen before security check to catch dangerous patterns in references
     try:
@@ -86,6 +126,9 @@ async def bash_execute(
             stderr=asyncio.subprocess.PIPE,
         )
 
+        # Register for signal-based cleanup
+        _running_processes.add(process)
+
         try:
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
@@ -94,7 +137,8 @@ async def bash_execute(
         except TimeoutError:
             process.kill()
             # Drain streams and ensure process is reaped to avoid zombies
-            await process.communicate()
+            with contextlib.suppress(Exception):
+                await process.communicate()
             logger.warning(f"⏱️ Command timed out after {timeout}s")
             return ToolResult(
                 success=False,
@@ -104,9 +148,13 @@ async def bash_execute(
         except asyncio.CancelledError:
             # Handle Ctrl+C: kill subprocess and propagate cancellation
             process.kill()
-            await process.communicate()  # Drain streams to avoid zombies
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(process.communicate(), timeout=2.0)
             logger.debug("🛑 Command cancelled by user")
             raise
+        finally:
+            # Remove from registry (WeakSet handles this automatically, but be explicit)
+            _running_processes.discard(process)
 
         stdout_str = stdout.decode("utf-8", errors="replace")
         stderr_str = stderr.decode("utf-8", errors="replace")

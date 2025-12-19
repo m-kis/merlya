@@ -285,8 +285,10 @@ async def run_batch(
     except Exception as e:
         logger.debug(f"Skills loading skipped: {e}")
 
-    # Run health checks (minimal output in quiet mode)
-    if not quiet:
+    # Run health checks (only show in debug mode)
+    is_debug = ctx.config.logging.console_level == "debug"
+
+    if not quiet and is_debug:
         ctx.ui.info("Running health checks...")
 
     health = await run_startup_checks()

@@ -18,6 +18,7 @@ from loguru import logger
 from merlya.config import Config, get_config
 from merlya.i18n import I18n, get_i18n
 from merlya.secrets import SecretStore, get_secret_store
+from merlya.secrets.session import SessionPasswordStore, get_session_store
 
 if TYPE_CHECKING:
     from merlya.health import StartupHealth
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from merlya.router import IntentRouter
     from merlya.security import PermissionManager
     from merlya.ssh import SSHPool
+    from merlya.tools.core.user_input import AskUserCache
     from merlya.ui import ConsoleUI
 
 
@@ -73,6 +75,12 @@ class SharedContext:
 
     # Console UI
     _ui: ConsoleUI | None = field(default=None, repr=False)
+
+    # Session passwords (in-memory only, not persisted)
+    _session_passwords: SessionPasswordStore | None = field(default=None, repr=False)
+
+    # Ask user cache for input deduplication
+    _ask_user_cache: AskUserCache | None = field(default=None, repr=False)
 
     # Non-interactive mode flags
     auto_confirm: bool = field(default=False)
@@ -168,6 +176,33 @@ class SharedContext:
             )
         return self._ui
 
+    @property
+    def session_passwords(self) -> SessionPasswordStore:
+        """
+        Get session password store (in-memory only).
+
+        Passwords stored here are NOT persisted to keyring.
+        They are cleared when the session ends.
+
+        Use for:
+        - Interactive sudo/su passwords
+        - Temporary credentials
+        - Passwords user doesn't want stored
+        """
+        if self._session_passwords is None:
+            self._session_passwords = get_session_store()
+            self._session_passwords.set_ui(self.ui)
+        return self._session_passwords
+
+    @property
+    def ask_user_cache(self) -> AskUserCache:
+        """Get ask user cache for input deduplication (lazy init)."""
+        if self._ask_user_cache is None:
+            from merlya.tools.core.user_input import AskUserCache
+
+            self._ask_user_cache = AskUserCache()
+        return self._ask_user_cache
+
     async def init_async(self) -> None:
         """
         Initialize async components (database, etc).
@@ -239,7 +274,7 @@ class SharedContext:
         if requested_local and not use_local:
             logger.warning("⚠️ ONNX router unavailable, using LLM fallback for routing")
         elif router.classifier.model_loaded:
-            logger.info("✅ Intent router initialized with local ONNX model")
+            logger.debug("✅ Intent router initialized with local ONNX model")
             # Persist selected model id for diagnostics
             if router.classifier.model_id:
                 self.config.router.model = router.classifier.model_id
@@ -272,6 +307,11 @@ class SharedContext:
             except Exception as e:
                 logger.debug(f"MCP manager close error: {e}")
             self._mcp_manager = None
+
+        # Clear session passwords (security: don't leave passwords in memory)
+        if self._session_passwords:
+            self._session_passwords.clear()
+            self._session_passwords = None
 
         # Clear singleton reference
         SharedContext._instance = None

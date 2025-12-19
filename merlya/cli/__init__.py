@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import signal
 import sys
@@ -15,25 +16,60 @@ import sys
 from loguru import logger
 
 from merlya import __version__ as MERLYA_VERSION
+from merlya.tools.core.bash import kill_all_subprocesses
 
 # Disable tokenizers parallelism warnings in forked processes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
-    """Setup signal handlers for graceful shutdown."""
+    """Setup signal handlers for graceful shutdown.
 
-    def handle_signal(sig: signal.Signals) -> None:
-        logger.debug(f"Received signal {sig.name}, initiating graceful shutdown...")
-        # Cancel all running tasks
+    We use signal.signal for immediate signal handling that bypasses the asyncio
+    event loop. This ensures synchronous signal processing even when prompt_toolkit
+    or Rich spinners are active, but does not integrate with async operations.
+    The handler kills subprocesses immediately and schedules task cancellation
+    on the event loop via call_soon_threadsafe.
+    """
+    _cancel_flag: list[bool] = [False]
+
+    def handle_signal_sync(signum: int, _frame: object) -> None:
+        """Synchronous signal handler - runs immediately when signal received."""
+        if _cancel_flag[0]:
+            # Second signal: force exit
+            logger.warning("Forced shutdown (second signal)")
+            # Force kill all subprocesses before exit
+            with contextlib.suppress(Exception):
+                kill_all_subprocesses()
+            os._exit(1)  # Use os._exit for immediate termination
+
+        _cancel_flag[0] = True
+        logger.debug(f"Received signal {signum}, killing subprocesses...")
+
+        # CRITICAL: Kill subprocesses IMMEDIATELY (synchronous)
+        # This ensures blocked I/O operations are interrupted right away
+        try:
+            killed = kill_all_subprocesses()
+            if killed:
+                logger.debug(f"Killed {killed} subprocess(es)")
+        except Exception as e:
+            logger.debug(f"Error killing subprocesses: {e}")
+
+        # Schedule task cancellation on the event loop
+        # This is thread-safe and will be processed when the loop next iterates
+        loop.call_soon_threadsafe(_cancel_all_tasks, loop)
+
+    def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
+        """Cancel all running tasks."""
         for task in asyncio.all_tasks(loop):
             if not task.done():
                 task.cancel()
 
-    # Only setup signal handlers on Unix-like systems
+    # Setup signal handlers
     if sys.platform != "win32":
-        loop.add_signal_handler(signal.SIGINT, lambda: handle_signal(signal.SIGINT))
-        loop.add_signal_handler(signal.SIGTERM, lambda: handle_signal(signal.SIGTERM))
+        # Use signal.signal for immediate handling (bypasses event loop)
+        signal.signal(signal.SIGINT, handle_signal_sync)
+        signal.signal(signal.SIGTERM, handle_signal_sync)
 
 
 def create_parser() -> argparse.ArgumentParser:

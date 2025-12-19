@@ -41,9 +41,9 @@ class HostRepository:
                 await self.db.execute(
                     """
                     INSERT INTO hosts (id, name, hostname, port, username, private_key,
-                                      jump_host, tags, metadata, os_info, health_status,
-                                      last_seen, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                      jump_host, elevation_method, tags, metadata, os_info,
+                                      health_status, last_seen, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         host.id,
@@ -53,6 +53,7 @@ class HostRepository:
                         host.username,
                         host.private_key,
                         host.jump_host,
+                        host.elevation_method,
                         to_json(host.tags),
                         to_json(host.metadata),
                         to_json(host.os_info.model_dump() if host.os_info else None),
@@ -123,8 +124,8 @@ class HostRepository:
                 """
                 UPDATE hosts SET
                     hostname = ?, port = ?, username = ?, private_key = ?,
-                    jump_host = ?, tags = ?, metadata = ?, os_info = ?,
-                    health_status = ?, last_seen = ?, updated_at = ?
+                    jump_host = ?, elevation_method = ?, tags = ?, metadata = ?,
+                    os_info = ?, health_status = ?, last_seen = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -133,6 +134,7 @@ class HostRepository:
                     host.username,
                     host.private_key,
                     host.jump_host,
+                    host.elevation_method,
                     to_json(host.tags),
                     to_json(host.metadata),
                     to_json(host.os_info.model_dump() if host.os_info else None),
@@ -201,6 +203,7 @@ class HostRepository:
             username=row["username"],
             private_key=row["private_key"],
             jump_host=row["jump_host"],
+            elevation_method=row["elevation_method"],
             tags=from_json(row["tags"]) or [],
             metadata=from_json(row["metadata"]) or {},
             os_info=OSInfo(**os_info_data) if os_info_data else None,
