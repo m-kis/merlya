@@ -8,6 +8,7 @@ Works alongside Loguru (not replacing it) via the loguru_handler bridge.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from loguru import logger
 
@@ -169,7 +170,7 @@ def get_logfire_status() -> dict[str, bool]:
 
 
 # Context manager for manual spans (optional, for custom tracing)
-def span(name: str, **attributes: object) -> logfire.Logfire.span:  # type: ignore[name-defined]
+def span(name: str, **attributes: object) -> Any:
     """
     Create a Logfire span for manual tracing.
 
@@ -188,6 +189,7 @@ def span(name: str, **attributes: object) -> logfire.Logfire.span:  # type: igno
         # Return a no-op context manager
         from contextlib import nullcontext
 
-        return nullcontext()  # type: ignore[return-value]
+        return nullcontext()
 
-    return logfire.span(name, **attributes)
+    # Cast attributes to logfire's expected format
+    return logfire.span(name, _attributes=attributes)
