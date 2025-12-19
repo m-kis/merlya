@@ -67,17 +67,24 @@ async def bootstrap(
     # Configure logging from config (respects saved settings)
     _configure_logging_from_config(ctx, verbose=verbose, quiet=quiet)
 
+    # Initialize Logfire observability (if LOGFIRE_TOKEN is set)
+    try:
+        _init_observability()
+    except Exception as e:
+        logger.warning(
+            f"Observability initialization failed, continuing without it: {e}", exc_info=True
+        )
+
     # Load API keys from keyring
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
 
-    # Run health checks
-    if not quiet:
-        ctx.ui.info(ctx.t("startup.health_checks"))
-
+    # Run health checks (only show details in debug mode)
     health = await run_startup_checks()
     ctx.health = health
+    is_debug = ctx.config.logging.console_level == "debug"
 
-    if not quiet:
+    if not quiet and is_debug:
+        ctx.ui.info(ctx.t("startup.health_checks"))
         for check in health.checks:
             ctx.ui.health_status(check.name, check.status, check.message)
 
@@ -88,7 +95,7 @@ async def bootstrap(
     # Initialize router
     await ctx.init_router(health.model_tier)
 
-    if not quiet:
+    if not quiet and is_debug:
         router = ctx.router
         if router and router.classifier.model_loaded:
             dims = router.classifier.embedding_dim or "?"
@@ -151,3 +158,18 @@ def _configure_logging_from_config(
     )
 
     logger.debug(f"⚙️ Logging configured: console={console_level}, file={file_level}")
+
+
+def _init_observability() -> None:
+    """
+    Initialize Logfire observability if configured.
+
+    Logfire is enabled when LOGFIRE_TOKEN environment variable is set.
+    It provides:
+    - Distributed tracing for PydanticAI agent calls
+    - LLM cost and token tracking
+    - Loguru logs bridged to Logfire dashboard
+    """
+    from merlya.core.observability import init_logfire
+
+    init_logfire()

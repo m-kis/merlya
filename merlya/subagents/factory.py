@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 from pydantic_ai import Agent
 
-from merlya.config.constants import DEFAULT_TOOL_RETRIES, REQUEST_LIMIT_SKILL
+from merlya.config.constants import DEFAULT_TOOL_RETRIES, LLM_TIMEOUT_DEFAULT, REQUEST_LIMIT_SKILL
 from merlya.config.provider_env import ensure_provider_env
 
 if TYPE_CHECKING:
@@ -357,8 +357,14 @@ class SubagentInstance:
 
         deps = AgentDependencies(context=self.context)
 
-        # Set model settings with request limit for skills
-        model_settings = ModelSettings(request_limit=REQUEST_LIMIT_SKILL)  # type: ignore[typeddict-unknown-key]
+        # Set model settings with request limit and timeout
+        timeout = self.context.config.model.get_timeout()
+        # Defensive check: get_timeout() should always return an int, but handle None just in case
+        timeout_value = float(timeout) if timeout is not None else float(LLM_TIMEOUT_DEFAULT)
+        model_settings = ModelSettings(
+            request_limit=REQUEST_LIMIT_SKILL,  # type: ignore[typeddict-unknown-key]
+            timeout=timeout_value,
+        )
 
         try:
             result = await self.agent.run(

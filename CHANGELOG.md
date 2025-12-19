@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.6] - 2025-12-19
+
+### Added
+
+- **Credential hints system**: Users can say "pour HOST c'est @secret" and Merlya remembers the association
+- **Passwordless sudo detection**: Extracts elevation hints from user messages (e.g., "sudo su sans password")
+- **Elevation method exposed**: `list_hosts()` and `get_host()` now return `elevation_method` field
+- **PTY support for sudo -S**: SSH connections now request PTY when using `sudo -S` for requiretty systems
+- **Circuit breaker soft errors**: Returns graceful error messages instead of crashing when connections fail
+- **Loop detection improvements**: Increased thresholds (5 same commands, 8-command pattern window)
+- **CSV export enhanced**: Now includes `elevation_method`, `private_key`, `jump_host` fields
+- **Secrets security guide**: Added English version of security documentation
+
+### Changed
+
+- **Skills system removed**: Simplified architecture by removing the skills subsystem
+- **Router simplified**: Streamlined intent routing without skill dispatch
+- **SSH elevation refactored**: Consolidated elevation logic into `ssh_patterns.py`
+- **Agent history simplified**: Reduced complexity in message history management
+- **Soft errors for loops**: Loop detection now returns error dict instead of raising ModelRetry
+- **Wizard saves fallback model**: Setup wizard now correctly persists the fallback model to config
+
+### Fixed
+
+- **ModelRetry crash prevention**: Tools return soft errors when retries exhausted
+- **UnexpectedModelBehavior handling**: Agent gracefully handles repeated tool failures
+- **CSV import/export round-trip**: All host fields now preserved in CSV format
+- **Credential hint patterns**: Fixed regex to avoid false positives across sentence boundaries
+
+### Removed
+
+- `merlya/skills/` directory and all skill-related code
+- `merlya/tools/core/ssh_elevation.py` (consolidated into ssh.py)
+- Skills-related tests and commands
+- Deprecated raw password path in secrets handling
+
 ## [0.7.5] - 2025-12-15
 
 ### Added

@@ -16,11 +16,13 @@ def check_mcp_servers(tier: str | None = None) -> HealthCheck:
         manager = MCPManager.get_instance()
 
         if manager is None:
+            # MCP is not required - it's initialized lazily in run_repl
+            # At startup, no instance is expected
             return HealthCheck(
                 name="mcp",
-                status=CheckStatus.WARNING,
-                message="⚠️ MCP manager not initialized",
-                details={"error": "No instance created yet"},
+                status=CheckStatus.OK,
+                message="ℹ️ MCP not initialized (will start on demand)",
+                details={"info": "MCP servers start lazily when needed"},
             )
 
         # Get server stats

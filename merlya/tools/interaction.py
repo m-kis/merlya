@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import getpass
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -14,7 +14,11 @@ from merlya.commands.registry import CommandResult
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
-    from merlya.persistence.models import Host
+    from merlya.persistence.models import ElevationMethod, Host
+
+
+# Maximum retries for password verification
+MAX_PASSWORD_RETRIES = 3
 
 
 @dataclass
@@ -25,6 +29,174 @@ class CredentialBundle:
     host: str | None
     values: dict[str, str]
     stored: bool
+
+
+async def _verify_elevation_password(
+    ctx: SharedContext, host: str, password: str, method: str = "sudo"
+) -> tuple[bool, str]:
+    """
+    Verify an elevation password works by testing with 'sudo -S true' or 'su -c true'.
+
+    Tries sudo first, then falls back to su if sudo fails.
+    Uses expect-based approach for su testing since su reads passwords from /dev/tty.
+
+    Args:
+        ctx: Shared context.
+        host: Target host.
+        password: Password to verify.
+        method: "sudo" or "su" (which method to test).
+
+    Returns:
+        Tuple of (success, working_method).
+        working_method is "sudo", "su", or "" if none worked.
+    """
+    try:
+        ssh_pool = await ctx.get_ssh_pool()
+        host_entry = await ctx.hosts.get_by_name(host)
+
+        from merlya.ssh import SSHConnectionOptions
+
+        opts = SSHConnectionOptions()
+        if host_entry:
+            opts.port = host_entry.port
+
+        async def _test_sudo() -> bool:
+            """Test sudo method with stdin."""
+            try:
+                if host_entry:
+                    result = await ssh_pool.execute(
+                        host=host_entry.hostname,
+                        command="sudo -S true",
+                        timeout=10,
+                        input_data=password,
+                        username=host_entry.username,
+                        private_key=host_entry.private_key,
+                        options=opts,
+                        host_name=host,
+                    )
+                else:
+                    result = await ssh_pool.execute(
+                        host=host,
+                        command="sudo -S true",
+                        timeout=10,
+                        input_data=password,
+                        options=opts,
+                        host_name=host,
+                    )
+                return result.exit_code == 0
+            except Exception as e:
+                logger.debug(f"Sudo test failed: {e}")
+                return False
+
+        def _escape_tcl_string(s: str) -> str:
+            """Escape special TCL characters in a string for use in double-quoted TCL contexts.
+
+            Escapes: backslash, dollar sign, left/right square brackets, and double quotes.
+
+            Args:
+                s: String to escape
+
+            Returns:
+                String with TCL special characters escaped
+            """
+            return (
+                s.replace("\\", "\\\\")  # Escape backslashes first
+                .replace("$", "\\$")  # Escape dollar signs
+                .replace("[", "\\[")  # Escape left brackets
+                .replace("]", "\\]")  # Escape right brackets
+                .replace('"', '\\"')  # Escape double quotes
+            )
+
+        async def _test_su_with_expect() -> bool:
+            """Test su method using expect script since su reads from /dev/tty."""
+            # Check if expect is available on the remote system
+            try:
+                check_result = await ssh_pool.execute(
+                    host=host_entry.hostname if host_entry else host,
+                    command="which expect",
+                    timeout=5,
+                    options=opts,
+                    host_name=host,
+                )
+                if check_result.exit_code != 0:
+                    logger.debug(
+                        f"expect not available on {host}, cannot test su (fallback method not supported)"
+                    )
+                    return False
+            except Exception as e:
+                logger.debug(f"Could not check for expect on {host}: {e}")
+                return False
+
+            # Use expect -c with inline script (executed on remote)
+            # Escape TCL special characters for the send command
+            tcl_escaped_password = _escape_tcl_string(password)
+            # Apply shell escaping to the TCL-escaped password to prevent shell injection
+            shell_escaped_password = tcl_escaped_password.replace("'", "'\\''")
+            expect_cmd = (
+                f"expect -c '"
+                f"set timeout 10; "
+                f'spawn su -c "true"; '
+                f"expect {{"
+                f'  "assword:" {{ send "{shell_escaped_password}\\r"; expect eof; exit 0 }} '
+                f"  timeout {{ exit 1 }} "
+                f"  eof {{ exit 1 }} "
+                f"}}"
+                f"'"
+            )
+
+            try:
+                if host_entry:
+                    result = await ssh_pool.execute(
+                        host=host_entry.hostname,
+                        command=expect_cmd,
+                        timeout=15,
+                        username=host_entry.username,
+                        private_key=host_entry.private_key,
+                        options=opts,
+                        host_name=host,
+                    )
+                else:
+                    result = await ssh_pool.execute(
+                        host=host,
+                        command=expect_cmd,
+                        timeout=15,
+                        options=opts,
+                        host_name=host,
+                    )
+
+                return result.exit_code == 0
+
+            except Exception as e:
+                logger.debug(f"Expect-based su test failed: {e}")
+                return False
+
+        # Try sudo first
+        if method == "sudo":
+            if await _test_sudo():
+                logger.debug(f"✅ Password verified for sudo on {host} (stdin method)")
+                return True, "sudo"
+
+            # Sudo failed - try su as fallback using expect
+            logger.info(f"sudo failed on {host}, trying su with expect script...")
+            if await _test_su_with_expect():
+                logger.info(f"✅ Password verified for su (root) on {host} (expect method)")
+                return True, "su"
+
+        # Try su directly if requested
+        elif method == "su":
+            if await _test_su_with_expect():
+                logger.info(f"✅ Password verified for su on {host} (expect method)")
+                return True, "su"
+
+        logger.warning(
+            f"❌ Password verification failed on {host} (tried sudo and su with expect fallback)"
+        )
+        return False, ""
+
+    except Exception as e:
+        logger.warning(f"⚠️ Could not verify password for {host}: {e}")
+        # Connection error - don't assume success, let the user retry
+        return False, ""
 
 
 async def request_credentials(
@@ -73,7 +245,11 @@ async def request_credentials(
                 logger.debug(f"Could not resolve host '{host}' for credentials prefill: {exc}")
 
         if fields is None:
-            if service_lower in {"ssh", "ssh_login", "ssh_auth"}:
+            if service_lower in {"sudo", "root", "su", "doas"}:
+                # Elevation services only need password, not username
+                # (uses the current SSH user's password)
+                fields = ["password"]
+            elif service_lower in {"ssh", "ssh_login", "ssh_auth"}:
                 key_based_ssh = bool(
                     (host_entry and host_entry.private_key)
                     or getattr(ctx.config.ssh, "default_key", None)
@@ -166,12 +342,107 @@ async def request_credentials(
         if format_hint:
             ctx.ui.muted(f"Format hint: {format_hint}")
 
+        # For elevation services (sudo/root/su/doas), verify password before storing
+        is_elevation_service = service_lower in {"sudo", "root", "su", "doas"}
+        final_key_prefix = key_prefix  # Default fallback
+
+        if is_elevation_service and "password" in missing_fields and host:
+            # Special handling: verify password works before storing
+            password_verified = False
+            working_method = ""
+            retries = 0
+
+            while not password_verified and retries < MAX_PASSWORD_RETRIES:
+                if retries > 0:
+                    ctx.ui.warning(
+                        f"❌ Password incorrect. Attempt {retries + 1}/{MAX_PASSWORD_RETRIES}"
+                    )
+
+                password = await ctx.ui.prompt_secret("Password")
+                ctx.ui.muted("🔍 Verifying password (trying sudo, then su)...")
+
+                # Try sudo first, fallback to su
+                password_verified, working_method = await _verify_elevation_password(
+                    ctx, host, password, method="sudo"
+                )
+
+                if password_verified:
+                    values["password"] = password
+                    # Remember which method worked for elevation commands
+                    working_method_for_storage = working_method
+                    if working_method == "su":
+                        ctx.ui.success(
+                            "✅ Password verified using su (expect method - commands will use 'su -c')"
+                        )
+                        # Store under root: prefix for su (for backward compatibility)
+                        root_key_prefix = f"root:{host}"
+                        # Also store under the original service prefix for compatibility
+                        # This ensures future lookups under sudo:{host} will still work
+                        original_key_prefix = f"{service_lower}:{host}"
+                        if original_key_prefix != root_key_prefix:
+                            secret_store.set(f"{original_key_prefix}:password", password)
+                            logger.debug(
+                                f"🔑 Also stored password under original prefix: {original_key_prefix}:password"
+                            )
+                        # Use root prefix for main storage (backward compatibility)
+                        final_key_prefix = root_key_prefix
+                    else:
+                        ctx.ui.success("✅ Password verified using sudo (stdin method)")
+                        final_key_prefix = key_prefix
+
+                    # IMPORTANT: Cache the elevation method for this host
+                    # This allows ssh.py to auto-transform commands
+                    from merlya.tools.core.ssh_patterns import set_cached_elevation_method
+
+                    set_cached_elevation_method(host, working_method)
+
+                    # PERSIST to Host model for future sessions
+                    try:
+                        host_entry = await ctx.hosts.get_by_name(host)
+                        if (
+                            host_entry
+                            and getattr(host_entry, "elevation_method", None) != working_method
+                        ):
+                            host_entry.elevation_method = cast("ElevationMethod", working_method)
+                            await ctx.hosts.update(host_entry)
+                            logger.info(f"💾 Elevation method '{working_method}' saved for {host}")
+                    except Exception as e:
+                        logger.debug(f"Could not persist elevation method: {e}")
+                else:
+                    retries += 1
+
+            if not password_verified:
+                return CommandResult(
+                    success=False,
+                    message=f"❌ Password verification failed after {MAX_PASSWORD_RETRIES} attempts. "
+                    f"Neither sudo nor su worked with this password.",
+                )
+
+            # Remove password from missing_fields since we handled it
+            missing_fields = [f for f in missing_fields if f != "password"]
+
+            # Store info about which method works
+            values["_elevation_method"] = working_method
+
+        # Prompt for any remaining missing fields (non-password or non-elevation)
         for field in missing_fields:
             prompt = f"{field.capitalize()}"
             secret = await ctx.ui.prompt_secret(prompt)
             values[field] = secret
 
-        if allow_store:
+        # For elevation services, password was already verified - always store
+        # For other services, ask user
+        if is_elevation_service and host:
+            # Password verified - store it automatically
+            # Don't store internal metadata like _elevation_method
+            # Use the appropriate key prefix (final_key_prefix set above)
+            storage_key_prefix = final_key_prefix if "final_key_prefix" in locals() else key_prefix
+            for name, val in values.items():
+                if not name.startswith("_"):
+                    secret_store.set(f"{storage_key_prefix}:{name}", val)
+            stored = True
+            ctx.ui.success("✅ Verified credentials stored securely")
+        elif allow_store:
             save = await ctx.ui.prompt_confirm(
                 "Store these credentials securely for reuse?", default=False
             )
@@ -185,10 +456,12 @@ async def request_credentials(
         # This prevents the LLM from seeing or logging actual passwords
         # The references will be resolved at execution time by resolve_secrets()
         safe_values = {}
+        # Use the appropriate key prefix for safe references
+        reference_key_prefix = final_key_prefix if "final_key_prefix" in locals() else key_prefix
         for name, val in values.items():
             if name.lower() in {"password", "token", "secret", "key", "passphrase", "api_key"}:
                 # Store the value and return a reference
-                secret_key = f"{key_prefix}:{name}"
+                secret_key = f"{reference_key_prefix}:{name}"
                 if not stored:
                     # Always store sensitive values so references work
                     secret_store.set(secret_key, val)
@@ -241,6 +514,15 @@ async def request_elevation(
                 "host": host,
                 "command": command,
             }
+            logger.debug(f"🔐 Stored elevation cache entry: {elevation_ref} for host {host}")
+            # NOTE: When this cache entry is consumed, add logging for missing entries:
+            # if payload.input_ref and hasattr(ctx, "_elevation_cache"):
+            #     cached = ctx._elevation_cache.get(payload.input_ref)
+            #     if cached:
+            #         exec_ctx.input_data = cached.get("input_data")
+            #         del ctx._elevation_cache[payload.input_ref]
+            #     else:
+            #         logger.warning(f"⚠️ Elevation input_ref '{payload.input_ref}' not found in cache.")
 
         return CommandResult(
             success=True,

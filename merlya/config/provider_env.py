@@ -21,8 +21,15 @@ def ensure_provider_env(config: Config) -> None:
 
     Currently handled:
     - Ollama: sets OLLAMA_BASE_URL to config.model.base_url or default http://localhost:11434/v1
+    - OpenRouter: sets OPENAI_API_KEY and OPENAI_BASE_URL for PydanticAI compatibility
     """
-    if config.model.provider != "ollama":
+    provider = config.model.provider.lower() if config.model.provider else ""
+
+    if provider == "openrouter":
+        _ensure_openrouter_env(config)
+        return
+
+    if provider != "ollama":
         return
 
     env_key = "OLLAMA_BASE_URL"
@@ -91,6 +98,55 @@ def ensure_openrouter_headers() -> None:
         os.environ["HTTP_REFERER"] = "https://merlya.local"
     if not os.getenv("X_TITLE"):
         os.environ["X_TITLE"] = "Merlya"
+
+
+def _ensure_openrouter_env(config: Config) -> None:
+    """
+    Set OpenRouter environment for PydanticAI compatibility.
+
+    OpenRouter uses OpenAI-compatible API, so PydanticAI uses openai:model format.
+    We need to:
+    1. Set OPENAI_BASE_URL to OpenRouter's endpoint
+    2. Copy OPENROUTER_API_KEY to OPENAI_API_KEY (if not already set)
+
+    Priority:
+    - OPENAI_API_KEY: Use existing if set, otherwise use OPENROUTER_API_KEY
+    - OPENAI_BASE_URL: Always set to OpenRouter endpoint
+    """
+    from merlya.secrets import get_secret_store
+
+    openrouter_base = "https://openrouter.ai/api/v1"
+
+    # Set base URL (always override for OpenRouter)
+    os.environ["OPENAI_BASE_URL"] = openrouter_base
+    config.model.base_url = openrouter_base
+    logger.debug(f"🌐 OPENAI_BASE_URL set to {openrouter_base}")
+
+    # Get API key - priority: OPENAI_API_KEY > OPENROUTER_API_KEY > keyring
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    if not api_key:
+        # Try OPENROUTER_API_KEY env var
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+
+    if not api_key:
+        # Try keyring
+        try:
+            secrets = get_secret_store()
+            api_key = secrets.get("OPENROUTER_API_KEY")
+        except Exception:
+            pass
+
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+        logger.debug("🔑 OPENAI_API_KEY set from OpenRouter API key")
+    else:
+        logger.warning(
+            "⚠️ No OpenRouter API key found. Set OPENROUTER_API_KEY or use /secret set OPENROUTER_API_KEY"
+        )
+
+    # Also set recommended headers
+    ensure_openrouter_headers()
 
 
 def _normalize_ollama_base(base: str) -> str:

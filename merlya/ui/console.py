@@ -64,6 +64,8 @@ class ConsoleUI:
         self._active_status: Any = None
         self.auto_confirm = auto_confirm
         self.quiet = quiet
+        # Mutex to prevent overlapping prompts from parallel agents
+        self._prompt_lock = asyncio.Lock()
 
     def print(self, *args: Any, **kwargs: Any) -> None:
         """Print to console."""
@@ -97,6 +99,15 @@ class ConsoleUI:
     def muted(self, message: str) -> None:
         """Display muted message."""
         self.console.print(f"[muted]{message}[/muted]")
+
+    def tool_call(self, host: str, command: str) -> None:
+        """Display a tool call being executed (like Claude Code's tool use display)."""
+        # Truncate command to 60 chars for display
+        cmd_display = command[:60] + "..." if len(command) > 60 else command
+        if host == "local":
+            self.console.print(f"[dim]🖥️  {cmd_display}[/dim]")
+        else:
+            self.console.print(f"[dim]🌐 {host}: {cmd_display}[/dim]")
 
     def newline(self) -> None:
         """Print empty line."""
@@ -149,14 +160,23 @@ class ConsoleUI:
         try:
             with status:
                 yield
-        except (KeyboardInterrupt, asyncio.CancelledError):
+        except KeyboardInterrupt:
             # Ensure spinner is stopped on interruption
-            status.stop()
+            with suppress(Exception):
+                status.stop()
+            self._active_status = None
+            # Convert KeyboardInterrupt to CancelledError for proper async handling
+            raise asyncio.CancelledError() from None
+        except asyncio.CancelledError:
+            # Ensure spinner is stopped on cancellation
+            with suppress(Exception):
+                status.stop()
             self._active_status = None
             raise
         finally:
             # Ensure spinner is stopped before any prompt overlays
-            status.stop()
+            with suppress(Exception):
+                status.stop()
             self._active_status = None
 
     def progress(self, transient: bool = True) -> Progress:
@@ -179,48 +199,51 @@ class ConsoleUI:
         )
 
     async def prompt(self, message: str, default: str | None = "") -> str:
-        """Prompt for input (async-safe)."""
-        self._stop_spinner()
-        session: PromptSession[str] = PromptSession()
-        # prompt_toolkit Document cannot take None defaults
-        safe_default = default if default is not None else ""
-        try:
-            result = await session.prompt_async(f"{message}: ", default=safe_default)
-            return result.strip()
-        except KeyboardInterrupt:
-            # Convert KeyboardInterrupt to CancelledError for proper async handling
-            raise asyncio.CancelledError() from None
+        """Prompt for input (async-safe with mutex to prevent overlap)."""
+        async with self._prompt_lock:
+            self._stop_spinner()
+            session: PromptSession[str] = PromptSession()
+            # prompt_toolkit Document cannot take None defaults
+            safe_default = default if default is not None else ""
+            try:
+                result = await session.prompt_async(f"{message}: ", default=safe_default)
+                return result.strip()
+            except KeyboardInterrupt:
+                # Convert KeyboardInterrupt to CancelledError for proper async handling
+                raise asyncio.CancelledError() from None
 
     async def prompt_secret(self, message: str) -> str:
-        """Prompt for secret input (hidden, async-safe)."""
-        self._stop_spinner()
-        session: PromptSession[str] = PromptSession()
-        try:
-            result = await session.prompt_async(f"{message}: ", is_password=True)
-            return result.strip()
-        except KeyboardInterrupt:
-            raise asyncio.CancelledError() from None
+        """Prompt for secret input (hidden, async-safe with mutex)."""
+        async with self._prompt_lock:
+            self._stop_spinner()
+            session: PromptSession[str] = PromptSession()
+            try:
+                result = await session.prompt_async(f"{message}: ", is_password=True)
+                return result.strip()
+            except KeyboardInterrupt:
+                raise asyncio.CancelledError() from None
 
     async def prompt_confirm(self, message: str, default: bool = False) -> bool:
-        """Prompt for yes/no confirmation (async-safe)."""
+        """Prompt for yes/no confirmation (async-safe with mutex)."""
         if self.auto_confirm:
             if not self.quiet:
                 self.console.print(f"[muted]{message} [auto-confirmed][/muted]")
             return True
 
-        self._stop_spinner()
-        suffix = " [Y/n]" if default else " [y/N]"
-        session: PromptSession[str] = PromptSession()
-        try:
-            result = await session.prompt_async(f"{message}{suffix}: ")
-            result = result.strip().lower()
+        async with self._prompt_lock:
+            self._stop_spinner()
+            suffix = " [Y/n]" if default else " [y/N]"
+            session: PromptSession[str] = PromptSession()
+            try:
+                result = await session.prompt_async(f"{message}{suffix}: ")
+                result = result.strip().lower()
 
-            if not result:
-                return default
+                if not result:
+                    return default
 
-            return result in ("y", "yes", "oui", "o")
-        except KeyboardInterrupt:
-            raise asyncio.CancelledError() from None
+                return result in ("y", "yes", "oui", "o")
+            except KeyboardInterrupt:
+                raise asyncio.CancelledError() from None
 
     async def confirm(self, message: str, default: bool = False) -> bool:
         """Alias for prompt_confirm for compatibility."""
@@ -232,33 +255,34 @@ class ConsoleUI:
         choices: list[str],
         default: str | None = None,
     ) -> str:
-        """Prompt for choice from list (async-safe)."""
-        self._stop_spinner()
-        session: PromptSession[str] = PromptSession()
-        choices_str = "/".join(choices)
-        default_str = f" [{default}]" if default else ""
+        """Prompt for choice from list (async-safe with mutex)."""
+        async with self._prompt_lock:
+            self._stop_spinner()
+            session: PromptSession[str] = PromptSession()
+            choices_str = "/".join(choices)
+            default_str = f" [{default}]" if default else ""
 
-        try:
-            result = await session.prompt_async(f"{message} ({choices_str}){default_str}: ")
-            result = result.strip()
-
-            if not result and default:
-                return default
-
-            if result in choices:
-                return result
-
-            # Try numeric selection
             try:
-                idx = int(result) - 1
-                if 0 <= idx < len(choices):
-                    return choices[idx]
-            except ValueError:
-                pass
+                result = await session.prompt_async(f"{message} ({choices_str}){default_str}: ")
+                result = result.strip()
 
-            return result
-        except KeyboardInterrupt:
-            raise asyncio.CancelledError() from None
+                if not result and default:
+                    return default
+
+                if result in choices:
+                    return result
+
+                # Try numeric selection
+                try:
+                    idx = int(result) - 1
+                    if 0 <= idx < len(choices):
+                        return choices[idx]
+                except ValueError:
+                    pass
+
+                return result
+            except KeyboardInterrupt:
+                raise asyncio.CancelledError() from None
 
     def _stop_spinner(self) -> None:
         """Stop any active spinner before prompting the user."""

@@ -17,9 +17,10 @@
   "ui": {
     "spinner": {
       "routing": "🧠 Routing request...",
-      "agent": "⚡ Executing plan..."
+      "agent": "⚡ Processing..."
     },
-    "routing_cancelled": "Routing cancelled"
+    "routing_cancelled": "Routing cancelled",
+    "request_cancelled": "Request cancelled"
   },
   "welcome_screen": {
     "title": "Welcome",
@@ -50,6 +51,8 @@
     "health_checks": "Health Checks",
     "router_init": "Router: {model} ({dims} dims)",
     "router_fallback": "Router fallback: {mode}",
+    "router_not_loaded": "Router: not required (using Orchestrator)",
+    "orchestrator_ready": "🤖 Orchestrator ready ({provider})",
     "ready_time": "Ready in {time}s",
     "first_run": "First run detected - starting setup wizard"
   },
@@ -298,7 +301,14 @@
       "api_error": "LLM API error: {error}",
       "rate_limit": "Rate limit exceeded, retrying in {seconds}s",
       "no_provider": "No LLM provider configured"
-    }
+    },
+    "security": {
+      "audit_error": "❌ Security audit encountered an error. Check the logs."
+    },
+    "use_slash_commands": "This operation is handled by slash commands. Try /hosts, /vars, or /help"
+  },
+  "suggestions": {
+    "try_again": "Try rephrasing your request"
   },
   "prompts": {
     "confirm_action": "Are you sure you want to {action}?",
@@ -355,5 +365,17 @@
     "confirmation_required": "This action requires confirmation",
     "action_cancelled": "Action cancelled",
     "action_approved": "Action approved"
+  },
+  "confirmation": {
+    "local_command": "🔧 Local command:",
+    "remote_command": "⚡ Command on {target}:",
+    "dangerous_command": "🚨 Dangerous command on {target}:",
+    "warning_destructive": "⚠️ This command is potentially destructive!",
+    "options": "[y] Execute  [n] Cancel  [a] Always yes",
+    "choice_prompt": "Choice",
+    "auto_confirmed": "⚡ Auto-confirmed: {command}",
+    "auto_confirmed_session": "⚡ Auto-confirmed (session): {command}",
+    "always_yes_enabled": "✅ Auto-confirm enabled for this session",
+    "cancelled": "❌ Command cancelled"
   }
 }

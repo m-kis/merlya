@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from loguru import logger
 
@@ -26,7 +26,7 @@ from merlya.commands.handlers.hosts_io import (
 )
 from merlya.commands.registry import CommandResult, command, subcommand
 from merlya.core.types import HostStatus
-from merlya.persistence.models import Host
+from merlya.persistence.models import ElevationMethod, Host
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -340,6 +340,7 @@ async def cmd_hosts_show(ctx: SharedContext, args: list[str]) -> CommandResult:
         f"  Hostname: `{host.hostname}`",
         f"  Port: `{host.port}`",
         f"  Username: `{host.username or 'default'}`",
+        f"  Elevation: `{host.elevation_method or 'auto'}`",
         f"  Status: `{host.health_status}`",
         f"  Tags: `{', '.join(host.tags) if host.tags else 'none'}`",
     ]
@@ -370,6 +371,47 @@ async def cmd_hosts_delete(ctx: SharedContext, args: list[str]) -> CommandResult
 
     await ctx.hosts.delete(host.id)
     return CommandResult(success=True, message=f"Host '{args[0]}' deleted.")
+
+
+@subcommand("hosts", "flush", "Delete ALL hosts", "/hosts flush [--force]")
+async def cmd_hosts_flush(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Delete all hosts from the inventory."""
+    hosts = await ctx.hosts.get_all()
+    if not hosts:
+        return CommandResult(success=True, message="No hosts to delete.")
+
+    force = "--force" in args
+
+    if not force:
+        confirmed = await ctx.ui.prompt_confirm(
+            f"⚠️ Delete ALL {len(hosts)} hosts? This cannot be undone!"
+        )
+        if not confirmed:
+            return CommandResult(success=True, message="Cancelled.")
+
+    deleted = 0
+    errors: list[str] = []
+    for host in hosts:
+        try:
+            await ctx.hosts.delete(host.id)
+            deleted += 1
+        except Exception as e:
+            errors.append(f"{host.name}: {e}")
+            logger.warning(f"Failed to delete host {host.name}: {e}")
+
+    # Also clear the elevation method cache
+    from merlya.tools.core.ssh_patterns import clear_elevation_method_cache
+
+    clear_elevation_method_cache()
+
+    msg = f"🗑️ Deleted {deleted} host(s). Elevation cache cleared."
+    if errors:
+        msg += f"\n⚠️ {len(errors)} deletion(s) failed:\n" + "\n".join(f"  - {e}" for e in errors)
+
+    return CommandResult(
+        success=len(errors) == 0,
+        message=msg,
+    )
 
 
 @subcommand("hosts", "tag", "Add a tag to a host", "/hosts tag <name> <tag>")
@@ -436,6 +478,16 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
     username = await ctx.ui.prompt("Username", default=host.username or "")
     host.username = username if username else None
 
+    # Elevation method (sudo, sudo-s, su, doas, or auto)
+    elevation = await ctx.ui.prompt(
+        "Elevation method (sudo/sudo-s/su/doas/auto)",
+        default=host.elevation_method or "auto",
+    )
+    if elevation and elevation.lower() in ("sudo", "sudo-s", "su", "doas"):
+        host.elevation_method = cast("ElevationMethod", elevation.lower())
+    else:
+        host.elevation_method = None  # auto-detect
+
     current_tags = ", ".join(host.tags) if host.tags else ""
     tags_str = await ctx.ui.prompt("Tags (comma-separated)", default=current_tags)
     if tags_str:
@@ -458,6 +510,7 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
         f"  - Hostname: `{host.hostname}`\n"
         f"  - Port: `{host.port}`\n"
         f"  - User: `{host.username or 'default'}`\n"
+        f"  - Elevation: `{host.elevation_method or 'auto'}`\n"
         f"  - Tags: `{', '.join(host.tags) if host.tags else 'none'}`",
     )
 

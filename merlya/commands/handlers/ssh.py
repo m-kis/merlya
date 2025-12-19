@@ -216,28 +216,52 @@ def _handle_ssh_error(e: Exception, private_key: str | None, hostname: str) -> C
 
 @subcommand("ssh", "exec", "Execute command on host", "/ssh exec <host> <command>")
 async def cmd_ssh_exec(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Execute command on a host."""
+    """Execute command on a host (inventory name or direct IP/hostname)."""
     if len(args) < 2:
         return CommandResult(success=False, message="Usage: `/ssh exec <host> <command>`")
 
     host_name = args[0].lstrip("@")
     command_str = " ".join(args[1:])
 
+    # First try inventory lookup
     host = await ctx.hosts.get_by_name(host_name)
-    if not host:
-        return CommandResult(success=False, message=f"Host '{host_name}' not found.")
+
+    if host:
+        # Use inventory host settings
+        hostname = host.hostname
+        port = host.port
+        username = host.username
+        private_key = host.private_key
+        jump_host = host.jump_host
+    else:
+        # Direct IP/hostname mode - try to resolve
+        if not _is_valid_target(host_name):
+            return CommandResult(
+                success=False,
+                message=f"❌ '{host_name}' is not in inventory and couldn't be resolved.\n"
+                f"Add to inventory: `/hosts add {host_name}`",
+            )
+        # Use direct connection with defaults
+        hostname = host_name
+        port = 22
+        username = None  # Will use SSH defaults
+        private_key = None  # Will use ssh-agent or default keys
+        jump_host = None
 
     try:
         ssh_pool = await ctx.get_ssh_pool()
+        if host:
+            _install_ssh_callbacks(ctx, ssh_pool, host.name, private_key)
+
         options = SSHConnectionOptions(
-            port=host.port,
-            jump_host=host.jump_host,
+            port=port,
+            jump_host=jump_host,
         )
         result = await ssh_pool.execute(
-            host=host.hostname,
+            host=hostname,
             command=command_str,
-            username=host.username,
-            private_key=host.private_key,
+            username=username,
+            private_key=private_key,
             options=options,
         )
 
@@ -253,6 +277,26 @@ async def cmd_ssh_exec(ctx: SharedContext, args: list[str]) -> CommandResult:
     except Exception as e:
         logger.error(f"❌ SSH execution failed: {e}")
         return CommandResult(success=False, message=f"Execution failed: {e}")
+
+
+def _is_valid_target(target: str) -> bool:
+    """Check if target is a valid IP address or resolvable hostname."""
+    import ipaddress
+    import socket
+
+    # Check if it's an IPv4/IPv6 address
+    try:
+        ipaddress.ip_address(target)
+        return True
+    except ValueError:
+        pass
+
+    # Check if it's resolvable as a hostname
+    try:
+        socket.getaddrinfo(target, 22, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        return True
+    except socket.gaierror:
+        return False
 
 
 @subcommand("ssh", "disconnect", "Disconnect from a host", "/ssh disconnect <host>")
@@ -565,107 +609,3 @@ def _build_error_troubleshooting(error_msg: str, hostname: str) -> list[str]:
         lines.append("  - Check host connectivity and SSH configuration")
 
     return lines
-
-
-@subcommand(
-    "ssh", "elevation", "Manage elevation settings", "/ssh elevation <reset|detect|status> [host]"
-)
-async def cmd_ssh_elevation(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Manage SSH elevation (sudo/su) settings.
-
-    Subcommands:
-        reset [host]  - Clear failed elevation methods (allows retry with new password)
-        detect <host> - Force re-detection of elevation capabilities (clears cache)
-        status [host] - Show elevation status for a host
-    """
-    if not args:
-        return CommandResult(
-            success=False,
-            message="Usage: `/ssh elevation <reset|detect|status> [host]`",
-        )
-
-    action = args[0].lower()
-    host = args[1] if len(args) > 1 else None
-
-    permissions = await ctx.get_permissions()
-
-    if action == "reset":
-        permissions.clear_failed_methods(host)
-        if host:
-            msg = f"🔒 Elevation methods reset for {host}. Will retry on next command."
-        else:
-            msg = "🔒 Elevation methods reset for all hosts. Will retry on next command."
-        return CommandResult(success=True, message=msg)
-
-    elif action == "detect":
-        if not host:
-            return CommandResult(
-                success=False,
-                message="Usage: `/ssh elevation detect <host>`",
-            )
-        # Clear failed methods first
-        permissions.clear_failed_methods(host)
-        # Force re-detection (bypass cache)
-        ctx.ui.info(f"🔍 Re-detecting elevation capabilities for {host}...")
-        caps = await permissions.detect_capabilities(host, force_refresh=True)
-
-        method = caps.get("elevation_method", "none")
-        user = caps.get("user", "unknown")
-        has_sudo = caps.get("has_sudo", False)
-        nopasswd = caps.get("sudo_nopasswd", False)
-        sudo_not_authorized = caps.get("sudo_not_authorized", False)
-
-        # Build informative output (no password prompts - runtime handles that)
-        lines = [f"🔒 Elevation capabilities for {host}:"]
-        lines.append(f"  User: {user}")
-        lines.append(f"  Sudo: {'yes' if has_sudo else 'no'}")
-        if has_sudo:
-            if nopasswd:
-                lines.append("  NOPASSWD: yes ✅")
-            elif sudo_not_authorized:
-                lines.append("  NOPASSWD: no (user NOT in sudoers) ❌")
-            else:
-                lines.append("  NOPASSWD: no (password required)")
-
-        # Show available methods
-        available_methods = caps.get("available_methods", [])
-        if available_methods:
-            methods_str = ", ".join(m["method"] for m in available_methods)
-            lines.append(f"  Available: {methods_str}")
-        lines.append(f"  Selected: {method}")
-
-        # Note about runtime behavior
-        if method in ("sudo_with_password", "su"):
-            lines.append("")
-            lines.append("  ℹ️ Password will be requested when running elevated commands.")
-            lines.append("     If it fails, Merlya will try fallback methods automatically.")
-
-        return CommandResult(success=True, message="\n".join(lines))
-
-    elif action == "status":
-        if not host:
-            return CommandResult(
-                success=False,
-                message="Usage: `/ssh elevation status <host>`",
-            )
-        # Get cached capabilities (may be None if not yet detected)
-        cached_caps = permissions.get_cached_capabilities(host)
-        failed = permissions._failed_methods.get(host, set())
-
-        lines = [f"🔒 Elevation status for {host}:"]
-        if cached_caps:
-            lines.append(f"  Detected: {', '.join(k for k, v in cached_caps.items() if v)}")
-        else:
-            lines.append("  Not yet detected (will probe on first elevated command)")
-
-        if failed:
-            lines.append(f"  Failed methods: {', '.join(failed)}")
-        else:
-            lines.append("  No failed methods")
-
-        return CommandResult(success=True, message="\n".join(lines))
-
-    return CommandResult(
-        success=False,
-        message="Unknown action. Use: `/ssh elevation <reset|detect|status> [host]`",
-    )
