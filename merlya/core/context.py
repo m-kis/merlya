@@ -265,7 +265,7 @@ class SharedContext:
         if requested_local and not use_local:
             logger.warning("⚠️ ONNX router unavailable, using LLM fallback for routing")
         elif router.classifier.model_loaded:
-            logger.info("✅ Intent router initialized with local ONNX model")
+            logger.debug("✅ Intent router initialized with local ONNX model")
             # Persist selected model id for diagnostics
             if router.classifier.model_id:
                 self.config.router.model = router.classifier.model_id

@@ -17,7 +17,7 @@ class GeneralConfig(BaseModel):
 
     language: str = Field(default="en", description="UI language (en, fr)")
     log_level: Literal["debug", "info", "warning", "error"] = Field(
-        default="info", description="Console log level"
+        default="info", description="DEPRECATED: Use logging.console_level instead"
     )
     data_dir: Path = Field(default=Path.home() / ".merlya", description="Data directory path")
 

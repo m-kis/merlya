@@ -288,7 +288,7 @@ async def run_batch(
     # Run health checks (only show in debug mode)
     health = await run_startup_checks()
     ctx.health = health
-    is_debug = ctx.config.general.log_level == "debug"
+    is_debug = ctx.config.logging.console_level == "debug"
 
     if not quiet and is_debug:
         ctx.ui.info("Running health checks...")

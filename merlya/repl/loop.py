@@ -617,7 +617,7 @@ async def run_repl() -> None:
 
     # Run health checks (only show details in debug mode)
     health = await run_startup_checks()
-    is_debug = ctx.config.general.log_level == "debug"
+    is_debug = ctx.config.logging.console_level == "debug"
 
     if is_debug:
         ctx.ui.info(ctx.t("startup.health_checks"))

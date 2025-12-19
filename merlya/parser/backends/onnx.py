@@ -153,7 +153,7 @@ class ONNXParserBackend(ParserBackend):
             await self._load_label_config(model_path.parent)
 
             self._loaded = True
-            logger.info(f"✅ ONNX parser model loaded: {self._model_id}")
+            logger.debug(f"✅ ONNX parser model loaded: {self._model_id}")
             return True
 
         except Exception as e:
@@ -198,7 +198,7 @@ class ONNXParserBackend(ParserBackend):
             except Exception:
                 logger.debug("No config.json found for model")
 
-            logger.info(f"✅ Downloaded parser model to {model_path}")
+            logger.debug(f"✅ Downloaded parser model to {model_path}")
 
         try:
             await asyncio.to_thread(_do_download)

@@ -76,7 +76,7 @@ async def bootstrap(
     # Run health checks (only show details in debug mode)
     health = await run_startup_checks()
     ctx.health = health
-    is_debug = ctx.config.general.log_level == "debug"
+    is_debug = ctx.config.logging.console_level == "debug"
 
     if not quiet and is_debug:
         ctx.ui.info(ctx.t("startup.health_checks"))

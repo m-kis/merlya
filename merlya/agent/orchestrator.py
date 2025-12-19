@@ -208,7 +208,7 @@ def create_orchestrator(
     model_id = model_override or get_model_for_role(provider, "reasoning")
     model_string = get_pydantic_model_string(provider, model_id)
 
-    logger.info(f"🧠 Creating Orchestrator with model: {model_string}")
+    logger.debug(f"🧠 Creating Orchestrator with model: {model_string}")
 
     # History processor to prevent unbounded context growth
     history_processor = create_loop_aware_history_processor(
