@@ -248,7 +248,7 @@ class TestToolCallTracker:
         # All should have same normalized fingerprint, so count should be 4
         # Fingerprint should be: host:elev:cat /etc/shadow
         assert len(tracker.fingerprint_counts) == 1
-        count = list(tracker.fingerprint_counts.values())[0]
+        count = next(iter(tracker.fingerprint_counts.values()))
         assert count == 4
 
     def test_elevation_loop_detected(self) -> None:
