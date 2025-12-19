@@ -1,8 +1,13 @@
 """
 Merlya - AI-powered infrastructure assistant.
 
-Version: 0.7.5
+Version is read dynamically from package metadata.
 """
 
-__version__ = "0.7.5"
+try:
+    from importlib.metadata import version
+
+    __version__ = version("merlya")
+except Exception:
+    __version__ = "0.7.6"  # Fallback
 __author__ = "Cedric"
