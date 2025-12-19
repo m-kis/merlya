@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import signal
 import sys
@@ -15,6 +16,7 @@ import sys
 from loguru import logger
 
 from merlya import __version__ as MERLYA_VERSION
+from merlya.tools.core.bash import kill_all_subprocesses
 
 # Disable tokenizers parallelism warnings in forked processes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -23,9 +25,11 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
     """Setup signal handlers for graceful shutdown.
 
-    We use BOTH signal.signal (for immediate response) AND loop.add_signal_handler
-    (for proper async integration). This ensures signals are handled even when
-    prompt_toolkit or Rich spinners are active.
+    We use signal.signal for immediate signal handling that bypasses the asyncio
+    event loop. This ensures synchronous signal processing even when prompt_toolkit
+    or Rich spinners are active, but does not integrate with async operations.
+    The handler kills subprocesses immediately and schedules task cancellation
+    on the event loop via call_soon_threadsafe.
     """
     _cancel_flag: list[bool] = [False]
 
@@ -35,12 +39,8 @@ def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
             # Second signal: force exit
             logger.warning("Forced shutdown (second signal)")
             # Force kill all subprocesses before exit
-            try:
-                from merlya.tools.core.bash import kill_all_subprocesses
-
+            with contextlib.suppress(Exception):
                 kill_all_subprocesses()
-            except Exception:
-                pass
             os._exit(1)  # Use os._exit for immediate termination
 
         _cancel_flag[0] = True
@@ -49,8 +49,6 @@ def _setup_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
         # CRITICAL: Kill subprocesses IMMEDIATELY (synchronous)
         # This ensures blocked I/O operations are interrupted right away
         try:
-            from merlya.tools.core.bash import kill_all_subprocesses
-
             killed = kill_all_subprocesses()
             if killed:
                 logger.debug(f"Killed {killed} subprocess(es)")

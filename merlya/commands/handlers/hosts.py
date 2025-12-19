@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from loguru import logger
 
@@ -26,7 +26,7 @@ from merlya.commands.handlers.hosts_io import (
 )
 from merlya.commands.registry import CommandResult, command, subcommand
 from merlya.core.types import HostStatus
-from merlya.persistence.models import Host
+from merlya.persistence.models import ElevationMethod, Host
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -484,7 +484,7 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
         default=host.elevation_method or "auto",
     )
     if elevation and elevation.lower() in ("sudo", "sudo-s", "su", "doas"):
-        host.elevation_method = elevation.lower()
+        host.elevation_method = cast("ElevationMethod", elevation.lower())
     else:
         host.elevation_method = None  # auto-detect
 

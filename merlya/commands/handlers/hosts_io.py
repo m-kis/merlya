@@ -11,12 +11,12 @@ import io
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
 from merlya.common.validation import validate_file_path as common_validate_file_path
-from merlya.persistence.models import Host
+from merlya.persistence.models import ElevationMethod, Host
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -276,9 +276,10 @@ async def _import_csv(ctx: SharedContext, content: str) -> tuple[int, list[str]]
             tags_raw = row.get("tags", "").split(",") if row.get("tags") else []
             valid_tags = [t.strip() for t in tags_raw if t.strip() and validate_tag(t.strip())[0]]
             # Normalize elevation_method (empty string -> None)
-            elevation = row.get("elevation_method", "").strip() or None
-            if elevation and elevation.lower() not in ("sudo", "sudo-s", "su", "doas"):
-                elevation = None  # Invalid value, reset to auto
+            elevation_raw = row.get("elevation_method", "").strip().lower() or None
+            elevation: ElevationMethod | None = None
+            if elevation_raw in ("sudo", "sudo-s", "su", "doas"):
+                elevation = cast("ElevationMethod", elevation_raw)
             host = Host(
                 name=row["name"],
                 hostname=row.get("hostname", row.get("host", row["name"])),

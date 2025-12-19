@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import threading
 from typing import Any, NamedTuple, Protocol
 
 
@@ -131,30 +132,35 @@ PASSWORD_METHODS: tuple[str, ...] = (
 
 # Elevation method detection cache (host -> method)
 # Methods: "sudo" (passwordless), "sudo-S" (with password), "su", "doas", None (unknown)
+# Thread-safe: accessed from multiple async contexts
 _elevation_method_cache: dict[str, str | None] = {}
+_elevation_method_cache_lock = threading.Lock()
 
 
 def get_cached_elevation_method(host: str) -> str | None:
-    """Get cached elevation method for a host."""
+    """Get cached elevation method for a host (thread-safe)."""
     from loguru import logger
 
-    method = _elevation_method_cache.get(host)
+    with _elevation_method_cache_lock:
+        method = _elevation_method_cache.get(host)
     if method is None:
         logger.debug(f"🔍 No cached elevation method for {host}")
     return method
 
 
 def set_cached_elevation_method(host: str, method: str | None) -> None:
-    """Cache the elevation method for a host."""
-    _elevation_method_cache[host] = method
+    """Cache the elevation method for a host (thread-safe)."""
+    with _elevation_method_cache_lock:
+        _elevation_method_cache[host] = method
 
 
 def clear_elevation_method_cache(host: str | None = None) -> None:
-    """Clear elevation method cache for a host or all hosts."""
-    if host:
-        _elevation_method_cache.pop(host, None)
-    else:
-        _elevation_method_cache.clear()
+    """Clear elevation method cache for a host or all hosts (thread-safe)."""
+    with _elevation_method_cache_lock:
+        if host:
+            _elevation_method_cache.pop(host, None)
+        else:
+            _elevation_method_cache.clear()
 
 
 def format_elevated_command(command: str, method: str) -> str:

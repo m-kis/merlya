@@ -11,6 +11,7 @@ If a password is needed, use the request_credentials tool first.
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -229,7 +230,9 @@ async def ssh_execute(
 
 # Global credential hints: maps host -> secret_key for custom password references
 # Example: {"192.168.1.7": "pine-pass"} means @pine-pass is the password for that host
+# Thread-safe with lock for concurrent agent execution
 _credential_hints: dict[str, str] = {}
+_credential_hints_lock = threading.Lock()
 
 
 def set_credential_hint(host: str, secret_key: str) -> None:
@@ -247,18 +250,21 @@ def set_credential_hint(host: str, secret_key: str) -> None:
     host_lower = host.lower()
     # Strip @ prefix if present
     key = secret_key.lstrip("@")
-    _credential_hints[host_lower] = key
+    with _credential_hints_lock:
+        _credential_hints[host_lower] = key
     logger.info(f"🔑 Credential hint set: {host} -> @{key}")
 
 
 def get_credential_hint(host: str) -> str | None:
     """Get credential hint for a host."""
-    return _credential_hints.get(host.lower())
+    with _credential_hints_lock:
+        return _credential_hints.get(host.lower())
 
 
 def clear_credential_hints() -> None:
     """Clear all credential hints."""
-    _credential_hints.clear()
+    with _credential_hints_lock:
+        _credential_hints.clear()
 
 
 async def _auto_resolve_elevation_password(

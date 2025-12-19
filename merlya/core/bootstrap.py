@@ -68,7 +68,13 @@ async def bootstrap(
     _configure_logging_from_config(ctx, verbose=verbose, quiet=quiet)
 
     # Initialize Logfire observability (if LOGFIRE_TOKEN is set)
-    _init_observability()
+    try:
+        _init_observability()
+    except Exception as e:
+        logger.warning(
+            f"Observability initialization failed, continuing without it: {e}",
+            exc_info=True
+        )
 
     # Load API keys from keyring
     load_api_keys_from_keyring(ctx.config, ctx.secrets)

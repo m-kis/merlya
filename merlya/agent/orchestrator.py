@@ -729,8 +729,9 @@ class Orchestrator:
         Returns:
             Orchestrator response.
 
-        Raises:
-            SecurityError: If injection detected.
+        Note:
+            SecurityError exceptions are caught internally and result in an
+            OrchestratorResponse with a security-blocked message instead of being raised.
         """
         # Sanitize input for security
         try:

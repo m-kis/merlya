@@ -161,6 +161,25 @@ class TestHandlerResponse:
         assert response.suggestions == ["Check logs"]
         assert response.handled_by == "agent"
 
+    def test_from_agent_response_with_empty_lists(self) -> None:
+        """Test that empty lists are preserved as lists (not converted to None) and proper message/handled_by values are set."""
+        agent_response = MagicMock()
+        agent_response.message = "Agent message with empty actions"
+        agent_response.actions_taken = []
+        agent_response.suggestions = []
+
+        response = HandlerResponse.from_agent_response(agent_response)
+
+        # Verify message and handled_by values
+        assert response.message == "Agent message with empty actions"
+        assert response.handled_by == "agent"
+
+        # Verify that empty lists are preserved as lists, not converted to None (list preservation behavior)
+        assert isinstance(response.actions_taken, list)
+        assert isinstance(response.suggestions, list)
+        assert response.actions_taken == []
+        assert response.suggestions == []
+
 
 # ==============================================================================
 # Fast Path Tests (DEPRECATED - now handled by slash commands)

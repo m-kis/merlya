@@ -28,8 +28,10 @@ class HandlerResponse:
 
     Attributes:
         message: Response message (markdown formatted).
-        actions_taken: List of actions taken.
-        suggestions: Optional suggestions for follow-up.
+        actions_taken: List of actions taken. Empty lists are preserved as lists,
+                      not converted to None.
+        suggestions: Optional suggestions for follow-up. Empty lists are preserved
+                     as lists, not converted to None.
         handled_by: Which handler processed the request.
         raw_data: Any additional structured data.
     """
@@ -45,8 +47,8 @@ class HandlerResponse:
         """Create from AgentResponse (backward compatibility)."""
         return cls(
             message=response.message,
-            actions_taken=response.actions_taken or None,
-            suggestions=response.suggestions or None,
+            actions_taken=response.actions_taken,
+            suggestions=response.suggestions,
             handled_by="agent",
         )
 
@@ -136,8 +138,8 @@ async def handle_user_message(
         response: AgentResponse = await agent.run(user_input, route_result)
         return HandlerResponse(
             message=response.message,
-            actions_taken=response.actions_taken or None,
-            suggestions=response.suggestions or None,
+            actions_taken=response.actions_taken,
+            suggestions=response.suggestions,
             handled_by="agent_legacy",
         )
 

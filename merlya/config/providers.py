@@ -159,7 +159,7 @@ def get_pydantic_model_string(provider: str, model: str) -> str:
     if provider_lower == "openrouter":
         return f"openai:{model}"
 
-    # Groq uses openai-compatible endpoint
+    # Groq uses native groq: endpoint
     if provider_lower == "groq":
         return f"groq:{model}"
 

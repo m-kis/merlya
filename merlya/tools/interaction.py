@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import getpass
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -14,7 +14,7 @@ from merlya.commands.registry import CommandResult
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
-    from merlya.persistence.models import Host
+    from merlya.persistence.models import ElevationMethod, Host
 
 
 # Maximum retries for password verification
@@ -88,6 +88,25 @@ async def _verify_elevation_password(
                 logger.debug(f"Sudo test failed: {e}")
                 return False
 
+        def _escape_tcl_string(s: str) -> str:
+            """Escape special TCL characters in a string for use in double-quoted TCL contexts.
+
+            Escapes: backslash, dollar sign, left/right square brackets, and double quotes.
+
+            Args:
+                s: String to escape
+
+            Returns:
+                String with TCL special characters escaped
+            """
+            return (
+                s.replace("\\", "\\\\")  # Escape backslashes first
+                .replace("$", "\\$")  # Escape dollar signs
+                .replace("[", "\\[")  # Escape left brackets
+                .replace("]", "\\]")  # Escape right brackets
+                .replace('"', '\\"')  # Escape double quotes
+            )
+
         async def _test_su_with_expect() -> bool:
             """Test su method using expect script since su reads from /dev/tty."""
             # Check if expect is available on the remote system
@@ -109,14 +128,16 @@ async def _verify_elevation_password(
                 return False
 
             # Use expect -c with inline script (executed on remote)
-            # Escape single quotes in password for shell safety
-            escaped_password = password.replace("'", "'\\''")
+            # Escape TCL special characters for the send command
+            tcl_escaped_password = _escape_tcl_string(password)
+            # Apply shell escaping to the TCL-escaped password to prevent shell injection
+            shell_escaped_password = tcl_escaped_password.replace("'", "'\\''")
             expect_cmd = (
                 f"expect -c '"
                 f"set timeout 10; "
                 f'spawn su -c "true"; '
                 f"expect {{"
-                f'  "assword:" {{ send "{escaped_password}\\r"; expect eof; exit 0 }} '
+                f'  "assword:" {{ send "{shell_escaped_password}\\r"; expect eof; exit 0 }} '
                 f"  timeout {{ exit 1 }} "
                 f"  eof {{ exit 1 }} "
                 f"}}"
@@ -382,7 +403,7 @@ async def request_credentials(
                             host_entry
                             and getattr(host_entry, "elevation_method", None) != working_method
                         ):
-                            host_entry.elevation_method = working_method
+                            host_entry.elevation_method = cast("ElevationMethod", working_method)
                             await ctx.hosts.update(host_entry)
                             logger.info(f"💾 Elevation method '{working_method}' saved for {host}")
                     except Exception as e:

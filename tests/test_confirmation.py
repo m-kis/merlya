@@ -20,8 +20,18 @@ class TestDangerLevel:
         assert detect_danger_level("sudo rm -rf /var/log/old") == DangerLevel.DANGEROUS
 
     def test_rm_root_is_dangerous(self) -> None:
-        """rm / should be detected as dangerous."""
-        assert detect_danger_level("rm /important") == DangerLevel.DANGEROUS
+        """rm / and rm on critical directories should be detected as dangerous."""
+        # Root directory
+        assert detect_danger_level("rm /") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm -rf /") == DangerLevel.DANGEROUS
+        # Critical system directories
+        assert detect_danger_level("rm /etc") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm -rf /etc") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm /bin") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm /usr") == DangerLevel.DANGEROUS
+        # Non-critical paths without flags are just MODERATE (confirmation still required)
+        assert detect_danger_level("rm /important") == DangerLevel.MODERATE
+        assert detect_danger_level("rm /home/user/file.txt") == DangerLevel.MODERATE
 
     def test_reboot_is_dangerous(self) -> None:
         """reboot should be detected as dangerous."""
@@ -171,3 +181,59 @@ class TestConfirmationResult:
         assert ConfirmationResult.EXECUTE.value == "execute"
         assert ConfirmationResult.CANCEL.value == "cancel"
         assert ConfirmationResult.ALWAYS_YES.value == "always_yes"
+
+
+class TestDangerousPatternsOrdering:
+    """Test that DANGEROUS_PATTERNS are correctly ordered to avoid false positives.
+
+    CRITICAL: Order matters! More specific patterns (docker/podman) must come
+    BEFORE generic ones (rm) to avoid matching container names as file operations.
+
+    Example: "docker rm container1" should match docker pattern (MODERATE),
+    NOT the generic rm pattern (DANGEROUS) just because "container1" contains 'r'.
+    """
+
+    def test_docker_rm_container_is_moderate_not_dangerous(self) -> None:
+        """docker rm <container> should be MODERATE, not DANGEROUS.
+
+        Regression test: The generic rm pattern was matching 'docker rm containerName'
+        because the container name contained 'r' (matching the rm -r flag lookahead).
+        """
+        # Container names that could match the generic rm pattern's lookahead
+        assert detect_danger_level("docker rm container1") == DangerLevel.MODERATE
+        assert detect_danger_level("docker rm myrunner") == DangerLevel.MODERATE
+        assert detect_danger_level("docker rm redis") == DangerLevel.MODERATE
+
+    def test_podman_rm_container_is_moderate_not_dangerous(self) -> None:
+        """podman rm <container> should be MODERATE, not DANGEROUS."""
+        assert detect_danger_level("podman rm container1") == DangerLevel.MODERATE
+        assert detect_danger_level("podman rm redis-cache") == DangerLevel.MODERATE
+
+    def test_docker_operations_all_moderate(self) -> None:
+        """All docker state-changing operations should be MODERATE."""
+        assert detect_danger_level("docker rmi myimage:latest") == DangerLevel.MODERATE
+        assert detect_danger_level("docker prune") == DangerLevel.MODERATE
+        assert detect_danger_level("docker stop mycontainer") == DangerLevel.MODERATE
+        assert detect_danger_level("docker kill runaway") == DangerLevel.MODERATE
+
+    def test_generic_rm_still_dangerous_when_appropriate(self) -> None:
+        """Generic rm -rf should still be DANGEROUS."""
+        assert detect_danger_level("rm -rf /var/log") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm -r /tmp/test") == DangerLevel.DANGEROUS
+        assert detect_danger_level("sudo rm -rf /") == DangerLevel.DANGEROUS
+
+    def test_rm_without_dangerous_flags_is_moderate(self) -> None:
+        """rm without -r or -f flags should be MODERATE, not DANGEROUS.
+
+        Regression test: The old pattern (?=.*[rf]) matched 'r' or 'f' anywhere
+        in the string, including in filenames like 'report.txt' or 'file_with_r.txt'.
+        """
+        # Files with 'r' or 'f' in names but no dangerous flags
+        assert detect_danger_level("rm report.txt") == DangerLevel.MODERATE
+        assert detect_danger_level("rm file_with_r.txt") == DangerLevel.MODERATE
+        assert detect_danger_level("rm -v report.txt") == DangerLevel.MODERATE
+        assert detect_danger_level("rm formatted_output.log") == DangerLevel.MODERATE
+        # But -r or -f flags anywhere should be DANGEROUS
+        assert detect_danger_level("rm -r report.txt") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm report.txt -f") == DangerLevel.DANGEROUS
+        assert detect_danger_level("rm -v -r file.txt") == DangerLevel.DANGEROUS

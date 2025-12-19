@@ -71,10 +71,13 @@ class LLMConfig(BaseModel):
         Get LLM request timeout in seconds.
 
         Returns user-configured timeout if set, otherwise provider-specific default.
+        Always returns an int - never returns None.
         """
+        # If user configured a timeout, use it
         if self.timeout is not None:
             return self.timeout
 
+        # Otherwise use provider-specific default or global default
         from merlya.config.constants import LLM_PROVIDER_TIMEOUTS, LLM_TIMEOUT_DEFAULT
 
         provider_key = self.provider.lower() if self.provider else ""

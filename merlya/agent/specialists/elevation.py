@@ -36,7 +36,7 @@ def needs_elevation_stdin(command: str) -> bool:
     has_sudo_stdin = bool(sudo_s_pattern.search(command))
 
     # Case-insensitive check for su commands at command boundaries
-    su_pattern = re.compile(r"(?:^|[|;&]|&&|\|\|)\s*su\s+", re.IGNORECASE)
+    su_pattern = re.compile(r"(?:^|[|;&]|&&|\|\|)\s*su\b", re.IGNORECASE)
     has_su = bool(su_pattern.search(command))
 
     return has_sudo_stdin or has_su
@@ -111,6 +111,6 @@ def _determine_service_type(elevation_method: str | None, command: str) -> str:
 
     # Fall back to command analysis
     cmd_lower = command.lower()
-    su_pattern = re.compile(r"(?:^|[|;&]|&&|\|\|)\s*su\s+")
+    su_pattern = re.compile(r"(?:^|[|;&]|&&|\|\|)\s*su\b")
     has_su_command = bool(su_pattern.search(cmd_lower))
     return "root" if has_su_command else "sudo"

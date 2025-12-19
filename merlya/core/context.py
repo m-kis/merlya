@@ -80,7 +80,7 @@ class SharedContext:
     _session_passwords: SessionPasswordStore | None = field(default=None, repr=False)
 
     # Ask user cache for input deduplication
-    ask_user_cache: AskUserCache | None = field(default=None, repr=False)
+    _ask_user_cache: AskUserCache | None = field(default=None, repr=False)
 
     # Non-interactive mode flags
     auto_confirm: bool = field(default=False)
@@ -193,6 +193,14 @@ class SharedContext:
             self._session_passwords = get_session_store()
             self._session_passwords.set_ui(self.ui)
         return self._session_passwords
+
+    @property
+    def ask_user_cache(self) -> AskUserCache:
+        """Get ask user cache for input deduplication (lazy init)."""
+        if self._ask_user_cache is None:
+            from merlya.tools.core.user_input import AskUserCache
+            self._ask_user_cache = AskUserCache()
+        return self._ask_user_cache
 
     async def init_async(self) -> None:
         """

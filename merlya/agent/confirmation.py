@@ -5,6 +5,9 @@ Handles user confirmation for bash/ssh commands before execution.
 Format: [y] Execute  [n] Cancel  [a] Always yes for session
 
 Dangerous patterns are auto-detected and flagged.
+
+SECURITY WARNING: Command logging may expose sensitive data (passwords, API keys, tokens).
+Ensure log level is appropriate for your security requirements.
 """
 
 from __future__ import annotations
@@ -37,10 +40,20 @@ class ConfirmationResult(Enum):
 
 
 # Dangerous command patterns (case-insensitive)
+# NOTE: Order matters! More specific patterns (docker/podman) must come BEFORE generic ones (rm)
 DANGEROUS_PATTERNS: list[tuple[str, DangerLevel]] = [
+    # Docker/containers - MUST be before generic rm pattern
+    (r"\bdocker\s+(rm|rmi|prune|stop|kill)", DangerLevel.MODERATE),
+    (r"\bpodman\s+(rm|rmi|prune|stop|kill)", DangerLevel.MODERATE),
+    (r"\bkubectl\s+delete", DangerLevel.MODERATE),
     # Destructive file operations
-    (r"\brm\s+-[rf]+", DangerLevel.DANGEROUS),
-    (r"\brm\s+/", DangerLevel.DANGEROUS),
+    # Match rm with flags containing r or f (e.g., -rf, -r, -f, -r -f)
+    # Uses lookahead to find -FLAG containing r or f anywhere in command
+    (r"\brm\s+(?=.*-\S*[rf])", DangerLevel.DANGEROUS),
+    # Match rm targeting root directory only (/ followed by whitespace or end)
+    (r"\brm\s+(?:-\S+\s+)*/(?:\s|$)", DangerLevel.DANGEROUS),
+    # Match rm targeting critical system directories (with optional flags)
+    (r"\brm\s+(?:-\S+\s+)*/(bin|boot|etc|lib|lib64|sbin|sys|usr|var)\b", DangerLevel.DANGEROUS),
     (r"\brmdir\s+", DangerLevel.MODERATE),
     (r"\bdd\s+", DangerLevel.DANGEROUS),
     (r"\bmkfs\s+", DangerLevel.DANGEROUS),
@@ -62,16 +75,12 @@ DANGEROUS_PATTERNS: list[tuple[str, DangerLevel]] = [
     (r"\byum\s+(remove|erase)", DangerLevel.MODERATE),
     (r"\bdnf\s+(remove|erase)", DangerLevel.MODERATE),
     (r"\bpacman\s+-R", DangerLevel.MODERATE),
-    # Docker/containers
-    (r"\bdocker\s+(rm|rmi|prune|stop|kill)", DangerLevel.MODERATE),
-    (r"\bpodman\s+(rm|rmi|prune|stop|kill)", DangerLevel.MODERATE),
-    (r"\bkubectl\s+delete", DangerLevel.MODERATE),
     # Database operations
     (r"\bDROP\s+(TABLE|DATABASE|INDEX)", DangerLevel.DANGEROUS),
     (r"\bTRUNCATE\s+", DangerLevel.DANGEROUS),
     (r"\bDELETE\s+FROM", DangerLevel.MODERATE),
     # Network
-    (r"\biptables\s+-[FXZ]+", DangerLevel.DANGEROUS),
+    (r"\biptables\s+-(?:[A-Z]*[FXZ][A-Z]*)", DangerLevel.DANGEROUS),
     (r"\bip\s+route\s+(del|flush)", DangerLevel.DANGEROUS),
     # User management
     (r"\buserdel\s+", DangerLevel.DANGEROUS),
@@ -107,7 +116,7 @@ class ConfirmationState:
         # Check if this exact command was already confirmed
         full_command = command.strip().lower()
         if full_command in self.confirmed_commands:
-            logger.debug(f"⚡ Skipping confirmation (already confirmed): {command[:50]}...")
+            logger.trace(f"⚡ Skipping confirmation (already confirmed): {command[:50]}...")  # Truncated to avoid sensitive data exposure
             return True
         return False
 
@@ -115,7 +124,7 @@ class ConfirmationState:
         """Mark a command as confirmed (user said 'y')."""
         full_command = command.strip().lower()
         self.confirmed_commands.add(full_command)
-        logger.debug(f"✅ Command confirmed: {command[:50]}...")
+        logger.trace(f"✅ Command confirmed: {command[:50]}...")  # Truncated to avoid sensitive data exposure
 
     def set_always_yes(self, command: str | None = None) -> None:
         """Set "always yes" for session or specific command prefix."""
@@ -125,7 +134,7 @@ class ConfirmationState:
         else:
             cmd_prefix = command.strip()[:25].lower()
             self.always_yes_patterns.add(cmd_prefix)
-            logger.debug(f"✅ Auto-confirm enabled for: {cmd_prefix}...")
+            logger.trace(f"✅ Auto-confirm enabled for: {cmd_prefix}...")  # Truncated to avoid sensitive data exposure
 
     def reset(self) -> None:
         """Reset confirmation state (for tests)."""
@@ -146,7 +155,8 @@ def detect_danger_level(command: str) -> DangerLevel:
     """
     for pattern, level in DANGEROUS_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
-            logger.debug(f"⚠️ Command matched pattern '{pattern}': {level.value}")
+            # Only log pattern match, not command content to avoid sensitive data exposure
+            logger.debug(f"⚠️ Command matched dangerous pattern '{pattern}': {level.value}")
             return level
 
     # Default: moderate for all external commands (requires confirmation)
@@ -177,10 +187,7 @@ def format_confirmation_prompt(
     }.get(danger_level, "🔧")
 
     # Target display
-    if target == "local":
-        target_line = f"{icon} Commande locale:"
-    else:
-        target_line = f"{icon} Commande sur {target}:"
+    target_line = f"{icon} Local command:" if target == "local" else f"{icon} Command on {target}:"
 
     # Truncate very long commands
     display_cmd = command if len(command) <= 80 else command[:77] + "..."
@@ -210,12 +217,12 @@ async def confirm_command(
     """
     # Check auto-confirm modes
     if auto_confirm or ui.auto_confirm:
-        ui.muted(f"⚡ Auto-confirmed: {command[:50]}...")
+        logger.trace(f"⚡ Auto-confirmed: {command[:50]}...")  # Truncated to avoid sensitive data exposure
         return ConfirmationResult.EXECUTE
 
     # Check session state
     if state and state.should_skip(command):
-        ui.muted(f"⚡ Auto-confirmed (session): {command[:50]}...")
+        logger.trace(f"⚡ Auto-confirmed (session): {command[:50]}...")  # Truncated to avoid sensitive data exposure
         return ConfirmationResult.EXECUTE
 
     # Detect danger level
@@ -229,18 +236,18 @@ async def confirm_command(
 
     # Show danger warning for dangerous commands
     if danger_level == DangerLevel.DANGEROUS:
-        ui.warning("⚠️ Cette commande est potentiellement destructive!")
+        ui.warning("⚠️ This command is potentially destructive!")
         ui.console.print()
 
     # Prompt with [y]/[n]/[a] options - escape brackets for Rich markup
     ui.console.print(
-        "[accent]\\[y][/accent] ✅ Exécuter  [accent]\\[n][/accent] ❌ Annuler  [accent]\\[a][/accent] 🔓 Toujours oui"
+        "[accent]\\[y][/accent] ✅ Execute  [accent]\\[n][/accent] ❌ Cancel  [accent]\\[a][/accent] 🔓 Always yes"
     )
 
     # Get user input - NO DEFAULT, user must explicitly choose
     try:
         while True:
-            session_result = await ui.prompt("Choix", default="")
+            session_result = await ui.prompt("Choice", default="")
             choice = session_result.strip().lower()
 
             # User must provide a valid choice
@@ -260,13 +267,16 @@ async def confirm_command(
 
             # Invalid choice - prompt again
             if choice:
-                ui.warning(f"Choix invalide: '{choice}'. Tapez y, n, ou a.")
+                ui.warning(f"Invalid choice: '{choice}'. Type y, n, or a.")
             else:
-                ui.muted("Tapez y (exécuter), n (annuler), ou a (toujours oui)")
+                ui.muted("Type y (execute), n (cancel), or a (always yes)")
 
     except (KeyboardInterrupt, EOFError):
+        logger.trace("User cancelled confirmation (KeyboardInterrupt/EOFError)")
         return ConfirmationResult.CANCEL
     except Exception:
+        # Log unexpected errors for debugging while maintaining safety
+        logger.exception("Unexpected error in command confirmation, cancelling for safety")
         return ConfirmationResult.CANCEL
 
 

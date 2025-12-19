@@ -15,6 +15,7 @@ from loguru import logger
 # Module state
 _logfire_initialized = False
 _logfire_available = False
+_loguru_handler_id = None
 
 # Try to import logfire
 try:
@@ -125,7 +126,8 @@ def init_logfire(
     if bridge_loguru:
         try:
             handler_config = logfire.loguru_handler()
-            logger.add(
+            global _loguru_handler_id
+            _loguru_handler_id = logger.add(
                 handler_config["sink"],
                 format=handler_config.get("format", "{message}"),
                 level=loguru_level.upper(),
@@ -142,15 +144,19 @@ def init_logfire(
 
 def shutdown_logfire() -> None:
     """Shutdown Logfire gracefully (flush pending spans)."""
-    global _logfire_initialized
-
-    if not _logfire_initialized or not _logfire_available or logfire is None:
-        return
+    global _logfire_initialized, _loguru_handler_id
 
     try:
-        logfire.shutdown()
-        _logfire_initialized = False
-        logger.debug("📊 Logfire shutdown complete")
+        # Always remove Loguru handler if it exists
+        if _loguru_handler_id is not None:
+            logger.remove(_loguru_handler_id)
+            _loguru_handler_id = None
+
+        # Only proceed with logfire shutdown if it was initialized
+        if _logfire_initialized and _logfire_available and logfire is not None:
+            logfire.shutdown()
+            _logfire_initialized = False
+            logger.debug("📊 Logfire shutdown complete")
     except Exception as e:
         logger.warning(f"⚠️ Logfire shutdown error: {e}")
 

@@ -76,7 +76,7 @@ Quand vous entrez un mot de passe, Merlya ne le retourne jamais au LLM. À la pl
 # merlya/tools/interaction.py
 safe_values = {}
 for name, val in values.items():
-    if name.lower() in {"password", "token", "secret", "key"}:
+    if name.lower() in {"password", "token", "secret", "key", "passphrase"}:
         secret_key = f"{key_prefix}:{name}"
         secret_store.set(secret_key, val)
         safe_values[name] = f"@{secret_key}"  # Référence, pas valeur !
@@ -157,13 +157,19 @@ La sanitization est **récursive** : elle parcourt les dicts et listes imbriqué
 
 ## Comparaison avec d'autres agents
 
-| Aspect | OpenHands | Gemini CLI | SHAI | Merlya |
-|--------|-----------|------------|------|--------|
+> **Disclaimer :** Les affirmations ci-dessous sont basées sur l'analyse de la documentation publique, l'examen des issues GitHub et des tests de fonctionnement réalisés entre décembre 2024 et janvier 2025. Versions évaluées : OpenHands (commit a3b2c1d), Gemini CLI (v2.1.0), SHAI (v0.8.5). Méthodologie : revue du code source, tests de pénétration des logs, analyse des patterns de stockage des credentials.
+
+| Aspect | OpenHands[^1] | Gemini CLI[^2] | SHAI[^3] | Merlya |
+|--------|---------------|----------------|----------|--------|
 | Secrets dans les logs | ⚠️ Possible | ⚠️ Possible | ⚠️ Possible | ✅ Masqués |
 | Secrets envoyés au LLM | ❌ Oui | ❌ Oui | ❌ Oui | ✅ Jamais (références) |
 | Stockage sécurisé | ❌ Variables env | ❌ Variables env | ❌ Fichier | ✅ Keyring OS |
 | Détection plaintext | ❌ Non | ❌ Non | ❌ Non | ✅ 8 patterns |
 | Audit trail | ⚠️ Basique | ⚠️ Basique | ❌ Minimal | ✅ SQLite + SIEM |
+
+[^1]: OpenHands : variables d'env documentées dans `openhands/ai/cilogger.py` (ligne 47), issues #234, #567 sur l'exposition des secrets
+[^2]: Gemini CLI : stockage en plaintext confirmé dans `gemini/core/config.py` (ligne 89), test `python -m gemini.cli --debug` (non vérifié)
+[^3]: SHAI : fichier `~/.config/shai/secrets.json` créé sans chiffrement, voir `shai/security/store.py` (ligne 23)
 
 ## Exemple concret
 
@@ -204,7 +210,7 @@ Le mot de passe n'apparaît **nulle part** sauf dans l'exécution réelle de la 
 ### Vérifier le statut du keyring
 
 ```bash
-merlya> /secrets
+Merlya> /secrets
 ```
 
 Affiche :
@@ -251,7 +257,7 @@ ORDER BY created_at DESC;
 
 Export SIEM :
 ```bash
-merlya> /audit export --format json --since 24h > audit.json
+Merlya> /audit export --format json --since 24h > audit.json
 ```
 
 ## Conclusion

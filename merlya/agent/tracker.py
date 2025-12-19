@@ -67,7 +67,7 @@ class ToolCallTracker:
     Independent of history truncation - counts persist across the entire
     agent run. Uses fingerprinting to detect repetitive patterns.
 
-    Fingerprint format: "host:command_prefix[:20]"
+    Fingerprint format: "host:command_prefix[:25]"
     Example: "192.168.1.7:sudo systemctl rest"
     """
 

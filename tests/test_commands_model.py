@@ -192,6 +192,7 @@ class TestModelRouterCommand:
         assert result is not None
         assert result.success is False
         assert "deprecated" in result.message.lower()
+        assert "orchestrator" in result.message.lower()
 
 
 class TestModelTestCommand:

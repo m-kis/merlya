@@ -75,6 +75,76 @@ def _is_private_ip(ip_str: str) -> bool:
         return False
 
 
+def _is_secret_keyword_match(ref_name: str, hosts: list[Any]) -> bool:
+    """
+    Check if a reference name should be treated as a secret reference.
+
+    This function avoids false positives where legitimate hostnames
+    are incorrectly classified as secrets. It uses a conservative approach:
+
+    1. First checks if the reference exists in inventory or resolves via DNS
+    2. Only treats as secret if it contains specific secret-related patterns
+
+    False positives avoided:
+    - "keystone" (contains "key" but is a legitimate hostname)
+    - "apiserver" (contains "api" but is a legitimate hostname)
+    - "passport-office" (contains "pass" but is a legitimate hostname)
+
+    Secret patterns that DO match:
+    - Exact secret keywords: "password", "secret", "token", etc.
+    - Secret with suffix: "api-key", "auth-token", "sudo-password"
+    - Common secret formats: "secret-sudo", "root-password"
+
+    Args:
+        ref_name: The reference name to check (e.g., "api-key", "keystone").
+        hosts: List of Host objects from inventory for fallback checks.
+
+    Returns:
+        True if the reference should be treated as a secret, False otherwise.
+    """
+    ref_lower = ref_name.lower()
+
+    # Safe fallback: try to resolve against inventory first
+    host_lookup = {h.name.lower(): h.hostname or h.name for h in hosts}
+    if ref_name.lower() in host_lookup:
+        logger.debug(f"🏠 @{ref_name} found in inventory, treating as host (not secret)")
+        return False
+
+    # Safe fallback: try DNS resolution
+    try:
+        socket.gethostbyname(ref_name)
+        logger.debug(f"🌐 @{ref_name} resolves via DNS, treating as host (not secret)")
+        return False
+    except socket.gaierror:
+        pass  # DNS failed, continue with keyword check
+
+    # Check for obvious secret patterns (most specific first)
+    secret_patterns = [
+        # Exact secret keywords
+        r"^password$",
+        r"^secret$",
+        r"^token$",
+        r"^key$",
+        r"^cred$",
+        # Legacy secret patterns
+        r"^secret-",
+        r"-password$",
+        r"-key$",
+        r"-token$",
+        r"-cred$",
+        r"-secret$",
+        # Common secret combinations (requires both parts)
+        r"\b(api|auth|sudo|root|cred)\b.*\b(key|password|token|secret|cred)\b",
+    ]
+
+    for pattern in secret_patterns:
+        if re.search(pattern, ref_lower):
+            logger.debug(f"🔐 @{ref_name} matches secret pattern '{pattern}'")
+            return True
+
+    return False
+
+
 async def resolve_host_references(
     command: str,
     hosts: list[Any],
@@ -116,8 +186,7 @@ async def resolve_host_references(
 
         # Skip references that look like secrets (e.g., @sudo-password, @api-key)
         # These should be resolved by resolve_secrets, not as hosts
-        ref_lower = ref_name.lower()
-        if any(kw in ref_lower for kw in SECRET_KEYWORDS):
+        if _is_secret_keyword_match(ref_name, hosts):
             logger.debug(f"🔐 Skipping @{ref_name} in host resolution (looks like a secret)")
             continue
 

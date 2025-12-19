@@ -60,7 +60,7 @@ async def run_diagnostic_agent(
         return str(result.output)
     except Exception as e:
         logger.error(f"❌ Diagnostic agent error: {e}", exc_info=True)
-        return "❌ L'investigation a rencontré une erreur. Vérifiez les logs."
+        return "❌ The investigation encountered an error. Check the logs."
 
 
 def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:

@@ -10,7 +10,7 @@ repeatedly asks the same question.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -25,14 +25,8 @@ if TYPE_CHECKING:
 class AskUserCache:
     """Cache for user input deduplication."""
 
-    responses: dict[str, Any] = None
-    counts: dict[str, int] = None
-
-    def __post_init__(self):
-        if self.responses is None:
-            self.responses = {}
-        if self.counts is None:
-            self.counts = {}
+    responses: dict[str, Any] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=dict)
 
 
 # Maximum times the same question can be asked before returning cached answer
@@ -41,8 +35,6 @@ MAX_SAME_QUESTION = 2
 
 def _get_ask_user_cache(ctx: SharedContext) -> AskUserCache:
     """Get or create the ask user cache on the context."""
-    if ctx.ask_user_cache is None:
-        ctx.ask_user_cache = AskUserCache()
     return ctx.ask_user_cache
 
 

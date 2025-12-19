@@ -13,6 +13,7 @@ Security:
 
 from __future__ import annotations
 
+import asyncio
 import getpass
 import hashlib
 import threading
@@ -74,7 +75,7 @@ class SessionPasswordStore:
         """Store password in session (memory only)."""
         with self._lock:
             self._passwords[key] = value
-            logger.debug(f"🔐 Session password stored (key: {_get_key_fingerprint(key)})")
+            logger.debug("🔐 Session password stored")
 
     def has(self, key: str) -> bool:
         """Check if password exists in session."""
@@ -86,7 +87,7 @@ class SessionPasswordStore:
         with self._lock:
             if key in self._passwords:
                 del self._passwords[key]
-                logger.debug(f"🔐 Session password removed (key: {_get_key_fingerprint(key)})")
+                logger.debug("🔐 Session password removed")
 
     def clear(self) -> None:
         """Clear all session passwords."""
@@ -142,11 +143,11 @@ class SessionPasswordStore:
         if self._ui:
             try:
                 return await self._ui.prompt_secret(display_prompt)
-            except Exception as e:
-                logger.debug(f"Async prompt failed, falling back to getpass: {e}")
+            except Exception:
+                logger.debug("Async prompt failed, falling back to getpass")
 
         # Fallback to sync getpass
-        return self.prompt_password_sync(prompt, host)
+        return await asyncio.to_thread(self.prompt_password_sync, prompt, host)
 
     def get_or_prompt_sync(
         self,
@@ -171,7 +172,7 @@ class SessionPasswordStore:
         # Check cache first
         cached = self.get(key)
         if cached:
-            logger.debug(f"🔐 Using cached session password (key: {_get_key_fingerprint(key)})")
+            logger.debug("🔐 Using cached session password")
             return cached
 
         # Prompt user
@@ -206,7 +207,7 @@ class SessionPasswordStore:
         # Check cache first
         cached = self.get(key)
         if cached:
-            logger.debug(f"🔐 Using cached session password (key: {_get_key_fingerprint(key)})")
+            logger.debug("🔐 Using cached session password")
             return cached
 
         # Prompt user

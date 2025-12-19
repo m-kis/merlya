@@ -23,7 +23,6 @@ from merlya.router.handler import (
     HandlerResponse,
     handle_agent,
     handle_fast_path,
-    handle_message,
     handle_skill_flow,
     handle_user_message,
 )
@@ -38,7 +37,6 @@ __all__ = [
     "RouterResult",
     "handle_agent",
     "handle_fast_path",
-    "handle_message",
     "handle_skill_flow",
     "handle_user_message",
 ]
