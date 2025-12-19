@@ -390,18 +390,27 @@ async def cmd_hosts_flush(ctx: SharedContext, args: list[str]) -> CommandResult:
             return CommandResult(success=True, message="Cancelled.")
 
     deleted = 0
+    errors: list[str] = []
     for host in hosts:
-        await ctx.hosts.delete(host.id)
-        deleted += 1
+        try:
+            await ctx.hosts.delete(host.id)
+            deleted += 1
+        except Exception as e:
+            errors.append(f"{host.name}: {e}")
+            logger.warning(f"Failed to delete host {host.name}: {e}")
 
     # Also clear the elevation method cache
     from merlya.tools.core.ssh_patterns import clear_elevation_method_cache
 
     clear_elevation_method_cache()
 
+    msg = f"🗑️ Deleted {deleted} host(s). Elevation cache cleared."
+    if errors:
+        msg += f"\n⚠️ {len(errors)} deletion(s) failed:\n" + "\n".join(f"  - {e}" for e in errors)
+
     return CommandResult(
-        success=True,
-        message=f"🗑️ Deleted {deleted} host(s). Elevation cache cleared.",
+        success=len(errors) == 0,
+        message=msg,
     )
 
 
@@ -469,9 +478,9 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
     username = await ctx.ui.prompt("Username", default=host.username or "")
     host.username = username if username else None
 
-    # Elevation method (sudo, su, doas, or auto)
+    # Elevation method (sudo, sudo-s, su, doas, or auto)
     elevation = await ctx.ui.prompt(
-        "Elevation method (sudo/su/doas/auto)",
+        "Elevation method (sudo/sudo-s/su/doas/auto)",
         default=host.elevation_method or "auto",
     )
     if elevation and elevation.lower() in ("sudo", "sudo-s", "su", "doas"):

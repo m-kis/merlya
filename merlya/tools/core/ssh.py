@@ -159,10 +159,11 @@ async def ssh_execute(
             if input_data is None:
                 # Check if command will definitely need password
                 # Note: sudo -S (uppercase) = read from stdin, sudo -s (lowercase) = shell
-                # We need to detect -S specifically before lowercasing
+                # We use case-insensitive check for consistency
+                cmd_lower = command.lower()
                 needs_password = (
-                    "sudo -S" in command  # Case-sensitive check for stdin flag
-                    or command.lower().startswith("su ")
+                    "sudo -s" in cmd_lower  # Case-insensitive check for stdin flag
+                    or cmd_lower.startswith("su ")
                 )
                 if needs_password:
                     # Return error with instructions - don't let it timeout
@@ -272,7 +273,9 @@ async def _auto_resolve_elevation_password(
 
     # Check if command needs password-based elevation
     # Note: sudo -S (uppercase) = read from stdin, sudo -s (lowercase) = shell
-    needs_elevation = "sudo -S" in command or command.lower().startswith("su ")
+    # Use case-insensitive check for consistency
+    cmd_lower = command.lower()
+    needs_elevation = "sudo -s" in cmd_lower or cmd_lower.startswith("su ")
     if not needs_elevation:
         return None
 

@@ -121,7 +121,12 @@ _elevation_method_cache: dict[str, str | None] = {}
 
 def get_cached_elevation_method(host: str) -> str | None:
     """Get cached elevation method for a host."""
-    return _elevation_method_cache.get(host)
+    from loguru import logger
+
+    method = _elevation_method_cache.get(host)
+    if method is None:
+        logger.debug(f"🔍 No cached elevation method for {host}")
+    return method
 
 
 def set_cached_elevation_method(host: str, method: str | None) -> None:

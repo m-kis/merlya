@@ -298,7 +298,7 @@ async def request_credentials(
                     # PERSIST to Host model for future sessions
                     try:
                         host_entry = await ctx.hosts.get_by_name(host)
-                        if host_entry and host_entry.elevation_method != working_method:
+                        if host_entry and getattr(host_entry, "elevation_method", None) != working_method:
                             host_entry.elevation_method = working_method
                             await ctx.hosts.update(host_entry)
                             logger.info(f"💾 Elevation method '{working_method}' saved for {host}")
