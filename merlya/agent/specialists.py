@@ -107,8 +107,13 @@ async def _auto_collect_elevation_credentials(
         service = "sudo"
     else:
         # Fall back to command analysis
+        import re
         cmd_lower = command.lower()
-        service = "root" if "su " in cmd_lower or "su -c" in cmd_lower else "sudo"
+        # Use word boundaries to avoid false positives (e.g., "result" contains "su")
+        # Match "su" or "su -c" at word boundaries
+        su_pattern = re.compile(r'\bsu\b(\s+-c\b)?')
+        has_su_command = bool(su_pattern.search(cmd_lower))
+        service = "root" if has_su_command else "sudo"
 
     # PRIORITY 2: Check if credentials already exist before prompting
     # Check both sudo and root keys - user may have stored under either
@@ -318,8 +323,8 @@ async def run_diagnostic_agent(
         result = await agent.run(prompt, deps=deps, usage_limits=limits)
         return str(result.output)
     except Exception as e:
-        logger.error(f"❌ Diagnostic agent error: {e}")
-        return f"Error: {e}"
+        logger.error(f"❌ Diagnostic agent error: {e}", exc_info=True)
+        return "❌ L'investigation a rencontré une erreur. Vérifiez les logs pour plus de détails."
 
 
 async def run_execution_agent(
@@ -375,8 +380,8 @@ async def run_execution_agent(
         result = await agent.run(prompt, deps=deps, usage_limits=limits)
         return str(result.output)
     except Exception as e:
-        logger.error(f"❌ Execution agent error: {e}")
-        return f"Error: {e}"
+        logger.error(f"❌ Execution agent error: {e}", exc_info=True)
+        return "❌ L'exécution a rencontré une erreur. Vérifiez les logs pour plus de détails."
 
 
 async def run_security_agent(
@@ -430,8 +435,8 @@ async def run_security_agent(
         result = await agent.run(prompt, deps=deps, usage_limits=limits)
         return str(result.output)
     except Exception as e:
-        logger.error(f"❌ Security agent error: {e}")
-        return f"Error: {e}"
+        logger.error(f"❌ Security agent error: {e}", exc_info=True)
+        return "❌ L'audit de sécurité a rencontré une erreur. Vérifiez les logs pour plus de détails."
 
 
 async def run_query_agent(
@@ -486,8 +491,8 @@ async def run_query_agent(
         result = await agent.run(task, deps=deps, usage_limits=limits)
         return str(result.output)
     except Exception as e:
-        logger.error(f"❌ Query agent error: {e}")
-        return f"Error: {e}"
+        logger.error(f"❌ Query agent error: {e}", exc_info=True)
+        return "❌ La requête a rencontré une erreur. Vérifiez les logs pour plus de détails."
 
 
 # Internal deps type for specialists
@@ -810,7 +815,8 @@ def _register_security_tools(agent: Agent[_SpecialistDeps, str]) -> None:
                 "data": result.data,
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            logger.error(f"❌ Scan host error for {host}: {e}", exc_info=True)
+            return {"success": False, "error": "Scan failed. Check logs for details."}
 
 
 def _register_query_tools(agent: Agent[_SpecialistDeps, str]) -> None:
