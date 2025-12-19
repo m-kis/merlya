@@ -24,6 +24,7 @@ from pydantic_ai.usage import Usage, UsageLimits
 
 from merlya.agent.confirmation import ConfirmationState
 from merlya.agent.history import create_loop_aware_history_processor
+from merlya.agent.specialists.deps import SpecialistDeps
 from merlya.agent.tracker import ToolCallTracker
 from merlya.config.constants import DEFAULT_MAX_HISTORY_MESSAGES
 from merlya.config.providers import get_model_for_role, get_pydantic_model_string
@@ -536,11 +537,14 @@ async def _run_specialist_with_retry(
             )
 
         try:
-            result = await specialist_fn(  # type: ignore[operator]
+            deps = SpecialistDeps(
                 context=ctx.deps.context,
                 tracker=ctx.deps.tracker,
                 confirmation_state=ctx.deps.confirmation_state,
                 target=target,
+            )
+            result = await specialist_fn(  # type: ignore[operator]
+                deps=deps,
                 task=current_task,
                 usage_limits=limits,
                 **kwargs,
@@ -614,11 +618,14 @@ async def _run_specialist_once(
     limits = UsageLimits(tool_calls_limit=tool_limit)
 
     try:
-        result = await specialist_fn(  # type: ignore[operator]
+        deps = SpecialistDeps(
             context=ctx.deps.context,
             tracker=ctx.deps.tracker,
             confirmation_state=ctx.deps.confirmation_state,
             target=target,
+        )
+        result = await specialist_fn(  # type: ignore[operator]
+            deps=deps,
             task=task,
             usage_limits=limits,
             **kwargs,
@@ -632,10 +639,10 @@ async def _run_specialist_once(
         )
 
     except Exception as e:
-        logger.error(f"❌ Specialist {specialist_type} failed: {e}")
+        logger.error(f"❌ Specialist {specialist_type} failed: {e}", exc_info=True)
         return DelegationResult(
             success=False,
-            output=f"Error: {e}",
+            output="Specialist encountered an error. Check logs for details.",
             specialist=specialist_type,
             complete=False,
         )

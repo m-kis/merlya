@@ -302,6 +302,9 @@
       "rate_limit": "Rate limit exceeded, retrying in {seconds}s",
       "no_provider": "No LLM provider configured"
     },
+    "security": {
+      "audit_error": "❌ Security audit encountered an error. Check the logs."
+    },
     "use_slash_commands": "This operation is handled by slash commands. Try /hosts, /vars, or /help"
   },
   "suggestions": {

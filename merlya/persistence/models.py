@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 # Import directly from types to avoid circular import through core.__init__
 from merlya.core.types import HostStatus
+
+# Type constraint for elevation methods
+ElevationMethod = Literal['sudo', 'sudo-S', 'su', 'doas']
 
 
 class OSInfo(BaseModel):
@@ -40,7 +43,7 @@ class Host(BaseModel):
     # SSH config
     private_key: str | None = None
     jump_host: str | None = None
-    elevation_method: str | None = None  # "sudo", "sudo-S", "su", "doas"
+    elevation_method: ElevationMethod | None = None
 
     # Metadata
     tags: list[str] = Field(default_factory=list)

@@ -37,6 +37,29 @@ if TYPE_CHECKING:
 _VALID_SECRET_KEYWORDS = frozenset({"password", "passwd", "pass", "key", "token", "secret"})
 
 
+def _needs_elevation_password(command: str) -> bool:
+    """
+    Check if a command requires elevation password.
+    
+    Detects commands that need password-based elevation:
+    - sudo -s (shell mode) and sudo -S (stdin mode) - case insensitive
+    - su commands - case insensitive
+    
+    Args:
+        command: The command string to check.
+        
+    Returns:
+        True if the command requires elevation password, False otherwise.
+    """
+    cmd_lower = command.lower()
+    # Check if command starts with sudo and contains -S or -s flag
+    has_sudo_stdin = (
+        cmd_lower.startswith("sudo ") 
+        and (" -s " in cmd_lower or " -s" in cmd_lower or cmd_lower.startswith("sudo -s"))
+    )
+    return has_sudo_stdin or cmd_lower.startswith("su ")
+
+
 def _redact_potential_password(stdin: str) -> str:
     """
     Redact potential passwords in stdin references.
@@ -158,14 +181,7 @@ async def ssh_execute(
             input_data = await _auto_resolve_elevation_password(ctx, host, command)
             if input_data is None:
                 # Check if command will definitely need password
-                # Note: sudo -S (uppercase) = read from stdin, sudo -s (lowercase) = shell
-                # We use case-insensitive check for consistency
-                cmd_lower = command.lower()
-                needs_password = (
-                    "sudo -s" in cmd_lower  # Case-insensitive check for stdin flag
-                    or cmd_lower.startswith("su ")
-                )
-                if needs_password:
+                if _needs_elevation_password(command):
                     # Return error with instructions - don't let it timeout
                     short_cmd = command[:40] + "..." if len(command) > 40 else command
                     return ToolResult(
@@ -186,7 +202,7 @@ async def ssh_execute(
 
         # Auto-transform command based on known elevation method
         # Priority: Host model > memory cache
-        host_elevation = host_entry.elevation_method if host_entry else None
+        host_elevation = getattr(host_entry, 'elevation_method', None) if host_entry else None
         command = _auto_transform_elevation_command(host, command, host_elevation)
 
         # Build execution context (reuses host_entry lookup)
@@ -272,11 +288,7 @@ async def _auto_resolve_elevation_password(
     from merlya.tools.core.ssh_patterns import get_cached_elevation_method
 
     # Check if command needs password-based elevation
-    # Note: sudo -S (uppercase) = read from stdin, sudo -s (lowercase) = shell
-    # Use case-insensitive check for consistency
-    cmd_lower = command.lower()
-    needs_elevation = "sudo -s" in cmd_lower or cmd_lower.startswith("su ")
-    if not needs_elevation:
+    if not _needs_elevation_password(command):
         return None
 
     # PRIORITY 1: Check credential hints (user-provided @secret references)
@@ -370,7 +382,7 @@ def _auto_transform_elevation_command(
 
     if uses_su and known_method in ("sudo", "sudo-S"):
         # LLM used su but sudo is what works
-        method = "sudo-S" if "stdin" in command.lower() else "sudo"
+        method = "sudo-S" if "-s" in command.lower() else "sudo"
         transformed = format_elevated_command(base_cmd, method)
         logger.info(f"🔄 Auto-transformed: su → sudo for {host}")
         return transformed

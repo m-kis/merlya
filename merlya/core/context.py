@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from merlya.security import PermissionManager
     from merlya.ssh import SSHPool
     from merlya.ui import ConsoleUI
+    from merlya.tools.core.user_input import AskUserCache
 
 
 @dataclass
@@ -77,6 +78,9 @@ class SharedContext:
 
     # Session passwords (in-memory only, not persisted)
     _session_passwords: SessionPasswordStore | None = field(default=None, repr=False)
+    
+    # Ask user cache for input deduplication
+    ask_user_cache: AskUserCache | None = field(default=None, repr=False)
 
     # Non-interactive mode flags
     auto_confirm: bool = field(default=False)

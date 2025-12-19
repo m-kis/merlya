@@ -302,6 +302,9 @@
       "rate_limit": "Limite de requêtes dépassée, réessai dans {seconds}s",
       "no_provider": "Aucun provider LLM configuré"
     },
+    "security": {
+      "audit_error": "❌ L'audit de sécurité a rencontré une erreur. Vérifiez les logs."
+    },
     "use_slash_commands": "Cette opération utilise les commandes slash. Essayez /hosts, /vars, ou /help"
   },
   "suggestions": {

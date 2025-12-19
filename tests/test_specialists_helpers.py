@@ -1,6 +1,6 @@
 """Tests for the specialist agent helper functions."""
 
-from merlya.agent.specialists import _needs_elevation_stdin
+from merlya.agent.specialists.elevation import needs_elevation_stdin as _needs_elevation_stdin
 
 
 class TestNeedsElevationStdin:

@@ -39,7 +39,7 @@ class ConfirmationResult(Enum):
 # Dangerous command patterns (case-insensitive)
 DANGEROUS_PATTERNS: list[tuple[str, DangerLevel]] = [
     # Destructive file operations
-    (r"\brm\s+-[rf]", DangerLevel.DANGEROUS),
+    (r"\brm\s+-[rf]+", DangerLevel.DANGEROUS),
     (r"\brm\s+/", DangerLevel.DANGEROUS),
     (r"\brmdir\s+", DangerLevel.MODERATE),
     (r"\bdd\s+", DangerLevel.DANGEROUS),
@@ -71,7 +71,7 @@ DANGEROUS_PATTERNS: list[tuple[str, DangerLevel]] = [
     (r"\bTRUNCATE\s+", DangerLevel.DANGEROUS),
     (r"\bDELETE\s+FROM", DangerLevel.MODERATE),
     # Network
-    (r"\biptables\s+-[FXZ]", DangerLevel.DANGEROUS),
+    (r"\biptables\s+-[FXZ]+", DangerLevel.DANGEROUS),
     (r"\bip\s+route\s+(del|flush)", DangerLevel.DANGEROUS),
     # User management
     (r"\buserdel\s+", DangerLevel.DANGEROUS),
@@ -105,16 +105,17 @@ class ConfirmationState:
         if cmd_prefix in self.always_yes_patterns:
             return True
         # Check if this exact command was already confirmed
-        if cmd_prefix in self.confirmed_commands:
-            logger.debug(f"⚡ Skipping confirmation (already confirmed): {cmd_prefix}...")
+        full_command = command.strip().lower()
+        if full_command in self.confirmed_commands:
+            logger.debug(f"⚡ Skipping confirmation (already confirmed): {command[:50]}...")
             return True
         return False
 
     def mark_confirmed(self, command: str) -> None:
         """Mark a command as confirmed (user said 'y')."""
-        cmd_prefix = command.strip()[:25].lower()
-        self.confirmed_commands.add(cmd_prefix)
-        logger.debug(f"✅ Command confirmed: {cmd_prefix}...")
+        full_command = command.strip().lower()
+        self.confirmed_commands.add(full_command)
+        logger.debug(f"✅ Command confirmed: {command[:50]}...")
 
     def set_always_yes(self, command: str | None = None) -> None:
         """Set "always yes" for session or specific command prefix."""

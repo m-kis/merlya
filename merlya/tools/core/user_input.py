@@ -10,6 +10,7 @@ repeatedly asks the same question.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -20,8 +21,28 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
+@dataclass
+class AskUserCache:
+    """Cache for user input deduplication."""
+    responses: dict[str, Any] = None
+    counts: dict[str, int] = None
+    
+    def __post_init__(self):
+        if self.responses is None:
+            self.responses = {}
+        if self.counts is None:
+            self.counts = {}
+
+
 # Maximum times the same question can be asked before returning cached answer
 MAX_SAME_QUESTION = 2
+
+
+def _get_ask_user_cache(ctx: SharedContext) -> AskUserCache:
+    """Get or create the ask user cache on the context."""
+    if ctx.ask_user_cache is None:
+        ctx.ask_user_cache = AskUserCache()
+    return ctx.ask_user_cache
 
 
 def _question_fingerprint(question: str, choices: list[str] | None = None) -> str:
@@ -67,19 +88,16 @@ async def ask_user(
     # Check for duplicate questions (loop detection)
     fingerprint = _question_fingerprint(question, choices)
 
-    # Initialize question cache on context if not present
-    if not hasattr(ctx, "_ask_user_cache"):
-        ctx._ask_user_cache = {}  # type: ignore[attr-defined]
-    if not hasattr(ctx, "_ask_user_counts"):
-        ctx._ask_user_counts = {}  # type: ignore[attr-defined]
+    # Get or create the ask user cache
+    cache = _get_ask_user_cache(ctx)
 
     # Track question count
-    ctx._ask_user_counts[fingerprint] = ctx._ask_user_counts.get(fingerprint, 0) + 1  # type: ignore[attr-defined]
-    count = ctx._ask_user_counts[fingerprint]  # type: ignore[attr-defined]
+    cache.counts[fingerprint] = cache.counts.get(fingerprint, 0) + 1
+    count = cache.counts[fingerprint]
 
     # If question was asked before and we have a cached answer, return it
-    if fingerprint in ctx._ask_user_cache:  # type: ignore[attr-defined]
-        cached_response = ctx._ask_user_cache[fingerprint]  # type: ignore[attr-defined]
+    if fingerprint in cache.responses:
+        cached_response = cache.responses[fingerprint]
         if count > MAX_SAME_QUESTION:
             short_q = question[:30] + "..." if len(question) > 30 else question
             short_r = str(cached_response)[:20]
@@ -104,7 +122,7 @@ async def ask_user(
 
         # Cache the response (don't cache secrets)
         if not secret:
-            ctx._ask_user_cache[fingerprint] = response  # type: ignore[attr-defined]
+            cache.responses[fingerprint] = response
 
         return ToolResult(success=True, data=response)
 
