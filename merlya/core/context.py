@@ -30,7 +30,7 @@ if TYPE_CHECKING:
         VariableRepository,
     )
     from merlya.router import IntentRouter
-    from merlya.security import PermissionManager
+    from merlya.security import ElevationManager
     from merlya.ssh import SSHPool
     from merlya.tools.core.user_input import AskUserCache
     from merlya.ui import ConsoleUI
@@ -64,7 +64,7 @@ class SharedContext:
 
     # SSH Pool (lazy init)
     _ssh_pool: SSHPool | None = field(default=None, repr=False)
-    _permissions: PermissionManager | None = field(default=None, repr=False)
+    _elevation: ElevationManager | None = field(default=None, repr=False)
     _auth_manager: object | None = field(default=None, repr=False)  # SSHAuthManager
 
     # Intent Router (lazy init)
@@ -155,14 +155,19 @@ class SharedContext:
             raise RuntimeError("Router not initialized. Call init_router() first.")
         return self._router
 
-    async def get_permissions(self) -> PermissionManager:
-        """Get permission manager (lazy)."""
-        if self._permissions is None:
-            from merlya.security import PermissionManager
+    async def get_elevation(self) -> ElevationManager:
+        """Get elevation manager (lazy)."""
+        if self._elevation is None:
+            from merlya.security import ElevationManager
 
-            self._permissions = PermissionManager(self)
-        assert self._permissions is not None
-        return self._permissions
+            self._elevation = ElevationManager(self)
+        assert self._elevation is not None
+        return self._elevation
+
+    # Alias for backward compatibility
+    async def get_permissions(self) -> ElevationManager:
+        """Deprecated: use get_elevation() instead."""
+        return await self.get_elevation()
 
     @property
     def ui(self) -> ConsoleUI:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,8 +16,26 @@ from pydantic import BaseModel, ConfigDict, Field
 # Import directly from types to avoid circular import through core.__init__
 from merlya.core.types import HostStatus
 
-# Type constraint for elevation methods
-ElevationMethod = Literal["sudo", "sudo-S", "su", "doas"]
+
+class ElevationMethod(str, Enum):
+    """Elevation method for privilege escalation.
+
+    Configured explicitly per host - no auto-detection.
+    """
+
+    NONE = "none"  # No elevation available/configured
+    SUDO = "sudo"  # sudo with NOPASSWD configured
+    SUDO_PASSWORD = "sudo_password"  # sudo requiring password
+    DOAS = "doas"  # doas with NOPASSWD (BSD)
+    DOAS_PASSWORD = "doas_password"  # doas requiring password
+    SU = "su"  # su (requires root password)
+
+
+class SSHMode(str, Enum):
+    """SSH access mode for the host."""
+
+    READ_ONLY = "read_only"  # Only read operations allowed
+    READ_WRITE = "read_write"  # Full access (default)
 
 
 class OSInfo(BaseModel):
@@ -43,7 +62,11 @@ class Host(BaseModel):
     # SSH config
     private_key: str | None = None
     jump_host: str | None = None
-    elevation_method: ElevationMethod | None = None
+
+    # Elevation config (explicit per-host, no auto-detection)
+    elevation_method: ElevationMethod = ElevationMethod.NONE
+    elevation_user: str = "root"  # Target user for elevation (default: root)
+    ssh_mode: SSHMode = SSHMode.READ_WRITE  # SSH access mode
 
     # Metadata
     tags: list[str] = Field(default_factory=list)
