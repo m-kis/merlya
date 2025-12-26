@@ -63,9 +63,10 @@ class TestParserService:
 
     @pytest.mark.asyncio
     async def test_tier_property(self) -> None:
-        """Test tier property."""
+        """Test tier property (always lightweight since ONNX removed)."""
         service = ParserService.get_instance(tier="balanced")
-        assert service.tier == "balanced"
+        # ONNX removed in v0.8.0 - tier is always lightweight now
+        assert service.tier == "lightweight"
 
 
 class TestHeuristicBackend:

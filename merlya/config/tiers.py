@@ -1,13 +1,15 @@
 """
-Merlya Config - Unified Model Tiers.
+Merlya Config - Model Tiers (Deprecated).
 
-Centralizes tier configuration for ONNX models used by router and parser.
-This avoids code duplication and ensures consistent behavior.
+ONNX model tiers have been removed in v0.8.0.
+This module is kept for backward compatibility only.
 
-Tiers:
+Previous tiers:
 - lightweight: No ONNX models, pattern matching only
 - balanced: Smaller, faster ONNX models (distilbert-based)
 - performance: Larger, more accurate ONNX models (bert-base)
+
+Now: All routing uses pattern matching + LLM fallback.
 """
 
 from __future__ import annotations
@@ -20,95 +22,75 @@ from loguru import logger
 
 
 class ModelTier(Enum):
-    """Model tier for ONNX-based components."""
+    """Model tier for components (deprecated - ONNX removed)."""
 
-    LIGHTWEIGHT = "lightweight"  # No ONNX, pattern matching only
-    BALANCED = "balanced"  # Smaller models (distilbert)
-    PERFORMANCE = "performance"  # Larger models (bert-base)
+    LIGHTWEIGHT = "lightweight"  # Pattern matching only
+    BALANCED = "balanced"  # Kept for compatibility
+    PERFORMANCE = "performance"  # Kept for compatibility
 
     @classmethod
     def from_string(cls, value: str | None) -> ModelTier:
-        """
-        Convert string to ModelTier, with sensible defaults.
-
-        Args:
-            value: Tier string (lightweight/balanced/performance).
-
-        Returns:
-            Corresponding ModelTier enum value.
-        """
+        """Convert string to ModelTier, with sensible defaults."""
         if not value:
-            return cls.BALANCED
+            return cls.LIGHTWEIGHT
 
         normalized = value.lower().strip()
 
         try:
             return cls(normalized)
         except ValueError:
-            logger.warning(f"Unknown tier '{value}', defaulting to balanced")
-            return cls.BALANCED
+            logger.warning(f"Unknown tier '{value}', defaulting to lightweight")
+            return cls.LIGHTWEIGHT
 
     @classmethod
     def from_ram_gb(cls, available_gb: float) -> ModelTier:
-        """
-        Select tier based on available RAM.
-
-        Args:
-            available_gb: Available RAM in gigabytes.
-
-        Returns:
-            Appropriate ModelTier for the available memory.
-        """
-        if available_gb >= 4.0:
-            return cls.PERFORMANCE
-        elif available_gb >= 2.0:
-            return cls.BALANCED
-        else:
-            return cls.LIGHTWEIGHT
+        """Select tier based on available RAM (deprecated - always lightweight)."""
+        _ = available_gb
+        return cls.LIGHTWEIGHT
 
 
 @dataclass
 class ModelConfig:
-    """Configuration for a model at a specific tier."""
+    """Configuration for a model at a specific tier (deprecated)."""
 
     model_id: str
     description: str
     size_mb: float | None = None
 
 
-# Router embedding models (for intent classification)
+# Router embedding models - deprecated, kept for compatibility
 ROUTER_MODELS: dict[ModelTier, ModelConfig] = {
     ModelTier.PERFORMANCE: ModelConfig(
-        model_id="Xenova/bge-m3",
-        description="Large multilingual embedding model",
-        size_mb=1200,
+        model_id="",
+        description="ONNX removed in v0.8.0",
+        size_mb=0,
     ),
     ModelTier.BALANCED: ModelConfig(
-        model_id="Xenova/multilingual-e5-base",
-        description="Medium multilingual embedding model",
-        size_mb=500,
+        model_id="",
+        description="ONNX removed in v0.8.0",
+        size_mb=0,
     ),
     ModelTier.LIGHTWEIGHT: ModelConfig(
-        model_id="Xenova/all-MiniLM-L6-v2",
-        description="Small fast embedding model (fallback)",
-        size_mb=90,
+        model_id="",
+        description="Pattern matching only",
+        size_mb=0,
     ),
 }
 
-# Parser NER models (for entity extraction)
+# Parser NER models - deprecated, kept for compatibility
 PARSER_MODELS: dict[ModelTier, ModelConfig] = {
     ModelTier.PERFORMANCE: ModelConfig(
-        model_id="Xenova/bert-base-NER",
-        description="BERT-base NER model (more accurate)",
-        size_mb=440,
+        model_id="",
+        description="ONNX removed in v0.8.0",
+        size_mb=0,
     ),
     ModelTier.BALANCED: ModelConfig(
-        model_id="Xenova/distilbert-NER",
-        description="DistilBERT NER model (faster)",
-        size_mb=260,
+        model_id="",
+        description="ONNX removed in v0.8.0",
+        size_mb=0,
     ),
     ModelTier.LIGHTWEIGHT: ModelConfig(
-        model_id="",  # No model, uses heuristic parsing
+        model_id="",
         description="Heuristic parsing only",
         size_mb=0,
     ),
@@ -121,7 +103,7 @@ def _normalize_tier(tier: ModelTier | str | None) -> ModelTier:
         return tier
     if isinstance(tier, str):
         return ModelTier.from_string(tier)
-    return ModelTier.BALANCED
+    return ModelTier.LIGHTWEIGHT
 
 
 def _get_model_id(tier: ModelTier | str | None, models: dict[ModelTier, ModelConfig]) -> str:
@@ -131,98 +113,40 @@ def _get_model_id(tier: ModelTier | str | None, models: dict[ModelTier, ModelCon
 
 
 def get_router_model_id(tier: ModelTier | str | None) -> str:
-    """
-    Get router model ID for the given tier.
-
-    Args:
-        tier: ModelTier enum or string.
-
-    Returns:
-        Model ID string.
-    """
-    return _get_model_id(tier, ROUTER_MODELS)
+    """Get router model ID for the given tier (deprecated - returns empty)."""
+    return ""
 
 
 def get_parser_model_id(tier: ModelTier | str | None) -> str:
-    """
-    Get parser model ID for the given tier.
-
-    Args:
-        tier: ModelTier enum or string.
-
-    Returns:
-        Model ID string, or empty string for lightweight.
-    """
-    return _get_model_id(tier, PARSER_MODELS)
+    """Get parser model ID for the given tier (deprecated - returns empty)."""
+    return ""
 
 
 def resolve_model_path(model_id: str, subdir: str = "onnx") -> Path:
-    """
-    Resolve local path for a HuggingFace model.
-
-    Args:
-        model_id: Model ID in format "org/model".
-        subdir: Subdirectory under ~/.merlya/models/ (default: "onnx").
-
-    Returns:
-        Path to the model.onnx file.
-
-    Raises:
-        ValueError: If model_id is empty.
-    """
+    """Resolve local path for a model (deprecated - no models used)."""
     if not model_id:
         raise ValueError("model_id cannot be empty")
 
-    # Normalize model ID for filesystem
     safe_name = model_id.replace("/", "__").replace(":", "__")
-
-    # Use ~/.merlya/models/{subdir}/ directory
     models_dir = Path.home() / ".merlya" / "models" / subdir
-    model_path = models_dir / safe_name / "model.onnx"
-
-    return model_path
+    return models_dir / safe_name / "model.onnx"
 
 
 def resolve_router_model_path(model_id: str) -> Path:
-    """Resolve path for router embedding model."""
+    """Resolve path for router embedding model (deprecated)."""
     return resolve_model_path(model_id, subdir="onnx")
 
 
 def resolve_parser_model_path(model_id: str) -> Path:
-    """Resolve path for parser NER model."""
+    """Resolve path for parser NER model (deprecated)."""
     return resolve_model_path(model_id, subdir="parser")
 
 
 def is_model_available(model_id: str, subdir: str = "onnx") -> bool:
-    """
-    Check if a model is available locally.
-
-    Args:
-        model_id: Model ID to check.
-        subdir: Subdirectory under ~/.merlya/models/.
-
-    Returns:
-        True if model exists locally.
-    """
-    if not model_id:
-        return True  # No model needed for lightweight
-
-    model_path = resolve_model_path(model_id, subdir=subdir)
-    tokenizer_path = model_path.parent / "tokenizer.json"
-
-    return model_path.exists() and tokenizer_path.exists()
+    """Check if a model is available locally (deprecated - always False)."""
+    return False
 
 
 def get_available_tier() -> ModelTier:
-    """
-    Get the best available tier based on downloaded models.
-
-    Returns:
-        Highest tier with available models.
-    """
-    for tier in [ModelTier.PERFORMANCE, ModelTier.BALANCED]:
-        router_model = get_router_model_id(tier)
-        if router_model and is_model_available(router_model):
-            return tier
-
+    """Get the best available tier (deprecated - always lightweight)."""
     return ModelTier.LIGHTWEIGHT

@@ -241,24 +241,14 @@ class SharedContext:
         Initialize intent router.
 
         Args:
-            tier: Optional model tier (from health checks).
+            tier: Ignored (kept for backward compatibility, ONNX removed in v0.8.0).
         """
+        _ = tier  # ONNX tiers no longer used
+
         from merlya.router import IntentRouter
 
-        requested_local = self.config.router.type == "local"
-        use_local = requested_local
-
-        # Disable local router if health checks flagged it as unavailable
-        if self.health and requested_local:
-            use_local = bool(self.health.capabilities.get("onnx_router"))
-
-        router_model_env = os.getenv("MERLYA_ROUTER_MODEL")
-        router_model_id = router_model_env or self.config.router.model
-
         router = IntentRouter(
-            use_local=use_local,
-            model_id=router_model_id,
-            tier=tier,
+            use_local=False,  # ONNX removed - always use pattern/LLM
         )
 
         # Configure LLM fallback for low-confidence intents
@@ -273,16 +263,7 @@ class SharedContext:
 
         await router.initialize()
 
-        # Persist chosen tier for visibility
-        self.config.router.tier = tier or self.config.router.tier
-
-        if requested_local and not use_local:
-            logger.warning("⚠️ ONNX router unavailable, using LLM fallback for routing")
-        elif router.classifier.model_loaded:
-            logger.debug("✅ Intent router initialized with local ONNX model")
-            # Persist selected model id for diagnostics
-            if router.classifier.model_id:
-                self.config.router.model = router.classifier.model_id
+        logger.debug("✅ Intent router initialized (pattern-based + LLM fallback)")
 
         self._router = router
 

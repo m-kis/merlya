@@ -32,11 +32,8 @@ dependencies = [
     "anthropic>=0.75",
     "httpx>=0.28",
 
-    # Intent Router (ONNX local classification)
-    "huggingface-hub>=0.26",
+    # Numeric (for various operations)
     "numpy>=1.26",
-    "onnxruntime>=1.19",
-    "tokenizers>=0.20",
 
     # SSH
     "asyncssh>=2.21",
