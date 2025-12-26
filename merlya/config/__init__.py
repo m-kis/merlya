@@ -15,6 +15,7 @@ from merlya.config.models import (
 from merlya.config.policies import EffectivePolicy, PolicyManager
 from merlya.config.providers import (
     PROVIDER_DEFAULTS,
+    ModelRole,
     ProviderModels,
     get_model_for_role,
     get_provider_info,
@@ -45,6 +46,7 @@ __all__ = [
     "LLMConfig",
     "LoggingConfig",
     "ModelConfig",
+    "ModelRole",
     "ModelTier",
     "PolicyConfig",
     "PolicyManager",

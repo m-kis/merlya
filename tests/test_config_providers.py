@@ -140,7 +140,7 @@ class TestGetProviderInfo:
         """Should return dict with all info fields."""
         info = get_provider_info("openrouter")
         assert "provider" in info
-        assert "reasoning_model" in info
+        assert "brain_model" in info
         assert "fast_model" in info
         assert "api_key_env" in info
         assert info["provider"] == "openrouter"
