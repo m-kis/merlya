@@ -27,7 +27,7 @@ model:
   api_key_env: OPENROUTER_API_KEY
 
 router:
-  type: local           # local (ONNX) ou llm
+  type: local           # local (pattern matching) ou llm
   llm_fallback: openrouter:google/gemini-2.0-flash-lite-001
 
 ssh:

@@ -109,9 +109,8 @@ Shows the configured LLM provider and model.
 Router: ✅ local (intent-classifier-v1)
 ```
 
-- **local**: Using ONNX intent classifier (fast, offline)
-- **llm fallback**: Using LLM for routing (requires API calls)
-- **pattern**: Using regex pattern matching (basic)
+- **local**: Using pattern matching for intent classification (fast, offline)
+- **llm fallback**: Using LLM for routing when confidence is low
 
 ### Keyring Status
 

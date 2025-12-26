@@ -135,28 +135,31 @@ class SSHPool:
 
 ## ADR-005: Local Intent Classification
 
-**Status:** Accepted
+**Status:** Superseded (v0.8.0)
 
 **Context:** Not all user inputs require LLM processing.
 
-**Decision:** Use ONNX-based local classifier for intent routing.
+**Decision:** Use pattern-based local classifier for intent routing with LLM fallback.
 
 **Rationale:**
-- Fast (< 10ms) classification
-- No API calls for simple intents
+- Fast (< 1ms) classification using regex patterns
+- No external dependencies or model files
 - Works offline
 - Reduces API costs
+- LLM fallback for complex/ambiguous intents
 
 **Implementation:**
 ```
-User Input → Intent Classifier → [Simple Intent] → Direct Handler
-                              → [Complex Intent] → LLM Agent
+User Input → Pattern Matcher → [High Confidence] → Direct Handler
+                            → [Low Confidence]  → LLM Classification → Agent
 ```
 
 **Consequences:**
-- Additional model file (~50MB)
-- Needs training data for new intents
-- May misclassify edge cases
+- Simpler deployment (no model files)
+- Pattern maintenance required for new intents
+- LLM fallback handles edge cases gracefully
+
+**Note:** Previously used ONNX embeddings, removed in v0.8.0 for simplicity.
 
 ---
 

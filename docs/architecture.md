@@ -10,7 +10,7 @@ merlya/
 ├── config/         # Configuration management + policies
 │   ├── loader.py   # Config loading
 │   ├── models.py   # Pydantic config models
-│   ├── tiers.py    # Tier configuration (model selection)
+│   ├── tiers.py    # Tier configuration (deprecated, kept for compatibility)
 │   └── policies.py # Policy management (guardrails)
 ├── core/           # Shared context and logging
 ├── health/         # Startup health checks
@@ -19,9 +19,9 @@ merlya/
 ├── mcp/            # MCP (Model Context Protocol) integration
 │   └── manager.py  # MCPManager (async-safe singleton)
 ├── parser/         # Input/output parsing service
-│   ├── service.py  # ParserService (tier-based backend selection)
+│   ├── service.py  # ParserService (heuristic-based parsing)
 │   ├── models.py   # Pydantic models (IncidentInput, ParsedLog)
-│   └── backends/   # Heuristic and ONNX backends
+│   └── backends/   # Heuristic backend
 ├── persistence/    # SQLite database layer
 │   ├── database.py # Async DB with migration locking
 │   └── repositories.py # Typed repositories
@@ -36,7 +36,7 @@ merlya/
 ├── session/        # Session and context management
 │   ├── manager.py  # SessionManager
 │   ├── context_tier.py # ContextTierPredictor (auto tier detection)
-│   └── summarizer.py # Hybrid summarization (ONNX + LLM)
+│   └── summarizer.py # LLM-based summarization
 ├── setup/          # First-run wizard
 ├── skills/         # Reusable workflow system
 │   ├── registry.py # SkillRegistry singleton
@@ -79,9 +79,8 @@ The agent is built on **PydanticAI** with a ReAct loop for reasoning and action.
 Classifies user intent to determine mode and required tools.
 
 **Classification Methods:**
-1. **ONNX Embeddings** - Local semantic classification (if available)
-2. **LLM Fallback** - When confidence < 0.7
-3. **Pattern Matching** - Keyword-based fallback
+1. **Pattern Matching** - Fast keyword-based classification
+2. **LLM Fallback** - When pattern matching confidence < 0.7
 
 **Agent Modes:**
 - `DIAGNOSTIC` - Information gathering (check, monitor, analyze)
@@ -171,10 +170,9 @@ class ContextTier(Enum):
 - <4GB → MINIMAL
 
 **Summarization Chain:**
-1. ONNX extractive (key sentences)
-2. Mini-LLM fallback
-3. Main LLM fallback
-4. Smart truncation
+1. LLM extractive (key sentences)
+2. Main LLM fallback
+3. Smart truncation
 
 ### 7. Skills System (`merlya/skills/`)
 
@@ -206,10 +204,8 @@ require_confirmation_for: ["restart", "kill"]
 
 Structures all input/output before LLM processing.
 
-**Backend Selection (tier-based):**
-- `performance` → ONNX NER model
-- `balanced` → ONNX DistilBERT
-- `lightweight` → Heuristic (regex + patterns)
+**Backend:**
+Heuristic-based parsing using regex patterns and rule-based extraction.
 
 **Output Models:**
 ```python
@@ -394,7 +390,6 @@ merlya
   │   ├─ RAM availability
   │   ├─ SSH available
   │   ├─ LLM provider reachable
-  │   ├─ ONNX router available
   │   └─ Keyring accessible
   │
   ├─ Create SharedContext
@@ -403,7 +398,7 @@ merlya
   │   └─ Create repositories
   │
   ├─ Initialize router
-  │   └─ Load ONNX model (if available)
+  │   └─ Load pattern matcher
   │
   ├─ Create agent
   │   └─ Register all tools
