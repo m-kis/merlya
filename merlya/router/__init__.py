@@ -1,14 +1,17 @@
 """
-Merlya Router - Intent classification (DEPRECATED).
+Merlya Router - Intent classification.
 
-The router is no longer used for routing in the new architecture.
-All routing is now handled by:
-  - "/" commands → Slash command dispatch (fast-path)
-  - Free text → Orchestrator (LLM delegates to specialists)
-
-This module is kept for backward compatibility and may be removed
-in a future version.
+Provides intent classification and routing:
+  - CenterClassifier: Routes between DIAGNOSTIC/CHANGE centers
+  - IntentRouter: Legacy router for backward compatibility
+  - "/" commands: Slash command dispatch (fast-path)
 """
+
+# New architecture: Center classifier
+from merlya.router.center_classifier import (
+    CenterClassification,
+    CenterClassifier,
+)
 
 # Backward compatibility imports - these may be used by tests and legacy code
 from merlya.router.classifier import (
@@ -28,6 +31,10 @@ from merlya.router.handler import (
 )
 
 __all__ = [
+    # New architecture
+    "CenterClassification",
+    "CenterClassifier",
+    # Legacy
     "FAST_PATH_INTENTS",
     "FAST_PATH_PATTERNS",
     "AgentMode",
