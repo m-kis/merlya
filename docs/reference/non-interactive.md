@@ -79,7 +79,8 @@ Most read-only and diagnostic commands work in batch mode:
 | `/scan <host>` | Scan host for system info |
 | `/model show` | Show current model config |
 | `/model provider <name>` | Change LLM provider |
-| `/model model <name>` | Change model |
+| `/model brain <name>` | Set brain model (reasoning) |
+| `/model fast <name>` | Set fast model (routing) |
 | `/log level <level>` | Set log level |
 | `/variable list` | List variables |
 | `/variable get <name>` | Get variable value |

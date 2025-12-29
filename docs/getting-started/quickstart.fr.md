@@ -75,7 +75,7 @@ Si vous sautez l'assistant ou voulez modifier les paramètres plus tard :
     merlya
     # puis dans le REPL :
     /model provider openrouter
-    /model model amazon/nova-2-lite-v1:free
+    /model brain amazon/nova-2-lite-v1:free
     ```
 
 === "CI/CD (clés API via variables d'environnement)"
