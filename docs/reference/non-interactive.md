@@ -32,6 +32,7 @@ merlya run [OPTIONS] [COMMAND]
 | `--yes` | `-y` | Skip confirmation prompts (auto-confirm) |
 | `--format FORMAT` | | Output format: `text` (default) or `json` |
 | `--quiet` | `-q` | Minimal output (errors only) |
+| `--model ROLE` | `-m` | Model role: `brain` (complex reasoning) or `fast` (quick tasks) |
 | `--verbose` | | Enable verbose logging (use `merlya --verbose run ...`) |
 | `--help` | | Show help message |
 
@@ -49,6 +50,16 @@ With auto-confirmation (required for commands that modify systems):
 
 ```bash
 merlya run --yes "Restart nginx on web-01"
+```
+
+With model selection:
+
+```bash
+# Use fast model for quick tasks
+merlya run --model fast "List all hosts"
+
+# Use brain model for complex analysis
+merlya run -m brain "Analyze this incident and suggest remediation steps"
 ```
 
 ---
@@ -142,6 +153,7 @@ merlya run --file tasks.yml
 
 ```yaml
 # tasks.yml
+model: fast  # Default model for all tasks (optional)
 tasks:
   - description: "Check disk space"
     prompt: "Check disk usage on all servers, warn if above 80%"
@@ -149,15 +161,34 @@ tasks:
   - description: "Check memory"
     prompt: "Check memory usage on all servers"
 
+  - description: "Analyze anomalies"
+    prompt: "Analyze any anomalies found and suggest fixes"
+    model: brain  # Override for complex analysis
+
   - prompt: "Verify nginx is running on web tier"
 ```
 
-Fields:
+#### File-level fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `model` | No | Default model role for all tasks (`brain` or `fast`) |
+| `tasks` | Yes | List of tasks to execute |
+
+#### Task-level fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `prompt` | Yes | The natural language command |
 | `description` | No | Human-readable task description |
+| `model` | No | Override model role for this task (`brain` or `fast`) |
+
+#### Model selection priority
+
+1. CLI `--model` argument (highest priority)
+2. Task-level `model` field in YAML
+3. File-level `model` field in YAML
+4. Default configured model (lowest priority)
 
 ### Text Format
 

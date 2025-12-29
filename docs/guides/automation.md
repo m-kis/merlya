@@ -15,6 +15,10 @@ merlya run --file tasks.txt
 
 # With confirmation disabled (use with caution)
 merlya run --yes "Restart nginx on web-01"
+
+# Choose model role: brain (complex reasoning) or fast (quick tasks)
+merlya run --model fast "List all hosts"
+merlya run -m brain "Analyze this incident and suggest remediation"
 ```
 
 ## Task Files
@@ -24,6 +28,7 @@ Create reusable task files:
 ```yaml
 # tasks/daily-checks.yml
 name: Daily Infrastructure Checks
+model: fast  # Default model for all tasks (optional)
 tasks:
   - description: Check disk space
     prompt: Check disk usage on all servers, warn if above 80%
@@ -31,15 +36,27 @@ tasks:
   - description: Check memory
     prompt: Check memory usage on all servers
 
-  - description: Check services
-    prompt: Verify nginx and postgres are running on all servers
+  - description: Analyze anomalies
+    prompt: Analyze any anomalies found and suggest fixes
+    model: brain  # Override for complex analysis
 ```
 
 Run the task file:
 
 ```bash
+# Use models defined in file
 merlya run --file tasks/daily-checks.yml
+
+# Override all tasks to use fast model
+merlya run --file tasks/daily-checks.yml --model fast
 ```
+
+### Model Selection Priority
+
+1. CLI `--model` argument (highest priority)
+2. Task-level `model` field in YAML
+3. File-level `model` field in YAML
+4. Default configured model (lowest priority)
 
 ## Cron Integration
 
