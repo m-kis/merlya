@@ -1,6 +1,5 @@
 """Tests for FingerprintCache."""
 
-
 import pytest
 
 from merlya.fingerprint.cache import ApprovalScope, FingerprintCache
@@ -121,9 +120,7 @@ class TestFingerprintCacheBasic:
 class TestFingerprintCacheExpiration:
     """Tests for cache expiration."""
 
-    def test_expired_approval_returns_none(
-        self, sample_signature: SemanticSignature
-    ) -> None:
+    def test_expired_approval_returns_none(self, sample_signature: SemanticSignature) -> None:
         """Test expired approval is not returned."""
         # Create cache with very short TTL
         cache = FingerprintCache(session_ttl_hours=0)

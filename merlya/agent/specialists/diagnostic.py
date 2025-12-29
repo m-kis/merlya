@@ -129,7 +129,9 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
 
         ctx.deps.tracker.record(effective_host, command)
 
-        result = await _ssh_execute(ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin)
+        result = await _ssh_execute(
+            ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin
+        )
 
         return SSHResult(
             success=result.success,

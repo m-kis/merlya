@@ -174,9 +174,7 @@ async def test_request_credentials_fails_in_non_interactive_mode() -> None:
     ctx.auto_confirm = True  # Non-interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=None)
 
-    result = await request_credentials(
-        ctx, service="sudo", host="server01"
-    )
+    result = await request_credentials(ctx, service="sudo", host="server01")
 
     # Should fail because we can't prompt in non-interactive mode
     assert not result.success
@@ -201,9 +199,7 @@ async def test_request_credentials_succeeds_in_non_interactive_with_stored_creds
     ctx.auto_confirm = True  # Non-interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=None)
 
-    result = await request_credentials(
-        ctx, service="sudo", host="server01"
-    )
+    result = await request_credentials(ctx, service="sudo", host="server01")
 
     # Should succeed because credentials are already stored
     assert result.success

@@ -118,7 +118,7 @@ class TerraformPipeline(AbstractPipeline):
         init_cmd = "init"
         if self._backend_config:
             for key, value in self._backend_config.items():
-                init_cmd += f" -backend-config=\"{key}={value}\""
+                init_cmd += f' -backend-config="{key}={value}"'
 
         init_result = await self._run_terraform(init_cmd)
         if init_result["exit_code"] != 0:
@@ -407,16 +407,18 @@ class TerraformPipeline(AbstractPipeline):
         """Parse affected resources from plan output."""
         resources = []
         for line in output.split("\n"):
-            if "will be created" in line.lower() or "will be updated" in line.lower() or "will be destroyed" in line.lower():
+            if (
+                "will be created" in line.lower()
+                or "will be updated" in line.lower()
+                or "will be destroyed" in line.lower()
+            ):
                 resources.append(line.strip())
         return resources[:20]  # Limit to first 20
 
     def _parse_created_resources(self, output: str) -> list[str]:
         """Parse created resources from apply output."""
         return [
-            line.strip()
-            for line in output.split("\n")
-            if "created" in line.lower() and ":" in line
+            line.strip() for line in output.split("\n") if "created" in line.lower() and ":" in line
         ][:10]
 
     def _parse_modified_resources(self, output: str) -> list[str]:

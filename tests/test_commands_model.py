@@ -61,7 +61,9 @@ def mock_context() -> MagicMock:
     ctx.config.model.base_url = None
     # Mock the model getter methods for brain/fast
     ctx.config.model.get_orchestrator_model = MagicMock(return_value="z-ai/glm-4.6")
-    ctx.config.model.get_fast_model = MagicMock(return_value="mistralai/mistral-small-3.1-24b-instruct:free")
+    ctx.config.model.get_fast_model = MagicMock(
+        return_value="mistralai/mistral-small-3.1-24b-instruct:free"
+    )
     ctx.config.router = MagicMock()
     ctx.config.router.type = "local"
     ctx.config.router.tier = None
@@ -282,7 +284,9 @@ class TestModelTestCommand:
 class TestOllamaIntegration:
     """Tests for Ollama-specific functionality."""
 
-    async def test_ollama_brain_model_pulls(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_ollama_brain_model_pulls(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model brain triggers ollama pull for ollama provider."""
         mock_context.config.model.provider = "ollama"
         mock_context.config.model.base_url = "http://localhost:11434/v1"
@@ -303,7 +307,9 @@ class TestOllamaIntegration:
             assert result.success is True
             mock_subprocess.assert_called_once()
 
-    async def test_ollama_fast_model_pulls(self, registry: CommandRegistry, mock_context: MagicMock):
+    async def test_ollama_fast_model_pulls(
+        self, registry: CommandRegistry, mock_context: MagicMock
+    ):
         """Test /model fast triggers ollama pull for ollama provider."""
         mock_context.config.model.provider = "ollama"
         mock_context.config.model.base_url = "http://localhost:11434/v1"

@@ -29,10 +29,14 @@ class ExtractedEntities(BaseModel):
     """Entities extracted from user input."""
 
     hosts: list[str] = Field(default_factory=list, description="Host names or IPs mentioned")
-    services: list[str] = Field(default_factory=list, description="Service names (nginx, mysql, etc.)")
+    services: list[str] = Field(
+        default_factory=list, description="Service names (nginx, mysql, etc.)"
+    )
     paths: list[str] = Field(default_factory=list, description="File or directory paths")
     ports: list[int] = Field(default_factory=list, description="Port numbers")
-    environment: str | None = Field(default=None, description="Environment (prod, staging, dev, test)")
+    environment: str | None = Field(
+        default=None, description="Environment (prod, staging, dev, test)"
+    )
     jump_host: str | None = Field(default=None, description="Jump/bastion host if mentioned")
 
 
@@ -232,14 +236,65 @@ Determine severity and if destructive."""
 
         # Common words to filter out (not hostnames)
         common_words = {
-            "the", "le", "la", "les", "all", "tous", "toutes", "my", "mon", "ma", "mes",
-            "this", "that", "these", "those", "ce", "cette", "ces", "cet",
-            "server", "serveur", "host", "hôte", "machine", "instance",
-            "disk", "disque", "memory", "mémoire", "cpu", "load", "charge",
-            "space", "espace", "usage", "file", "fichier", "log", "logs",
-            "process", "service", "container", "pod", "node", "cluster",
-            "and", "or", "et", "ou", "with", "avec", "for", "pour",
-            "prod", "production", "staging", "dev", "development", "test",
+            "the",
+            "le",
+            "la",
+            "les",
+            "all",
+            "tous",
+            "toutes",
+            "my",
+            "mon",
+            "ma",
+            "mes",
+            "this",
+            "that",
+            "these",
+            "those",
+            "ce",
+            "cette",
+            "ces",
+            "cet",
+            "server",
+            "serveur",
+            "host",
+            "hôte",
+            "machine",
+            "instance",
+            "disk",
+            "disque",
+            "memory",
+            "mémoire",
+            "cpu",
+            "load",
+            "charge",
+            "space",
+            "espace",
+            "usage",
+            "file",
+            "fichier",
+            "log",
+            "logs",
+            "process",
+            "service",
+            "container",
+            "pod",
+            "node",
+            "cluster",
+            "and",
+            "or",
+            "et",
+            "ou",
+            "with",
+            "avec",
+            "for",
+            "pour",
+            "prod",
+            "production",
+            "staging",
+            "dev",
+            "development",
+            "test",
         }
 
         # Extract hosts after prepositions (extended patterns)
@@ -255,7 +310,9 @@ Determine severity and if destructive."""
 
         # Detect standalone hostnames (alphanumeric with numbers/hyphens, looks like a server)
         # Pattern: word with at least one digit or hyphen, typical server naming
-        standalone_host_pattern = r"\b([a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)+|[a-zA-Z]+\d+[a-zA-Z0-9]*)\b"
+        standalone_host_pattern = (
+            r"\b([a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)+|[a-zA-Z]+\d+[a-zA-Z0-9]*)\b"
+        )
         standalone_hosts = re.findall(standalone_host_pattern, text)
         for h in standalone_hosts:
             if h.lower() not in common_words and h not in entities.hosts:
@@ -272,7 +329,9 @@ Determine severity and if destructive."""
             entities.ports = [int(p) for p in ports if 1 <= int(p) <= 65535]
 
         # Extract services (known list)
-        services_pattern = r"\b(nginx|apache|mysql|postgres|redis|mongo|docker|k8s|kubernetes|systemd)\b"
+        services_pattern = (
+            r"\b(nginx|apache|mysql|postgres|redis|mongo|docker|k8s|kubernetes|systemd)\b"
+        )
         services = re.findall(services_pattern, text, re.IGNORECASE)
         if services:
             entities.services = list({s.lower() for s in services})
@@ -325,7 +384,9 @@ Determine severity and if destructive."""
             confidence = min(0.6 + diag_score * 0.1, 0.9)
 
         # Check destructive
-        destructive_patterns = r"\b(rm\s+-rf|delete|drop|truncate|format|kill\s+-9|shutdown|reboot)\b"
+        destructive_patterns = (
+            r"\b(rm\s+-rf|delete|drop|truncate|format|kill\s+-9|shutdown|reboot)\b"
+        )
         is_destructive = bool(re.search(destructive_patterns, text_lower))
 
         intent = IntentClassification(

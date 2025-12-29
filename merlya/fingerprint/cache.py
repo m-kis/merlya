@@ -148,11 +148,7 @@ class FingerprintCache:
         Returns:
             Number of expired approvals removed.
         """
-        expired = [
-            sig_hash
-            for sig_hash, record in self._cache.items()
-            if record.is_expired()
-        ]
+        expired = [sig_hash for sig_hash, record in self._cache.items() if record.is_expired()]
 
         for sig_hash in expired:
             del self._cache[sig_hash]

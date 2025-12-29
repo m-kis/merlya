@@ -336,7 +336,11 @@ async def cmd_hosts_show(ctx: SharedContext, args: list[str]) -> CommandResult:
         return CommandResult(success=False, message=f"Host '{args[0]}' not found.")
 
     # Get elevation method display value
-    elevation_display = host.elevation_method.value if hasattr(host.elevation_method, "value") else str(host.elevation_method)
+    elevation_display = (
+        host.elevation_method.value
+        if hasattr(host.elevation_method, "value")
+        else str(host.elevation_method)
+    )
 
     lines = [
         f"**{host.name}**\n",
@@ -482,7 +486,11 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
     host.username = username if username else None
 
     # Elevation method - uses ElevationMethod enum
-    current_elevation = host.elevation_method.value if hasattr(host.elevation_method, "value") else str(host.elevation_method)
+    current_elevation = (
+        host.elevation_method.value
+        if hasattr(host.elevation_method, "value")
+        else str(host.elevation_method)
+    )
     elevation = await ctx.ui.prompt(
         "Elevation method (none/sudo/sudo_password/doas/doas_password/su)",
         default=current_elevation,
@@ -518,7 +526,11 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
     await ctx.hosts.update(host)
 
     # Get elevation display value
-    updated_elevation = host.elevation_method.value if hasattr(host.elevation_method, "value") else str(host.elevation_method)
+    updated_elevation = (
+        host.elevation_method.value
+        if hasattr(host.elevation_method, "value")
+        else str(host.elevation_method)
+    )
 
     return CommandResult(
         success=True,

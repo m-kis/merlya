@@ -25,9 +25,7 @@ def mock_ctx() -> MagicMock:
 def mock_ssh_pool() -> MagicMock:
     """Create mock SSH pool."""
     pool = MagicMock()
-    pool.execute = AsyncMock(
-        return_value=MagicMock(stdout="output", stderr="", exit_code=0)
-    )
+    pool.execute = AsyncMock(return_value=MagicMock(stdout="output", stderr="", exit_code=0))
     return pool
 
 

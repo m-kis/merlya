@@ -437,7 +437,5 @@ class AbstractPipeline(ABC):
             Finalized result with timing.
         """
         result.completed_at = datetime.now(UTC)
-        result.duration_ms = int(
-            (result.completed_at - result.started_at).total_seconds() * 1000
-        )
+        result.duration_ms = int((result.completed_at - result.started_at).total_seconds() * 1000)
         return result

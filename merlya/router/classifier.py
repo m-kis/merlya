@@ -214,7 +214,9 @@ class IntentRouter:
                 # Preserve entities if LLM didn't extract them (LLM often misses custom hostnames)
                 if result.entities and not llm_result.entities:
                     llm_result.entities = result.entities
-                    logger.debug("📋 Preserving entities from SmartExtractor (LLM fallback missed them)")
+                    logger.debug(
+                        "📋 Preserving entities from SmartExtractor (LLM fallback missed them)"
+                    )
                 result = llm_result
 
         # Check if delegation is valid

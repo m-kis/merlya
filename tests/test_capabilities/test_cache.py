@@ -64,9 +64,7 @@ class TestCapabilityCache:
         assert result.host_name == "web-01"
         assert result.ssh.available is True
 
-    async def test_get_host_returns_none_when_expired(
-        self, cache: CapabilityCache
-    ) -> None:
+    async def test_get_host_returns_none_when_expired(self, cache: CapabilityCache) -> None:
         """Test get_host returns None when cached item is expired."""
         expired_caps = HostCapabilities(
             host_name="old-host",
@@ -76,16 +74,12 @@ class TestCapabilityCache:
         await cache.set_host(expired_caps)
 
         # Force the cached_at to be in the past
-        cache._host_cache["old-host"].cached_at = datetime.now(UTC) - timedelta(
-            hours=25
-        )
+        cache._host_cache["old-host"].cached_at = datetime.now(UTC) - timedelta(hours=25)
 
         result = await cache.get_host("old-host")
         assert result is None
 
-    async def test_get_local_returns_none_when_empty(
-        self, cache: CapabilityCache
-    ) -> None:
+    async def test_get_local_returns_none_when_empty(self, cache: CapabilityCache) -> None:
         """Test get_local returns None when cache is empty."""
         result = await cache.get_local()
         assert result is None
@@ -110,7 +104,8 @@ class TestCapabilityCache:
         assert await cache.get_host("web-01") is None
 
     async def test_invalidate_all(
-        self, cache: CapabilityCache,
+        self,
+        cache: CapabilityCache,
         host_caps: HostCapabilities,
         local_caps: LocalCapabilities,
     ) -> None:
@@ -139,18 +134,14 @@ class TestCapabilityCache:
         await cache.set_host(expired)
 
         # Force the expired entry to be old
-        cache._host_cache["expired-host"].cached_at = datetime.now(UTC) - timedelta(
-            seconds=10
-        )
+        cache._host_cache["expired-host"].cached_at = datetime.now(UTC) - timedelta(seconds=10)
 
         removed = await cache.cleanup_expired()
         assert removed == 1
         assert await cache.get_host("fresh-host") is not None
         assert await cache.get_host("expired-host") is None
 
-    async def test_size_property(
-        self, cache: CapabilityCache, host_caps: HostCapabilities
-    ) -> None:
+    async def test_size_property(self, cache: CapabilityCache, host_caps: HostCapabilities) -> None:
         """Test size property returns correct count."""
         assert cache.size == 0
 

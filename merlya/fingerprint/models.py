@@ -86,9 +86,7 @@ class ApprovalRecord(BaseModel):
     """
 
     signature_hash: str = Field(description="Hash of the approved signature")
-    scope: Literal["once", "session", "permanent"] = Field(
-        description="Scope of the approval"
-    )
+    scope: Literal["once", "session", "permanent"] = Field(description="Scope of the approval")
     approved: bool = Field(description="Whether the command was approved")
 
     # Context

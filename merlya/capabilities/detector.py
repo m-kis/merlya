@@ -191,11 +191,23 @@ class CapabilityDetector:
     ) -> ToolCapability:
         """Detect a specific tool on remote host."""
         commands = {
-            ToolName.ANSIBLE: ("which ansible && ansible --version | head -1", r"ansible.*(\d+\.\d+)"),
-            ToolName.TERRAFORM: ("which terraform && terraform version | head -1", r"v(\d+\.\d+\.\d+)"),
-            ToolName.KUBECTL: ("which kubectl && kubectl version --client -o json 2>/dev/null | head -1", r'"gitVersion":\s*"v(\d+\.\d+\.\d+)"'),
+            ToolName.ANSIBLE: (
+                "which ansible && ansible --version | head -1",
+                r"ansible.*(\d+\.\d+)",
+            ),
+            ToolName.TERRAFORM: (
+                "which terraform && terraform version | head -1",
+                r"v(\d+\.\d+\.\d+)",
+            ),
+            ToolName.KUBECTL: (
+                "which kubectl && kubectl version --client -o json 2>/dev/null | head -1",
+                r'"gitVersion":\s*"v(\d+\.\d+\.\d+)"',
+            ),
             ToolName.GIT: ("which git && git --version", r"git version (\d+\.\d+\.\d+)"),
-            ToolName.DOCKER: ("which docker && docker --version", r"Docker version (\d+\.\d+\.\d+)"),
+            ToolName.DOCKER: (
+                "which docker && docker --version",
+                r"Docker version (\d+\.\d+\.\d+)",
+            ),
             ToolName.HELM: ("which helm && helm version --short", r"v(\d+\.\d+\.\d+)"),
         }
 

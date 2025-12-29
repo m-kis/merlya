@@ -175,7 +175,11 @@ class KubernetesPipeline(AbstractPipeline):
         return PlanResult(
             success=True,
             plan_output="\n".join(plan_lines),
-            resources_affected=[f"{self._resource_type}/{self._resource_name}" if self._resource_type else "manifest"],
+            resources_affected=[
+                f"{self._resource_type}/{self._resource_name}"
+                if self._resource_type
+                else "manifest"
+            ],
             warnings=warnings,
             metadata={"operation": self._operation.value, "namespace": self._namespace},
         )
@@ -227,7 +231,9 @@ class KubernetesPipeline(AbstractPipeline):
 
             # Count changes
             additions = self._diff_output.count("created")
-            modifications = self._diff_output.count("configured") + self._diff_output.count("changed")
+            modifications = self._diff_output.count("configured") + self._diff_output.count(
+                "changed"
+            )
             deletions = self._diff_output.count("deleted")
 
             # Assess risk (DELETE handled above with early return)
@@ -267,10 +273,7 @@ class KubernetesPipeline(AbstractPipeline):
             # Store rollback info before applying
             if self._operation == KubernetesOperation.ROLLOUT:
                 self._rollout_revision = await self._get_rollout_revision()
-            elif (
-                self._operation == KubernetesOperation.SCALE
-                and self._original_replicas is None
-            ):
+            elif self._operation == KubernetesOperation.SCALE and self._original_replicas is None:
                 self._original_replicas = await self._get_current_replicas()
 
             # Build and execute command
@@ -294,7 +297,9 @@ class KubernetesPipeline(AbstractPipeline):
             return ApplyResult(
                 success=success,
                 output=self._apply_output,
-                resources_modified=[f"{self._resource_type}/{self._resource_name}"] if self._resource_type else ["manifest"],
+                resources_modified=[f"{self._resource_type}/{self._resource_name}"]
+                if self._resource_type
+                else ["manifest"],
                 duration_ms=duration,
                 rollback_data={
                     "operation": self._operation.value,
@@ -371,7 +376,9 @@ class KubernetesPipeline(AbstractPipeline):
             return RollbackResult(
                 success=success,
                 output=result.get("stdout", "") + result.get("stderr", ""),
-                resources_restored=[f"{self._resource_type}/{self._resource_name}"] if success else [],
+                resources_restored=[f"{self._resource_type}/{self._resource_name}"]
+                if success
+                else [],
                 errors=[] if success else [f"Rollback failed: exit {result.get('exit_code')}"],
             )
 
@@ -401,7 +408,9 @@ class KubernetesPipeline(AbstractPipeline):
             )
 
         # Check 1: Resource exists
-        get_cmd = f"{self._build_base_command()} get {self._resource_type}/{self._resource_name} -o name"
+        get_cmd = (
+            f"{self._build_base_command()} get {self._resource_type}/{self._resource_name} -o name"
+        )
         get_result = await self._run_kubectl(get_cmd)
 
         if get_result.get("exit_code", 1) == 0:

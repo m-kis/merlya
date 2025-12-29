@@ -1,7 +1,5 @@
 """Tests for hosts import/export with elevation configuration."""
 
-
-
 from merlya.commands.handlers.hosts_io import (
     create_host_from_dict,
     host_to_dict,

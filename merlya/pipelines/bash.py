@@ -163,12 +163,14 @@ class BashPipeline(AbstractPipeline):
                     timeout=300,  # 5 min timeout per command
                 )
 
-                self._executed_commands.append({
-                    "command": cmd,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "exit_code": result.exit_code,
-                })
+                self._executed_commands.append(
+                    {
+                        "command": cmd,
+                        "stdout": result.stdout,
+                        "stderr": result.stderr,
+                        "exit_code": result.exit_code,
+                    }
+                )
 
                 output_lines.append(f"--- Command {i}: {cmd} ---")
                 output_lines.append(f"Exit code: {result.exit_code}")
@@ -232,7 +234,9 @@ class BashPipeline(AbstractPipeline):
             pool = await self._ctx.get_ssh_pool()
 
             for i, cmd in enumerate(self._rollback_commands, 1):
-                logger.info(f"↩️ Executing rollback {i}/{len(self._rollback_commands)}: {cmd[:50]}...")
+                logger.info(
+                    f"↩️ Executing rollback {i}/{len(self._rollback_commands)}: {cmd[:50]}..."
+                )
 
                 result = await pool.execute(
                     self._deps.target,

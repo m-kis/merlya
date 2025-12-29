@@ -289,10 +289,7 @@ class TestScanCommand:
         code, stdout, _ = run_merlya(f"/scan {ssh_host} --system", timeout=120)
         assert code == 0
         # Should contain system info
-        assert any(
-            term in stdout.lower()
-            for term in ["memory", "cpu", "disk", "kernel", "os"]
-        )
+        assert any(term in stdout.lower() for term in ["memory", "cpu", "disk", "kernel", "os"])
 
 
 class TestHostsImportExport:
@@ -354,8 +351,16 @@ class TestConsistencyChecks:
     def test_all_commands_have_help(self):
         """Test that all main commands have help available."""
         commands = [
-            "hosts", "ssh", "model", "variable", "secret",
-            "health", "audit", "mcp", "scan", "log"
+            "hosts",
+            "ssh",
+            "model",
+            "variable",
+            "secret",
+            "health",
+            "audit",
+            "mcp",
+            "scan",
+            "log",
         ]
         for cmd in commands:
             code, stdout, _ = run_merlya(f"/help {cmd}")
@@ -375,5 +380,6 @@ class TestConsistencyChecks:
         for cmd in commands:
             _code, _stdout, stderr = run_merlya(cmd)
             # Should either succeed (show current state) or fail gracefully with usage
-            assert "error" not in stderr.lower() or "traceback" not in stderr.lower(), \
+            assert "error" not in stderr.lower() or "traceback" not in stderr.lower(), (
                 f"{cmd} crashed: {stderr}"
+            )

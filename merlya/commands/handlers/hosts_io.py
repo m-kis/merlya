@@ -404,7 +404,11 @@ def create_host_from_dict(item: dict[str, Any]) -> Host:
         "doas-password": ElevationMethod.DOAS_PASSWORD,
         "su": ElevationMethod.SU,
     }
-    elevation = elevation_map.get(str(elevation_str).lower(), ElevationMethod.NONE) if elevation_str else ElevationMethod.NONE
+    elevation = (
+        elevation_map.get(str(elevation_str).lower(), ElevationMethod.NONE)
+        if elevation_str
+        else ElevationMethod.NONE
+    )
 
     return Host(
         name=item["name"],
@@ -434,7 +438,11 @@ def host_to_dict(h: Host) -> dict[str, Any]:
         item["jump_host"] = h.jump_host
     # Export elevation_method as string if not NONE
     if h.elevation_method and h.elevation_method != ElevationMethod.NONE:
-        elevation_value = h.elevation_method.value if hasattr(h.elevation_method, "value") else str(h.elevation_method)
+        elevation_value = (
+            h.elevation_method.value
+            if hasattr(h.elevation_method, "value")
+            else str(h.elevation_method)
+        )
         item["elevation_method"] = elevation_value
         # Also export elevation_user if different from default
         if h.elevation_user and h.elevation_user != "root":

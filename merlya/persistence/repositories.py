@@ -215,7 +215,9 @@ class HostRepository:
             private_key=row["private_key"],
             jump_host=row["jump_host"],
             # Handle NULL elevation_method (for hosts created before this field)
-            elevation_method=row["elevation_method"] if row["elevation_method"] else ElevationMethod.NONE,
+            elevation_method=row["elevation_method"]
+            if row["elevation_method"]
+            else ElevationMethod.NONE,
             tags=from_json(row["tags"]) or [],
             metadata=from_json(row["metadata"]) or {},
             os_info=OSInfo(**os_info_data) if os_info_data else None,

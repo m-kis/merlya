@@ -123,12 +123,15 @@ class TestOrchestratorCreation:
 
     def test_create_orchestrator_returns_agent(self) -> None:
         """Test that create_orchestrator returns an Agent."""
-        with patch(
-            "merlya.agent.orchestrator.get_model_for_role",
-            return_value="test-model",
-        ), patch(
-            "merlya.agent.orchestrator.get_pydantic_model_string",
-            return_value="test:test-model",
+        with (
+            patch(
+                "merlya.agent.orchestrator.get_model_for_role",
+                return_value="test-model",
+            ),
+            patch(
+                "merlya.agent.orchestrator.get_pydantic_model_string",
+                return_value="test:test-model",
+            ),
         ):
             from pydantic_ai import Agent
 
@@ -138,13 +141,16 @@ class TestOrchestratorCreation:
 
     def test_create_orchestrator_with_model_override(self) -> None:
         """Test that create_orchestrator accepts model override."""
-        with patch(
-            "merlya.agent.orchestrator.get_model_for_role",
-            return_value="default-model",
-        ), patch(
-            "merlya.agent.orchestrator.get_pydantic_model_string",
-            return_value="test:custom-model",
-        ) as mock_get_string:
+        with (
+            patch(
+                "merlya.agent.orchestrator.get_model_for_role",
+                return_value="default-model",
+            ),
+            patch(
+                "merlya.agent.orchestrator.get_pydantic_model_string",
+                return_value="test:custom-model",
+            ) as mock_get_string,
+        ):
             create_orchestrator(provider="test", model_override="custom-model")
 
             # Should use the override model

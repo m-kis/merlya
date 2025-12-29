@@ -29,6 +29,7 @@ SERVICE_NAME = "merlya"
 # File to persist secret names with integrity check
 SECRETS_INDEX_FILE = Path.home() / ".merlya" / "secrets.json"
 
+
 # HMAC key derived from machine ID for integrity verification
 # This prevents tampering with the secrets index without invalidating it
 def _get_hmac_key() -> bytes:

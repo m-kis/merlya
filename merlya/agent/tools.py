@@ -215,9 +215,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
         # Check if router_result has detected hosts in the user's request
         router_result = ctx.deps.router_result
-        user_mentioned_hosts = (
-            router_result.entities.get("hosts", []) if router_result else []
-        )
+        user_mentioned_hosts = router_result.entities.get("hosts", []) if router_result else []
 
         # Also check if the host IP/name is explicitly mentioned in the original request
         # The router may not detect IPs, so we check the raw text too
@@ -247,7 +245,9 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
                 host_by_hostname = await ctx.deps.context.hosts.get_by_hostname(host)
                 if host_by_hostname and host_by_hostname.name.lower() in original_request.lower():
                     host_in_request = True
-                    logger.debug(f"✅ Host '{host}' resolves to '{host_by_hostname.name}' which is in request")
+                    logger.debug(
+                        f"✅ Host '{host}' resolves to '{host_by_hostname.name}' which is in request"
+                    )
 
         # CONVERSATION CONTEXT: For follow-up questions, check if the host matches
         # the last remote target used in this conversation
@@ -345,7 +345,9 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
                     effective_stdin = stdin
                 else:
                     # LLM provided a secret ref that doesn't exist - try alternatives
-                    logger.debug(f"⚠️ LLM-provided credential not found: {stdin[:30]}... trying alternatives")
+                    logger.debug(
+                        f"⚠️ LLM-provided credential not found: {stdin[:30]}... trying alternatives"
+                    )
                     effective_stdin = await auto_collect_elevation_credentials(
                         ctx.deps.context, host, command
                     )
@@ -399,7 +401,9 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         # Signal activity before and after SSH command
         touch_activity()
 
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, via=via, stdin=effective_stdin)
+        result = await _ssh_execute(
+            ctx.deps.context, host, command, timeout, via=via, stdin=effective_stdin
+        )
 
         # Signal activity after command completes
         touch_activity()

@@ -179,11 +179,15 @@ class CenterClassifier:
         if diagnostic_score > change_score:
             center = CenterMode.DIAGNOSTIC
             confidence = min(0.95, 0.5 + (diagnostic_score - change_score) * 0.15)
-            reasoning = f"Matched {diagnostic_score} diagnostic patterns vs {change_score} change patterns"
+            reasoning = (
+                f"Matched {diagnostic_score} diagnostic patterns vs {change_score} change patterns"
+            )
         elif change_score > diagnostic_score:
             center = CenterMode.CHANGE
             confidence = min(0.95, 0.5 + (change_score - diagnostic_score) * 0.15)
-            reasoning = f"Matched {change_score} change patterns vs {diagnostic_score} diagnostic patterns"
+            reasoning = (
+                f"Matched {change_score} change patterns vs {diagnostic_score} diagnostic patterns"
+            )
         else:
             # Tie - default to DIAGNOSTIC (safer)
             center = CenterMode.DIAGNOSTIC

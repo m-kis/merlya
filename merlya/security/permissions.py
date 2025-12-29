@@ -132,7 +132,9 @@ class ElevationManager:
             raise ElevationDeniedError(f"Elevation declined for {host.name}")
 
         # Get password if needed
-        password = await self._get_password(host, method) if self._method_needs_password(method) else None
+        password = (
+            await self._get_password(host, method) if self._method_needs_password(method) else None
+        )
 
         # Build elevated command
         elevated_cmd, input_data = self._build_elevated_command(command, method, password)
@@ -189,9 +191,7 @@ class ElevationManager:
             return stored
 
         # Prompt user
-        password = await self.ctx.ui.prompt_secret(
-            f"Mot de passe pour {method} sur {host.name}:"
-        )
+        password = await self.ctx.ui.prompt_secret(f"Mot de passe pour {method} sur {host.name}:")
 
         if not password:
             return None

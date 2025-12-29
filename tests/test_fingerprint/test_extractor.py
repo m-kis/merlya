@@ -34,7 +34,7 @@ class TestCurlPatterns:
     async def test_curl_post(self, extractor: SemanticSignatureExtractor) -> None:
         """Test curl POST request extraction."""
         result = await extractor.extract(
-            "curl -X POST https://api.example.com/users -d '{\"name\": \"test\"}'"
+            'curl -X POST https://api.example.com/users -d \'{"name": "test"}\''
         )
 
         assert result.signature.action_type == "http_request"
@@ -44,9 +44,7 @@ class TestCurlPatterns:
 
     async def test_curl_delete(self, extractor: SemanticSignatureExtractor) -> None:
         """Test curl DELETE request extraction."""
-        result = await extractor.extract(
-            "curl -X DELETE https://api.example.com/users/123"
-        )
+        result = await extractor.extract("curl -X DELETE https://api.example.com/users/123")
 
         assert result.signature.action_type == "http_request"
         assert result.signature.verb == "DELETE"
@@ -55,7 +53,7 @@ class TestCurlPatterns:
     async def test_curl_put(self, extractor: SemanticSignatureExtractor) -> None:
         """Test curl PUT request extraction."""
         result = await extractor.extract(
-            "curl -X PUT https://api.example.com/users/123 -d '{\"name\": \"updated\"}'"
+            'curl -X PUT https://api.example.com/users/123 -d \'{"name": "updated"}\''
         )
 
         assert result.signature.action_type == "http_request"
@@ -79,9 +77,7 @@ class TestWgetPatterns:
 class TestServicePatterns:
     """Tests for service management extraction."""
 
-    async def test_systemctl_restart(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_systemctl_restart(self, extractor: SemanticSignatureExtractor) -> None:
         """Test systemctl restart extraction."""
         result = await extractor.extract("systemctl restart nginx")
 
@@ -99,9 +95,7 @@ class TestServicePatterns:
         assert "postgresql" in result.signature.targets
         assert result.signature.risk_level == "high"
 
-    async def test_systemctl_start(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_systemctl_start(self, extractor: SemanticSignatureExtractor) -> None:
         """Test systemctl start extraction."""
         result = await extractor.extract("systemctl start docker")
 
@@ -109,9 +103,7 @@ class TestServicePatterns:
         assert result.signature.verb == "start"
         assert result.signature.risk_level == "low"
 
-    async def test_service_restart(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_service_restart(self, extractor: SemanticSignatureExtractor) -> None:
         """Test service command extraction."""
         result = await extractor.extract("service nginx restart")
 
@@ -226,9 +218,7 @@ class TestGenericCommands:
         assert result.signature.verb == "echo"
         assert result.signature.risk_level == "low"
 
-    async def test_unknown_command(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_unknown_command(self, extractor: SemanticSignatureExtractor) -> None:
         """Test unknown command extraction."""
         result = await extractor.extract("my-custom-script --flag value")
 
@@ -236,9 +226,7 @@ class TestGenericCommands:
         assert result.signature.verb == "my-custom-script"
         assert result.signature.risk_level == "low"
 
-    async def test_dangerous_generic(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_dangerous_generic(self, extractor: SemanticSignatureExtractor) -> None:
         """Test dangerous generic command gets high risk."""
         result = await extractor.extract("dd if=/dev/zero of=/dev/null bs=1M")
 
@@ -249,9 +237,7 @@ class TestGenericCommands:
 class TestCacheIntegration:
     """Tests for cache integration."""
 
-    async def test_no_cache_requires_approval(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_no_cache_requires_approval(self, extractor: SemanticSignatureExtractor) -> None:
         """Test extraction without cache requires new approval."""
         result = await extractor.extract("curl https://example.com")
 
@@ -305,9 +291,7 @@ class TestCacheIntegration:
 class TestSignatureHashing:
     """Tests for signature hash consistency."""
 
-    async def test_same_command_same_hash(
-        self, extractor: SemanticSignatureExtractor
-    ) -> None:
+    async def test_same_command_same_hash(self, extractor: SemanticSignatureExtractor) -> None:
         """Test same command produces same hash."""
         result1 = await extractor.extract("systemctl restart nginx")
         result2 = await extractor.extract("systemctl restart nginx")

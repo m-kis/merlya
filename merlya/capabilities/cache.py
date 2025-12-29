@@ -120,9 +120,7 @@ class CapabilityCache:
             Number of entries removed.
         """
         async with self._lock:
-            expired = [
-                name for name, caps in self._host_cache.items() if caps.is_expired()
-            ]
+            expired = [name for name, caps in self._host_cache.items() if caps.is_expired()]
             for name in expired:
                 del self._host_cache[name]
 

@@ -252,9 +252,7 @@ class MockPipeline(AbstractPipeline):
     def __init__(self, ctx: MagicMock, deps: PipelineDeps):
         super().__init__(ctx, deps)
         self.plan_result = PlanResult(success=True, plan_output="OK")
-        self.diff_result = DiffResult(
-            success=True, diff_output="OK", additions=1, modifications=2
-        )
+        self.diff_result = DiffResult(success=True, diff_output="OK", additions=1, modifications=2)
         self.apply_result = ApplyResult(success=True, output="OK")
         self.rollback_result = RollbackResult(success=True, output="OK")
         self.post_check_result = PostCheckResult(success=True)
@@ -297,16 +295,12 @@ def mock_deps() -> PipelineDeps:
 class TestAbstractPipeline:
     """Tests for AbstractPipeline class."""
 
-    def test_pipeline_name(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_pipeline_name(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test pipeline has a name."""
         pipeline = MockPipeline(mock_ctx, mock_deps)
         assert pipeline.name == "mock"
 
-    async def test_successful_execution(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_successful_execution(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test successful pipeline execution."""
         pipeline = MockPipeline(mock_ctx, mock_deps)
 
@@ -322,14 +316,10 @@ class TestAbstractPipeline:
         assert result.rollback_triggered is False
         assert result.duration_ms >= 0
 
-    async def test_plan_failure_aborts(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_plan_failure_aborts(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test pipeline aborts on plan failure."""
         pipeline = MockPipeline(mock_ctx, mock_deps)
-        pipeline.plan_result = PlanResult(
-            success=False, plan_output="", errors=["Invalid config"]
-        )
+        pipeline.plan_result = PlanResult(success=False, plan_output="", errors=["Invalid config"])
 
         result = await pipeline.execute()
 
@@ -338,9 +328,7 @@ class TestAbstractPipeline:
         assert result.aborted_at == PipelineStage.PLAN
         assert result.apply is None
 
-    async def test_hitl_decline_aborts(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_hitl_decline_aborts(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test pipeline aborts when HITL declined."""
         mock_ctx.ui.prompt_confirm = AsyncMock(return_value=False)
         pipeline = MockPipeline(mock_ctx, mock_deps)
@@ -352,9 +340,7 @@ class TestAbstractPipeline:
         assert result.aborted_at == PipelineStage.HITL
         assert result.hitl_approved is False
 
-    async def test_dry_run_skips_apply(
-        self, mock_ctx: MagicMock
-    ) -> None:
+    async def test_dry_run_skips_apply(self, mock_ctx: MagicMock) -> None:
         """Test dry-run mode skips apply."""
         deps = PipelineDeps(target="test", task="test", dry_run=True)
         pipeline = MockPipeline(mock_ctx, deps)
@@ -391,9 +377,7 @@ class TestAbstractPipeline:
         pipeline.apply_result = ApplyResult(
             success=True, output="OK", rollback_data={"state": "backup"}
         )
-        pipeline.post_check_result = PostCheckResult(
-            success=False, checks_failed=["health"]
-        )
+        pipeline.post_check_result = PostCheckResult(success=False, checks_failed=["health"])
 
         result = await pipeline.execute()
 
@@ -401,9 +385,7 @@ class TestAbstractPipeline:
         assert result.rollback_triggered is True
         assert result.rollback_reason == "Post-check verification failed"
 
-    async def test_no_rollback_when_disabled(
-        self, mock_ctx: MagicMock
-    ) -> None:
+    async def test_no_rollback_when_disabled(self, mock_ctx: MagicMock) -> None:
         """Test no rollback when auto_rollback is disabled."""
         deps = PipelineDeps(target="test", task="test", auto_rollback=False)
         pipeline = MockPipeline(mock_ctx, deps)
@@ -415,9 +397,7 @@ class TestAbstractPipeline:
         assert result.rollback_triggered is False
         assert result.rollback is None
 
-    def test_generate_summary(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_generate_summary(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test summary generation."""
         pipeline = MockPipeline(mock_ctx, mock_deps)
         plan = PlanResult(
@@ -446,9 +426,7 @@ class TestAbstractPipeline:
         assert "Deprecated feature used" in summary
         assert "medium" in summary
 
-    def test_assess_risk_level(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    def test_assess_risk_level(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test risk level assessment."""
         pipeline = MockPipeline(mock_ctx, mock_deps)
 
@@ -492,9 +470,7 @@ class TestAbstractPipeline:
         assert result.aborted is True
         assert "Exception" in result.aborted_reason
 
-    async def test_timing_recorded(
-        self, mock_ctx: MagicMock, mock_deps: PipelineDeps
-    ) -> None:
+    async def test_timing_recorded(self, mock_ctx: MagicMock, mock_deps: PipelineDeps) -> None:
         """Test timing is properly recorded."""
         pipeline = MockPipeline(mock_ctx, mock_deps)
 

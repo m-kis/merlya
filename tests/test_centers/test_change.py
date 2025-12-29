@@ -43,13 +43,15 @@ def mock_capabilities() -> MagicMock:
         web_access=True,
     )
     detector.detect_local = AsyncMock(return_value=caps)
-    detector.detect_host = AsyncMock(return_value=HostCapabilities(
-        host_name="web-01",
-        ssh=SSHCapability(available=True),
-        tools=[
-            ToolCapability(name=ToolName.ANSIBLE, installed=True, config_valid=True),
-        ],
-    ))
+    detector.detect_host = AsyncMock(
+        return_value=HostCapabilities(
+            host_name="web-01",
+            ssh=SSHCapability(available=True),
+            tools=[
+                ToolCapability(name=ToolName.ANSIBLE, installed=True, config_valid=True),
+            ],
+        )
+    )
     return detector
 
 
@@ -248,13 +250,9 @@ class TestCapabilityDetection:
         """Test creates detector if none provided."""
         center = ChangeCenter(mock_ctx, capabilities=None)
 
-        with patch(
-            "merlya.capabilities.detector.CapabilityDetector"
-        ) as mock_detector_class:
+        with patch("merlya.capabilities.detector.CapabilityDetector") as mock_detector_class:
             mock_instance = MagicMock()
-            mock_instance.detect_local = AsyncMock(
-                return_value=LocalCapabilities(tools=[])
-            )
+            mock_instance.detect_local = AsyncMock(return_value=LocalCapabilities(tools=[]))
             mock_detector_class.return_value = mock_instance
 
             await center._get_capabilities("local", None)
