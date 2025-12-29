@@ -140,6 +140,7 @@ markdown_extensions:
   - pymdownx.tilde
 
 extra:
+  version: "0.8.0"
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/m-kis/merlya
