@@ -33,7 +33,7 @@ merlya --version
 Vous devriez voir une sortie comme :
 
 ```
-merlya 0.7.5
+merlya {{ extra.version }}
 ```
 
 ## Autocomplétion du shell
