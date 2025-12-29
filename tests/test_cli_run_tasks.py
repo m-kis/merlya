@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from merlya.cli.run import Task, load_tasks_from_file
+from merlya.cli.run import load_tasks_from_file
 
 
 def test_load_tasks_from_file_skips_comments_and_blank_lines_in_text(tmp_path):
@@ -141,5 +141,5 @@ def test_load_tasks_from_file_invalid_task_model_raises_error(tmp_path):
         )
     )
 
-    with pytest.raises(ValueError, match="Invalid model role 'wrong'.*task #1"):
+    with pytest.raises(ValueError, match=r"Invalid model role 'wrong'.*task #1"):
         load_tasks_from_file(str(task_file))
