@@ -457,9 +457,7 @@ def _validate_model_role(role: str | None, context: str = "") -> str | None:
         return None
     if role not in VALID_MODEL_ROLES:
         ctx_msg = f" ({context})" if context else ""
-        raise ValueError(
-            f"Invalid model role '{role}'{ctx_msg}. Must be 'brain' or 'fast'."
-        )
+        raise ValueError(f"Invalid model role '{role}'{ctx_msg}. Must be 'brain' or 'fast'.")
     return role
 
 
@@ -537,11 +535,7 @@ def load_tasks_from_file(file_path: str, default_model: str | None = None) -> li
                 # Skip invalid task entries (numbers, None, etc.)
             return tasks
         elif isinstance(data, list):
-            return [
-                Task(prompt=str(item), model_role=effective_default)
-                for item in data
-                if item
-            ]
+            return [Task(prompt=str(item), model_role=effective_default) for item in data if item]
 
     # Fall back to text (one command per line)
     tasks = []
