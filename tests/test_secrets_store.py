@@ -110,9 +110,12 @@ class TestSecretStoreSecretNames:
             assert store._secret_names == set()
 
     def test_load_secret_names_valid_file(self, tmp_path):
-        """Test _load_secret_names with valid file."""
+        """Test _load_secret_names with valid file (legacy format, migrated on save)."""
         index_file = tmp_path / "secrets.json"
+        # Legacy format (plain list) - still supported for migration
         index_file.write_text(json.dumps(["secret1", "secret2"]))
+        # Set permissions to 600 (owner read/write only)
+        index_file.chmod(0o600)
 
         with patch("merlya.secrets.store.SECRETS_INDEX_FILE", index_file):
             store = object.__new__(SecretStore)
@@ -137,7 +140,7 @@ class TestSecretStoreSecretNames:
             assert store._secret_names == set()
 
     def test_save_secret_names(self, tmp_path):
-        """Test _save_secret_names writes to file."""
+        """Test _save_secret_names writes to file with HMAC."""
         index_file = tmp_path / "subdir" / "secrets.json"
 
         with patch("merlya.secrets.store.SECRETS_INDEX_FILE", index_file):
@@ -148,7 +151,12 @@ class TestSecretStoreSecretNames:
 
             assert index_file.exists()
             data = json.loads(index_file.read_text())
-            assert data == ["alpha", "beta", "gamma"]  # Sorted
+            # New format: {"names": [...], "hmac": "..."}
+            assert "names" in data
+            assert "hmac" in data
+            assert data["names"] == ["alpha", "beta", "gamma"]  # Sorted
+            # HMAC should be a hex string
+            assert len(data["hmac"]) == 64  # SHA256 hex = 64 chars
 
     def test_save_secret_names_error(self, tmp_path):
         """Test _save_secret_names handles errors gracefully."""

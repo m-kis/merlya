@@ -22,6 +22,35 @@ if TYPE_CHECKING:
 pytest_plugins = ("pytest_asyncio",)
 
 
+# ==============================================================================
+# Pytest Hooks for E2E Tests
+# ==============================================================================
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Add custom command line options."""
+    parser.addoption(
+        "--e2e",
+        action="store_true",
+        default=False,
+        help="Run end-to-end tests (requires working Merlya installation)",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Skip e2e tests unless --e2e flag is passed."""
+    if config.getoption("--e2e"):
+        # --e2e passed: run all tests including e2e
+        return
+
+    skip_e2e = pytest.mark.skip(reason="E2E tests skipped (use --e2e to run)")
+    for item in items:
+        if "e2e" in item.keywords:
+            item.add_marker(skip_e2e)
+
+
 @pytest.fixture(scope="session")
 def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
     """Return the event loop policy to use for tests."""

@@ -338,6 +338,31 @@ async def request_credentials(
                 bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
                 return CommandResult(success=True, message="✅ Credentials resolved", data=bundle)
 
+        # NON-INTERACTIVE MODE CHECK: Fail early if we can't prompt
+        # This prevents the agent from looping on credential requests
+        if ctx.auto_confirm or getattr(ctx.ui, "auto_confirm", False):
+            host_display = host or "unknown"
+            missing_str = ", ".join(missing_fields)
+            return CommandResult(
+                success=False,
+                message=(
+                    f"❌ Cannot obtain credentials in non-interactive mode.\n\n"
+                    f"Missing: {missing_str} for {service}@{host_display}\n\n"
+                    f"To fix this, before running in --yes mode:\n"
+                    f"1. Store credentials in keyring:\n"
+                    f"   merlya secret set {service}:{host_display}:password\n"
+                    f"2. Or configure NOPASSWD sudo on the target host\n"
+                    f"3. Or run in interactive mode (without --yes)\n\n"
+                    f"⚠️ DO NOT retry this command - credentials cannot be obtained."
+                ),
+                data={
+                    "non_interactive": True,
+                    "service": service,
+                    "host": host,
+                    "missing_fields": missing_fields,
+                },
+            )
+
         ctx.ui.info(f"🔐 Credentials needed for {service}{' @' + host if host else ''}")
         if format_hint:
             ctx.ui.muted(f"Format hint: {format_hint}")

@@ -4,14 +4,17 @@ Merlya Secrets - Secret store implementation.
 Uses keyring for secure storage (macOS Keychain, Windows Credential Manager,
 Linux Secret Service) with in-memory fallback.
 
-Secret names are persisted in ~/.merlya/secrets.json since keyring doesn't
-provide enumeration.
+Secret names are persisted in ~/.merlya/secrets.json with HMAC integrity
+verification since keyring doesn't provide enumeration.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
+import stat
 import tempfile
 import threading
 from dataclasses import dataclass, field
@@ -23,8 +26,29 @@ from loguru import logger
 # Service name for keyring
 SERVICE_NAME = "merlya"
 
-# File to persist secret names (keyring doesn't provide enumeration)
+# File to persist secret names with integrity check
 SECRETS_INDEX_FILE = Path.home() / ".merlya" / "secrets.json"
+
+# HMAC key derived from machine ID for integrity verification
+# This prevents tampering with the secrets index without invalidating it
+def _get_hmac_key() -> bytes:
+    """
+    Get HMAC key for secrets index integrity.
+
+    Uses machine-specific data to create a stable key that differs per machine.
+    This prevents copying the index file between machines.
+    """
+    import platform
+    import uuid
+
+    # Use multiple factors for uniqueness
+    factors = [
+        platform.node(),  # Hostname
+        str(uuid.getnode()),  # MAC address
+        os.getenv("USER", os.getenv("USERNAME", "")),  # Username
+    ]
+    combined = "|".join(factors).encode("utf-8")
+    return hashlib.sha256(combined).digest()
 
 
 @dataclass
@@ -84,24 +108,64 @@ class SecretStore:
             logger.debug(f"Keyring test failed: {e}")
             return False, str(e)
 
+    def _compute_hmac(self, names: list[str]) -> str:
+        """Compute HMAC for secret names list."""
+        key = _get_hmac_key()
+        data = json.dumps(sorted(names), separators=(",", ":")).encode("utf-8")
+        return hmac.new(key, data, hashlib.sha256).hexdigest()
+
+    def _verify_hmac(self, names: list[str], expected_hmac: str) -> bool:
+        """Verify HMAC for secret names list."""
+        computed = self._compute_hmac(names)
+        return hmac.compare_digest(computed, expected_hmac)
+
     def _load_secret_names(self) -> None:
-        """Load persisted secret names from index file."""
+        """Load persisted secret names from index file with integrity check."""
         if not SECRETS_INDEX_FILE.exists():
             return
 
         try:
+            # Check file permissions (should be 600)
+            file_stat = SECRETS_INDEX_FILE.stat()
+            if file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+                logger.warning("⚠️ Secrets index has insecure permissions, ignoring")
+                return
+
             with SECRETS_INDEX_FILE.open(encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, list):
-                    self._secret_names = set(data)
-                    logger.debug(f"Loaded {len(self._secret_names)} secret names from index")
+
+            # New format with HMAC: {"names": [...], "hmac": "..."}
+            if isinstance(data, dict) and "names" in data and "hmac" in data:
+                names = data["names"]
+                expected_hmac = data["hmac"]
+
+                if not self._verify_hmac(names, expected_hmac):
+                    logger.warning("⚠️ Secrets index integrity check failed, ignoring")
+                    return
+
+                self._secret_names = set(names)
+                logger.debug(f"Loaded {len(self._secret_names)} secret names (verified)")
+
+            # Legacy format: plain list (migrate on next save)
+            elif isinstance(data, list):
+                self._secret_names = set(data)
+                logger.debug(f"Loaded {len(self._secret_names)} secret names (legacy format)")
+                # Will be saved with HMAC on next modification
+
         except (json.JSONDecodeError, OSError) as e:
             logger.debug(f"Failed to load secret names index: {e}")
 
     def _save_secret_names(self) -> None:
-        """Persist secret names to index file (atomic write)."""
+        """Persist secret names to index file with HMAC integrity (atomic write)."""
         try:
             SECRETS_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+            # Prepare data with HMAC
+            names_list = sorted(self._secret_names)
+            data = {
+                "names": names_list,
+                "hmac": self._compute_hmac(names_list),
+            }
 
             # Write to temp file first, then atomic rename
             fd, temp_path = tempfile.mkstemp(
@@ -111,10 +175,14 @@ class SecretStore:
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(sorted(self._secret_names), f, indent=2)
+                    json.dump(data, f, indent=2)
+
+                # Set secure permissions before rename
+                os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+
                 # Atomic rename (POSIX guarantees atomicity)
                 Path(temp_path).replace(SECRETS_INDEX_FILE)
-                logger.debug(f"Saved {len(self._secret_names)} secret names to index")
+                logger.debug(f"Saved {len(self._secret_names)} secret names (verified)")
             except Exception:
                 # Clean up temp file on failure
                 Path(temp_path).unlink(missing_ok=True)

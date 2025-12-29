@@ -17,7 +17,7 @@ SSH inventory, safe remote execution, diagnostics, and automation.
 
     ---
 
-    Ask questions like “check disk usage on @web-01” or “triage this incident log”.
+    Ask questions like "check disk usage on web-01" or "triage this incident log".
 
 -   :material-server-network:{ .lg .middle } **SSH Management**
 
@@ -49,7 +49,7 @@ merlya
 
 # Option B: for CI/CD, provide API keys via env vars
 export OPENAI_API_KEY="..."
-merlya run "Check disk usage on @web-01"
+merlya run "Check disk usage on web-01"
 ```
 
 ## Documentation

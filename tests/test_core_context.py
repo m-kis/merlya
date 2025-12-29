@@ -314,8 +314,10 @@ class TestSharedContextRouter:
 
             await context_for_router.init_router(tier="standard")
 
-            # ONNX removed - always use_local=False
-            MockRouter.assert_called_once_with(use_local=False)
+            # ONNX removed - always use_local=False, config is passed
+            MockRouter.assert_called_once()
+            call_kwargs = MockRouter.call_args.kwargs
+            assert call_kwargs["use_local"] is False
             mock_router.initialize.assert_called_once()
             assert context_for_router._router == mock_router
 
@@ -335,8 +337,10 @@ class TestSharedContextRouter:
 
             await context_for_router.init_router()
 
-            # Always use_local=False (ONNX removed)
-            MockRouter.assert_called_once_with(use_local=False)
+            # Always use_local=False (ONNX removed), config is passed
+            MockRouter.assert_called_once()
+            call_kwargs = MockRouter.call_args.kwargs
+            assert call_kwargs["use_local"] is False
 
     @pytest.mark.asyncio
     async def test_init_router_ignores_env_model(self, context_for_router):
@@ -351,8 +355,10 @@ class TestSharedContextRouter:
 
                 await context_for_router.init_router()
 
-                # Model param no longer passed (ONNX removed)
-                MockRouter.assert_called_once_with(use_local=False)
+                # Model param no longer passed (ONNX removed), config is passed
+                MockRouter.assert_called_once()
+                call_kwargs = MockRouter.call_args.kwargs
+                assert call_kwargs["use_local"] is False
 
     @pytest.mark.asyncio
     async def test_init_router_with_llm_fallback(self, context_for_router):

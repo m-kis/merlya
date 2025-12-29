@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.8.0] - 2025-12-29
+
+### Added
+
+- **DIAGNOSTIC/CHANGE Center Architecture**: Two operational centers for handling requests
+  - **DiagnosticCenter**: Read-only investigation (SSH read, kubectl get, logs, audits)
+  - **ChangeCenter**: Controlled mutations via Pipelines with mandatory HITL approval
+  - **CenterClassifier**: Pattern-based + LLM routing between centers
+- **Pipeline System**: All changes go through mandatory pipeline stages
+  - `Plan → Diff/Dry-run → Summary → HITL → Apply → Post-check → Rollback`
+  - **AnsiblePipeline**: Service management, configuration, packages (`--check --diff`)
+  - **TerraformPipeline**: Cloud infrastructure (`terraform plan`)
+  - **KubernetesPipeline**: Container orchestration (`kubectl diff`)
+  - **BashPipeline**: Fallback for simple commands with strict HITL
+- **Capability Detection**: `merlya/capabilities/` module for detecting host tools
+  - Detects: Ansible, Terraform, kubectl, git availability
+  - Caches capabilities with TTL
+- **SmartExtractor**: Hybrid LLM + regex system for extracting hosts from natural language
+  - Uses fast model for semantic understanding
+  - Falls back to regex patterns for common host references
+  - Injects detected hosts into agent context automatically
+- **Brain/Fast model commands**: New `/model brain` and `/model fast` subcommands
+  - Brain model for complex reasoning, planning, analysis
+  - Fast model for routing, fingerprinting, quick decisions
+  - Provider-specific defaults for each role
+- **E2E test infrastructure**: pytest markers for end-to-end testing
+  - `--e2e` flag to run E2E tests (skipped by default)
+  - `@pytest.mark.ssh` for tests requiring SSH access
+  - `run_merlya()` helper for CLI command testing
+- **RiskLevel enum**: LOW, MEDIUM, HIGH, CRITICAL for operation classification
+- **Evidence model**: Structured audit trail for diagnostic operations
+
+### Changed
+
+- **Architecture simplified**: Removed ONNX router, replaced with SmartExtractor
+- **Model commands refactored**: `/model model` deprecated in favor of `/model brain`
+- **Router removed**: `/model router` deprecated (all routing via Orchestrator)
+- **Documentation updated**: Added DIAGNOSTIC/CHANGE center documentation
+- **Elevation explicit**: Per-host configuration instead of auto-detection
+- **Request flow**: User input → SmartExtractor → CenterClassifier → Center → Pipeline
+
+### Deprecated
+
+- `/model model <name>` - Use `/model brain <name>` instead
+- `/model router` - Router has been removed, use `/model show` instead
+
+---
+
 ## [0.7.6] - 2025-12-19
 
 ### Added
@@ -188,6 +238,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Split `ssh.py` into focused modules: connection, elevation, patterns, errors
   - Better separation of concerns
   - Improved error handling and password security
+
+## [0.7.8] - 2025-12-26
+
+### Added
+
+- **Non-interactive mode credential detection** (`merlya/tools/interaction.py`, `merlya/tools/core/ssh.py`)
+  - Early detection of missing credentials in `--yes` mode
+  - Clear error messages with 3 solutions: keyring, NOPASSWD, interactive mode
+  - `permanent_failure` flag prevents retry loops
+  - No more infinite loops when sudo password is needed
+
+- **ElevationMethod enum validation** (`merlya/persistence/models.py`)
+  - Type-safe elevation configuration
+  - Proper NULL handling from database (defaults to NONE)
+  - Consistent enum mapping in `/hosts edit` and import functions
+
+### Fixed
+
+- **Non-interactive mode retry loops** - Agent no longer loops when credentials can't be obtained
+- **ElevationMethod validation errors** - NULL values from database now properly default to NONE
+- **`/hosts edit` elevation field** - Now uses ElevationMethod enum instead of raw strings
+- **TOML/CSV import elevation** - Import functions now properly map to ElevationMethod enum
+- **Console UI prompts in --yes mode** - `prompt()` and `prompt_secret()` now fail gracefully with RuntimeError
+
+### Changed
+
+- **request_credentials()** fails immediately in non-interactive mode when credentials are missing
+- **ssh_execute()** returns `permanent_failure` flag for elevation commands that can't succeed
+- **ConsoleUI.prompt_secret()** raises RuntimeError instead of hanging in auto_confirm mode
+
+### Architecture Decisions
+
+- **ADR-011**: Non-Interactive Mode Credential Handling
+- **ADR-012**: ElevationMethod Enum for Host Configuration
+
+---
+
+## [0.7.7] - 2025-12-25
+
+### Fixed
+
+- **Version display** - Uses dynamic version from package metadata
+
+---
 
 ## [Unreleased]
 
@@ -534,7 +628,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy with vulnerability reporting process
 - Architecture Decision Records (ADR)
 
-[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.5...HEAD
+[Unreleased]: https://github.com/m-kis/merlya/compare/v0.7.8...HEAD
+[0.7.8]: https://github.com/m-kis/merlya/compare/v0.7.7...v0.7.8
+[0.7.7]: https://github.com/m-kis/merlya/compare/v0.7.6...v0.7.7
+[0.7.6]: https://github.com/m-kis/merlya/compare/v0.7.5...v0.7.6
 [0.7.5]: https://github.com/m-kis/merlya/compare/v0.7.4...v0.7.5
 [0.7.3]: https://github.com/m-kis/merlya/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/m-kis/merlya/compare/v0.7.1...v0.7.2

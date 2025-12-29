@@ -2,18 +2,28 @@
 Merlya Router - Intent classification.
 
 Provides intent classification and routing:
+  - SmartExtractor: Fast LLM-based entity extraction and intent classification (v0.8.0)
   - CenterClassifier: Routes between DIAGNOSTIC/CHANGE centers
-  - IntentRouter: Legacy router for backward compatibility
+  - IntentRouter: Main router with SmartExtractor integration
   - "/" commands: Slash command dispatch (fast-path)
 """
 
-# New architecture: Center classifier
+# New architecture: SmartExtractor (fast LLM)
+from merlya.router.smart_extractor import (
+    ExtractedEntities,
+    IntentClassification,
+    SmartExtractionResult,
+    SmartExtractor,
+    get_smart_extractor,
+)
+
+# Center classifier
 from merlya.router.center_classifier import (
     CenterClassification,
     CenterClassifier,
 )
 
-# Backward compatibility imports - these may be used by tests and legacy code
+# Main router with SmartExtractor integration
 from merlya.router.classifier import (
     FAST_PATH_INTENTS,
     FAST_PATH_PATTERNS,
@@ -31,10 +41,16 @@ from merlya.router.handler import (
 )
 
 __all__ = [
-    # New architecture
+    # New architecture (v0.8.0)
+    "ExtractedEntities",
+    "IntentClassification",
+    "SmartExtractionResult",
+    "SmartExtractor",
+    "get_smart_extractor",
+    # Center classifier
     "CenterClassification",
     "CenterClassifier",
-    # Legacy
+    # Main router
     "FAST_PATH_INTENTS",
     "FAST_PATH_PATTERNS",
     "AgentMode",

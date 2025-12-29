@@ -38,16 +38,16 @@ The REPL provides intelligent autocompletion:
 - **Host mentions**: Type `@` and press Tab to see available hosts
 - **Variable mentions**: Type `@` to reference saved variables
 
-### @ Mentions
+### Host Names and Secret References
 
-Reference hosts and variables directly in your prompts:
+Reference hosts by name and secrets with `@` prefix:
 
 ```
-Merlya > Check memory on @web-01 and @web-02
+Merlya > Check memory on web-01 and web-02
 Merlya > Deploy using @deploy_key credentials
 ```
 
-Mentions are automatically expanded before processing.
+Host names are resolved from inventory. Secrets (`@name`) are resolved from keyring.
 
 ### Command History
 
@@ -198,7 +198,7 @@ Loaded conversation: "Debugging nginx issue" (15 messages)
 
 1. **Be specific**: "Check disk space on web-01" is better than "check disk"
 2. **Provide context**: "The nginx service crashed after the update"
-3. **Name your targets**: Use `@hostname` or specify the server explicitly
+3. **Name your targets**: Use the hostname from inventory or specify the server explicitly
 4. **Review before executing**: Always check commands before running on production
 5. **Use slash commands**: Quick actions like `/hosts` are faster than natural language
 

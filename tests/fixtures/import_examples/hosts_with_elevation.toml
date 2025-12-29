@@ -1,0 +1,23 @@
+# Example TOML import with elevation configuration
+
+[hosts.test-web01]
+hostname = "192.168.100.10"
+user = "deploy"
+port = 22
+tags = ["web", "test"]
+elevation_method = "sudo_password"
+elevation_user = "root"
+
+[hosts.test-db01]
+hostname = "192.168.100.20"
+user = "dbadmin"
+port = 22
+tags = ["database", "test"]
+elevation_method = "sudo"  # NOPASSWD configured
+
+[hosts.test-bastion]
+hostname = "192.168.100.1"
+user = "admin"
+port = 2222
+tags = ["bastion", "test"]
+elevation_method = "none"  # No elevation needed

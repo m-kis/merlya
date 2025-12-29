@@ -174,23 +174,51 @@ class DiagnosticCenter(AbstractCenter):
 
     async def _run_diagnostic(self, host: Any, task: str) -> dict[str, Any]:
         """
-        Run the diagnostic task.
+        Run the diagnostic task using the specialist agent.
 
         Args:
             host: Resolved host object.
             task: User's diagnostic request.
 
         Returns:
-            Collected diagnostic data.
+            Collected diagnostic data including agent output.
         """
-        # This is a placeholder - the actual implementation would
-        # use the LLM agent to interpret the task and execute
-        # appropriate diagnostic commands
-        return {
-            "task": task,
-            "host": host.name if hasattr(host, "name") else str(host),
-            "status": "pending_agent_implementation",
-        }
+        from merlya.agent.confirmation import ConfirmationState
+        from merlya.agent.specialists import run_diagnostic_agent
+        from merlya.agent.specialists.deps import SpecialistDeps
+        from merlya.agent.tracker import ToolCallTracker
+
+        # Determine target name
+        target_name = host.name if hasattr(host, "name") else str(host)
+
+        # Create specialist deps with fresh tracker and confirmation state
+        deps = SpecialistDeps(
+            context=self._ctx,
+            tracker=ToolCallTracker(),
+            confirmation_state=ConfirmationState(),
+            target=target_name,
+        )
+
+        logger.debug(f"🔍 Running diagnostic agent for target: {target_name}")
+
+        # Run the specialist agent - this will actually execute commands
+        try:
+            output = await run_diagnostic_agent(deps=deps, task=task)
+
+            return {
+                "task": task,
+                "host": target_name,
+                "status": "completed",
+                "output": output,
+            }
+        except Exception as e:
+            logger.error(f"❌ Diagnostic agent failed: {e}")
+            return {
+                "task": task,
+                "host": target_name,
+                "status": "failed",
+                "error": str(e),
+            }
 
     async def execute_command(
         self,

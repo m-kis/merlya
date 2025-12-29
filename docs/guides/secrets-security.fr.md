@@ -225,18 +225,46 @@ Affiche :
 
 ### Mode non-interactif (CI/CD)
 
-En mode non-interactif, les secrets doivent être fournis via variables d'environnement ou fichiers montés :
+En mode non-interactif (`merlya run --yes`), les credentials **ne peuvent pas être demandés**. Merlya échouera immédiatement avec un message clair si des credentials sont nécessaires mais non pré-configurés.
 
-```yaml
-# task.yaml
-secrets:
-  DB_PASSWORD:
-    env: MYSQL_ROOT_PASSWORD
-  API_KEY:
-    file: /run/secrets/api_key
+#### Pré-stocker les credentials avant exécution
+
+```bash
+# Stocker le mot de passe sudo pour les hôtes cibles
+merlya secret set sudo:192.168.1.7:password
+
+# Stocker les credentials de base de données
+merlya secret set mysql:db-prod:password
+
+# Puis exécuter en mode non-interactif
+merlya run --yes "Vérifier le statut de la base de données sur db-prod"
 ```
 
-Merlya les charge dans le keyring au démarrage, sans jamais les exposer au LLM.
+#### Utiliser NOPASSWD sudo
+
+Configurer sudo sans mot de passe sur les hôtes cibles :
+
+```bash
+# /etc/sudoers.d/merlya
+cedric ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/bin/journalctl
+```
+
+#### Gestion des erreurs
+
+Si les credentials sont manquants en mode `--yes`, Merlya retourne :
+
+```text
+❌ Cannot obtain credentials in non-interactive mode.
+
+Missing: password for sudo@192.168.1.7
+
+To fix this, before running in --yes mode:
+1. Store credentials in keyring: merlya secret set sudo:192.168.1.7:password
+2. Or configure NOPASSWD sudo on the target host
+3. Or run in interactive mode (without --yes)
+```
+
+Ce comportement **fail-fast** évite les boucles de retry et les appels API inutiles.
 
 ## Audit et conformité
 

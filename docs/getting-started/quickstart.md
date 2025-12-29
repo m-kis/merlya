@@ -84,7 +84,7 @@ If you skip the wizard or want to change settings later:
     export OPENAI_API_KEY="..."
     merlya config set model.provider openai
     merlya config set model.model gpt-4o-mini
-    merlya run "Check disk usage on @web-01"
+    merlya run "Check disk usage on web-01"
     ```
 
 === "Ollama (local)"
@@ -95,7 +95,7 @@ If you skip the wizard or want to change settings later:
 
     merlya config set model.provider ollama
     merlya config set model.model llama3.2
-    merlya run "Check disk usage on @web-01"
+    merlya run "Check disk usage on web-01"
     ```
 
 ---
@@ -143,10 +143,10 @@ Connecting to my-server.example.com...
 The server has been running for 45 days with low load averages.
 ```
 
-### Use @ Mentions
+### Reference Hosts by Name
 
 ```
-Merlya > Check disk space on @web-01 and @web-02
+Merlya > Check disk space on web-01 and web-02
 
 > ssh web-01 "df -h /"
 > ssh web-02 "df -h /"

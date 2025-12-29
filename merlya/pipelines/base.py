@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from loguru import logger
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
@@ -310,11 +311,15 @@ class AbstractPipeline(ABC):
             result.aborted_reason = f"Exception: {e}"
 
             # Attempt rollback on exception if we've applied changes
-            if self._current_stage in (PipelineStage.APPLY, PipelineStage.POST_CHECK):
-                if self._deps.auto_rollback and self._rollback_data:
-                    result.rollback_triggered = True
-                    result.rollback_reason = f"Exception during {self._current_stage}"
-                    result.rollback = await self._safe_rollback()
+            should_rollback = (
+                self._current_stage in (PipelineStage.APPLY, PipelineStage.POST_CHECK)
+                and self._deps.auto_rollback
+                and self._rollback_data
+            )
+            if should_rollback:
+                result.rollback_triggered = True
+                result.rollback_reason = f"Exception during {self._current_stage}"
+                result.rollback = await self._safe_rollback()
 
             return self._finalize_result(result)
 
@@ -378,12 +383,13 @@ class AbstractPipeline(ABC):
         # Determine risk level based on changes
         risk_level = self._assess_risk_level(diff)
 
-        return await self._ctx.ui.prompt_confirm(
-            f"Approve {self.name} changes?",
-            details=summary,
-            risk_level=risk_level,
-            default=False,
+        # Format confirmation message with risk level
+        risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}.get(
+            risk_level, "⚪"
         )
+        confirm_msg = f"{risk_emoji} [{risk_level.upper()}] Approve {self.name} changes?"
+        logger.info(f"📋 Summary:\n{summary}")
+        return await self._ctx.ui.prompt_confirm(confirm_msg, default=False)
 
     def _assess_risk_level(self, diff: DiffResult) -> str:
         """

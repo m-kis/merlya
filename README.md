@@ -28,51 +28,70 @@
 
 ## Aperçu
 
-Merlya est un assistant CLI autonome qui comprend le contexte de votre infrastructure, planifie des actions intelligentes et les exécute en toute sécurité. Il combine un router d’intentions local (ONNX) avec un fallback LLM via PydanticAI, un pool SSH sécurisé, et une gestion d’inventaire simplifiée.
+Merlya est un assistant CLI autonome qui comprend le contexte de votre infrastructure, planifie des actions intelligentes et les exécute en toute sécurité. Il combine un **SmartExtractor** (LLM + regex hybride) pour extraire les hosts des requêtes en langage naturel, un pool SSH sécurisé, et une gestion d'inventaire simplifiée.
 
 ### Fonctionnalités clés
 
-- Commandes en langage naturel pour diagnostiquer et remédier vos environnements
-- Pool SSH async avec MFA/2FA, jump hosts et SFTP
-- Inventaire `/hosts` avec import intelligent (SSH config, /etc/hosts, Ansible)
-- Router local-first (gte/EmbeddingGemma/e5) avec fallback LLM configurables
-- Sécurité by design : secrets dans le keyring, validation Pydantic, logs cohérents
-- Extensible (agents modulaires Docker/K8s/CI/CD) et i18n (fr/en)
-- Intégration MCP pour consommer des tools externes (GitHub, Slack, custom) via `/mcp`
+- **Commandes en langage naturel** pour diagnostiquer et remédier vos environnements
+- **Architecture DIAGNOSTIC/CHANGE** : routage intelligent entre investigation read-only et mutations contrôlées
+- **Pool SSH async** avec MFA/2FA, jump hosts et SFTP
+- **Inventaire `/hosts`** avec import intelligent (SSH config, /etc/hosts, Ansible, TOML, CSV)
+- **Modèles brain/fast** : brain pour le raisonnement complexe, fast pour le routing rapide
+- **Pipelines IaC** : Ansible, Terraform, Kubernetes, Bash avec HITL obligatoire
+- **Élévation explicite** : configuration sudo/doas/su par host (pas d'auto-détection)
+- **Sécurité by design** : secrets dans le keyring, validation Pydantic, détection de boucles
+- **i18n** : français et anglais
+- **Intégration MCP** pour consommer des tools externes (GitHub, Slack, custom) via `/mcp`
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              USER INPUT                                      │
-│                    "Check disk on @web-01 via @bastion"                     │
+│                    "Check disk on web-01 via bastion"                       │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           INTENT ROUTER                                      │
+│                         SMART EXTRACTOR                                      │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
-│  │ ONNX Local  │───▶│ LLM Fallback│───▶│  Pattern    │                      │
-│  │ Embeddings  │    │ (if <0.7)   │    │  Matching   │                      │
+│  │ Fast Model  │───▶│   Regex     │───▶│   Hosts     │                      │
+│  │ (routing)   │    │  Patterns   │    │  Inventory  │                      │
 │  └─────────────┘    └─────────────┘    └─────────────┘                      │
 │                              │                                               │
-│  Output: mode=DIAGNOSTIC, hosts=[@web-01], via=@bastion                     │
+│  Output: hosts=[web-01], via=bastion, context injected                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
-                    ┌─────────────────┼─────────────────┐
-                    ▼                 ▼                 ▼
-           ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-           │  FAST PATH   │  │    SKILL     │  │    AGENT     │
-           │ (DB queries) │  │  (workflows) │  │ (PydanticAI) │
-           └──────────────┘  └──────────────┘  └──────────────┘
-                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       CENTER CLASSIFIER                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ Pattern Matching + Fast LLM fallback → DIAGNOSTIC or CHANGE         │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                          │                         │
+                          ▼                         ▼
+┌──────────────────────────────────┐  ┌──────────────────────────────────────┐
+│      DIAGNOSTIC CENTER           │  │         CHANGE CENTER                │
+│  ┌────────────────────────────┐  │  │  ┌────────────────────────────────┐  │
+│  │ Read-Only Investigation    │  │  │  │ Controlled Mutations via       │  │
+│  │ • SSH read commands        │  │  │  │ Pipelines + HITL               │  │
+│  │ • kubectl get/describe     │  │  │  │ • Ansible (ad-hoc/inline/repo) │  │
+│  │ • Log analysis             │  │  │  │ • Terraform                    │  │
+│  │ • System diagnostics       │  │  │  │ • Kubernetes apply             │  │
+│  │ • Evidence collection      │  │  │  │ • Bash (fallback)              │  │
+│  └────────────────────────────┘  │  │  └────────────────────────────────┘  │
+│  BLOCKED: rm, kill, restart...   │  │  Pipeline: Plan→Diff→HITL→Apply     │
+└──────────────────────────────────┘  └──────────────────────────────────────┘
+                          │                         │
+                          └───────────┬─────────────┘
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           SECURITY LAYER                                     │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
 │  │  Keyring    │    │  Elevation  │    │    Loop     │                      │
-│  │  Secrets    │    │  Detection  │    │  Detection  │                      │
-│  │ @secret-ref │    │ sudo/doas/su│    │ (3+ repeat) │                      │
+│  │  Secrets    │    │  Explicit   │    │  Detection  │                      │
+│  │ @secret-ref │    │ (per-host)  │    │ (5+ repeat) │                      │
 │  └─────────────┘    └─────────────┘    └─────────────┘                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -147,13 +166,15 @@ Voir `.env.example` pour la documentation complète des variables.
 ## Exemples rapides
 
 ```bash
-> Check disk usage on @web-prod-01
+> Check disk usage on web-prod-01
 > /hosts list
-> /ssh exec @db-01 "uptime"
+> /ssh exec db-01 "uptime"
 > /model router show
 > /variable set region eu-west-1
 > /mcp list
 ```
+
+> **Note** : Les noms d'hôtes s'écrivent **sans préfixe `@`**. Le préfixe `@` est réservé aux références de secrets (ex: `@db-password`).
 
 ## Sécurité
 

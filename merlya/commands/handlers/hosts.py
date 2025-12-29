@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict
 
 from loguru import logger
 
@@ -335,12 +335,15 @@ async def cmd_hosts_show(ctx: SharedContext, args: list[str]) -> CommandResult:
     if not host:
         return CommandResult(success=False, message=f"Host '{args[0]}' not found.")
 
+    # Get elevation method display value
+    elevation_display = host.elevation_method.value if hasattr(host.elevation_method, "value") else str(host.elevation_method)
+
     lines = [
         f"**{host.name}**\n",
         f"  Hostname: `{host.hostname}`",
         f"  Port: `{host.port}`",
         f"  Username: `{host.username or 'default'}`",
-        f"  Elevation: `{host.elevation_method or 'auto'}`",
+        f"  Elevation: `{elevation_display}`",
         f"  Status: `{host.health_status}`",
         f"  Tags: `{', '.join(host.tags) if host.tags else 'none'}`",
     ]
@@ -478,15 +481,25 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
     username = await ctx.ui.prompt("Username", default=host.username or "")
     host.username = username if username else None
 
-    # Elevation method (sudo, sudo-s, su, doas, or auto)
+    # Elevation method - uses ElevationMethod enum
+    current_elevation = host.elevation_method.value if hasattr(host.elevation_method, "value") else str(host.elevation_method)
     elevation = await ctx.ui.prompt(
-        "Elevation method (sudo/sudo-s/su/doas/auto)",
-        default=host.elevation_method or "auto",
+        "Elevation method (none/sudo/sudo_password/doas/doas_password/su)",
+        default=current_elevation,
     )
-    if elevation and elevation.lower() in ("sudo", "sudo-s", "su", "doas"):
-        host.elevation_method = cast("ElevationMethod", elevation.lower())
-    else:
-        host.elevation_method = None  # auto-detect
+    # Map elevation input to ElevationMethod enum
+    elevation_map = {
+        "none": ElevationMethod.NONE,
+        "sudo": ElevationMethod.SUDO,
+        "sudo_password": ElevationMethod.SUDO_PASSWORD,
+        "sudo-password": ElevationMethod.SUDO_PASSWORD,
+        "doas": ElevationMethod.DOAS,
+        "doas_password": ElevationMethod.DOAS_PASSWORD,
+        "doas-password": ElevationMethod.DOAS_PASSWORD,
+        "su": ElevationMethod.SU,
+        "auto": ElevationMethod.NONE,  # 'auto' maps to NONE (no explicit elevation)
+    }
+    host.elevation_method = elevation_map.get(elevation.lower(), ElevationMethod.NONE)
 
     current_tags = ", ".join(host.tags) if host.tags else ""
     tags_str = await ctx.ui.prompt("Tags (comma-separated)", default=current_tags)
@@ -504,13 +517,16 @@ async def cmd_hosts_edit(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     await ctx.hosts.update(host)
 
+    # Get elevation display value
+    updated_elevation = host.elevation_method.value if hasattr(host.elevation_method, "value") else str(host.elevation_method)
+
     return CommandResult(
         success=True,
         message=f"✅ Host `{host.name}` updated:\n"
         f"  - Hostname: `{host.hostname}`\n"
         f"  - Port: `{host.port}`\n"
         f"  - User: `{host.username or 'default'}`\n"
-        f"  - Elevation: `{host.elevation_method or 'auto'}`\n"
+        f"  - Elevation: `{updated_elevation}`\n"
         f"  - Tags: `{', '.join(host.tags) if host.tags else 'none'}`",
     )
 

@@ -119,6 +119,33 @@ class TestHostRepository:
 
         assert await host_repo.count() == 2
 
+    @pytest.mark.asyncio
+    async def test_row_to_host_with_null_elevation_method(
+        self, host_repo: HostRepository, database: Database
+    ) -> None:
+        """Test that NULL elevation_method in database defaults to NONE.
+
+        This tests the fix for hosts created before elevation_method was added.
+        """
+        from merlya.persistence.models import ElevationMethod
+
+        # Create a host with explicit elevation_method
+        host = Host(name="legacy-host", hostname="192.168.1.100")
+        await host_repo.create(host)
+
+        # Manually set elevation_method to NULL in database (simulating legacy data)
+        await database.execute(
+            "UPDATE hosts SET elevation_method = NULL WHERE name = ?",
+            ("legacy-host",),
+        )
+
+        # Now fetch the host - should not raise validation error
+        fetched = await host_repo.get_by_name("legacy-host")
+        assert fetched is not None
+        assert fetched.name == "legacy-host"
+        # Should default to NONE when NULL in database
+        assert fetched.elevation_method == ElevationMethod.NONE
+
 
 class TestVariableRepository:
     """Tests for VariableRepository."""

@@ -34,6 +34,20 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"  # Destructive, requires explicit confirmation
 
 
+class LocalHost:
+    """Pseudo-host representing the local machine."""
+
+    name: str = "local"
+    hostname: str = "localhost"
+    is_local: bool = True
+
+    def __init__(self) -> None:
+        """Initialize local host."""
+        self.name = "local"
+        self.hostname = "localhost"
+        self.is_local = True
+
+
 class CenterDeps(BaseModel):
     """Dependencies passed to center execution."""
 
@@ -125,18 +139,25 @@ class AbstractCenter(ABC):
             return RiskLevel.LOW
         return RiskLevel.HIGH
 
-    async def validate_target(self, target: str) -> Host | None:
+    async def validate_target(self, target: str) -> Host | LocalHost | None:
         """
         Validate and resolve target host.
 
         Args:
-            target: Host name or pattern.
+            target: Host name or pattern (may include @ prefix).
 
         Returns:
-            Resolved Host or None if not found.
+            Resolved Host, LocalHost for local targets, or None if not found.
         """
+        # Strip @ prefix if present (users may type "@pine64" to reference a host)
+        clean_target = target.lstrip("@")
+
+        # Handle "local" target specially - no database lookup needed
+        if clean_target.lower() in ("local", "localhost", "127.0.0.1", "::1"):
+            return LocalHost()
+
         try:
-            return await self._ctx.hosts.get_by_name(target)
+            return await self._ctx.hosts.get_by_name(clean_target)
         except Exception:
             return None
 

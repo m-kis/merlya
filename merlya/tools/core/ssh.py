@@ -141,6 +141,13 @@ async def ssh_execute(
         host = host[1:]
         logger.debug(f"🖥️ Stripped @ prefix, using host: {host}")
 
+    # Handle "local" target - execute locally without SSH
+    if host.lower() in ("local", "localhost", "127.0.0.1", "::1"):
+        logger.info(f"🖥️ Running locally: {command[:50]}...")
+        from merlya.tools.core.bash import bash_execute
+
+        return await bash_execute(ctx, command, timeout=timeout)
+
     try:
         # Validate and prepare command
         command, safe_command, error = await _prepare_command(ctx, host, command)
@@ -180,20 +187,48 @@ async def ssh_execute(
             # Try to auto-resolve from secrets store for known elevation patterns
             input_data = await _auto_resolve_elevation_password(ctx, host, command)
             if input_data is None and _needs_elevation_password(command):
-                # Return error with instructions - don't let it timeout
+                # Check if we're in non-interactive mode
+                is_non_interactive = ctx.auto_confirm or getattr(ctx.ui, "auto_confirm", False)
                 short_cmd = command[:40] + "..." if len(command) > 40 else command
-                return ToolResult(
-                    success=False,
-                    error=(
-                        f"🔐 ELEVATION REQUIRED: Command '{short_cmd}' needs a password.\n\n"
-                        f"The password for {host} was not found in the secrets store.\n\n"
-                        f"To fix this:\n"
-                        f"1. Call: request_credentials(service='sudo', host='{host}')\n"
-                        f"2. Then retry with: ssh_execute(host='{host}', command='{short_cmd}', stdin='@sudo:{host}:password')\n\n"
-                        f"⚠️ DO NOT execute without stdin - it will timeout waiting for password input."
-                    ),
-                    data={"host": host, "command": command[:50], "needs_credentials": True},
-                )
+
+                if is_non_interactive:
+                    # In non-interactive mode, credentials can NEVER be obtained
+                    # Return a clear error that tells the agent to STOP trying
+                    return ToolResult(
+                        success=False,
+                        error=(
+                            f"🔐 ELEVATION IMPOSSIBLE in non-interactive mode.\n\n"
+                            f"Command '{short_cmd}' requires sudo/su password, but:\n"
+                            f"- No password found in keyring for {host}\n"
+                            f"- Cannot prompt user (--yes mode)\n\n"
+                            f"SOLUTIONS (before running with --yes):\n"
+                            f"1. Store password: merlya secret set sudo:{host}:password\n"
+                            f"2. Configure NOPASSWD sudo on {host}\n"
+                            f"3. Run in interactive mode (without --yes)\n\n"
+                            f"⚠️ DO NOT retry elevated commands - they will always fail."
+                        ),
+                        data={
+                            "host": host,
+                            "command": command[:50],
+                            "needs_credentials": True,
+                            "non_interactive": True,
+                            "permanent_failure": True,
+                        },
+                    )
+                else:
+                    # Interactive mode - tell agent to request credentials
+                    return ToolResult(
+                        success=False,
+                        error=(
+                            f"🔐 ELEVATION REQUIRED: Command '{short_cmd}' needs a password.\n\n"
+                            f"The password for {host} was not found in the secrets store.\n\n"
+                            f"To fix this:\n"
+                            f"1. Call: request_credentials(service='sudo', host='{host}')\n"
+                            f"2. Then retry with: ssh_execute(host='{host}', command='{short_cmd}', stdin='@sudo:{host}:password')\n\n"
+                            f"⚠️ DO NOT execute without stdin - it will timeout waiting for password input."
+                        ),
+                        data={"host": host, "command": command[:50], "needs_credentials": True},
+                    )
 
         # Lookup host entry early to get elevation_method
         host_entry: Host | None = await ctx.hosts.get_by_name(host)

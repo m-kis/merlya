@@ -79,10 +79,52 @@ def _register_tools(
         stdin: str | None = None,
     ) -> SSHResult:
         """Execute a command on a remote host via SSH."""
+        from merlya.tools.core import bash_execute as _bash_execute
         from merlya.tools.core import ssh_execute as _ssh_execute
 
+        # ENFORCE TARGET: When target is "local", use bash regardless of host parameter
+        target = ctx.deps.target.lower() if ctx.deps.target else ""
+        if target in ("local", "localhost", "127.0.0.1", "::1"):
+            # Redirect to bash for local targets
+            logger.info(f"🖥️ Target is local, executing locally: {command[:50]}...")
+
+            # Check for loop BEFORE confirmation
+            would_loop, reason = ctx.deps.tracker.would_loop("local", command)
+            if would_loop:
+                raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+
+            # Confirmation for local commands
+            if require_confirmation and not ctx.deps.confirmation_state.should_skip(command):
+                confirm_result = await confirm_command(
+                    ui=ctx.deps.context.ui,
+                    command=command,
+                    target="local",
+                    state=ctx.deps.confirmation_state,
+                )
+                if confirm_result == ConfirmationResult.CANCEL:
+                    return SSHResult(
+                        success=False,
+                        stdout="",
+                        stderr="Cancelled by user",
+                        exit_code=-1,
+                    )
+
+            ctx.deps.tracker.record("local", command)
+
+            result = await _bash_execute(ctx.deps.context, command, timeout)
+            return SSHResult(
+                success=result.success,
+                stdout=result.data.get("stdout", "") if result.data else "",
+                stderr=result.data.get("stderr", "") if result.data else "",
+                exit_code=result.data.get("exit_code", -1) if result.data else -1,
+                error=result.error if result.error else None,
+            )
+
+        # For remote targets, use actual SSH
+        effective_host = host
+
         # Check for loop BEFORE confirmation
-        would_loop, reason = ctx.deps.tracker.would_loop(host, command)
+        would_loop, reason = ctx.deps.tracker.would_loop(effective_host, command)
         if would_loop:
             raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
 
@@ -91,7 +133,7 @@ def _register_tools(
             confirm_result = await confirm_command(
                 ui=ctx.deps.context.ui,
                 command=command,
-                target=host,
+                target=effective_host,
                 state=ctx.deps.confirmation_state,
             )
             if confirm_result == ConfirmationResult.CANCEL:
@@ -107,7 +149,7 @@ def _register_tools(
         if needs_elevation_stdin(command) and not stdin:
             logger.debug(f"🔐 Auto-elevation: {command[:40]}...")
             effective_stdin = await auto_collect_elevation_credentials(
-                ctx.deps.context, host, command
+                ctx.deps.context, effective_host, command
             )
             if not effective_stdin:
                 return SSHResult(
@@ -118,9 +160,9 @@ def _register_tools(
                     error="User cancelled credential prompt",
                 )
 
-        ctx.deps.tracker.record(host, command)
+        ctx.deps.tracker.record(effective_host, command)
 
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, stdin=effective_stdin)
+        result = await _ssh_execute(ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin)
 
         return SSHResult(
             success=result.success,

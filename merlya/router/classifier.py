@@ -2,7 +2,10 @@
 Merlya Router - Intent Classification and Routing.
 
 Classifies user input to determine agent mode and tools.
-Uses local ONNX embedding model with LLM fallback for ambiguous cases.
+Uses SmartExtractor with fast LLM model for semantic understanding,
+with regex fallback for fast path and when LLM is unavailable.
+
+v0.8.0: Migrated from ONNX to SmartExtractor (fast LLM).
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from pydantic import BaseModel
@@ -26,6 +29,10 @@ from merlya.router.router_primitives import (
     extract_json_dict,
     iter_fast_path_patterns,
 )
+
+if TYPE_CHECKING:
+    from merlya.config import Config
+    from merlya.router.smart_extractor import SmartExtractor
 
 # Backward compatibility: tests and older code imported this symbol from classifier.py.
 _COMPILED_FAST_PATH = iter_fast_path_patterns()
@@ -43,9 +50,12 @@ __all__ = [
 
 class IntentRouter:
     """
-    Intent router with local classification and LLM fallback.
+    Intent router with SmartExtractor (fast LLM) for semantic understanding.
 
-    Routes user input to appropriate agent mode and tools.
+    Routes user input to appropriate agent mode and tools using:
+    1. Fast path detection (regex for simple commands)
+    2. SmartExtractor (fast LLM like Haiku) for entity extraction and classification
+    3. Fallback to regex patterns when LLM unavailable
     """
 
     def __init__(
@@ -53,13 +63,18 @@ class IntentRouter:
         use_local: bool = True,
         model_id: str | None = None,
         tier: str | None = None,
+        config: Config | None = None,
     ) -> None:
         """
         Initialize router.
 
         Args:
-            use_local: Whether to use local embedding model.
+            use_local: Whether to use local embedding model (deprecated, kept for compat).
+            model_id: Model ID (deprecated, kept for compat).
+            tier: Model tier (deprecated, kept for compat).
+            config: Merlya configuration for SmartExtractor.
         """
+        # Legacy classifier (regex-based fallback)
         self.classifier = IntentClassifier(
             use_embeddings=use_local,
             model_id=model_id,
@@ -69,10 +84,23 @@ class IntentRouter:
         self._initialized = False
         self._init_lock = asyncio.Lock()
 
+        # SmartExtractor (fast LLM for semantic understanding)
+        self._config = config
+        self._smart_extractor: SmartExtractor | None = None
+        self._use_smart_extraction = config is not None
+
     async def initialize(self) -> None:
-        """Initialize the router (load embedding model)."""
+        """Initialize the router (load SmartExtractor and legacy classifier)."""
         if not self._initialized:
             await self.classifier.load_model()
+
+            # Initialize SmartExtractor if config is available
+            if self._config and self._use_smart_extraction:
+                from merlya.router.smart_extractor import SmartExtractor
+
+                self._smart_extractor = SmartExtractor(self._config)
+                logger.debug("🧠 SmartExtractor initialized for semantic extraction")
+
             self._initialized = True
             logger.debug("🧠 IntentRouter initialized")
 
@@ -183,6 +211,10 @@ class IntentRouter:
                 if result.skill_match:
                     llm_result.skill_match = result.skill_match
                     llm_result.skill_confidence = result.skill_confidence
+                # Preserve entities if LLM didn't extract them (LLM often misses custom hostnames)
+                if result.entities and not llm_result.entities:
+                    llm_result.entities = result.entities
+                    logger.debug("📋 Preserving entities from SmartExtractor (LLM fallback missed them)")
                 result = llm_result
 
         # Check if delegation is valid
@@ -376,7 +408,7 @@ Rules:
 
     async def _classify(self, text: str) -> RouterResult:
         """
-        Classify user input using embeddings or pattern matching.
+        Classify user input using SmartExtractor (fast LLM) or pattern matching fallback.
 
         Args:
             text: User input text.
@@ -386,7 +418,60 @@ Rules:
         """
         text_lower = text.lower()
 
-        # Extract entities first
+        # Try SmartExtractor first (fast LLM for semantic understanding)
+        if self._smart_extractor:
+            try:
+                extraction = await self._smart_extractor.extract(text)
+
+                # Convert SmartExtractor result to RouterResult format
+                entities: dict[str, list[str]] = {}
+                if extraction.entities.hosts:
+                    entities["hosts"] = extraction.entities.hosts
+                if extraction.entities.services:
+                    entities["services"] = extraction.entities.services
+                if extraction.entities.paths:
+                    entities["paths"] = extraction.entities.paths
+                if extraction.entities.ports:
+                    entities["ports"] = [str(p) for p in extraction.entities.ports]
+
+                # Map center classification to AgentMode
+                center = extraction.intent.center.upper()
+                if center == "CHANGE":
+                    mode = AgentMode.REMEDIATION
+                elif center == "DIAGNOSTIC":
+                    mode = AgentMode.DIAGNOSTIC
+                else:
+                    mode = AgentMode.QUERY
+
+                confidence = extraction.intent.confidence
+
+                # Jump host from extraction or fallback to regex
+                jump_host = extraction.entities.jump_host or self._detect_jump_host(text)
+
+                # Determine tools based on entities
+                tools = self.classifier.determine_tools(text_lower, entities)
+
+                # Check for delegation
+                delegate_to = self.classifier.check_delegation(text_lower)
+
+                logger.debug(
+                    f"🎯 SmartExtractor: mode={mode.value}, hosts={entities.get('hosts', [])}, "
+                    f"confidence={confidence:.2f}"
+                )
+
+                return RouterResult(
+                    mode=mode,
+                    tools=tools,
+                    entities=entities,
+                    confidence=confidence,
+                    delegate_to=delegate_to,
+                    jump_host=jump_host,
+                )
+
+            except Exception as e:
+                logger.warning(f"⚠️ SmartExtractor failed, falling back to regex: {e}")
+
+        # Fallback: Extract entities using regex
         entities = self.classifier.extract_entities(text)
 
         # Detect jump host from patterns
@@ -394,7 +479,7 @@ Rules:
         if jump_host:
             logger.debug(f"🔗 Detected jump host: {jump_host}")
 
-        # Try embedding-based classification
+        # Try embedding-based classification (deprecated)
         if self.classifier.model_loaded:
             mode, confidence = await self.classifier.classify_embeddings(text)
         else:

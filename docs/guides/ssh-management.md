@@ -236,7 +236,7 @@ When an elevation method fails (wrong password):
 4. **Caches** passwords only after verification succeeds
 
 ```text
-Merlya > Read /etc/shadow on @web01
+Merlya > Read /etc/shadow on web01
 
 🔒 Command may require elevation. Use sudo_with_password? [y/N] y
 🔑 Your password for elevation: ****
@@ -255,7 +255,7 @@ If passwords change or you need to retry:
 
 ```bash
 # Reset for one host
-/ssh elevation reset @web01
+/ssh elevation reset web01
 
 # Reset for all hosts
 /ssh elevation reset
