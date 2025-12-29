@@ -8,7 +8,7 @@ Uses pattern matching with optional mini-LLM fallback.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -215,7 +215,7 @@ class CenterClassifier:
             from pydantic_ai import Agent
 
             # Get fast model from context
-            model = getattr(self._ctx.config, "get_model", lambda x: None)("fast")
+            model = getattr(self._ctx.config, "get_model", lambda _: None)("fast")
             if not model:
                 model = "anthropic:claude-haiku-4-5-20250514"
 
@@ -294,14 +294,14 @@ Rules:
 
     def _generate_clarification_prompt(
         self,
-        text: str,
+        _text: str,
         result: CenterClassification,
     ) -> str:
         """
         Generate a clarification prompt for ambiguous intent.
 
         Args:
-            text: Original user input.
+            _text: Original user input (unused, kept for future use).
             result: Current classification result.
 
         Returns:

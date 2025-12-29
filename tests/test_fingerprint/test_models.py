@@ -2,8 +2,6 @@
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
 from merlya.fingerprint.models import (
     ApprovalRecord,
     FingerprintResult,

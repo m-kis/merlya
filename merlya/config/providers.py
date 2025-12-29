@@ -146,10 +146,7 @@ def get_model_for_role(
     models = get_provider_models(provider)
 
     # Map role to model (with backward compatibility)
-    if role in ("brain", "reasoning"):
-        model = models.brain
-    else:
-        model = models.fast
+    model = models.brain if role in ("brain", "reasoning") else models.fast
 
     logger.debug(f"📋 Using {role} model for {provider}: {model}")
     return model

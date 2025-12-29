@@ -178,7 +178,7 @@ class SecretStore:
                     json.dump(data, f, indent=2)
 
                 # Set secure permissions before rename
-                os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+                Path(temp_path).chmod(stat.S_IRUSR | stat.S_IWUSR)  # 600
 
                 # Atomic rename (POSIX guarantees atomicity)
                 Path(temp_path).replace(SECRETS_INDEX_FILE)

@@ -275,7 +275,7 @@ Determine severity and if destructive."""
         services_pattern = r"\b(nginx|apache|mysql|postgres|redis|mongo|docker|k8s|kubernetes|systemd)\b"
         services = re.findall(services_pattern, text, re.IGNORECASE)
         if services:
-            entities.services = list(set(s.lower() for s in services))
+            entities.services = list({s.lower() for s in services})
 
         # Extract environment
         if re.search(r"\b(prod|production)\b", text, re.IGNORECASE):

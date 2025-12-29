@@ -4,8 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from merlya.centers.base import CenterDeps, CenterMode, RiskLevel
-from merlya.centers.change import ChangeCenter
 from merlya.capabilities.models import (
     HostCapabilities,
     LocalCapabilities,
@@ -13,11 +11,11 @@ from merlya.capabilities.models import (
     ToolCapability,
     ToolName,
 )
+from merlya.centers.base import CenterDeps, CenterMode, RiskLevel
+from merlya.centers.change import ChangeCenter
 from merlya.pipelines.base import (
     ApplyResult,
-    DiffResult,
     PipelineResult,
-    PlanResult,
     PostCheckResult,
 )
 
@@ -139,7 +137,6 @@ class TestPipelineSelection:
         center: ChangeCenter,
     ) -> None:
         """Test returns None when no commands can be extracted."""
-        from merlya.pipelines.base import PipelineDeps
 
         caps = LocalCapabilities(tools=[], web_access=True)
         deps = CenterDeps(target="local", task="do something vague")
@@ -154,7 +151,6 @@ class TestPipelineSelection:
         center: ChangeCenter,
     ) -> None:
         """Test Ansible keywords are recognized."""
-        from merlya.pipelines.base import PipelineDeps
 
         caps = LocalCapabilities(
             tools=[
@@ -239,7 +235,7 @@ class TestCapabilityDetection:
         mock_capabilities: MagicMock,
     ) -> None:
         """Test uses provided capability detector."""
-        deps = CenterDeps(target="local", task="test")
+        CenterDeps(target="local", task="test")
 
         await center._get_capabilities("local", None)
 

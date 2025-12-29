@@ -2,8 +2,6 @@
 
 from datetime import UTC, datetime
 
-import pytest
-
 from merlya.centers.base import (
     CenterDeps,
     CenterMode,

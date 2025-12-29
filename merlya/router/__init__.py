@@ -9,14 +9,6 @@ Provides intent classification and routing:
 """
 
 # New architecture: SmartExtractor (fast LLM)
-from merlya.router.smart_extractor import (
-    ExtractedEntities,
-    IntentClassification,
-    SmartExtractionResult,
-    SmartExtractor,
-    get_smart_extractor,
-)
-
 # Center classifier
 from merlya.router.center_classifier import (
     CenterClassification,
@@ -39,25 +31,32 @@ from merlya.router.handler import (
     handle_skill_flow,
     handle_user_message,
 )
+from merlya.router.smart_extractor import (
+    ExtractedEntities,
+    IntentClassification,
+    SmartExtractionResult,
+    SmartExtractor,
+    get_smart_extractor,
+)
 
 __all__ = [
-    # New architecture (v0.8.0)
-    "ExtractedEntities",
-    "IntentClassification",
-    "SmartExtractionResult",
-    "SmartExtractor",
-    "get_smart_extractor",
-    # Center classifier
-    "CenterClassification",
-    "CenterClassifier",
     # Main router
     "FAST_PATH_INTENTS",
     "FAST_PATH_PATTERNS",
     "AgentMode",
+    # Center classifier
+    "CenterClassification",
+    "CenterClassifier",
+    # New architecture (v0.8.0)
+    "ExtractedEntities",
     "HandlerResponse",
+    "IntentClassification",
     "IntentClassifier",
     "IntentRouter",
     "RouterResult",
+    "SmartExtractionResult",
+    "SmartExtractor",
+    "get_smart_extractor",
     "handle_agent",
     "handle_fast_path",
     "handle_skill_flow",

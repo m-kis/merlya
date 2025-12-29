@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from merlya.pipelines.bash import BashPipeline
 from merlya.pipelines.base import PipelineDeps
+from merlya.pipelines.bash import BashPipeline
 
 
 @pytest.fixture

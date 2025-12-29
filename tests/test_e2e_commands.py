@@ -122,7 +122,7 @@ class TestModelCommands:
 
     def test_model_provider_no_args_shows_usage(self):
         """Test /model provider without args shows available providers."""
-        code, stdout, _ = run_merlya("/model provider")
+        _code, stdout, _ = run_merlya("/model provider")
         # Exit code 1 because no provider specified
         assert "Usage" in stdout or "Available" in stdout
         assert "anthropic" in stdout.lower() or "openrouter" in stdout.lower()
@@ -144,11 +144,11 @@ class TestHostsCommands:
         export_path = f"/tmp/merlya_test_export_{unique_id}.json"
 
         try:
-            code, stdout, _ = run_merlya(f"/hosts export {export_path}")
+            code, _stdout, _ = run_merlya(f"/hosts export {export_path}")
             assert code == 0
 
             # Verify JSON is valid
-            with open(export_path) as f:
+            with Path(export_path).open() as f:
                 data = json.load(f)
             assert isinstance(data, list)
         finally:
@@ -160,7 +160,7 @@ class TestVariableCommands:
 
     def test_variable_list(self):
         """Test /variable list shows variables."""
-        code, stdout, _ = run_merlya("/variable list")
+        code, _stdout, _ = run_merlya("/variable list")
         assert code == 0
 
     def test_variable_set_get_delete_cycle(self):
@@ -187,7 +187,7 @@ class TestSecretCommands:
 
     def test_secret_list(self):
         """Test /secret list shows secret names."""
-        code, stdout, _ = run_merlya("/secret list")
+        code, _stdout, _ = run_merlya("/secret list")
         assert code == 0
 
 
@@ -213,7 +213,7 @@ class TestAuditCommands:
 
     def test_audit_stats(self):
         """Test /audit stats shows statistics."""
-        code, stdout, _ = run_merlya("/audit stats")
+        code, _stdout, _ = run_merlya("/audit stats")
         assert code == 0
 
 
@@ -222,7 +222,7 @@ class TestMCPCommands:
 
     def test_mcp_list(self):
         """Test /mcp list shows configured servers or empty message."""
-        code, stdout, _ = run_merlya("/mcp list")
+        code, _stdout, _ = run_merlya("/mcp list")
         assert code == 0
 
 
@@ -311,7 +311,7 @@ class TestHostsImportExport:
             assert code == 0
 
             # Read and verify structure
-            with open(export_path) as f:
+            with Path(export_path).open() as f:
                 data = json.load(f)
             assert isinstance(data, list)
 
@@ -326,7 +326,7 @@ class TestHostsImportExport:
                     "elevation_method": "sudo",
                 }
             ]
-            with open(import_path, "w") as f:
+            with Path(import_path).open("w") as f:
                 json.dump(test_hosts, f)
 
             # Import
@@ -373,7 +373,7 @@ class TestConsistencyChecks:
             "/mcp",
         ]
         for cmd in commands:
-            code, stdout, stderr = run_merlya(cmd)
+            _code, _stdout, stderr = run_merlya(cmd)
             # Should either succeed (show current state) or fail gracefully with usage
             assert "error" not in stderr.lower() or "traceback" not in stderr.lower(), \
                 f"{cmd} crashed: {stderr}"

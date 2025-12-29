@@ -8,7 +8,10 @@ This replaces the inconsistent ToolResult/SSHResult/raise patterns.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -74,13 +77,13 @@ class Result(Generic[T]):
         """Get the error or None if succeeded."""
         return self._error if not self._success else None
 
-    def map(self, fn: Callable[[T], U]) -> "Result[U]":
+    def map(self, fn: Callable[[T], U]) -> Result[U]:
         """Transform the value if successful."""
         if self._success:
             return Result.ok(fn(self._value))  # type: ignore
         return Result.fail(self._error)  # type: ignore
 
-    def flat_map(self, fn: Callable[[T], "Result[U]"]) -> "Result[U]":
+    def flat_map(self, fn: Callable[[T], Result[U]]) -> Result[U]:
         """Chain operations that return Results."""
         if self._success:
             return fn(self._value)  # type: ignore
@@ -97,17 +100,17 @@ class Result(Generic[T]):
         return self._value  # type: ignore
 
     @classmethod
-    def ok(cls, value: T) -> "Result[T]":
+    def ok(cls, value: T) -> Result[T]:
         """Create a successful result."""
         return cls(_value=value, _error=None, _success=True)
 
     @classmethod
-    def fail(cls, error: str) -> "Result[T]":
+    def fail(cls, error: str) -> Result[T]:
         """Create a failed result."""
         return cls(_value=None, _error=error, _success=False)
 
     @classmethod
-    def from_exception(cls, exc: Exception) -> "Result[T]":
+    def from_exception(cls, exc: Exception) -> Result[T]:
         """Create a failed result from an exception."""
         return cls.fail(str(exc))
 

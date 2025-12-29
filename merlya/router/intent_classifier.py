@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any
 
 from loguru import logger
 
@@ -197,9 +196,8 @@ class IntentClassifier:
                     break
 
         # Add tools based on entities
-        if entities.get("hosts"):
-            if "ssh" not in tools:
-                tools.append("ssh")
+        if entities.get("hosts") and "ssh" not in tools:
+            tools.append("ssh")
 
         return tools
 

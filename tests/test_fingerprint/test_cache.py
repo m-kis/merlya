@@ -1,6 +1,5 @@
 """Tests for FingerprintCache."""
 
-from datetime import UTC, datetime, timedelta
 
 import pytest
 

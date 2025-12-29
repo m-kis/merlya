@@ -141,6 +141,4 @@ class FingerprintResult(BaseModel):
             return False
         if not self.cached_approval.approved:
             return False
-        if self.cached_approval.is_expired():
-            return False
-        return True
+        return not self.cached_approval.is_expired()

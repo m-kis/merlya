@@ -4,8 +4,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from merlya.config.loader import (
     ENV_CONFIG_MAP,
     _apply_env_overrides,

@@ -112,12 +112,12 @@ def _get_model_id(tier: ModelTier | str | None, models: dict[ModelTier, ModelCon
     return models[normalized].model_id
 
 
-def get_router_model_id(tier: ModelTier | str | None) -> str:
+def get_router_model_id(_tier: ModelTier | str | None) -> str:
     """Get router model ID for the given tier (deprecated - returns empty)."""
     return ""
 
 
-def get_parser_model_id(tier: ModelTier | str | None) -> str:
+def get_parser_model_id(_tier: ModelTier | str | None) -> str:
     """Get parser model ID for the given tier (deprecated - returns empty)."""
     return ""
 
@@ -142,7 +142,7 @@ def resolve_parser_model_path(model_id: str) -> Path:
     return resolve_model_path(model_id, subdir="parser")
 
 
-def is_model_available(model_id: str, subdir: str = "onnx") -> bool:
+def is_model_available(_model_id: str, _subdir: str = "onnx") -> bool:
     """Check if a model is available locally (deprecated - always False)."""
     return False
 

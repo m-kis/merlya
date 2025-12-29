@@ -1,6 +1,5 @@
 """Tests for pipeline base classes."""
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

@@ -8,9 +8,7 @@ semantic signatures from commands.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
-
-from loguru import logger
+from typing import TYPE_CHECKING
 
 from merlya.fingerprint.models import FingerprintResult, SemanticSignature
 
