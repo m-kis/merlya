@@ -29,6 +29,7 @@ Options:
 - `-y`, `--yes`: auto-confirm prompts (unsafe in production unless you trust inputs)
 - `--format text|json`: output format (default: `text`)
 - `-q`, `--quiet`: minimal output
+- `-m`, `--model brain|fast`: model role for task execution (`brain` for complex reasoning, `fast` for quick tasks)
 
 Verbose logging:
 

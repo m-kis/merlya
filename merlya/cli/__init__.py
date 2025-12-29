@@ -148,6 +148,13 @@ Documentation: https://merlya.m-kis.fr/
         action="store_true",
         help="Show only results, minimal output",
     )
+    run_parser.add_argument(
+        "-m",
+        "--model",
+        choices=["brain", "fast"],
+        default=None,
+        help="Model role to use: 'brain' (complex reasoning) or 'fast' (quick tasks)",
+    )
 
     # config subcommand
     config_parser = subparsers.add_parser(
@@ -263,6 +270,7 @@ def run_batch_mode(args: argparse.Namespace) -> None:
                 quiet=args.quiet,
                 output_format=args.format,
                 verbose=verbose,
+                model_role=args.model,
             )
         )
     elif args.task:
@@ -273,6 +281,7 @@ def run_batch_mode(args: argparse.Namespace) -> None:
                 quiet=args.quiet,
                 output_format=args.format,
                 verbose=verbose,
+                model_role=args.model,
             )
         )
     else:

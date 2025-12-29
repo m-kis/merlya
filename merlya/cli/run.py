@@ -20,6 +20,8 @@ from loguru import logger
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from merlya.core.context import SharedContext
 
 # Commands that should never run in batch mode
@@ -42,6 +44,15 @@ INTERACTIVE_COMMANDS = frozenset(
         "secret set",  # Secure input prompt required
     }
 )
+
+
+@dataclass
+class Task:
+    """A task to execute with optional model override."""
+
+    prompt: str
+    model_role: str | None = None  # "brain" or "fast", None = use default
+    description: str | None = None
 
 
 @dataclass
@@ -231,28 +242,31 @@ async def _execute_slash_command(
 
 
 async def run_batch(
-    commands: list[str],
+    tasks: Sequence[Task | str],
     *,
     auto_confirm: bool = False,
     quiet: bool = False,
     output_format: str = "text",
     verbose: bool = False,
+    model_role: str | None = None,
 ) -> BatchResult:
     """
     Execute commands in non-interactive batch mode.
 
     Args:
-        commands: List of commands to execute.
+        tasks: List of Task objects or command strings to execute.
         auto_confirm: Skip confirmation prompts.
         quiet: Minimal output.
         output_format: Output format (text/json).
         verbose: Enable verbose logging.
+        model_role: Default model role ("brain" or "fast").
 
     Returns:
         BatchResult with execution results.
     """
     from merlya.agent import MerlyaAgent
     from merlya.commands import init_commands
+    from merlya.config.providers import get_model_for_role, get_pydantic_model_string
     from merlya.core.context import SharedContext
     from merlya.health import run_startup_checks
     from merlya.secrets import load_api_keys_from_keyring
@@ -304,18 +318,48 @@ async def run_batch(
     # Initialize router
     await ctx.init_router(health.model_tier)
 
-    # Create agent
-    model = f"{ctx.config.model.provider}:{ctx.config.model.model}"
-    agent = MerlyaAgent(ctx, model=model)
+    # Helper to get model string for a role
+    def get_model_string(role: str | None) -> str:
+        provider = ctx.config.model.provider
+        if role in ("brain", "fast"):
+            from typing import cast
+
+            from merlya.config.providers import ModelRole
+
+            model_id = get_model_for_role(provider, cast("ModelRole", role))
+            return get_pydantic_model_string(provider, model_id)
+        # Default: use configured model
+        return get_pydantic_model_string(provider, ctx.config.model.model)
+
+    # Cache agents by model to avoid recreating
+    agents: dict[str, MerlyaAgent] = {}
+
+    def get_agent(role: str | None) -> MerlyaAgent:
+        model = get_model_string(role)
+        if model not in agents:
+            agents[model] = MerlyaAgent(ctx, model=model)
+        return agents[model]
 
     results: list[TaskResult] = []
     passed = 0
     failed = 0
 
     try:
-        for cmd in commands:
+        for task_item in tasks:
+            # Normalize to Task object
+            if isinstance(task_item, str):
+                task = Task(prompt=task_item, model_role=model_role)
+            else:
+                task = task_item
+                # CLI model_role overrides if task doesn't specify
+                if task.model_role is None:
+                    task.model_role = model_role
+
+            cmd = task.prompt
+
             if not quiet and output_format == "text":
-                ctx.ui.info(f"Executing: {cmd}")
+                model_hint = f" [{task.model_role}]" if task.model_role else ""
+                ctx.ui.info(f"Executing{model_hint}: {cmd}")
 
             try:
                 # Check if this is a slash command
@@ -328,6 +372,8 @@ async def run_batch(
                         raise RuntimeError("Router not initialized")
                     route_result = await ctx.router.route(cmd)
 
+                    # Get agent for the appropriate model
+                    agent = get_agent(task.model_role)
                     response = await agent.run(cmd, route_result)
 
                     task_result = TaskResult(
@@ -366,37 +412,67 @@ async def run_batch(
 
                 if output_format == "text":
                     ctx.ui.error(f"Failed: {e}")
+
+        # Build result before closing context
+        batch_result = BatchResult(
+            success=failed == 0,
+            tasks=results,
+            total=len(tasks),
+            passed=passed,
+            failed=failed,
+        )
+
+        # Output final result (must happen before ctx.close())
+        if output_format == "json":
+            print(json.dumps(batch_result.to_dict(), indent=2))
+        elif not quiet:
+            ctx.ui.newline()
+            status = "success" if batch_result.success else "error"
+            ctx.ui.print(f"[{status}]Completed: {passed}/{len(tasks)} tasks passed[/{status}]")
+
     finally:
         # Cleanup - always runs even if exception occurs
         await ctx.close()
 
-    batch_result = BatchResult(
-        success=failed == 0,
-        tasks=results,
-        total=len(commands),
-        passed=passed,
-        failed=failed,
-    )
-
-    # Output final result
-    if output_format == "json":
-        print(json.dumps(batch_result.to_dict(), indent=2))
-    elif not quiet:
-        ctx.ui.newline()
-        status = "success" if batch_result.success else "error"
-        ctx.ui.print(f"[{status}]Completed: {passed}/{len(commands)} tasks passed[/{status}]")
-
     return batch_result
 
 
-def load_tasks_from_file(file_path: str) -> list[str]:
+VALID_MODEL_ROLES = frozenset({"brain", "fast"})
+
+
+def _validate_model_role(role: str | None, context: str = "") -> str | None:
+    """Validate a model role value.
+
+    Args:
+        role: Model role to validate (None, "brain", or "fast").
+        context: Context string for error message (e.g., "file-level", "task 'Check disk'").
+
+    Returns:
+        The validated role (unchanged).
+
+    Raises:
+        ValueError: If role is invalid.
+    """
+    if role is None:
+        return None
+    if role not in VALID_MODEL_ROLES:
+        ctx_msg = f" ({context})" if context else ""
+        raise ValueError(
+            f"Invalid model role '{role}'{ctx_msg}. Must be 'brain' or 'fast'."
+        )
+    return role
+
+
+def load_tasks_from_file(file_path: str, default_model: str | None = None) -> list[Task]:
     """
     Load tasks from a YAML or text file.
 
     YAML format:
+        model: fast  # Optional: default model for all tasks
         tasks:
           - description: "Check disk space"
             prompt: "Check disk space on all web servers"
+            model: brain  # Optional: override per task
           - prompt: "List running services"
 
     Text format (one command per line):
@@ -405,9 +481,14 @@ def load_tasks_from_file(file_path: str) -> list[str]:
 
     Args:
         file_path: Path to the task file.
+        default_model: Default model role from CLI (overrides file default).
 
     Returns:
-        List of command strings.
+        List of Task objects.
+
+    Raises:
+        FileNotFoundError: If task file doesn't exist.
+        ValueError: If an invalid model role is specified.
     """
     path = Path(file_path)
     if not path.exists():
@@ -415,35 +496,63 @@ def load_tasks_from_file(file_path: str) -> list[str]:
 
     content = path.read_text()
 
+    # Validate CLI default model
+    _validate_model_role(default_model, "CLI --model argument")
+
     # Try YAML first
     if path.suffix in (".yml", ".yaml"):
         data = yaml.safe_load(content)
         # Handle None/empty YAML files
         if data is None:
             return []
+
+        # Get file-level default model (CLI arg takes precedence)
+        file_model = None
+        if isinstance(data, dict):
+            file_model = data.get("model")
+            _validate_model_role(file_model, "file-level 'model' field")
+
+        effective_default = default_model or file_model
+
         if isinstance(data, dict) and "tasks" in data:
-            tasks = []
-            for task in data["tasks"]:
+            tasks: list[Task] = []
+            for idx, task in enumerate(data["tasks"]):
                 if isinstance(task, str):
-                    tasks.append(task)
+                    tasks.append(Task(prompt=task, model_role=effective_default))
                 elif isinstance(task, dict):
                     prompt = task.get("prompt") or task.get("description") or ""
-                    tasks.append(str(prompt))
+                    if prompt:
+                        # Task-level model overrides file-level
+                        task_model = task.get("model")
+                        task_desc = task.get("description") or prompt[:30]
+                        _validate_model_role(task_model, f"task #{idx + 1} '{task_desc}'")
+                        final_model = task_model or effective_default
+                        tasks.append(
+                            Task(
+                                prompt=str(prompt),
+                                model_role=final_model,
+                                description=task.get("description"),
+                            )
+                        )
                 # Skip invalid task entries (numbers, None, etc.)
-            return [t for t in tasks if t]
+            return tasks
         elif isinstance(data, list):
-            return [str(item) for item in data if item]
+            return [
+                Task(prompt=str(item), model_role=effective_default)
+                for item in data
+                if item
+            ]
 
     # Fall back to text (one command per line)
-    commands: list[str] = []
+    tasks = []
     for line in content.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         if stripped.startswith("#"):
             continue
-        commands.append(stripped)
-    return commands
+        tasks.append(Task(prompt=stripped, model_role=default_model))
+    return tasks
 
 
 async def run_single(
@@ -453,6 +562,7 @@ async def run_single(
     quiet: bool = False,
     output_format: str = "text",
     verbose: bool = False,
+    model_role: str | None = None,
 ) -> int:
     """
     Execute a single command and return exit code.
@@ -463,6 +573,7 @@ async def run_single(
         quiet: Minimal output.
         output_format: Output format (text/json).
         verbose: Enable verbose logging.
+        model_role: Model role ("brain" or "fast").
 
     Returns:
         Exit code (0 for success, 1 for failure).
@@ -473,6 +584,7 @@ async def run_single(
         quiet=quiet,
         output_format=output_format,
         verbose=verbose,
+        model_role=model_role,
     )
     return 0 if result.success else 1
 
@@ -484,6 +596,7 @@ async def run_from_file(
     quiet: bool = False,
     output_format: str = "text",
     verbose: bool = False,
+    model_role: str | None = None,
 ) -> int:
     """
     Execute tasks from a file and return exit code.
@@ -494,12 +607,13 @@ async def run_from_file(
         quiet: Minimal output.
         output_format: Output format (text/json).
         verbose: Enable verbose logging.
+        model_role: Default model role ("brain" or "fast"), overrides file default.
 
     Returns:
         Exit code (0 for success, 1 for failure).
     """
     try:
-        tasks = load_tasks_from_file(file_path)
+        tasks = load_tasks_from_file(file_path, default_model=model_role)
     except FileNotFoundError as e:
         if output_format == "json":
             print(json.dumps({"success": False, "error": str(e)}))
@@ -520,5 +634,6 @@ async def run_from_file(
         quiet=quiet,
         output_format=output_format,
         verbose=verbose,
+        model_role=model_role,
     )
     return 0 if result.success else 1
