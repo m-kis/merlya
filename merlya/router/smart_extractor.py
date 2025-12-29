@@ -39,6 +39,24 @@ class ExtractedEntities(BaseModel):
     )
     jump_host: str | None = Field(default=None, description="Jump/bastion host if mentioned")
 
+    # IaC-specific fields (v0.9.0)
+    iac_tools: list[str] = Field(
+        default_factory=list,
+        description="IaC tools mentioned (terraform, ansible, pulumi, cloudformation)",
+    )
+    iac_operation: str | None = Field(
+        default=None,
+        description="IaC operation type: provision, update, destroy, plan",
+    )
+    cloud_provider: str | None = Field(
+        default=None,
+        description="Cloud provider: aws, gcp, azure, ovh, proxmox, vmware",
+    )
+    infrastructure_resources: list[str] = Field(
+        default_factory=list,
+        description="Infrastructure resources (vm, vpc, subnet, security-group, etc.)",
+    )
+
 
 class IntentClassification(BaseModel):
     """Classification of user intent."""
@@ -75,25 +93,41 @@ Extract entities and classify intent from the user's message.
 - **environment**: prod/production, staging/preprod, dev/development, test/qa
 - **jump_host**: Bastion/jump host mentioned with "via", "through", "en passant par"
 
+## Infrastructure-as-Code (IaC) Detection:
+- **iac_tools**: IaC tools mentioned
+  - terraform, ansible, pulumi, cloudformation, arm, helm, kubectl
+- **iac_operation**: Type of IaC operation
+  - **provision**: Create new infrastructure (create, provision, spin up, allocate, deploy new)
+  - **update**: Modify existing resources (update, scale, resize, modify, increase, decrease, change)
+  - **destroy**: Remove infrastructure (destroy, teardown, deprovision, delete infrastructure)
+  - **plan**: Preview changes without applying (terraform plan, dry-run, preview)
+- **cloud_provider**: Target cloud platform
+  - aws, gcp, azure, ovh, proxmox, vmware, openstack, digitalocean
+- **infrastructure_resources**: Cloud resources mentioned
+  - vm, instance, server, vpc, subnet, security-group, load-balancer, database, rds, s3, bucket
+
 ## Intent Classification Rules:
 - **DIAGNOSTIC**: Read-only operations
   - Check, verify, show, list, get, view, analyze, monitor, debug, diagnose
   - Logs viewing, status checks, disk/memory/CPU checks
   - Questions starting with what, why, how, when, where
+  - terraform plan, terraform show, kubectl get, ansible --check
 
 - **CHANGE**: State-modifying operations
   - Restart, stop, start, deploy, install, update, fix, configure
   - Create, delete, remove, modify, enable, disable
-  - Any operation that changes system state
+  - terraform apply, terraform destroy, ansible-playbook, kubectl apply
+  - Provision new infrastructure, update existing resources, destroy infrastructure
 
 ## Severity Rules:
-- **critical**: Production outage, data loss risk, security breach
-- **high**: Service degradation, urgent fixes needed
-- **medium**: Non-urgent issues, routine maintenance
-- **low**: Information requests, minor issues
+- **critical**: Production outage, data loss risk, security breach, destroy infrastructure in prod
+- **high**: Service degradation, urgent fixes, provision/destroy in staging
+- **medium**: Non-urgent issues, routine maintenance, updates in dev
+- **low**: Information requests, minor issues, plan/preview operations
 
 ## Destructive Detection:
-Mark as destructive if: rm -rf, delete, drop, truncate, format, kill -9, shutdown, reboot
+Mark as destructive if: rm -rf, delete, drop, truncate, format, kill -9, shutdown, reboot,
+terraform destroy, destroy infrastructure, teardown, deprovision
 
 Respond in JSON format matching the schema."""
 
@@ -199,7 +233,13 @@ class SmartExtractor:
 
 "{user_input}"
 
-Extract hosts, services, paths, ports, environment, jump_host.
+Extract:
+- hosts, services, paths, ports, environment, jump_host
+- iac_tools (terraform, ansible, pulumi, cloudformation, helm, kubectl)
+- iac_operation (provision, update, destroy, plan)
+- cloud_provider (aws, gcp, azure, ovh, proxmox, vmware)
+- infrastructure_resources (vm, vpc, subnet, security-group, etc.)
+
 Classify as DIAGNOSTIC or CHANGE.
 Determine severity and if destructive."""
 
@@ -355,6 +395,100 @@ Determine severity and if destructive."""
         if jump_match:
             entities.jump_host = jump_match.group(1)
 
+        # Extract IaC tools (v0.9.0)
+        iac_tools_pattern = (
+            r"\b(terraform|ansible|pulumi|cloudformation|cfn|arm|helm|kubectl|k8s|"
+            r"docker-compose|vagrant|packer|opentofu)\b"
+        )
+        iac_tools = re.findall(iac_tools_pattern, text, re.IGNORECASE)
+        if iac_tools:
+            # Normalize: cfn → cloudformation, k8s → kubernetes
+            normalized = []
+            for tool in {t.lower() for t in iac_tools}:
+                if tool == "cfn":
+                    normalized.append("cloudformation")
+                elif tool == "k8s":
+                    normalized.append("kubernetes")
+                else:
+                    normalized.append(tool)
+            entities.iac_tools = list(set(normalized))
+
+        # Extract cloud provider
+        provider_patterns = {
+            "aws": r"\b(aws|amazon|ec2|s3|rds|lambda|cloudwatch)\b",
+            "gcp": r"\b(gcp|google\s*cloud|gce|gke|bigquery)\b",
+            "azure": r"\b(azure|microsoft\s*cloud|aks|cosmos)\b",
+            "ovh": r"\b(ovh|ovhcloud)\b",
+            "proxmox": r"\b(proxmox|pve)\b",
+            "vmware": r"\b(vmware|vsphere|vcenter|esxi)\b",
+            "digitalocean": r"\b(digitalocean|do\s+droplet)\b",
+            "openstack": r"\b(openstack|nova|neutron)\b",
+        }
+        for provider, pattern in provider_patterns.items():
+            if re.search(pattern, text, re.IGNORECASE):
+                entities.cloud_provider = provider
+                break
+
+        # Extract infrastructure resources
+        resource_patterns = (
+            r"\b(vm|vms|instance|instances|server|servers|machine|machines|"
+            r"vpc|subnet|subnets|security[- ]?group|load[- ]?balancer|lb|elb|alb|nlb|"
+            r"database|db|rds|aurora|dynamo|bucket|s3|blob|storage|volume|disk|ebs|"
+            r"cluster|node|nodes|deployment|pod|pods|namespace|"
+            r"network|firewall|nat|gateway|route[- ]?table|"
+            r"lambda|function|api[- ]?gateway|cdn|cloudfront)\b"
+        )
+        resources = re.findall(resource_patterns, text, re.IGNORECASE)
+        if resources:
+            entities.infrastructure_resources = list({r.lower() for r in resources})
+
+        # Extract IaC operation type
+        # PROVISION patterns (creating new)
+        provision_patterns = [
+            r"\b(provision|provisionner|créer?|create|spin\s+up|allocate)\b.*"
+            r"\b(vm|instance|server|serveur|machine|infra|infrastructure|resource|ressource)",
+            r"\b(terraform|ansible|pulumi)\s+(apply|run)\b.*\b(new|nouveau)",
+            r"\b(deploy|déployer)\s+(new|nouvelle?|infrastructure|infra)\b",
+            r"\bnew\s+(vm|instance|server|serveur|machine|infrastructure)\b",
+        ]
+        # UPDATE patterns (modifying existing)
+        update_patterns = [
+            r"\b(update|mettre\s+[àa]\s+jour|upgrade|modifier|scale|resize)\b.*"
+            r"\b(vm|instance|server|serveur|machine|infra|resource|ressource)",
+            r"\b(apply|appliquer)\s+(changes?|modifications?|config)\b",
+            r"\b(augment|réduire|increase|decrease)\s+(cpu|ram|memory|disk|replicas|capacity)\b",
+            r"\b(scale|resize)\s+(up|down|out|in)\b",
+            r"\bmodify\s+(instance|vm|server|serveur|resource)\b",
+        ]
+        # DESTROY patterns
+        destroy_patterns = [
+            r"\b(destroy|détruire|teardown|deprovision|supprimer)\b.*"
+            r"\b(vm|instance|server|serveur|machine|infra|infrastructure|resource|ressource)",
+            r"\bterraform\s+destroy\b",
+            r"\b(delete|remove)\s+(all\s+)?(infrastructure|infra|resources?|ressources?)\b",
+        ]
+        # PLAN patterns (read-only preview)
+        plan_patterns = [
+            r"\bterraform\s+(plan|validate|fmt|show)\b",
+            r"\bansible[- ]playbook\s+.*--check\b",
+            r"\b(dry[- ]?run|preview|what[- ]?if)\b",
+            r"\bkubectl\s+(diff|get|describe)\b",
+        ]
+
+        text_lower_iac = text.lower()
+        if any(re.search(p, text_lower_iac) for p in destroy_patterns):
+            entities.iac_operation = "destroy"
+        elif any(re.search(p, text_lower_iac) for p in plan_patterns):
+            entities.iac_operation = "plan"
+        elif any(re.search(p, text_lower_iac) for p in update_patterns):
+            entities.iac_operation = "update"
+        elif (
+            any(re.search(p, text_lower_iac) for p in provision_patterns)
+            # Fallback: IaC tool + apply/run/execute = provision
+            or (entities.iac_tools and re.search(r"\b(apply|run|execute)\b", text_lower_iac))
+        ):
+            entities.iac_operation = "provision"
+
         # Classify intent (simple heuristic)
         text_lower = text.lower()
 
@@ -375,6 +509,12 @@ Determine severity and if destructive."""
         ]
         diag_score = sum(1 for p in diag_patterns if re.search(p, text_lower))
 
+        # IaC operation strongly influences intent (v0.9.0)
+        if entities.iac_operation in ("provision", "update", "destroy"):
+            change_score += 3  # Strong CHANGE signal
+        elif entities.iac_operation == "plan":
+            diag_score += 3  # Plan is read-only
+
         # Determine intent
         if change_score > diag_score:
             center = "CHANGE"
@@ -383,17 +523,24 @@ Determine severity and if destructive."""
             center = "DIAGNOSTIC"
             confidence = min(0.6 + diag_score * 0.1, 0.9)
 
-        # Check destructive
+        # Check destructive (includes IaC destroy operations)
         destructive_patterns = (
             r"\b(rm\s+-rf|delete|drop|truncate|format|kill\s+-9|shutdown|reboot)\b"
         )
         is_destructive = bool(re.search(destructive_patterns, text_lower))
 
+        # IaC destroy is always destructive (v0.9.0)
+        if entities.iac_operation == "destroy":
+            is_destructive = True
+
+        # Determine severity (v0.9.0 - IaC-aware)
+        severity = self._determine_severity(entities, is_destructive)
+
         intent = IntentClassification(
             center=center,
             confidence=confidence,
             is_destructive=is_destructive,
-            severity="high" if is_destructive else "low",
+            severity=severity,
             reasoning="Regex fallback classification",
         )
 
@@ -402,6 +549,46 @@ Determine severity and if destructive."""
             intent=intent,
             raw_input=user_input,
         )
+
+    def _determine_severity(
+        self, entities: ExtractedEntities, is_destructive: bool
+    ) -> str:
+        """
+        Determine severity based on entities and operation type.
+
+        Severity levels:
+        - critical: Production + destructive, or destroy in production
+        - high: Production operations, destroy in non-prod, urgent fixes
+        - medium: Staging/dev operations, routine updates
+        - low: Plan/preview, information requests
+
+        v0.9.0: IaC-aware severity determination.
+        """
+        env = entities.environment
+        iac_op = entities.iac_operation
+
+        # Critical: destroy in production OR any destructive in production
+        if env == "production" and (iac_op == "destroy" or is_destructive):
+            return "critical"
+
+        # High: destroy anywhere, or production modifications
+        if iac_op == "destroy":
+            return "high"
+        if env == "production" and iac_op in ("provision", "update"):
+            return "high"
+
+        # Medium: staging operations or provision/update in dev
+        if env == "staging" and iac_op in ("provision", "update", "destroy"):
+            return "medium"
+        if iac_op in ("provision", "update"):
+            return "medium"
+
+        # Low: plan operations or unknown
+        if iac_op == "plan":
+            return "low"
+
+        # Fallback: destructive commands are high, otherwise low
+        return "high" if is_destructive else "low"
 
     @property
     def model(self) -> str | None:
