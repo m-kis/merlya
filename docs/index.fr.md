@@ -25,11 +25,11 @@ inventaire SSH, exécution à distance sécurisée, diagnostics et automatisatio
 
     Pool SSH asynchrone, jump hosts, test de connexion, import/export d'inventaire.
 
--   :material-robot:{ .lg .middle } **Routage local + fallback LLM**
+-   :material-robot:{ .lg .middle } **Architecture DIAGNOSTIC/CHANGE**
 
     ---
 
-    Le routage d'intention préfère les classifieurs locaux quand disponibles, avec des fallbacks sûrs.
+    Routage intelligent entre investigation read-only et mutations contrôlées avec approbation HITL.
 
 -   :material-security:{ .lg .middle } **Sécurisé par conception**
 
