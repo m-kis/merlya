@@ -5,12 +5,21 @@
 ```
 merlya/
 ├── agent/          # PydanticAI agent and tools
+├── capabilities/   # Capability detection for hosts/tools
+│   ├── detector.py # CapabilityDetector (SSH, Ansible, TF, K8s)
+│   ├── models.py   # HostCapabilities, ToolCapability
+│   └── cache.py    # TTL cache for capabilities
+├── centers/        # Operational centers (DIAGNOSTIC/CHANGE)
+│   ├── base.py     # AbstractCenter, CenterMode, RiskLevel
+│   ├── diagnostic.py # DiagnosticCenter (read-only)
+│   ├── change.py   # ChangeCenter (pipelines + HITL)
+│   └── registry.py # CenterRegistry
 ├── cli/            # CLI entry point
 ├── commands/       # Slash command system
 ├── config/         # Configuration management + policies
 │   ├── loader.py   # Config loading
 │   ├── models.py   # Pydantic config models
-│   ├── tiers.py    # Tier configuration (model selection)
+│   ├── tiers.py    # Tier configuration (deprecated, kept for compatibility)
 │   └── policies.py # Policy management (guardrails)
 ├── core/           # Shared context and logging
 ├── health/         # Startup health checks
@@ -19,15 +28,23 @@ merlya/
 ├── mcp/            # MCP (Model Context Protocol) integration
 │   └── manager.py  # MCPManager (async-safe singleton)
 ├── parser/         # Input/output parsing service
-│   ├── service.py  # ParserService (tier-based backend selection)
+│   ├── service.py  # ParserService (heuristic-based parsing)
 │   ├── models.py   # Pydantic models (IncidentInput, ParsedLog)
-│   └── backends/   # Heuristic and ONNX backends
+│   ├── smart_extractor.py  # SmartExtractor (LLM + regex hybrid)
+│   └── backends/   # Heuristic backend
 ├── persistence/    # SQLite database layer
 │   ├── database.py # Async DB with migration locking
 │   └── repositories.py # Typed repositories
+├── pipelines/      # IaC pipelines for CHANGE center
+│   ├── base.py     # AbstractPipeline, PipelineStage
+│   ├── ansible.py  # AnsiblePipeline (ad-hoc/inline/repo)
+│   ├── terraform.py # TerraformPipeline
+│   ├── kubernetes.py # KubernetesPipeline
+│   └── bash.py     # BashPipeline (fallback)
 ├── repl/           # Interactive console
 ├── router/         # Intent classification
 │   ├── classifier.py # IntentRouter with fast/heavy path
+│   ├── center_classifier.py # CenterClassifier (DIAG/CHANGE)
 │   └── handler.py  # Request handler (fast path, skills, agent)
 ├── secrets/        # Keyring integration
 ├── security/       # Permission management + audit
@@ -36,17 +53,9 @@ merlya/
 ├── session/        # Session and context management
 │   ├── manager.py  # SessionManager
 │   ├── context_tier.py # ContextTierPredictor (auto tier detection)
-│   └── summarizer.py # Hybrid summarization (ONNX + LLM)
+│   └── summarizer.py # LLM-based summarization
 ├── setup/          # First-run wizard
-├── skills/         # Reusable workflow system
-│   ├── registry.py # SkillRegistry singleton
-│   ├── loader.py   # YAML skill loader
-│   ├── executor.py # SkillExecutor
-│   └── builtin/    # Default skills (YAML)
 ├── ssh/            # SSH connection pool
-├── subagents/      # Parallel execution system
-│   ├── factory.py  # SubagentFactory
-│   └── orchestrator.py # asyncio.gather orchestration
 ├── tools/          # Tool implementations
 │   ├── core/       # Core tools (ssh_execute, list_hosts)
 │   ├── files/      # File operations
@@ -74,35 +83,112 @@ The agent is built on **PydanticAI** with a ReAct loop for reasoning and action.
 - Conversation persistence to SQLite
 - Tool registration via decorators
 
-### 2. Intent Router (`merlya/router/`)
+### 2. SmartExtractor (`merlya/parser/smart_extractor.py`)
 
-Classifies user intent to determine mode and required tools.
+Extracts host references from natural language using a hybrid LLM + regex approach.
 
-**Classification Methods:**
-1. **ONNX Embeddings** - Local semantic classification (if available)
-2. **LLM Fallback** - When confidence < 0.7
-3. **Pattern Matching** - Keyword-based fallback
+**Extraction Methods:**
 
-**Agent Modes:**
-- `DIAGNOSTIC` - Information gathering (check, monitor, analyze)
-- `REMEDIATION` - Actions (restart, deploy, fix)
-- `QUERY` - Questions (what, how, explain)
-- `CHAT` - General conversation
+1. **Fast Model (LLM)** - Uses the fast model for semantic understanding
+2. **Regex Patterns** - Fallback patterns for common host references
+3. **Inventory Matching** - Validates against known hosts
 
-**RouterResult:**
+**Output:**
+
+The SmartExtractor injects detected hosts into the agent context, enabling the orchestrator to work with the correct targets without explicit host specification in prompts.
+
+### 3. Center Classifier (`merlya/router/center_classifier.py`)
+
+Routes user requests to either DIAGNOSTIC or CHANGE center based on intent classification.
+
+**CenterMode:**
 ```python
-@dataclass
-class RouterResult:
-    mode: AgentMode
-    tools: list[str]           # ["system", "files"]
-    entities: dict             # {"hosts": ["web01"]}
-    confidence: float
-    jump_host: str | None      # Detected bastion
-    credentials_required: bool
-    elevation_required: bool
+class CenterMode(str, Enum):
+    DIAGNOSTIC = "diagnostic"  # Read-only investigation
+    CHANGE = "change"          # Controlled mutations
 ```
 
-### 3. SSH Pool (`merlya/ssh/`)
+**Classification Strategy:**
+
+1. **Pattern Matching** - Fast regex-based classification for clear intents
+2. **LLM Fallback** - Uses fast model for ambiguous cases
+3. **Clarification** - Asks user if confidence < 0.7
+
+**DIAGNOSTIC Patterns:** check, status, show, list, logs, analyze, why, what
+**CHANGE Patterns:** restart, fix, deploy, install, update, scale, delete
+
+### 4. Operational Centers (`merlya/centers/`)
+
+Two operational centers handle all user requests:
+
+#### DiagnosticCenter (Read-Only)
+
+Executes investigation tasks without modifying system state.
+
+**Allowed Tools:**
+- SSH read commands (df, free, ps, cat, tail, grep)
+- kubectl get/describe/logs
+- Log analysis
+- Security audits
+
+**Blocked Commands:**
+
+- rm, kill, restart, reboot, shutdown
+- apt/yum install, pip install
+- chmod, chown, systemctl start/stop
+
+**Evidence Collection:**
+```python
+class Evidence(BaseModel):
+    timestamp: datetime
+    host: str
+    command: str
+    output: str
+    exit_code: int
+    duration_ms: int
+```
+
+#### ChangeCenter (Controlled Mutations)
+
+All changes go through a Pipeline with mandatory HITL (Human-In-The-Loop) approval.
+
+**Pipeline Selection:**
+
+1. Ansible - if installed and task matches (deploy, configure, service)
+2. Terraform - if installed and task matches (infrastructure, cloud)
+3. Kubernetes - if kubectl available and task matches (pod, deployment, scale)
+4. Bash - fallback with strict HITL
+
+### 5. Pipelines (`merlya/pipelines/`)
+
+All CHANGE operations go through a mandatory pipeline:
+
+```text
+Plan → Diff/Dry-run → Summary → HITL → Apply → Post-check → Rollback
+```
+
+**Pipeline Stages:**
+```python
+class PipelineStage(str, Enum):
+    PLAN = "plan"          # Validate what will change
+    DIFF = "diff"          # Preview changes (dry-run)
+    SUMMARY = "summary"    # Human-readable description
+    HITL = "hitl"          # User approval required
+    APPLY = "apply"        # Execute changes
+    POST_CHECK = "post_check"  # Verify success
+    ROLLBACK = "rollback"  # Revert if failed
+```
+
+**Available Pipelines:**
+
+| Pipeline           | Use Case                             | Dry-run            |
+| ------------------ | ------------------------------------ | ------------------ |
+| AnsiblePipeline    | Service management, config, packages | `--check --diff`   |
+| TerraformPipeline  | Cloud infrastructure                 | `terraform plan`   |
+| KubernetesPipeline | Container orchestration              | `kubectl diff`     |
+| BashPipeline       | Fallback for simple commands         | Preview only       |
+
+### 6. SSH Pool (`merlya/ssh/`)
 
 Manages SSH connections with pooling and authentication.
 
@@ -118,7 +204,7 @@ Manages SSH connections with pooling and authentication.
 - `SSHAuthManager` - Authentication handling
 - `SSHResult` - Command result (stdout, stderr, exit_code)
 
-### 4. Shared Context (`merlya/core/context.py`)
+### 7. Shared Context (`merlya/core/context.py`)
 
 Central dependency container passed to all components.
 
@@ -136,7 +222,7 @@ SharedContext
 └── ssh_pool        # SSHPool (lazy)
 ```
 
-### 5. Persistence (`merlya/persistence/`)
+### 8. Persistence (`merlya/persistence/`)
 
 SQLite database with async access via aiosqlite.
 
@@ -153,7 +239,7 @@ SQLite database with async access via aiosqlite.
 - Migration lock prevents concurrent updates
 - Stale lock detection (30s timeout)
 
-### 6. Session Manager (`merlya/session/`)
+### 9. Session Manager (`merlya/session/`)
 
 Manages context tiers and automatic summarization.
 
@@ -171,45 +257,16 @@ class ContextTier(Enum):
 - <4GB → MINIMAL
 
 **Summarization Chain:**
-1. ONNX extractive (key sentences)
-2. Mini-LLM fallback
-3. Main LLM fallback
-4. Smart truncation
+1. LLM extractive (key sentences)
+2. Main LLM fallback
+3. Smart truncation
 
-### 7. Skills System (`merlya/skills/`)
-
-Reusable workflows for well-defined intents.
-
-**Skill Configuration (YAML):**
-```yaml
-name: incident_triage
-version: "1.0"
-description: "Triage et diagnostic d'incidents"
-intent_patterns:
-  - "incident.*"
-  - "problème.*"
-tools_allowed:
-  - ssh_execute
-  - read_file
-max_hosts: 5
-timeout_seconds: 120
-require_confirmation_for: ["restart", "kill"]
-```
-
-**Execution Flow:**
-1. Router matches skill pattern
-2. SkillExecutor validates input
-3. Subagents parallelize per-host
-4. Results aggregated
-
-### 8. Parser Service (`merlya/parser/`)
+### 10. Parser Service (`merlya/parser/`)
 
 Structures all input/output before LLM processing.
 
-**Backend Selection (tier-based):**
-- `performance` → ONNX NER model
-- `balanced` → ONNX DistilBERT
-- `lightweight` → Heuristic (regex + patterns)
+**Backend:**
+Heuristic-based parsing using regex patterns and rule-based extraction.
 
 **Output Models:**
 ```python
@@ -220,7 +277,7 @@ class ParsingResult(BaseModel):
     truncated: bool
 ```
 
-### 9. MCP Manager (`merlya/mcp/`)
+### 11. MCP Manager (`merlya/mcp/`)
 
 Integrates external MCP servers (GitHub, Slack, etc.).
 
@@ -235,7 +292,7 @@ manager = await MCPManager.create(config, secrets)
 - `${VAR}` - Required (raises if missing)
 - `${VAR:-default}` - Optional with fallback
 
-### 10. Policy System (`merlya/config/policies.py`)
+### 12. Policy System (`merlya/config/policies.py`)
 
 Guardrails and safety controls.
 
@@ -255,7 +312,7 @@ policy:
 - Per-host async locking for capability detection
 - Audit logging of all executed commands
 
-### 11. Security Layer (`merlya/security/`, `merlya/agent/history.py`)
+### 13. Security Layer (`merlya/security/`, `merlya/agent/history.py`)
 
 Comprehensive security controls for credential handling and agent behavior.
 
@@ -331,7 +388,7 @@ Messages persisted to SQLite for session resumption:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ User: "Check disk usage on @web01 via @bastion"       │
+│ User: "Check disk usage on web01 via bastion"         │
 └──────────────────────┬─────────────────────────────────┘
                        │
                        ▼
@@ -350,8 +407,8 @@ Messages persisted to SQLite for session resumption:
                      │
                      ▼
          ┌─────────────────────────────────┐
-         │ Expand @mentions                │
-         │ @web01 → resolve from inventory │
+         │ Resolve host names              │
+         │ web01 → resolve from inventory  │
          └───────────┬─────────────────────┘
                      │
                      ▼
@@ -394,7 +451,6 @@ merlya
   │   ├─ RAM availability
   │   ├─ SSH available
   │   ├─ LLM provider reachable
-  │   ├─ ONNX router available
   │   └─ Keyring accessible
   │
   ├─ Create SharedContext
@@ -403,7 +459,7 @@ merlya
   │   └─ Create repositories
   │
   ├─ Initialize router
-  │   └─ Load ONNX model (if available)
+  │   └─ Load pattern matcher
   │
   ├─ Create agent
   │   └─ Register all tools

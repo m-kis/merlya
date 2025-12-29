@@ -57,8 +57,8 @@ Access servers through a bastion host using the `via` parameter.
 
 ```
 Check disk on db-server via bastion
-Execute 'uptime' on web-01 through @jump-host
-Analyse 192.168.1.100 via @ansible
+Execute 'uptime' on web-01 through jump-host
+Analyse 192.168.1.100 via ansible
 ```
 
 ### Patterns Detected
@@ -66,15 +66,17 @@ Analyse 192.168.1.100 via @ansible
 Merlya recognizes these patterns:
 
 **English:**
-- `via @hostname`
-- `through @hostname`
-- `using bastion @hostname`
+
+- `via hostname`
+- `through hostname`
+- `using bastion hostname`
 
 **French:**
-- `via @hostname`
-- `via la machine @hostname`
-- `en passant par @hostname`
-- `à travers @hostname`
+
+- `via hostname`
+- `via la machine hostname`
+- `en passant par hostname`
+- `à travers hostname`
 
 ### How It Works
 
@@ -120,15 +122,17 @@ When you reference a host, Merlya resolves it in order:
 4. **/etc/hosts** - System hosts file
 5. **DNS** - Standard DNS resolution
 
-### Using @ Mentions
+### Host Names
 
-Reference hosts with `@`:
+Reference hosts by their inventory name (without `@`):
 
 ```
-Check memory on @web01
+Check memory on web01
 ```
 
 This resolves `web01` from inventory and uses its configuration.
+
+> **Note**: The `@` prefix is reserved for secret references (e.g., `@db-password`), not host names.
 
 ## SSH Configuration
 
@@ -213,87 +217,80 @@ Host key verification failed
 
 ## Privilege Elevation
 
-Merlya automatically handles privilege elevation (sudo, doas, su) on remote hosts with an auto-healing fallback system.
+Merlya handles privilege elevation (sudo, doas, su) on remote hosts using **explicit per-host configuration**. No auto-detection - you configure the elevation method when adding a host.
 
-### Automatic Detection
+### Configuration
 
-When connecting to a host, Merlya detects available elevation methods:
-
-1. **sudo NOPASSWD** - Tests `sudo -n true` (non-interactive)
-2. **doas NOPASSWD** - Common on BSD systems
-3. **sudo with password** - User is in sudoers, needs password
-4. **doas with password** - doas available, needs password
-5. **su** - Last resort, requires root password
-
-### Smart sudo Detection
-
-Merlya distinguishes between:
-
-- **sudo available** - User is in sudoers, just needs password
-- **sudo not authorized** - User is NOT in sudoers → falls back to su
-
-This prevents failed attempts with sudo when su is the only option.
-
-### Method Priority
-
-```
-1. sudo (NOPASSWD)      - Best: no password needed
-2. doas (NOPASSWD)      - Common on BSD
-3. sudo_with_password   - Fallback with password
-4. doas_with_password   - Alternative with password
-5. su                   - Last resort (root password)
-```
-
-### Auto-Healing Fallback
-
-When an elevation method fails (wrong password), Merlya:
-
-1. **Verifies** the password with a test command (`whoami`)
-2. **Marks failed** methods to avoid retry loops
-3. **Tries next** method in the chain automatically
-4. **Caches** passwords only after verification succeeds
-
-This ensures Merlya eventually finds a working elevation method.
-
-### Elevation Commands
+Elevation is configured per-host in the inventory:
 
 ```bash
-# Detect elevation capabilities on a host
-/ssh elevation detect <host>
+# Configure elevation when editing a host
+/hosts edit web01
+# → Prompts for elevation_method: none, sudo, sudo_password, doas, doas_password, su
 
-# Show elevation status and failed methods
-/ssh elevation status <host>
+# Or import with elevation configured (TOML/YAML/CSV)
+/hosts import inventory.toml
+```
 
-# Reset failed methods to retry with new password
-/ssh elevation reset [host]
+### Elevation Methods
+
+| Method           | Description                | Password Required |
+| ---------------- | -------------------------- | ----------------- |
+| `none`           | No elevation (default)     | No                |
+| `sudo`           | sudo with NOPASSWD         | No                |
+| `sudo_password`  | sudo requiring password    | Yes               |
+| `doas`           | doas with NOPASSWD (BSD)   | No                |
+| `doas_password`  | doas requiring password    | Yes               |
+| `su`             | su (root password)         | Yes               |
+
+### TOML Example
+
+```toml
+[hosts.web01]
+hostname = "192.168.1.10"
+user = "deploy"
+elevation_method = "sudo_password"
+elevation_user = "root"
+
+[hosts.db01]
+hostname = "192.168.1.20"
+user = "admin"
+elevation_method = "sudo"  # NOPASSWD configured
 ```
 
 ### Password Handling
 
-Elevation passwords are stored securely:
+Elevation passwords are handled securely:
 
-1. **Keyring storage** - macOS Keychain, Linux Secret Service
-2. **Verification first** - Passwords tested before caching
-3. **Reference tokens** - Commands use `@elevation:hostname:password`
-4. **Safe logging** - Logs show `@elevation:...`, never actual passwords
+1. **Prompt on demand** - Asks for password when needed
+2. **Session caching** - Optionally cache for current session
+3. **Keyring storage** - Store in system keyring (macOS Keychain, Linux Secret Service)
+4. **Reference tokens** - Commands use `@elevation:hostname:password`
+5. **Safe logging** - Logs show `@elevation:...`, never actual passwords
 
 ### Usage in Commands
 
-Merlya handles elevation automatically:
+When a command requires elevation, Merlya:
 
-```
-> Read /var/log/secure on @web01
-# Merlya detects "Permission denied"
-# Prompts for elevation if needed
-# Verifies password works
-# Caches for future commands
+1. Checks host's `elevation_method` configuration
+2. Prompts for confirmation (DIAGNOSTIC) or HITL approval (CHANGE)
+3. Requests password if needed
+4. Executes with appropriate elevation
+
+```bash
+> Read /var/log/secure on web01
+# Host web01 has elevation_method=sudo_password
+# Prompts: "Execute as root on web01? [Y/n]"
+# If yes, prompts for password
+# Executes: sudo -S cat /var/log/secure
 ```
 
-You can also explicitly request elevation:
+### Clear Elevation Passwords
 
-```
-> Run 'systemctl restart nginx' on @web01 with sudo
-> Execute 'cat /etc/shadow' on @db01 as root
+```bash
+/secret clear-elevation           # List stored elevation passwords
+/secret clear-elevation web01     # Clear for specific host
+/secret clear-elevation --all     # Clear all elevation passwords
 ```
 
 ### Secret References
@@ -301,7 +298,7 @@ You can also explicitly request elevation:
 For commands requiring passwords, use secret references:
 
 ```
-> Connect to MongoDB with password @db-prod-password on @db01
+> Connect to MongoDB with password @db-prod-password on db01
 ```
 
 Secret references (`@name`) are:
@@ -314,7 +311,7 @@ Secret references (`@name`) are:
 Per-host elevation settings are cached in host metadata:
 
 ```bash
-/hosts show @web01
+/hosts show web01
 # Shows detected elevation method
 ```
 

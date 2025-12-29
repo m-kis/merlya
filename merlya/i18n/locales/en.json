@@ -241,7 +241,7 @@
       "subcommands": "Subcommands:\n  list              - List all hosts\n  add <name>        - Add a host (--test to verify connection)\n  delete <name>     - Remove a host\n  show <name>       - Show host details\n  tag <name> <tag>  - Add a tag to a host\n  untag <name> <tag> - Remove a tag from a host\n  check [options]   - Check host connectivity\n                      --all: Check all hosts\n                      --tag=<tag>: Check hosts with tag\n                      --parallel: Check in parallel"
     },
     "ssh": {
-      "description": "SSH connection management",
+      "description": "Manage SSH connections",
       "usage": "/ssh <subcommand>"
     },
     "mcp": {
@@ -249,7 +249,7 @@
       "usage": "/mcp <subcommand>"
     },
     "model": {
-      "description": "Manage LLM provider and router",
+      "description": "Manage LLM provider and models (brain/fast)",
       "usage": "/model <subcommand>"
     },
     "scan": {
@@ -272,6 +272,10 @@
     "secret": {
       "description": "Manage secrets (securely stored)",
       "usage": "/secret <subcommand>"
+    },
+    "audit": {
+      "description": "View and export audit logs",
+      "usage": "/audit <subcommand>"
     }
   },
   "errors": {

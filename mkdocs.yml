@@ -2,9 +2,10 @@ site_name: Merlya - AI Infrastructure Assistant
 site_url: https://merlya.m-kis.fr/
 site_author: Cedric (M-KIS)
 site_description: >-
-  Merlya is an AI-powered CLI tool for DevOps and SysAdmins.
-  Manage infrastructure with natural language, SSH connections,
-  host inventory, and multiple LLM providers.
+  Merlya is an AI-powered CLI assistant for DevOps, SysAdmins, and Platform Engineers.
+  Manage infrastructure with natural language commands, SSH automation, Ansible/Terraform pipelines,
+  Kubernetes diagnostics, and multiple LLM providers (Claude, GPT-4, Groq, Ollama).
+  Features HITL approval, audit logging, and intelligent DIAGNOSTIC/CHANGE routing.
 
 repo_name: m-kis/merlya
 repo_url: https://github.com/m-kis/merlya
@@ -148,26 +149,48 @@ extra:
       name: Merlya on PyPI
   rag_api_url: https://merlya-docs-rag.cedric-merlin-565.workers.dev/ask
   generator: false
-  # SEO
+  # SEO - Comprehensive keywords for AI and infrastructure management
   meta:
     - name: keywords
-      content: merlya, ai infrastructure assistant, devops ai, sysadmin ai, ssh management, cli automation, llm infrastructure, pydantic-ai, openrouter, natural language devops
+      content: >-
+        merlya, ai infrastructure assistant, devops ai, sysadmin ai, platform engineering ai,
+        ssh management, ssh automation, cli automation, terminal assistant, ai cli tool,
+        llm infrastructure, pydantic-ai, openrouter, anthropic claude, openai gpt4, groq llama,
+        natural language devops, natural language infrastructure, ai ops, aiops,
+        ansible automation, terraform automation, kubernetes automation, k8s cli,
+        infrastructure as code, iac automation, gitops, devops automation,
+        server management, host inventory, ssh pool, jump host, bastion,
+        incident response, diagnostics, troubleshooting, system monitoring,
+        hitl human in the loop, audit logging, security automation,
+        mcp model context protocol, llm tools, ai agent, react agent,
+        french english bilingual, i18n, open source devops, python cli,
+        smart extractor, brain fast model, diagnostic change center
     - name: author
       content: Cedric (M-KIS)
+    - name: robots
+      content: index, follow
     - property: og:type
       content: website
     - property: og:title
-      content: Merlya - AI Infrastructure Assistant
+      content: Merlya - AI Infrastructure Assistant for DevOps
     - property: og:description
-      content: AI-powered CLI tool for DevOps and SysAdmins. Manage infrastructure with natural language, SSH connections, and multiple LLM providers.
+      content: >-
+        AI-powered CLI for DevOps and SysAdmins. Natural language SSH, Ansible/Terraform pipelines,
+        Kubernetes diagnostics, multi-LLM support (Claude, GPT-4, Groq). HITL approval & audit logging.
     - property: og:image
       content: https://merlya.m-kis.fr/assets/logo.png
+    - property: og:locale
+      content: en_US
+    - property: og:locale:alternate
+      content: fr_FR
     - name: twitter:card
-      content: summary
+      content: summary_large_image
     - name: twitter:title
       content: Merlya - AI Infrastructure Assistant
     - name: twitter:description
-      content: AI-powered CLI tool for DevOps and SysAdmins with LLM integration
+      content: >-
+        AI-powered CLI for DevOps. Natural language SSH, Ansible/Terraform pipelines,
+        Kubernetes diagnostics. Multi-LLM support with HITL approval.
 
 extra_css:
   - assets/stylesheets/extra.css

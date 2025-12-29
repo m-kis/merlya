@@ -75,14 +75,43 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
         stdin: str | None = None,
     ) -> SSHResult:
         """Execute a command on a remote host via SSH (read-only)."""
+        from merlya.tools.core import bash_execute as _bash_execute
         from merlya.tools.core import ssh_execute as _ssh_execute
+
+        # ENFORCE TARGET: When target is "local", use bash regardless of host parameter
+        target = ctx.deps.target.lower() if ctx.deps.target else ""
+        if target in ("local", "localhost", "127.0.0.1", "::1"):
+            # Redirect to bash for local targets
+            logger.info(f"🖥️ Target is local, executing locally: {command[:50]}...")
+
+            # Check for loop BEFORE recording
+            would_loop, reason = ctx.deps.tracker.would_loop("local", command)
+            if would_loop:
+                raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+
+            ctx.deps.tracker.record("local", command)
+
+            result = await _bash_execute(ctx.deps.context, command, timeout)
+            return SSHResult(
+                success=result.success,
+                stdout=result.data.get("stdout", "") if result.data else "",
+                stderr=result.data.get("stderr", "") if result.data else "",
+                exit_code=result.data.get("exit_code", -1) if result.data else -1,
+                hint=str(result.data.get("hint", ""))
+                if result.data and result.data.get("hint")
+                else None,
+                error=result.error if result.error else None,
+            )
+
+        # For remote targets, use actual SSH
+        effective_host = host
 
         # AUTO-ELEVATION: Collect credentials if needed
         effective_stdin = stdin
         if needs_elevation_stdin(command) and not stdin:
             logger.debug(f"🔐 Auto-elevation: {command[:40]}...")
             effective_stdin = await auto_collect_elevation_credentials(
-                ctx.deps.context, host, command
+                ctx.deps.context, effective_host, command
             )
             if not effective_stdin:
                 return SSHResult(
@@ -94,13 +123,15 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
                 )
 
         # Check for loop BEFORE recording
-        would_loop, reason = ctx.deps.tracker.would_loop(host, command)
+        would_loop, reason = ctx.deps.tracker.would_loop(effective_host, command)
         if would_loop:
             raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
 
-        ctx.deps.tracker.record(host, command)
+        ctx.deps.tracker.record(effective_host, command)
 
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, stdin=effective_stdin)
+        result = await _ssh_execute(
+            ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin
+        )
 
         return SSHResult(
             success=result.success,

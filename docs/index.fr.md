@@ -17,7 +17,7 @@ inventaire SSH, exécution à distance sécurisée, diagnostics et automatisatio
 
     ---
 
-    Posez des questions comme "vérifie l'espace disque sur @web-01" ou "analyse ce log d'incident".
+    Posez des questions comme "vérifie l'espace disque sur web-01" ou "analyse ce log d'incident".
 
 -   :material-server-network:{ .lg .middle } **Gestion SSH**
 
@@ -49,7 +49,7 @@ merlya
 
 # Option B : pour CI/CD, fournissez les clés API via variables d'environnement
 export OPENAI_API_KEY="..."
-merlya run "Vérifie l'espace disque sur @web-01"
+merlya run "Vérifie l'espace disque sur web-01"
 ```
 
 ## Documentation

@@ -203,9 +203,111 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
             Command output with stdout, stderr, exit_code, and verification hint.
         """
         from merlya.subagents.timeout import touch_activity
+        from merlya.tools.core import bash_execute as _bash_execute
         from merlya.tools.core import ssh_execute as _ssh_execute
         from merlya.tools.core.security import mask_sensitive_command
         from merlya.tools.core.verification import get_verification_hint
+
+        # ENFORCE LOCAL: If host is explicitly "local" or the user didn't mention any host
+        # in their request, execute locally instead of via SSH
+        host_lower = host.lower() if host else ""
+        is_local_target = host_lower in ("local", "localhost", "127.0.0.1", "::1")
+
+        # Check if router_result has detected hosts in the user's request
+        router_result = ctx.deps.router_result
+        user_mentioned_hosts = router_result.entities.get("hosts", []) if router_result else []
+
+        # Also check if the host IP/name is explicitly mentioned in the original request
+        # The router may not detect IPs, so we check the raw text too
+        original_request = ctx.deps.user_input or ""
+
+        # Host is considered valid if:
+        # 1. It's in the detected entities, OR
+        # 2. It appears literally in the original request, OR
+        # 3. It's an IP/hostname that resolves to a host whose NAME is in the request
+        host_in_request = (
+            host_lower in [h.lower() for h in user_mentioned_hosts]
+            or host_lower in original_request.lower()
+            or host in original_request  # case-sensitive for IPs
+        )
+
+        # ENHANCED: Check if the host is from inventory and its NAME is in the request
+        # This handles cases like "check uptime on ansible" where LLM uses IP "192.168.107.250"
+        if not host_in_request and not is_local_target:
+            host_entry = await ctx.deps.context.hosts.get_by_name(host)
+            if host_entry:
+                # LLM used the inventory name directly
+                if host_entry.name.lower() in original_request.lower():
+                    host_in_request = True
+                    logger.debug(f"✅ Host '{host}' (name) found in request")
+            else:
+                # LLM might have used IP - check if any host with this IP has name in request
+                host_by_hostname = await ctx.deps.context.hosts.get_by_hostname(host)
+                if host_by_hostname and host_by_hostname.name.lower() in original_request.lower():
+                    host_in_request = True
+                    logger.debug(
+                        f"✅ Host '{host}' resolves to '{host_by_hostname.name}' which is in request"
+                    )
+
+        # CONVERSATION CONTEXT: For follow-up questions, check if the host matches
+        # the last remote target used in this conversation
+        # e.g., "check disk on pine64" followed by "what's using the most space?"
+        if not host_in_request and not is_local_target:
+            last_target = ctx.deps.context.last_remote_target
+            if last_target:
+                # Check if LLM is using the same host as the last conversation context
+                if host.lower() == last_target.lower():
+                    host_in_request = True
+                    logger.debug(
+                        f"✅ Host '{host}' matches conversation context (last_remote_target)"
+                    )
+                else:
+                    # Also check if both resolve to the same inventory entry
+                    last_entry = await ctx.deps.context.hosts.get_by_name(last_target)
+                    current_entry = await ctx.deps.context.hosts.get_by_name(host)
+                    if last_entry and current_entry and last_entry.id == current_entry.id:
+                        host_in_request = True
+                        logger.debug(
+                            f"✅ Host '{host}' resolves to same inventory as context '{last_target}'"
+                        )
+
+        # If no hosts were mentioned and LLM picked an arbitrary host, redirect to local
+        if not is_local_target and not host_in_request:
+            logger.warning(
+                f"⚠️ LLM picked target '{host}' not mentioned in task. Defaulting to 'local' for safety."
+            )
+            is_local_target = True
+
+        if is_local_target:
+            logger.info(f"🖥️ Running locally (not via SSH): {command[:60]}...")
+
+            # Check for loop
+            would_loop, reason = ctx.deps.tracker.would_loop("local", command)
+            if would_loop:
+                logger.warning(f"🛑 Loop prevented for local: {reason}")
+                return {
+                    "success": False,
+                    "stdout": "",
+                    "stderr": "",
+                    "exit_code": -1,
+                    "loop_detected": True,
+                    "error": f"🛑 LOOP DETECTED: {reason}\n"
+                    "You have repeated this command too many times. "
+                    "Try a DIFFERENT approach or report your findings to the user.",
+                }
+
+            ctx.deps.tracker.record("local", command)
+
+            touch_activity()
+            result = await _bash_execute(ctx.deps.context, command, timeout)
+            touch_activity()
+
+            return {
+                "success": result.success,
+                "stdout": result.data.get("stdout", "") if result.data else "",
+                "stderr": result.data.get("stderr", "") if result.data else "",
+                "exit_code": result.data.get("exit_code", -1) if result.data else -1,
+            }
 
         # VALIDATION: Catch common LLM mistake of passing password reference as host
         if host.startswith("@") and any(
@@ -218,7 +320,7 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
                 "CORRECT: ssh_execute(host='192.168.1.7', command='sudo -S cmd', stdin='@secret-sudo')"
             )
 
-        # VALIDATION: Catch 'sudo -S' without stdin parameter
+        # VALIDATION: Check if command needs elevation (sudo -S, su)
         # Note: -S flag can be uppercase or lowercase, and can appear in various positions
         has_sudo_s = (
             "sudo -S " in command
@@ -228,14 +330,45 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
         has_su = command.strip().startswith("su ") or " su -c" in command.lower()
         needs_stdin = has_sudo_s or has_su
 
-        if needs_stdin and not stdin:
-            raise ModelRetry(
-                f"❌ MISSING stdin! You used 'sudo -S' or 'su' but didn't provide the password.\n"
-                f"REQUIRED: ssh_execute(host='{host}', command='{command[:40]}...', "
-                f"stdin='@sudo:{host}:password')\n"
-                f"If you haven't collected credentials yet, first call:\n"
-                f"request_credentials(service='sudo', host='{host}')"
-            )
+        # AUTO-ELEVATION: Look up stored credentials for elevation
+        effective_stdin = stdin
+        if needs_stdin:
+            from merlya.agent.specialists.elevation import auto_collect_elevation_credentials
+
+            # If stdin was provided by LLM, verify the secret exists
+            if stdin and stdin.startswith("@"):
+                # Extract secret key from reference (e.g., "@sudo:host:password" -> "sudo:host:password")
+                secret_key = stdin[1:] if stdin.startswith("@") else stdin
+                existing = ctx.deps.context.secrets.get(secret_key)
+                if existing:
+                    logger.debug(f"✅ LLM-provided credential exists: {stdin[:30]}...")
+                    effective_stdin = stdin
+                else:
+                    # LLM provided a secret ref that doesn't exist - try alternatives
+                    logger.debug(
+                        f"⚠️ LLM-provided credential not found: {stdin[:30]}... trying alternatives"
+                    )
+                    effective_stdin = await auto_collect_elevation_credentials(
+                        ctx.deps.context, host, command
+                    )
+            else:
+                # No stdin provided - auto-lookup
+                logger.debug(f"🔐 Auto-elevation: looking up credentials for {host}")
+                effective_stdin = await auto_collect_elevation_credentials(
+                    ctx.deps.context, host, command
+                )
+
+            if effective_stdin:
+                logger.debug(f"✅ Found stored credentials for elevation on {host}")
+            else:
+                # No stored credentials and prompt failed - inform the LLM
+                raise ModelRetry(
+                    f"❌ MISSING credentials for elevation on '{host}'.\n"
+                    f"No stored credentials found. First call:\n"
+                    f"request_credentials(service='sudo', host='{host}')\n"
+                    f"Then retry with: ssh_execute(host='{host}', command='{command[:40]}...', "
+                    f"stdin='@sudo:{host}:password')"
+                )
 
         via_info = f" via {via}" if via else ""
         # SECURITY: Mask sensitive data before logging
@@ -260,10 +393,17 @@ def _register_core_tools(agent: Agent[Any, Any]) -> None:
 
         ctx.deps.tracker.record(host, command)
 
+        # Update conversation context: track this as the last remote target
+        # This allows follow-up questions to use the same target
+        ctx.deps.context.last_remote_target = host
+        logger.debug(f"📍 Conversation context updated: last_remote_target = {host}")
+
         # Signal activity before and after SSH command
         touch_activity()
 
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, via=via, stdin=stdin)
+        result = await _ssh_execute(
+            ctx.deps.context, host, command, timeout, via=via, stdin=effective_stdin
+        )
 
         # Signal activity after command completes
         touch_activity()

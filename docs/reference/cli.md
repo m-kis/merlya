@@ -33,7 +33,7 @@ Options:
 Verbose logging:
 
 ```bash
-merlya --verbose run "Check disk usage on @web-01"
+merlya --verbose run "Check disk usage on web-01"
 ```
 
 Exit codes:

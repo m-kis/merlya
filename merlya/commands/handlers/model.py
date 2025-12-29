@@ -1,7 +1,11 @@
 """
 Merlya Commands - Model management handlers.
 
-Implements /model command with subcommands: show, provider, model, test, router.
+Implements /model command with subcommands: show, provider, brain, fast, test.
+
+Two model roles:
+  - brain: Complex reasoning, planning, analysis (Orchestrator, Centers)
+  - fast: Quick routing, fingerprinting, token-efficient tasks (Router, Classifier)
 """
 
 from __future__ import annotations
@@ -17,12 +21,13 @@ from merlya.config.provider_env import (
     ensure_provider_env,
     ollama_requires_api_key,
 )
+from merlya.config.providers import get_provider_models
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-@command("model", "Manage LLM provider and router", "/model <subcommand>")
+@command("model", "Manage LLM provider and models", "/model <subcommand>")
 async def cmd_model(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Manage LLM provider and model configuration."""
     if not args:
@@ -42,42 +47,32 @@ async def cmd_model_show(ctx: SharedContext, _args: list[str]) -> CommandResult:
     key_env = config.api_key_env or f"{config.provider.upper()}_API_KEY"
     has_key = key_env and ctx.secrets.has(key_env)
 
+    # Get actual brain/fast models
+    brain_model = config.get_orchestrator_model()
+    fast_model = config.get_fast_model()
+
     lines = [
         "**Model Configuration**\n",
-        "**Orchestrator:**",
-        f"  - Provider: `{config.provider}`",
-        f"  - Model: `{config.model}`",
-        f"  - API Key: `{'configured' if has_key else 'not set'}` ({key_env})",
+        f"**Provider:** `{config.provider}`",
+        f"**API Key:** `{'configured' if has_key else 'not set'}` ({key_env})",
+        "",
+        "**Models:**",
+        f"  🧠 brain: `{brain_model}` (reasoning, planning)",
+        f"  ⚡ fast: `{fast_model}` (routing, fingerprinting)",
     ]
 
     if config.base_url:
-        lines.append(f"  - Base URL: `{config.base_url}`")
+        lines.append(f"\n**Base URL:** `{config.base_url}`")
 
     return CommandResult(success=True, message="\n".join(lines))
 
 
 @subcommand("model", "provider", "Change LLM provider", "/model provider <name>")
 async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Change the LLM provider."""
-    providers = ["openrouter", "anthropic", "openai", "mistral", "groq", "ollama", "litellm"]
-    default_models = {
-        "openrouter": "amazon/nova-2-lite-v1:free",
-        "anthropic": "claude-3-5-sonnet-20241022",
-        "openai": "gpt-4o",
-        "mistral": "mistral-large-latest",
-        "groq": "llama-3.1-70b-versatile",
-        "ollama": "llama3.2",
-        "litellm": "gpt-4o",
-    }
-    router_fallbacks = {
-        "openrouter": "openrouter:openrouter/auto",
-        "anthropic": "anthropic:claude-3-haiku-20240307",
-        "openai": "openai:gpt-4o-mini",
-        "mistral": "mistral:mistral-small-latest",
-        "groq": "groq:llama-3.1-8b-instant",
-        "litellm": "litellm:gpt-4o-mini",
-        "ollama": "ollama:llama3.2",
-    }
+    """Change the LLM provider (sets default brain/fast models for provider)."""
+    from merlya.config.providers import list_providers
+
+    providers = list_providers()
 
     if not args:
         return CommandResult(
@@ -92,17 +87,13 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
             message=f"Unknown provider: `{provider}`\nAvailable: {', '.join(providers)}",
         )
 
-    api_key_envs = {
-        "openrouter": "OPENROUTER_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-        "groq": "GROQ_API_KEY",
-        "litellm": "LITELLM_API_KEY",
-        "ollama": None,
-    }
+    # Get provider defaults (brain, fast, api_key_env, base_url)
+    try:
+        provider_config = get_provider_models(provider)
+    except ValueError as e:
+        return CommandResult(success=False, message=str(e))
 
-    api_key_env = api_key_envs.get(provider)
+    api_key_env = provider_config.api_key_env
 
     if api_key_env and not ctx.secrets.has(api_key_env):
         api_key = await ctx.ui.prompt_secret(f"🔑 Enter {api_key_env}")
@@ -113,13 +104,16 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
         else:
             return CommandResult(success=False, message="API key required for this provider.")
 
+    # Update config with provider defaults
     ctx.config.model.provider = provider
-    if provider in default_models:
-        ctx.config.model.model = default_models[provider]
-    if provider in router_fallbacks:
-        ctx.config.router.llm_fallback = router_fallbacks[provider]
+    ctx.config.model.model = provider_config.brain  # Default brain model
+    ctx.config.model.reasoning_model = None  # Reset to use provider default
+    ctx.config.model.fast_model = None  # Reset to use provider default
     ctx.config.model.api_key_env = api_key_env or ""
-    ctx.config.model.base_url = None  # Reset base_url for new provider
+    ctx.config.model.base_url = provider_config.base_url
+
+    # Set router fallback to fast model
+    ctx.config.router.llm_fallback = f"{provider}:{provider_config.fast}"
 
     if api_key_env:
         _set_api_key_from_keyring(ctx, api_key_env)
@@ -130,74 +124,106 @@ async def cmd_model_provider(ctx: SharedContext, args: list[str]) -> CommandResu
 
     return CommandResult(
         success=True,
-        message=ctx.t("commands.model.provider_changed", provider=provider),
+        message=f"✅ Provider changed to `{provider}`\n\n"
+        f"  🧠 brain: `{provider_config.brain}`\n"
+        f"  ⚡ fast: `{provider_config.fast}`\n\n"
+        f"Use `/model brain <name>` or `/model fast <name>` to customize.",
         data={"reload_agent": True},
     )
 
 
-@subcommand("model", "model", "Change LLM model", "/model model <name>")
-async def cmd_model_model(ctx: SharedContext, args: list[str]) -> CommandResult:
-    """Change the LLM model."""
+@subcommand("model", "brain", "Set brain model (reasoning)", "/model brain <name>")
+async def cmd_model_brain(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Set the brain model for complex reasoning tasks."""
+    provider = ctx.config.model.provider
+    provider_config = get_provider_models(provider)
+
     if not args:
-        default_models = {
-            "openrouter": "amazon/nova-2-lite-v1:free",
-            "anthropic": "claude-3-5-sonnet-20241022",
-            "openai": "gpt-4o",
-            "mistral": "mistral-large-latest",
-            "groq": "llama-3.1-70b-versatile",
-            "ollama": "llama3.2",
-            "litellm": "gpt-4o",
-        }
-        suggestions = default_models.get(ctx.config.model.provider, "")
+        # Show current brain model and suggestions
+        current = ctx.config.model.get_orchestrator_model()
         return CommandResult(
-            success=False,
-            message=f"Usage: `/model model <name>`\n\nSuggested for {ctx.config.model.provider}: `{suggestions}`",
+            success=True,
+            message=f"**Brain Model** (reasoning, planning, analysis)\n\n"
+            f"  Current: `{current}`\n"
+            f"  Default for {provider}: `{provider_config.brain}`\n\n"
+            f"Usage: `/model brain <model_name>`",
         )
 
-    model = args[0]
-    ctx.config.model.model = model
+    model_name = args[0]
 
-    if ctx.config.model.provider == "ollama":
-        ctx.config.model.base_url = None  # reset per model switch
-        is_cloud = "cloud" in model.lower() or ollama_requires_api_key(ctx.config)
-        ctx.config.model.base_url = ctx.config.model.base_url or (
-            "https://ollama.com" if is_cloud else "http://localhost:11434"
-        )
-        ensure_provider_env(ctx.config)
-        if is_cloud:
-            ctx.config.model.api_key_env = "OLLAMA_API_KEY"
-            api_key_env = "OLLAMA_API_KEY"
-            if not (os.getenv(api_key_env) or ctx.secrets.has(api_key_env)):
-                api_key = await ctx.ui.prompt_secret(f"🔑 Enter {api_key_env}")
-                if api_key:
-                    ctx.secrets.set(api_key_env, api_key)
-                    ctx.ui.success("✅ API key saved to keyring")
-                    _set_api_key_from_keyring(ctx, api_key_env)
-                else:
-                    return CommandResult(
-                        success=False,
-                        message=ctx.t("commands.model.api_key_missing"),
-                    )
-            # Force cloud endpoint if still local
-            if ctx.config.model.base_url and "localhost" in ctx.config.model.base_url:
-                ctx.config.model.base_url = "https://ollama.com/v1"
-                ensure_provider_env(ctx.config)
-        else:
-            pull_result = await _ensure_ollama_model(ctx, model)
+    # Handle Ollama: check if local and pull model if needed
+    if provider == "ollama":
+        is_cloud = "cloud" in model_name.lower() or ollama_requires_api_key(ctx.config)
+        if not is_cloud:
+            pull_result = await _ensure_ollama_model(ctx, model_name)
             if pull_result and not pull_result.success:
                 return pull_result
-    else:
-        api_key_env = ctx.config.model.api_key_env or f"{ctx.config.model.provider.upper()}_API_KEY"
-        _set_api_key_from_keyring(ctx, api_key_env)
-        # Apply provider-specific environment setup (OpenRouter, etc.)
-        ensure_provider_env(ctx.config)
+
+    ctx.config.model.model = model_name
+    ctx.config.model.reasoning_model = model_name
+    ensure_provider_env(ctx.config)
     ctx.config.save()
 
     return CommandResult(
         success=True,
-        message=ctx.t("commands.model.model_changed", model=model),
+        message=f"🧠 Brain model changed to `{model_name}`",
         data={"reload_agent": True},
     )
+
+
+@subcommand("model", "fast", "Set fast model (routing)", "/model fast <name>")
+async def cmd_model_fast(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """Set the fast model for quick routing tasks."""
+    provider = ctx.config.model.provider
+    provider_config = get_provider_models(provider)
+
+    if not args:
+        # Show current fast model and suggestions
+        current = ctx.config.model.get_fast_model()
+        return CommandResult(
+            success=True,
+            message=f"**Fast Model** (routing, fingerprinting, classification)\n\n"
+            f"  Current: `{current}`\n"
+            f"  Default for {provider}: `{provider_config.fast}`\n\n"
+            f"Usage: `/model fast <model_name>`",
+        )
+
+    model_name = args[0]
+
+    # Handle Ollama: check if local and pull model if needed
+    if provider == "ollama":
+        is_cloud = "cloud" in model_name.lower() or ollama_requires_api_key(ctx.config)
+        if not is_cloud:
+            pull_result = await _ensure_ollama_model(ctx, model_name)
+            if pull_result and not pull_result.success:
+                return pull_result
+
+    ctx.config.model.fast_model = model_name
+    ensure_provider_env(ctx.config)
+    ctx.config.save()
+
+    return CommandResult(
+        success=True,
+        message=f"⚡ Fast model changed to `{model_name}`",
+        data={"reload_agent": True},
+    )
+
+
+@subcommand("model", "model", "DEPRECATED - Use /model brain", "/model model <name>")
+async def cmd_model_model(ctx: SharedContext, args: list[str]) -> CommandResult:
+    """DEPRECATED: Use /model brain or /model fast instead."""
+    ctx.ui.warning("⚠️ `/model model` is deprecated. Use `/model brain` or `/model fast`.")
+
+    if not args:
+        return CommandResult(
+            success=False,
+            message="⚠️ **DEPRECATED**: Use `/model brain <name>` or `/model fast <name>` instead.\n\n"
+            "  - `/model brain <name>` - Complex reasoning (orchestrator, planning)\n"
+            "  - `/model fast <name>` - Quick routing (classification, fingerprinting)",
+        )
+
+    # Redirect to brain model for backward compatibility
+    return await cmd_model_brain(ctx, args)
 
 
 @subcommand("model", "test", "Test LLM connection", "/model test")

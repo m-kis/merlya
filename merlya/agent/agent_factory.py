@@ -88,6 +88,18 @@ def _register_router_context_prompt(agent: Agent[Any, Any]) -> None:
         if router_result.mode:
             parts.append(f"📋 Detected mode: {router_result.mode.value}")
 
+        # Add extracted target hosts (CRITICAL: tells the LLM which hosts to operate on)
+        target_hosts = router_result.entities.get("hosts", [])
+        if target_hosts:
+            hosts_list = ", ".join(target_hosts)
+            logger.info(f"🎯 Injecting TARGET HOSTS context: {hosts_list}")
+            parts.append(
+                f"🎯 TARGET HOSTS: {hosts_list}. "
+                f"CRITICAL: Call ssh_execute(host_name='{target_hosts[0]}', command='...') directly. "
+                f"The host '{target_hosts[0]}' exists in inventory - DO NOT use list_hosts or ask_user. "
+                "DO NOT run bash commands locally. Always use ssh_execute for remote hosts."
+            )
+
         # Add unresolved hosts context (proactive mode)
         if router_result.unresolved_hosts:
             hosts_list = ", ".join(router_result.unresolved_hosts)

@@ -338,6 +338,31 @@ async def request_credentials(
                 bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
                 return CommandResult(success=True, message="✅ Credentials resolved", data=bundle)
 
+        # NON-INTERACTIVE MODE CHECK: Fail early if we can't prompt
+        # This prevents the agent from looping on credential requests
+        if ctx.auto_confirm or getattr(ctx.ui, "auto_confirm", False):
+            host_display = host or "unknown"
+            missing_str = ", ".join(missing_fields)
+            return CommandResult(
+                success=False,
+                message=(
+                    f"❌ Cannot obtain credentials in non-interactive mode.\n\n"
+                    f"Missing: {missing_str} for {service}@{host_display}\n\n"
+                    f"To fix this, before running in --yes mode:\n"
+                    f"1. Store credentials in keyring:\n"
+                    f"   merlya secret set {service}:{host_display}:password\n"
+                    f"2. Or configure NOPASSWD sudo on the target host\n"
+                    f"3. Or run in interactive mode (without --yes)\n\n"
+                    f"⚠️ DO NOT retry this command - credentials cannot be obtained."
+                ),
+                data={
+                    "non_interactive": True,
+                    "service": service,
+                    "host": host,
+                    "missing_fields": missing_fields,
+                },
+            )
+
         ctx.ui.info(f"🔐 Credentials needed for {service}{' @' + host if host else ''}")
         if format_hint:
             ctx.ui.muted(f"Format hint: {format_hint}")
@@ -483,7 +508,7 @@ async def request_elevation(
     ctx: SharedContext, command: str, host: str | None = None
 ) -> CommandResult:
     """
-    Request privilege elevation via PermissionManager (brain-driven).
+    Request privilege elevation via ElevationManager (brain-driven).
 
     SECURITY NOTE: This tool does NOT return the actual password to the LLM.
     The password (if needed) is stored internally and applied automatically
@@ -496,17 +521,33 @@ async def request_elevation(
                 message="❌ Host is required to prepare elevation. Provide the target host.",
             )
 
-        permissions = await ctx.get_permissions()
-        elevation = await permissions.prepare_command(host, command)
+        # Look up host model from database
+        host_entry = await ctx.hosts.get_by_name(host)
+        if not host_entry:
+            return CommandResult(
+                success=False,
+                message=f"❌ Host '{host}' not found in inventory.",
+            )
+
+        from merlya.security import CenterMode, ElevationDeniedError
+
+        elevation_mgr = await ctx.get_elevation()
+        try:
+            elevation = await elevation_mgr.prepare_command(
+                host_entry, command, center=CenterMode.DIAGNOSTIC
+            )
+        except ElevationDeniedError as e:
+            return CommandResult(
+                success=False,
+                message=f"❌ Elevation declined: {e}",
+            )
 
         # SECURITY: Store input_data (password) in a secure cache, don't expose to LLM
-        # Generate a unique reference ID if there's sensitive input data
         elevation_ref = None
         if elevation.input_data:
             import uuid
 
             elevation_ref = f"elev_{uuid.uuid4().hex[:8]}"
-            # Store in session cache (accessible by ssh_execute)
             if not hasattr(ctx, "_elevation_cache"):
                 ctx._elevation_cache = {}  # type: ignore[attr-defined]
             ctx._elevation_cache[elevation_ref] = {  # type: ignore[attr-defined]
@@ -515,27 +556,17 @@ async def request_elevation(
                 "command": command,
             }
             logger.debug(f"🔐 Stored elevation cache entry: {elevation_ref} for host {host}")
-            # NOTE: When this cache entry is consumed, add logging for missing entries:
-            # if payload.input_ref and hasattr(ctx, "_elevation_cache"):
-            #     cached = ctx._elevation_cache.get(payload.input_ref)
-            #     if cached:
-            #         exec_ctx.input_data = cached.get("input_data")
-            #         del ctx._elevation_cache[payload.input_ref]
-            #     else:
-            #         logger.warning(f"⚠️ Elevation input_ref '{payload.input_ref}' not found in cache.")
 
         return CommandResult(
             success=True,
             message="✅ Elevation prepared",
             data={
                 "command": elevation.command,
-                # SECURITY: Never expose password to LLM - use reference instead
-                "input_ref": elevation_ref,  # Reference ID, not actual password
+                "input_ref": elevation_ref,
                 "has_password": elevation.input_data is not None,
                 "method": elevation.method,
-                "note": elevation.note,
-                "needs_password": elevation.needs_password,
-                "base_command": elevation.base_command or command,
+                "elevated": elevation.elevated,
+                "base_command": command,
             },
         )
     except Exception as e:

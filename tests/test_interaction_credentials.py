@@ -11,6 +11,7 @@ class _StubUI:
     def __init__(self) -> None:
         self.secret_prompts: list[str] = []
         self.confirm_calls = 0
+        self.auto_confirm = False  # Simulate interactive mode
 
     async def prompt_secret(self, message: str) -> str:
         self.secret_prompts.append(message)
@@ -62,6 +63,7 @@ async def test_request_credentials_prefers_host_inventory_username() -> None:
     ctx.ui = ui
     ctx.secrets = secrets
     ctx.config = cfg
+    ctx.auto_confirm = False  # Interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=host)
 
     result = await request_credentials(ctx, service="ssh", host="preprodlb", fields=["username"])
@@ -83,6 +85,7 @@ async def test_request_credentials_ssh_key_based_skips_password_prompt() -> None
     ctx.ui = ui
     ctx.secrets = secrets
     ctx.config = cfg
+    ctx.auto_confirm = False  # Interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=host)
 
     result = await request_credentials(ctx, service="ssh", host="preprodmongo6-1")
@@ -103,6 +106,7 @@ async def test_request_credentials_prefills_from_secret_store() -> None:
     ctx.ui = ui
     ctx.secrets = secrets
     ctx.config = cfg
+    ctx.auto_confirm = False  # Interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=None)
 
     result = await request_credentials(ctx, service="mysql", host="db")
@@ -123,6 +127,7 @@ async def test_request_credentials_ssh_skip_password_without_hint() -> None:
     ctx.ui = ui
     ctx.secrets = secrets
     ctx.config = cfg
+    ctx.auto_confirm = False  # Interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=None)
 
     result = await request_credentials(ctx, service="ssh", host="no-key-host")
@@ -142,6 +147,7 @@ async def test_request_credentials_ssh_prompts_password_when_hint() -> None:
     ctx.ui = ui
     ctx.secrets = secrets
     ctx.config = cfg
+    ctx.auto_confirm = False  # Interactive mode
     ctx.hosts.get_by_name = AsyncMock(return_value=None)
 
     result = await request_credentials(
@@ -152,3 +158,51 @@ async def test_request_credentials_ssh_prompts_password_when_hint() -> None:
     # Username may be prefilled from default_user; password must be prompted
     assert ui.secret_prompts == ["Password"]
     assert "password" in result.data.values
+
+
+@pytest.mark.asyncio
+async def test_request_credentials_fails_in_non_interactive_mode() -> None:
+    """Non-interactive mode should fail early when credentials are missing."""
+    ui = _StubUI()
+    ui.auto_confirm = True  # Non-interactive mode
+    secrets = _StubSecrets()  # Empty - no stored credentials
+    cfg = _StubConfig(default_user="cedric")
+    ctx = MagicMock()
+    ctx.ui = ui
+    ctx.secrets = secrets
+    ctx.config = cfg
+    ctx.auto_confirm = True  # Non-interactive mode
+    ctx.hosts.get_by_name = AsyncMock(return_value=None)
+
+    result = await request_credentials(ctx, service="sudo", host="server01")
+
+    # Should fail because we can't prompt in non-interactive mode
+    assert not result.success
+    assert "non-interactive mode" in result.message.lower()
+    assert result.data["non_interactive"] is True
+    assert "password" in result.data["missing_fields"]
+    # Should NOT have called any prompts
+    assert ui.secret_prompts == []
+
+
+@pytest.mark.asyncio
+async def test_request_credentials_succeeds_in_non_interactive_with_stored_creds() -> None:
+    """Non-interactive mode should succeed when credentials are already stored."""
+    ui = _StubUI()
+    ui.auto_confirm = True  # Non-interactive mode
+    secrets = _StubSecrets({"sudo:server01:password": "stored_pwd"})
+    cfg = _StubConfig(default_user="cedric")
+    ctx = MagicMock()
+    ctx.ui = ui
+    ctx.secrets = secrets
+    ctx.config = cfg
+    ctx.auto_confirm = True  # Non-interactive mode
+    ctx.hosts.get_by_name = AsyncMock(return_value=None)
+
+    result = await request_credentials(ctx, service="sudo", host="server01")
+
+    # Should succeed because credentials are already stored
+    assert result.success
+    assert result.data.values.get("password") == "stored_pwd"
+    # Should NOT have called any prompts
+    assert ui.secret_prompts == []

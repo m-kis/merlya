@@ -24,9 +24,9 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-@command("ssh", "SSH connection management", "/ssh <subcommand>")
+@command("ssh", "Manage SSH connections", "/ssh <subcommand>")
 async def cmd_ssh(_ctx: SharedContext, args: list[str]) -> CommandResult:
-    """SSH connection management with MFA, jump hosts, and passphrase support."""
+    """Manage SSH connections with MFA, jump hosts, and passphrase support."""
     if not args:
         return CommandResult(
             success=False,

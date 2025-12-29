@@ -219,18 +219,46 @@ Secret Store Status
 
 ### Non-interactive mode (CI/CD)
 
-In non-interactive mode, secrets must be provided via environment variables or mounted files:
+In non-interactive mode (`merlya run --yes`), credentials **cannot be prompted**. Merlya will fail immediately with a clear error if credentials are needed but not pre-configured.
 
-```yaml
-# task.yaml
-secrets:
-  DB_PASSWORD:
-    env: MYSQL_ROOT_PASSWORD
-  API_KEY:
-    file: /run/secrets/api_key
+#### Pre-store credentials before running
+
+```bash
+# Store sudo password for target hosts
+merlya secret set sudo:192.168.1.7:password
+
+# Store database credentials
+merlya secret set mysql:db-prod:password
+
+# Then run in non-interactive mode
+merlya run --yes "Check database status on db-prod"
 ```
 
-Merlya loads them into the keyring at startup, without ever exposing them to the LLM.
+#### Use NOPASSWD sudo
+
+Configure sudo without password on target hosts:
+
+```bash
+# /etc/sudoers.d/merlya
+cedric ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/bin/journalctl
+```
+
+#### Error handling
+
+If credentials are missing in `--yes` mode, Merlya returns:
+
+```text
+❌ Cannot obtain credentials in non-interactive mode.
+
+Missing: password for sudo@192.168.1.7
+
+To fix this, before running in --yes mode:
+1. Store credentials in keyring: merlya secret set sudo:192.168.1.7:password
+2. Or configure NOPASSWD sudo on the target host
+3. Or run in interactive mode (without --yes)
+```
+
+This **fail-fast behavior** prevents retry loops and wasted API calls.
 
 ## Audit and Compliance
 

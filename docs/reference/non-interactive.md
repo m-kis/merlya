@@ -48,7 +48,7 @@ merlya run "Check disk space on all web servers"
 With auto-confirmation (required for commands that modify systems):
 
 ```bash
-merlya run --yes "Restart nginx on @web-01"
+merlya run --yes "Restart nginx on web-01"
 ```
 
 ---
@@ -58,7 +58,7 @@ merlya run --yes "Restart nginx on @web-01"
 Execute internal Merlya commands directly without AI processing:
 
 ```bash
-merlya run "/scan @web-01"
+merlya run "/scan web-01"
 merlya run "/hosts list"
 merlya run "/health"
 ```
@@ -115,10 +115,10 @@ merlya run "/health"
 merlya run "/hosts list --tag=production"
 
 # Scan a server
-merlya run "/scan @web-01 --quick"
+merlya run "/scan web-01 --quick"
 
 # Full scan with JSON output
-merlya run --format json "/scan @web-01 --full"
+merlya run --format json "/scan web-01 --full"
 
 # Import hosts from SSH config
 merlya run "/hosts import ~/.ssh/config --format=ssh"
@@ -180,12 +180,12 @@ Lines starting with `#` are treated as comments.
 Human-readable output:
 
 ```bash
-merlya run "Check uptime on @web-01"
+merlya run "Check uptime on web-01"
 ```
 
 ```
 Running health checks...
-Executing: Check uptime on @web-01
+Executing: Check uptime on web-01
 
 > ssh web-01 "uptime"
  14:32:01 up 45 days,  3:21,  2 users,  load average: 0.15, 0.10, 0.05
@@ -200,7 +200,7 @@ Completed: 1/1 tasks passed
 Machine-parseable output for automation:
 
 ```bash
-merlya run --format json "Check uptime on @web-01"
+merlya run --format json "Check uptime on web-01"
 ```
 
 ```json
@@ -211,7 +211,7 @@ merlya run --format json "Check uptime on @web-01"
   "failed": 0,
   "tasks": [
     {
-      "task": "Check uptime on @web-01",
+      "task": "Check uptime on web-01",
       "success": true,
       "message": "The server has been running for 45 days with low load average.",
       "actions": ["ssh_execute"]
@@ -338,6 +338,70 @@ timeout 300 merlya run --yes "Deploy to production" || {
     echo "Deployment timed out after 5 minutes"
     exit 1
 }
+```
+
+---
+
+## Credential Requirements
+
+When using `--yes` mode with commands that require elevated privileges (sudo, su), you must pre-configure credentials.
+
+### Why Credentials Can't Be Prompted
+
+In non-interactive mode:
+
+- No TTY available for password prompts
+- `--yes` auto-confirms but can't provide credentials
+- Agent will fail immediately with clear error message
+
+### Solutions
+
+#### 1. Store in Keyring (Recommended)
+
+```bash
+# Store sudo password for a specific host
+merlya secret set sudo:192.168.1.7:password
+
+# Store for multiple hosts
+merlya secret set sudo:web-01:password
+merlya secret set sudo:db-01:password
+```
+
+#### 2. Configure NOPASSWD Sudo
+
+On target hosts, add to `/etc/sudoers.d/merlya`:
+
+```bash
+# Allow specific user to run commands without password
+cedric ALL=(ALL) NOPASSWD: ALL
+
+# Or limit to specific commands
+cedric ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/bin/journalctl
+```
+
+#### 3. Use Interactive Mode
+
+For one-off elevated commands, run without `--yes`:
+
+```bash
+merlya run "Restart nginx on web-01"
+# Merlya will prompt for password when needed
+```
+
+### Error Messages
+
+When credentials are missing in `--yes` mode:
+
+```text
+❌ Cannot obtain credentials in non-interactive mode.
+
+Missing: password for sudo@192.168.1.7
+
+To fix this, before running in --yes mode:
+1. Store credentials in keyring:
+   merlya secret set sudo:192.168.1.7:password
+2. Or configure NOPASSWD sudo on the target host
+3. Or run in interactive mode (without --yes)
 ```
 
 ---

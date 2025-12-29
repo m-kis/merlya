@@ -11,7 +11,7 @@ import io
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -243,6 +243,9 @@ async def _import_toml(ctx: SharedContext, content: str) -> tuple[int, list[str]
                 "private_key": item.get("private_key") or item.get("key"),
                 "jump_host": item.get("jump_host") or item.get("bastion"),
                 "tags": item.get("tags", []),
+                # Elevation configuration
+                "elevation_method": item.get("elevation_method") or item.get("elevation"),
+                "elevation_user": item.get("elevation_user", "root"),
             }
 
             if not host_data["hostname"]:
@@ -271,15 +274,27 @@ async def _import_csv(ctx: SharedContext, content: str) -> tuple[int, list[str]]
     errors: list[str] = []
     reader = csv.DictReader(io.StringIO(content))
 
+    # Map elevation strings to ElevationMethod enum
+    elevation_map = {
+        "none": ElevationMethod.NONE,
+        "sudo": ElevationMethod.SUDO,
+        "sudo_password": ElevationMethod.SUDO_PASSWORD,
+        "sudo-password": ElevationMethod.SUDO_PASSWORD,
+        "sudo-s": ElevationMethod.SUDO_PASSWORD,  # Legacy support
+        "doas": ElevationMethod.DOAS,
+        "doas_password": ElevationMethod.DOAS_PASSWORD,
+        "doas-password": ElevationMethod.DOAS_PASSWORD,
+        "su": ElevationMethod.SU,
+    }
+
     for row in reader:
         try:
             tags_raw = row.get("tags", "").split(",") if row.get("tags") else []
             valid_tags = [t.strip() for t in tags_raw if t.strip() and validate_tag(t.strip())[0]]
-            # Normalize elevation_method (empty string -> None)
-            elevation_raw = row.get("elevation_method", "").strip().lower() or None
-            elevation: ElevationMethod | None = None
-            if elevation_raw in ("sudo", "sudo-s", "su", "doas"):
-                elevation = cast("ElevationMethod", elevation_raw)
+            # Map elevation string to ElevationMethod enum
+            elevation_raw = row.get("elevation_method", "").strip().lower()
+            elevation = elevation_map.get(elevation_raw, ElevationMethod.NONE)
+
             host = Host(
                 name=row["name"],
                 hostname=row.get("hostname", row.get("host", row["name"])),
@@ -288,6 +303,7 @@ async def _import_csv(ctx: SharedContext, content: str) -> tuple[int, list[str]]
                 private_key=row.get("private_key") or None,
                 jump_host=row.get("jump_host") or None,
                 elevation_method=elevation,
+                elevation_user=row.get("elevation_user", "root") or "root",
                 tags=valid_tags,
             )
             await ctx.hosts.create(host)
@@ -370,13 +386,29 @@ async def _import_etc_hosts(ctx: SharedContext, content: str) -> tuple[int, list
 
 def create_host_from_dict(item: dict[str, Any]) -> Host:
     """Create Host from dictionary with validated port and tags."""
+    from merlya.persistence.models import ElevationMethod
+
     raw_tags = item.get("tags", [])
     valid_tags = [t for t in raw_tags if isinstance(t, str) and validate_tag(t)[0]]
 
-    # Validate elevation_method
-    elevation = item.get("elevation_method", item.get("elevation"))
-    if elevation and elevation.lower() not in ("sudo", "sudo-s", "su", "doas"):
-        elevation = None
+    # Map elevation string to ElevationMethod enum
+    elevation_str = item.get("elevation_method", item.get("elevation"))
+    elevation_map = {
+        "none": ElevationMethod.NONE,
+        "sudo": ElevationMethod.SUDO,
+        "sudo_password": ElevationMethod.SUDO_PASSWORD,
+        "sudo-password": ElevationMethod.SUDO_PASSWORD,
+        "sudo-s": ElevationMethod.SUDO_PASSWORD,  # Legacy support
+        "doas": ElevationMethod.DOAS,
+        "doas_password": ElevationMethod.DOAS_PASSWORD,
+        "doas-password": ElevationMethod.DOAS_PASSWORD,
+        "su": ElevationMethod.SU,
+    }
+    elevation = (
+        elevation_map.get(str(elevation_str).lower(), ElevationMethod.NONE)
+        if elevation_str
+        else ElevationMethod.NONE
+    )
 
     return Host(
         name=item["name"],
@@ -387,11 +419,14 @@ def create_host_from_dict(item: dict[str, Any]) -> Host:
         private_key=item.get("private_key", item.get("key")),
         jump_host=item.get("jump_host", item.get("bastion")),
         elevation_method=elevation,
+        elevation_user=item.get("elevation_user", "root"),
     )
 
 
 def host_to_dict(h: Host) -> dict[str, Any]:
     """Convert Host to dictionary for export."""
+    from merlya.persistence.models import ElevationMethod
+
     item: dict[str, Any] = {"name": h.name, "hostname": h.hostname, "port": h.port}
     if h.username:
         item["username"] = h.username
@@ -401,8 +436,17 @@ def host_to_dict(h: Host) -> dict[str, Any]:
         item["private_key"] = h.private_key
     if h.jump_host:
         item["jump_host"] = h.jump_host
-    if h.elevation_method:
-        item["elevation_method"] = h.elevation_method
+    # Export elevation_method as string if not NONE
+    if h.elevation_method and h.elevation_method != ElevationMethod.NONE:
+        elevation_value = (
+            h.elevation_method.value
+            if hasattr(h.elevation_method, "value")
+            else str(h.elevation_method)
+        )
+        item["elevation_method"] = elevation_value
+        # Also export elevation_user if different from default
+        if h.elevation_user and h.elevation_user != "root":
+            item["elevation_user"] = h.elevation_user
     return item
 
 
@@ -424,6 +468,7 @@ def serialize_hosts(data: list[dict[str, Any]], file_format: str) -> str:
             "private_key",
             "jump_host",
             "elevation_method",
+            "elevation_user",
             "tags",
         ]
         writer = csv.DictWriter(output, fieldnames=fieldnames)

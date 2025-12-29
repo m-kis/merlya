@@ -84,7 +84,7 @@ Si vous sautez l'assistant ou voulez modifier les paramètres plus tard :
     export OPENAI_API_KEY="..."
     merlya config set model.provider openai
     merlya config set model.model gpt-4o-mini
-    merlya run "Vérifie l'espace disque sur @web-01"
+    merlya run "Vérifie l'espace disque sur web-01"
     ```
 
 === "Ollama (local)"
@@ -95,7 +95,7 @@ Si vous sautez l'assistant ou voulez modifier les paramètres plus tard :
 
     merlya config set model.provider ollama
     merlya config set model.model llama3.2
-    merlya run "Vérifie l'espace disque sur @web-01"
+    merlya run "Vérifie l'espace disque sur web-01"
     ```
 
 ---
@@ -143,10 +143,10 @@ Connexion à mon-serveur.example.com...
 Le serveur fonctionne depuis 45 jours avec de faibles moyennes de charge.
 ```
 
-### Utiliser les @ mentions
+### Référencer les hôtes par leur nom
 
 ```
-Merlya > Vérifie l'espace disque sur @web-01 et @web-02
+Merlya > Vérifie l'espace disque sur web-01 et web-02
 
 > ssh web-01 "df -h /"
 > ssh web-02 "df -h /"

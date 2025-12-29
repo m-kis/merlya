@@ -1,16 +1,21 @@
 """
-Merlya Router - Intent classification (DEPRECATED).
+Merlya Router - Intent classification.
 
-The router is no longer used for routing in the new architecture.
-All routing is now handled by:
-  - "/" commands → Slash command dispatch (fast-path)
-  - Free text → Orchestrator (LLM delegates to specialists)
-
-This module is kept for backward compatibility and may be removed
-in a future version.
+Provides intent classification and routing:
+  - SmartExtractor: Fast LLM-based entity extraction and intent classification (v0.8.0)
+  - CenterClassifier: Routes between DIAGNOSTIC/CHANGE centers
+  - IntentRouter: Main router with SmartExtractor integration
+  - "/" commands: Slash command dispatch (fast-path)
 """
 
-# Backward compatibility imports - these may be used by tests and legacy code
+# New architecture: SmartExtractor (fast LLM)
+# Center classifier
+from merlya.router.center_classifier import (
+    CenterClassification,
+    CenterClassifier,
+)
+
+# Main router with SmartExtractor integration
 from merlya.router.classifier import (
     FAST_PATH_INTENTS,
     FAST_PATH_PATTERNS,
@@ -26,15 +31,32 @@ from merlya.router.handler import (
     handle_skill_flow,
     handle_user_message,
 )
+from merlya.router.smart_extractor import (
+    ExtractedEntities,
+    IntentClassification,
+    SmartExtractionResult,
+    SmartExtractor,
+    get_smart_extractor,
+)
 
 __all__ = [
+    # Main router
     "FAST_PATH_INTENTS",
     "FAST_PATH_PATTERNS",
     "AgentMode",
+    # Center classifier
+    "CenterClassification",
+    "CenterClassifier",
+    # New architecture (v0.8.0)
+    "ExtractedEntities",
     "HandlerResponse",
+    "IntentClassification",
     "IntentClassifier",
     "IntentRouter",
     "RouterResult",
+    "SmartExtractionResult",
+    "SmartExtractor",
+    "get_smart_extractor",
     "handle_agent",
     "handle_fast_path",
     "handle_skill_flow",
