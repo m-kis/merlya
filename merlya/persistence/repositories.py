@@ -84,6 +84,15 @@ class HostRepository:
             row = await cursor.fetchone()
             return self._row_to_host(row) if row else None
 
+    async def get_by_hostname(self, hostname: str) -> Host | None:
+        """Get host by hostname (IP or DNS name)."""
+        async with await self.db.execute(
+            "SELECT * FROM hosts WHERE lower(hostname) = lower(?)",
+            (hostname,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return self._row_to_host(row) if row else None
+
     async def get_all(self) -> list[Host]:
         """Get all hosts."""
         async with await self.db.execute("SELECT * FROM hosts ORDER BY lower(name)") as cursor:
@@ -194,6 +203,8 @@ class HostRepository:
 
     def _row_to_host(self, row: Any) -> Host:
         """Convert database row to Host model."""
+        from merlya.persistence.models import ElevationMethod
+
         os_info_data = from_json(row["os_info"])
         return Host(
             id=row["id"],
@@ -203,7 +214,10 @@ class HostRepository:
             username=row["username"],
             private_key=row["private_key"],
             jump_host=row["jump_host"],
-            elevation_method=row["elevation_method"],
+            # Handle NULL elevation_method (for hosts created before this field)
+            elevation_method=row["elevation_method"]
+            if row["elevation_method"]
+            else ElevationMethod.NONE,
             tags=from_json(row["tags"]) or [],
             metadata=from_json(row["metadata"]) or {},
             os_info=OSInfo(**os_info_data) if os_info_data else None,

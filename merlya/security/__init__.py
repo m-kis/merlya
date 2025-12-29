@@ -1,9 +1,19 @@
 """
 Merlya Security utilities.
 
-Provides permission and privilege elevation helpers.
+Provides privilege elevation helpers.
 """
 
-from merlya.security.permissions import PermissionManager
+from merlya.security.permissions import (
+    CenterMode,
+    ElevationDeniedError,
+    ElevationManager,
+    ElevationResult,
+)
 
-__all__ = ["PermissionManager"]
+__all__ = [
+    "CenterMode",
+    "ElevationDeniedError",
+    "ElevationManager",
+    "ElevationResult",
+]

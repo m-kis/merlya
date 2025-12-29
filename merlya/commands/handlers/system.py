@@ -527,41 +527,14 @@ async def _scan_security_parallel(
     result.sections["security"] = results_dict
 
 
-async def _calculate_severity_score(ctx: SharedContext, result: ScanResult) -> None:
+async def _calculate_severity_score(_ctx: SharedContext, result: ScanResult) -> None:
     """Calculate severity score, optionally using embeddings for intelligent analysis."""
     # Base scoring
     base_score = result.critical_count * 25 + result.warning_count * 10
     result.severity_score = min(100, base_score)
 
-    # Try embedding-based severity analysis
-    try:
-        if hasattr(ctx, "_router") and ctx._router and ctx._router.model_loaded:
-            # Use embeddings to analyze issue severity
-            issue_texts = [
-                issue.get("message", str(issue.get("data", "")))[:200] for issue in result.issues
-            ]
-            if issue_texts:
-                # Get embeddings for issues and compare to critical patterns
-                classifier = ctx._router.classifier
-                critical_patterns = [
-                    "critical security vulnerability",
-                    "root access compromised",
-                    "unauthorized access detected",
-                    "system completely down",
-                ]
-                # This is a simplified version - could be extended
-                for issue_text in issue_texts:
-                    issue_emb = await classifier._get_embedding(issue_text)
-                    if issue_emb is not None:
-                        for pattern in critical_patterns:
-                            pattern_emb = await classifier._get_embedding(pattern)
-                            if pattern_emb is not None:
-                                sim = classifier._cosine_similarity(issue_emb, pattern_emb)
-                                if sim > 0.7:
-                                    result.severity_score = min(100, result.severity_score + 15)
-                                    break
-    except Exception:
-        pass  # Fallback to base scoring if embeddings fail
+    # Note: Embedding-based severity analysis removed (ONNX embeddings deprecated)
+    # Severity scoring is now based solely on issue count and message patterns
 
 
 @command("health", "Show system health status", "/health")

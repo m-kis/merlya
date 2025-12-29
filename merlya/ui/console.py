@@ -200,6 +200,14 @@ class ConsoleUI:
 
     async def prompt(self, message: str, default: str | None = "") -> str:
         """Prompt for input (async-safe with mutex to prevent overlap)."""
+        # In auto_confirm/non-interactive mode, return default or raise error
+        if self.auto_confirm:
+            if default:
+                if not self.quiet:
+                    self.console.print(f"[muted]{message}: {default} [auto][/muted]")
+                return default
+            raise RuntimeError(f"Cannot prompt in non-interactive mode: {message}")
+
         async with self._prompt_lock:
             self._stop_spinner()
             session: PromptSession[str] = PromptSession()
@@ -214,6 +222,13 @@ class ConsoleUI:
 
     async def prompt_secret(self, message: str) -> str:
         """Prompt for secret input (hidden, async-safe with mutex)."""
+        # In auto_confirm/non-interactive mode, secrets cannot be prompted
+        if self.auto_confirm:
+            raise RuntimeError(
+                f"Cannot prompt for secret in non-interactive mode: {message}. "
+                "Use keyring or environment variables for credentials."
+            )
+
         async with self._prompt_lock:
             self._stop_spinner()
             session: PromptSession[str] = PromptSession()

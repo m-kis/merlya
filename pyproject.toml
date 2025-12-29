@@ -32,11 +32,8 @@ dependencies = [
     "anthropic>=0.75",
     "httpx>=0.28",
 
-    # Intent Router (ONNX local classification)
-    "huggingface-hub>=0.26",
+    # Numeric (for various operations)
     "numpy>=1.26",
-    "onnxruntime>=1.19",
-    "tokenizers>=0.20",
 
     # SSH
     "asyncssh>=2.21",
@@ -140,6 +137,10 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+markers = [
+    "e2e: End-to-end tests using real CLI commands (run with --e2e)",
+    "ssh: Tests requiring SSH access (set TEST_SSH_HOST env var)",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests", "venv", ".venv"]

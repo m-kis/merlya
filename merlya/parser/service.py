@@ -1,13 +1,8 @@
 """
 Merlya Parser Service - Main entry point for text parsing.
 
-Provides a singleton service that selects the appropriate backend
-based on the configured tier (like IntentClassifier).
-
-Tiers:
-- lightweight: HeuristicBackend (no models, regex only)
-- balanced: ONNXBackend with distilbert-NER
-- performance: ONNXBackend with bert-base-NER
+ONNX model-based parsing has been removed in v0.8.0.
+Now uses HeuristicBackend (pattern-based) only.
 """
 
 from __future__ import annotations
@@ -17,7 +12,6 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from merlya.parser.backends.heuristic import HeuristicBackend
-from merlya.parser.backends.onnx import ONNXParserBackend
 
 if TYPE_CHECKING:
     from merlya.parser.backends.base import ParserBackend
@@ -33,13 +27,10 @@ class ParserService:
     """
     Main parser service - singleton for text parsing.
 
-    Selects backend based on tier configuration:
-    - lightweight: HeuristicBackend
-    - balanced: ONNXBackend (distilbert)
-    - performance: ONNXBackend (bert-base)
+    Uses HeuristicBackend only (ONNX removed in v0.8.0).
 
     Usage:
-        service = ParserService.get_instance(tier="balanced")
+        service = ParserService.get_instance()
         await service.initialize()
         result = await service.parse_incident("Production server is down...")
     """
@@ -55,15 +46,16 @@ class ParserService:
         Initialize the parser service.
 
         Args:
-            tier: Backend tier (lightweight/balanced/performance).
-            model_id: Optional explicit model ID for ONNX backend.
+            tier: Ignored (kept for backward compatibility).
+            model_id: Ignored (kept for backward compatibility).
         """
-        self._tier = tier
-        self._model_id = model_id
+        # tier and model_id ignored - ONNX removed
+        _ = tier, model_id
+        self._tier = "lightweight"
         self._backend: ParserBackend | None = None
         self._initialized = False
 
-        logger.debug(f"🔧 ParserService created with tier: {tier}")
+        logger.debug("🔧 ParserService created (heuristic backend)")
 
     @classmethod
     def get_instance(
@@ -100,52 +92,16 @@ class ParserService:
         if self._initialized:
             return True
 
-        self._backend = self._select_backend(self._tier, self._model_id)
+        self._backend = HeuristicBackend()
 
         if await self._backend.load():
             self._initialized = True
             logger.debug(f"✅ ParserService initialized with backend: {self._backend.name}")
             return True
 
-        # Fallback to heuristic if ONNX fails
-        if isinstance(self._backend, ONNXParserBackend):
-            logger.warning("⚠️ ONNX backend failed, falling back to heuristic")
-            self._backend = HeuristicBackend()
-            if await self._backend.load():
-                self._initialized = True
-                return True
-            # Heuristic fallback failed
-            logger.error("❌ HeuristicBackend fallback failed to load")
-            self._backend = None
-            return False
-
-        # HeuristicBackend was initially selected but failed to load
         logger.error("❌ HeuristicBackend failed to load")
         self._backend = None
         return False
-
-    def _select_backend(self, tier: str, model_id: str | None = None) -> ParserBackend:
-        """
-        Select the appropriate backend based on tier.
-
-        Pattern borrowed from IntentClassifier._select_model_id().
-
-        Args:
-            tier: Backend tier.
-            model_id: Optional explicit model ID.
-
-        Returns:
-            Appropriate ParserBackend instance.
-        """
-        tier_normalized = (tier or "").lower()
-
-        if tier_normalized == "performance":
-            return ONNXParserBackend(tier="performance", model_id=model_id)
-        if tier_normalized == "balanced":
-            return ONNXParserBackend(tier="balanced", model_id=model_id)
-
-        # Default: lightweight (heuristic)
-        return HeuristicBackend()
 
     @property
     def backend_name(self) -> str:

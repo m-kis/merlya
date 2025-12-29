@@ -101,7 +101,7 @@ Supported formats:
 - **JSON** - Array of host objects
 - **YAML** - List of hosts
 - **TOML** - Host definitions with `[hosts.name]` sections
-- **CSV** - Columns: name, hostname, port, username, tags
+- **CSV** - Columns: name, hostname, port, username, elevation_method, elevation_user, tags
 - **SSH config** - `~/.ssh/config` format
 - **/etc/hosts** - `/etc/hosts` format
 
@@ -121,11 +121,25 @@ user = "dbadmin"
 jump_host = "bastion.example.com"
 port = 22
 tags = ["database", "production"]
+elevation_method = "sudo_password"  # sudo, sudo_password, doas, doas_password, su, none
+elevation_user = "root"             # Target user for elevation (default: root)
 
 [hosts.bastion]
 hostname = "bastion.example.com"
 user = "admin"
+elevation_method = "sudo"           # NOPASSWD sudo configured
 ```
+
+**Elevation Methods:**
+
+| Method           | Description                |
+| ---------------- | -------------------------- |
+| `none`           | No elevation (default)     |
+| `sudo`           | sudo with NOPASSWD         |
+| `sudo_password`  | sudo requiring password    |
+| `doas`           | doas with NOPASSWD (BSD)   |
+| `doas_password`  | doas requiring password    |
+| `su`             | su (requires root password)|
 
 ### `/hosts export <file>`
 Export hosts to a file.
@@ -170,7 +184,7 @@ Scan a host for system information and security issues.
 **Multi-Host Scanning:**
 
 ```bash
-/scan @web01 @db01 --quick           # Scan multiple hosts
+/scan web01 db01 --quick             # Scan multiple hosts
 /scan --tag=production --parallel    # Scan all hosts with tag in parallel
 /scan --all --quick                  # Scan entire inventory
 ```
@@ -303,20 +317,35 @@ Export a conversation to a file.
 
 ## Model Management
 
-### `/model show`
-Show current provider/model/router status.
+### `/model` or `/model show`
+
+Show current provider and model configuration (brain/fast models).
 
 ### `/model provider <name>`
-Change LLM provider (prompts for API key if missing).
+Change LLM provider (prompts for API key if missing). Sets default brain/fast models for the provider.
 
-### `/model model <name>`
-Change the LLM model.
+Available providers: `anthropic`, `openai`, `openrouter`, `mistral`, `groq`, `ollama`
+
+### `/model brain [name]`
+Show or set the **brain model** (complex reasoning, planning, analysis).
+
+```bash
+/model brain                    # Show current brain model
+/model brain claude-sonnet-4    # Set brain model
+```
+
+### `/model fast [name]`
+
+Show or set the **fast model** (routing, fingerprinting, quick decisions).
+
+```bash
+/model fast                     # Show current fast model
+/model fast claude-haiku        # Set fast model
+```
 
 ### `/model test`
-Test LLM connectivity.
 
-### `/model router <show|local|llm>`
-Configure intent router.
+Test LLM connectivity with the current configuration.
 
 ## MCP (Model Context Protocol)
 
@@ -455,60 +484,8 @@ Set log level.
 ```
 
 ### `/log show`
+
 Show recent log entries.
-
-## Skills
-
-### `/skill list`
-List all available skills (builtin and user-defined).
-
-```bash
-/skill list
-```
-
-### `/skill show <name>`
-Show details of a specific skill.
-
-```bash
-/skill show incident_triage
-```
-
-### `/skill reload`
-Reload skills from disk.
-
-```bash
-/skill reload
-```
-
-### `/skill create`
-Interactive wizard to create a new skill.
-
-```bash
-/skill create
-# Prompts for:
-# - Skill name
-# - Description
-# - Intent patterns
-# - Tools allowed
-# - Max hosts, timeout
-# - System prompt
-```
-
-### `/skill template <name> [description]`
-Generate a skill template YAML file.
-
-```bash
-/skill template disk_audit "Audit disk usage across hosts"
-# Creates ~/.merlya/skills/disk_audit.yaml
-```
-
-### `/skill run <name> [hosts]`
-Run a skill manually.
-
-```bash
-/skill run disk_audit
-/skill run security_check @web01 @db01
-```
 
 ## Audit
 
@@ -545,24 +522,35 @@ Show audit statistics.
 /audit stats
 ```
 
-## Using @ Mentions
+## Host and Secret References
 
-### Host Mentions
-Reference hosts from inventory with `@`:
+### Host Names
+
+Reference hosts from inventory by their name (without `@`):
 
 ```bash
-Check disk on @web01
-Connect to @database-primary via @bastion
+Check disk on web01
+Connect to database-primary via bastion
 ```
+
+### Secret References
+Reference secrets stored in keyring with `@`:
+
+```bash
+Connect to MongoDB with @db-password
+Deploy using token @deploy-token
+```
+
+The `@` prefix is **reserved for secrets only**. Secrets are resolved from the system keyring before execution and never appear in logs.
 
 ### Variable Mentions
-Reference variables with `@`:
+
+Variables set via `/variable set` are expanded automatically:
 
 ```bash
-Deploy to @deploy_env environment
+/variable set deploy_env production
+Deploy to $deploy_env environment
 ```
-
-Variables are expanded before processing.
 
 ## Command Aliases
 

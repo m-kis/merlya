@@ -1,0 +1,30 @@
+# Example YAML import with elevation configuration
+
+- name: test-app01
+  hostname: 192.168.100.30
+  username: appuser
+  port: 22
+  tags:
+    - application
+    - test
+  elevation_method: sudo_password
+  elevation_user: root
+
+- name: test-app02
+  hostname: 192.168.100.31
+  username: appuser
+  port: 22
+  tags:
+    - application
+    - test
+  elevation_method: doas  # BSD system with NOPASSWD
+
+- name: test-legacy
+  hostname: 192.168.100.99
+  username: operator
+  port: 22
+  tags:
+    - legacy
+    - test
+  elevation_method: su  # Only su available
+  elevation_user: root

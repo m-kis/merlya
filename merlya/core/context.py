@@ -4,6 +4,13 @@ Merlya Core - Shared Context.
 The SharedContext is the "socle commun" shared between all agents.
 It provides access to core infrastructure: router, SSH pool, hosts,
 variables, secrets, UI, and configuration.
+
+Architecture v0.8.0: SharedContext now composes focused sub-contexts:
+- ConfigContext: Configuration, i18n, secrets (immutable after init)
+- DataContext: Database and repositories (thread-safe)
+- ExecutionContext: SSH, elevation, MCP, router (lazy-init)
+- UIContext: Console UI and user interaction
+- SessionState: Transient session state with password TTL
 """
 
 from __future__ import annotations
@@ -16,6 +23,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from loguru import logger
 
 from merlya.config import Config, get_config
+from merlya.core.contexts import (
+    ConfigContext,
+    DataContext,
+    ExecutionContext,
+    SessionState,
+    UIContext,
+)
 from merlya.i18n import I18n, get_i18n
 from merlya.secrets import SecretStore, get_secret_store
 from merlya.secrets.session import SessionPasswordStore, get_session_store
@@ -30,7 +44,7 @@ if TYPE_CHECKING:
         VariableRepository,
     )
     from merlya.router import IntentRouter
-    from merlya.security import PermissionManager
+    from merlya.security import ElevationManager
     from merlya.ssh import SSHPool
     from merlya.tools.core.user_input import AskUserCache
     from merlya.ui import ConsoleUI
@@ -44,19 +58,33 @@ class SharedContext:
     This is the central infrastructure that all agents and tools
     have access to. It's initialized once at startup and passed
     to agents via dependency injection.
+
+    Composed of focused sub-contexts for better separation of concerns:
+    - config_ctx: Configuration and settings (ConfigContext)
+    - data_ctx: Database and repositories (DataContext)
+    - exec_ctx: Runtime services (ExecutionContext)
+    - ui_ctx: User interface (UIContext)
+    - session: Session state with TTL (SessionState)
     """
 
     # Class-level singleton state
     _instance: ClassVar[SharedContext | None] = None
     _lock: ClassVar[asyncio.Lock]  # Initialized below
 
-    # Core infrastructure
+    # Core infrastructure (backward-compatible direct access)
     config: Config
     i18n: I18n
     secrets: SecretStore
     health: StartupHealth | None = None
 
-    # Database (initialized async)
+    # Focused sub-contexts (v0.8.0 architecture)
+    _config_ctx: ConfigContext | None = field(default=None, repr=False)
+    _data_ctx: DataContext | None = field(default=None, repr=False)
+    _exec_ctx: ExecutionContext | None = field(default=None, repr=False)
+    _ui_ctx: UIContext | None = field(default=None, repr=False)
+    _session: SessionState = field(default_factory=SessionState, repr=False)
+
+    # Database (initialized async) - kept for backward compatibility
     _db: Database | None = field(default=None, repr=False)
     _host_repo: HostRepository | None = field(default=None, repr=False)
     _var_repo: VariableRepository | None = field(default=None, repr=False)
@@ -64,7 +92,7 @@ class SharedContext:
 
     # SSH Pool (lazy init)
     _ssh_pool: SSHPool | None = field(default=None, repr=False)
-    _permissions: PermissionManager | None = field(default=None, repr=False)
+    _elevation: ElevationManager | None = field(default=None, repr=False)
     _auth_manager: object | None = field(default=None, repr=False)  # SSHAuthManager
 
     # Intent Router (lazy init)
@@ -86,6 +114,74 @@ class SharedContext:
     auto_confirm: bool = field(default=False)
     quiet: bool = field(default=False)
     output_format: str = field(default="text")
+
+    # Sub-context property accessors (v0.8.0)
+    @property
+    def config_ctx(self) -> ConfigContext:
+        """Get configuration context (immutable after init)."""
+        if self._config_ctx is None:
+            self._config_ctx = ConfigContext(
+                config=self.config,
+                i18n=self.i18n,
+                secrets=self.secrets,
+                health=self.health,
+            )
+        return self._config_ctx
+
+    @property
+    def data_ctx(self) -> DataContext:
+        """Get data context (database and repositories)."""
+        if self._data_ctx is None:
+            self._data_ctx = DataContext(
+                _db=self._db,
+                _host_repo=self._host_repo,
+                _var_repo=self._var_repo,
+                _conv_repo=self._conv_repo,
+            )
+        return self._data_ctx
+
+    @property
+    def exec_ctx(self) -> ExecutionContext:
+        """Get execution context (SSH, elevation, MCP, router)."""
+        if self._exec_ctx is None:
+            self._exec_ctx = ExecutionContext(
+                _config_ctx=self.config_ctx,
+                _ssh_pool=self._ssh_pool,
+                _router=self._router,
+                _mcp_manager=self._mcp_manager,
+            )
+        return self._exec_ctx
+
+    @property
+    def ui_ctx(self) -> UIContext:
+        """Get UI context (console, session passwords, cache)."""
+        if self._ui_ctx is None:
+            self._ui_ctx = UIContext(
+                _config_ctx=self.config_ctx,
+                _ui=self._ui,
+                _session_passwords=self._session_passwords,
+                _ask_user_cache=self._ask_user_cache,
+                auto_confirm=self.auto_confirm,
+                quiet=self.quiet,
+                output_format=self.output_format,
+            )
+        return self._ui_ctx
+
+    @property
+    def session(self) -> SessionState:
+        """Get session state (conversation context, password TTL)."""
+        return self._session
+
+    # Backward-compatible property: last_remote_target via session
+    @property
+    def last_remote_target(self) -> str | None:
+        """Get last remote target (conversation context)."""
+        return self._session.last_remote_target
+
+    @last_remote_target.setter
+    def last_remote_target(self, value: str | None) -> None:
+        """Set last remote target (conversation context)."""
+        self._session.last_remote_target = value
 
     @property
     def db(self) -> Database:
@@ -155,14 +251,19 @@ class SharedContext:
             raise RuntimeError("Router not initialized. Call init_router() first.")
         return self._router
 
-    async def get_permissions(self) -> PermissionManager:
-        """Get permission manager (lazy)."""
-        if self._permissions is None:
-            from merlya.security import PermissionManager
+    async def get_elevation(self) -> ElevationManager:
+        """Get elevation manager (lazy)."""
+        if self._elevation is None:
+            from merlya.security import ElevationManager
 
-            self._permissions = PermissionManager(self)
-        assert self._permissions is not None
-        return self._permissions
+            self._elevation = ElevationManager(self)
+        assert self._elevation is not None
+        return self._elevation
+
+    # Alias for backward compatibility
+    async def get_permissions(self) -> ElevationManager:
+        """Deprecated: use get_elevation() instead."""
+        return await self.get_elevation()
 
     @property
     def ui(self) -> ConsoleUI:
@@ -236,24 +337,15 @@ class SharedContext:
         Initialize intent router.
 
         Args:
-            tier: Optional model tier (from health checks).
+            tier: Ignored (kept for backward compatibility, ONNX removed in v0.8.0).
         """
+        _ = tier  # ONNX tiers no longer used
+
         from merlya.router import IntentRouter
 
-        requested_local = self.config.router.type == "local"
-        use_local = requested_local
-
-        # Disable local router if health checks flagged it as unavailable
-        if self.health and requested_local:
-            use_local = bool(self.health.capabilities.get("onnx_router"))
-
-        router_model_env = os.getenv("MERLYA_ROUTER_MODEL")
-        router_model_id = router_model_env or self.config.router.model
-
         router = IntentRouter(
-            use_local=use_local,
-            model_id=router_model_id,
-            tier=tier,
+            use_local=False,  # ONNX removed - always use pattern/LLM
+            config=self.config,  # Enable SmartExtractor (fast LLM)
         )
 
         # Configure LLM fallback for low-confidence intents
@@ -268,16 +360,7 @@ class SharedContext:
 
         await router.initialize()
 
-        # Persist chosen tier for visibility
-        self.config.router.tier = tier or self.config.router.tier
-
-        if requested_local and not use_local:
-            logger.warning("⚠️ ONNX router unavailable, using LLM fallback for routing")
-        elif router.classifier.model_loaded:
-            logger.debug("✅ Intent router initialized with local ONNX model")
-            # Persist selected model id for diagnostics
-            if router.classifier.model_id:
-                self.config.router.model = router.classifier.model_id
+        logger.debug("✅ Intent router initialized (pattern-based + LLM fallback)")
 
         self._router = router
 

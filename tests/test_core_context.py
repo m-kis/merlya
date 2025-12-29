@@ -105,22 +105,22 @@ class TestSharedContextLazyInit:
             MockUI.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_get_permissions_lazy(self, context_with_config):
-        """Test get_permissions lazy initialization."""
-        with patch("merlya.security.PermissionManager") as MockPM:
-            mock_pm = MagicMock()
-            MockPM.return_value = mock_pm
+    async def test_get_elevation_lazy(self, context_with_config):
+        """Test get_elevation lazy initialization."""
+        with patch("merlya.security.ElevationManager") as MockEM:
+            mock_em = MagicMock()
+            MockEM.return_value = mock_em
 
-            # First call creates permissions
-            pm1 = await context_with_config.get_permissions()
-            assert pm1 == mock_pm
-            MockPM.assert_called_once_with(context_with_config)
+            # First call creates elevation manager
+            em1 = await context_with_config.get_elevation()
+            assert em1 == mock_em
+            MockEM.assert_called_once_with(context_with_config)
 
             # Second call returns same instance
-            MockPM.reset_mock()
-            pm2 = await context_with_config.get_permissions()
-            assert pm2 == mock_pm
-            MockPM.assert_not_called()
+            MockEM.reset_mock()
+            em2 = await context_with_config.get_elevation()
+            assert em2 == mock_em
+            MockEM.assert_not_called()
 
 
 class TestSharedContextSSH:
@@ -303,11 +303,10 @@ class TestSharedContextRouter:
         )
 
     @pytest.mark.asyncio
-    async def test_init_router_local(self, context_for_router):
-        """Test init_router with local ONNX router."""
+    async def test_init_router_pattern_based(self, context_for_router):
+        """Test init_router with pattern-based router (ONNX removed in v0.8.0)."""
         mock_router = MagicMock()
-        mock_router.classifier.model_loaded = True
-        mock_router.classifier.model_id = "onnx-model-v1"
+        mock_router.classifier.model_loaded = False  # No ONNX
 
         with patch("merlya.router.IntentRouter") as MockRouter:
             MockRouter.return_value = mock_router
@@ -315,18 +314,17 @@ class TestSharedContextRouter:
 
             await context_for_router.init_router(tier="standard")
 
-            MockRouter.assert_called_once_with(
-                use_local=True,
-                model_id="default-model",
-                tier="standard",
-            )
+            # ONNX removed - always use_local=False, config is passed
+            MockRouter.assert_called_once()
+            call_kwargs = MockRouter.call_args.kwargs
+            assert call_kwargs["use_local"] is False
             mock_router.initialize.assert_called_once()
             assert context_for_router._router == mock_router
 
     @pytest.mark.asyncio
-    async def test_init_router_with_health_check_disable(self, context_for_router):
-        """Test init_router disables local when health check fails."""
-        # Health check says ONNX unavailable
+    async def test_init_router_ignores_health_check(self, context_for_router):
+        """Test init_router ignores health check for ONNX (removed in v0.8.0)."""
+        # Health check is now irrelevant for router
         context_for_router.health = MagicMock()
         context_for_router.health.capabilities = {"onnx_router": False}
 
@@ -339,19 +337,16 @@ class TestSharedContextRouter:
 
             await context_for_router.init_router()
 
-            # Should use_local=False because health check disabled it
-            MockRouter.assert_called_once_with(
-                use_local=False,
-                model_id="default-model",
-                tier=None,
-            )
+            # Always use_local=False (ONNX removed), config is passed
+            MockRouter.assert_called_once()
+            call_kwargs = MockRouter.call_args.kwargs
+            assert call_kwargs["use_local"] is False
 
     @pytest.mark.asyncio
-    async def test_init_router_with_env_override(self, context_for_router):
-        """Test init_router with environment variable override."""
+    async def test_init_router_ignores_env_model(self, context_for_router):
+        """Test init_router ignores model env var (ONNX removed in v0.8.0)."""
         mock_router = MagicMock()
-        mock_router.classifier.model_loaded = True
-        mock_router.classifier.model_id = "custom-model"
+        mock_router.classifier.model_loaded = False
 
         with patch.dict("os.environ", {"MERLYA_ROUTER_MODEL": "custom-model"}):
             with patch("merlya.router.IntentRouter") as MockRouter:
@@ -360,11 +355,10 @@ class TestSharedContextRouter:
 
                 await context_for_router.init_router()
 
-                MockRouter.assert_called_once_with(
-                    use_local=True,
-                    model_id="custom-model",
-                    tier=None,
-                )
+                # Model param no longer passed (ONNX removed), config is passed
+                MockRouter.assert_called_once()
+                call_kwargs = MockRouter.call_args.kwargs
+                assert call_kwargs["use_local"] is False
 
     @pytest.mark.asyncio
     async def test_init_router_with_llm_fallback(self, context_for_router):

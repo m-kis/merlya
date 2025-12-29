@@ -135,28 +135,31 @@ class SSHPool:
 
 ## ADR-005: Local Intent Classification
 
-**Status:** Accepted
+**Status:** Superseded (v0.8.0)
 
 **Context:** Not all user inputs require LLM processing.
 
-**Decision:** Use ONNX-based local classifier for intent routing.
+**Decision:** Use pattern-based local classifier for intent routing with LLM fallback.
 
 **Rationale:**
-- Fast (< 10ms) classification
-- No API calls for simple intents
+- Fast (< 1ms) classification using regex patterns
+- No external dependencies or model files
 - Works offline
 - Reduces API costs
+- LLM fallback for complex/ambiguous intents
 
 **Implementation:**
 ```
-User Input → Intent Classifier → [Simple Intent] → Direct Handler
-                              → [Complex Intent] → LLM Agent
+User Input → Pattern Matcher → [High Confidence] → Direct Handler
+                            → [Low Confidence]  → LLM Classification → Agent
 ```
 
 **Consequences:**
-- Additional model file (~50MB)
-- Needs training data for new intents
-- May misclassify edge cases
+- Simpler deployment (no model files)
+- Pattern maintenance required for new intents
+- LLM fallback handles edge cases gracefully
+
+**Note:** Previously used ONNX embeddings, removed in v0.8.0 for simplicity.
 
 ---
 
@@ -313,6 +316,83 @@ DANGEROUS_PATTERNS = [
     r"chmod\s+777",
 ]
 ```
+
+---
+
+## ADR-011: Non-Interactive Mode Credential Handling
+
+**Status:** Accepted (v0.7.8)
+
+**Context:** When running in non-interactive mode (`merlya run --yes`), the agent cannot prompt users for credentials. Previously, this led to infinite retry loops when sudo/su commands required passwords.
+
+**Decision:** Fail-fast with clear error messages when credentials are needed but cannot be obtained.
+
+**Rationale:**
+
+- Immediate failure prevents wasted API calls and timeouts
+- Clear error messages guide users to proper solutions
+- Three resolution paths documented: keyring, NOPASSWD, interactive mode
+- `permanent_failure` flag tells agent to stop retrying
+
+**Implementation:**
+```python
+# In request_credentials() and ssh_execute()
+if ctx.auto_confirm and missing_credentials:
+    return CommandResult(
+        success=False,
+        message="Cannot obtain credentials in non-interactive mode",
+        data={
+            "non_interactive": True,
+            "permanent_failure": True,  # Signal: do not retry
+        }
+    )
+```
+
+**Solutions for users:**
+
+1. Store credentials in keyring: `merlya secret set sudo:host:password`
+2. Configure NOPASSWD sudo on target hosts
+3. Run in interactive mode (without `--yes`)
+
+**Consequences:**
+
+- Clear failure instead of timeout loops
+- Better CI/CD integration (fast failure)
+- Requires pre-configuration for automated elevated commands
+
+---
+
+## ADR-012: ElevationMethod Enum for Host Configuration
+
+**Status:** Accepted (v0.7.8)
+
+**Context:** Elevation method was stored as strings with inconsistent validation, causing NULL values and validation errors.
+
+**Decision:** Use `ElevationMethod` enum with explicit values and proper NULL handling.
+
+**Enum Values:**
+```python
+class ElevationMethod(str, Enum):
+    NONE = "none"              # No elevation
+    SUDO = "sudo"              # sudo (NOPASSWD)
+    SUDO_PASSWORD = "sudo_password"  # sudo with password
+    DOAS = "doas"              # doas (NOPASSWD)
+    DOAS_PASSWORD = "doas_password"  # doas with password
+    SU = "su"                  # su with password
+```
+
+**Handling:**
+
+- NULL in database → `ElevationMethod.NONE`
+- Invalid strings → `ElevationMethod.NONE`
+- `/hosts edit` uses enum mapping
+- Import (TOML/CSV) maps strings to enum values
+
+**Consequences:**
+
+- Type-safe elevation configuration
+- No more validation errors on NULL
+- Consistent behavior across all code paths
 
 ---
 

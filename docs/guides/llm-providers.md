@@ -229,7 +229,7 @@ On first run, Merlya's [setup wizard](../getting-started/quickstart.md#setup-wiz
 
 ## Router Fallback Model
 
-Merlya uses a separate "router" model for intent classification when the local ONNX classifier is unavailable:
+Merlya uses a separate "router" model for intent classification when pattern matching has low confidence:
 
 ```bash
 # Configure router fallback (fast, cheap model recommended)

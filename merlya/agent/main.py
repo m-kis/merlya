@@ -41,6 +41,7 @@ class AgentDependencies:
     context: SharedContext
     router_result: RouterResult | None = None
     tracker: ToolCallTracker = field(default_factory=ToolCallTracker)
+    user_input: str = ""  # Original user request for context
 
 
 class AgentResponse(BaseModel):
@@ -107,7 +108,11 @@ class MerlyaAgent:
             self._apply_credential_hints(user_input)
             await self._mark_unresolved_hosts(router_result)
 
-            deps = AgentDependencies(context=self.context, router_result=router_result)
+            deps = AgentDependencies(
+                context=self.context,
+                router_result=router_result,
+                user_input=user_input,
+            )
             return await self._run_agent_with_errors(user_input, deps, limits)
 
         except asyncio.CancelledError:

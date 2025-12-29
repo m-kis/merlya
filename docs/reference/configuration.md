@@ -149,42 +149,12 @@ Router type for intent classification.
 |------|---------|--------|
 | string | `local` | `local`, `llm` |
 
-- `local`: Uses local ONNX embedding model (faster, offline)
+- `local`: Uses pattern matching for intent classification (fast, no model required)
 - `llm`: Uses LLM for classification (more accurate, requires API)
 
 ```yaml
 router:
   type: local
-```
-
----
-
-### router.model
-
-Local embedding model ID (when `type: local`).
-
-| Type | Default |
-|------|---------|
-| string | _(auto-selected by tier)_ |
-
-```yaml
-router:
-  model: sentence-transformers/all-MiniLM-L6-v2
-```
-
----
-
-### router.tier
-
-Model tier for local router.
-
-| Type | Default | Values |
-|------|---------|--------|
-| string | `balanced` | `performance`, `balanced`, `lightweight` |
-
-```yaml
-router:
-  tier: balanced
 ```
 
 ---

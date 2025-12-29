@@ -45,7 +45,7 @@ Merlya is an autonomous CLI assistant that understands your infrastructure conte
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              USER INPUT                                      │
-│                    "Check disk on @web-01 via @bastion"                     │
+│                    "Check disk on web-01 via bastion"                       │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -56,7 +56,7 @@ Merlya is an autonomous CLI assistant that understands your infrastructure conte
 │  │ Embeddings  │    │ (if <0.7)   │    │  Matching   │                      │
 │  └─────────────┘    └─────────────┘    └─────────────┘                      │
 │                              │                                               │
-│  Output: mode=DIAGNOSTIC, hosts=[@web-01], via=@bastion                     │
+│  Output: mode=DIAGNOSTIC, hosts=[web-01], via=bastion                       │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                     ┌─────────────────┼─────────────────┐
@@ -147,13 +147,15 @@ See `.env.example` for complete variable documentation.
 ## Quick Examples
 
 ```bash
-> Check disk usage on @web-prod-01
+> Check disk usage on web-prod-01
 > /hosts list
-> /ssh exec @db-01 "uptime"
+> /ssh exec db-01 "uptime"
 > /model router show
 > /variable set region eu-west-1
 > /mcp list
 ```
+
+> **Note**: Host names are written **without the `@` prefix**. The `@` prefix is reserved for secret references (e.g., `@db-password`).
 
 ## Security
 

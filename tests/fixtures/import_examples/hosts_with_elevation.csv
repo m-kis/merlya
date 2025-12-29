@@ -1,0 +1,4 @@
+name,hostname,port,username,private_key,jump_host,elevation_method,elevation_user,tags
+test-worker01,192.168.100.40,22,worker,,,sudo_password,root,"worker,test"
+test-worker02,192.168.100.41,22,worker,,,sudo,,worker,test
+test-monitor,192.168.100.50,22,monitor,,,none,,"monitoring,test"

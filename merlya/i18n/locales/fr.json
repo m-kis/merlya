@@ -241,15 +241,15 @@
       "subcommands": "Sous-commandes :\n  list              - Lister tous les hôtes\n  add <nom>         - Ajouter un hôte (--test pour vérifier la connexion)\n  delete <nom>      - Supprimer un hôte\n  show <nom>        - Afficher les détails d'un hôte\n  tag <nom> <tag>   - Ajouter un tag à un hôte\n  untag <nom> <tag> - Retirer un tag d'un hôte\n  check [options]   - Vérifier la connectivité\n                      --all : Vérifier tous les hôtes\n                      --tag=<tag> : Vérifier les hôtes avec ce tag\n                      --parallel : Vérifier en parallèle"
     },
     "ssh": {
-      "description": "Gestion des connexions SSH",
+      "description": "Gérer les connexions SSH",
       "usage": "/ssh <sous-commande>"
     },
     "mcp": {
       "description": "Gérer les serveurs et outils MCP",
-      "usage": "/mcp <subcommand>"
+      "usage": "/mcp <sous-commande>"
     },
     "model": {
-      "description": "Gérer le provider LLM et le router",
+      "description": "Gérer le provider LLM et les modèles (brain/fast)",
       "usage": "/model <sous-commande>"
     },
     "scan": {
@@ -272,6 +272,10 @@
     "secret": {
       "description": "Gérer les secrets (stockage sécurisé)",
       "usage": "/secret <sous-commande>"
+    },
+    "audit": {
+      "description": "Consulter et exporter les logs d'audit",
+      "usage": "/audit <sous-commande>"
     }
   },
   "errors": {

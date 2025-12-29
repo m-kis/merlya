@@ -1,0 +1,19 @@
+[
+  {
+    "name": "test-cache01",
+    "hostname": "192.168.100.60",
+    "port": 22,
+    "username": "redis",
+    "tags": ["cache", "test"],
+    "elevation_method": "sudo_password",
+    "elevation_user": "root"
+  },
+  {
+    "name": "test-cache02",
+    "hostname": "192.168.100.61",
+    "port": 22,
+    "username": "redis",
+    "tags": ["cache", "test"],
+    "elevation_method": "sudo"
+  }
+]

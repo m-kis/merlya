@@ -15,9 +15,7 @@ model:
   api_key_env: null         # Environment variable name for API key
 
 router:
-  type: local               # local (ONNX), llm
-  model: null               # Embedding model ID
-  tier: null                # performance, balanced, lightweight
+  type: local               # local (pattern matching), llm
   llm_fallback: openrouter:google/gemini-2.0-flash-lite-001
 
 ssh:
@@ -127,24 +125,18 @@ No API key required for local Ollama.
 
 The router classifies user intent before sending to the LLM.
 
-### Local Router (ONNX)
+### Local Router (Pattern Matching)
 
-Uses local embeddings for fast, private classification:
+Uses fast pattern matching for intent classification:
 
 ```yaml
 router:
   type: local
-  tier: balanced  # performance, balanced, lightweight
 ```
 
-**Tiers:**
-- `performance` - Best accuracy, more RAM
-- `balanced` - Good tradeoff (default)
-- `lightweight` - Low RAM usage
+### LLM Fallback
 
-### LLM Router
-
-Falls back to LLM when local confidence is low:
+Falls back to LLM when pattern matching confidence is low:
 
 ```yaml
 router:
