@@ -330,7 +330,8 @@
       "options": "  1. English\n  2. Français"
     },
     "step_llm": "📡 **Step 1: LLM Configuration**",
-    "step_inventory": "🖥️ **Step 2: Inventory Detection**",
+    "step_mcp": "☁️ **Step 2: Cloud Providers (Optional)**",
+    "step_inventory": "🖥️ **Step 3: Inventory Detection**",
     "llm_config": {
       "title": "📡 LLM Provider Configuration",
       "providers": "Available providers:\n  1. OpenRouter (recommended - multi-model)\n  2. Anthropic (Claude direct)\n  3. OpenAI (GPT models)\n  4. Mistral (Mistral AI)\n  5. Groq (fast inference)\n  6. Ollama (local models)",
@@ -342,6 +343,24 @@
       "api_key_saved": "✅ API key configured and stored securely",
       "api_key_missing": "⚠️ No API key provided",
       "skipped": "⚠️ LLM configuration skipped"
+    },
+    "mcp_config": {
+      "title": "☁️ Cloud Provider Configuration",
+      "intro": "Configure cloud providers for IaC provisioning.\n\nSupported providers: AWS, Google Cloud, Azure, OVH, DigitalOcean.\nCredentials will be stored securely in your system keyring.",
+      "enable_prompt": "Configure cloud providers for infrastructure provisioning?",
+      "available_providers": "📋 Available cloud providers:",
+      "select_providers": "Select providers (comma-separated numbers, or 'all')",
+      "configuring": "🔧 Configuring {provider}...",
+      "secret_found": "✅ {secret} found ({source})",
+      "enter_secret": "Enter {secret} ({env_var})",
+      "secret_saved": "✅ {secret} stored securely",
+      "secret_missing": "⚠️ {secret} not provided",
+      "provider_ready": "✅ {provider} configured",
+      "provider_incomplete": "⚠️ {provider} configuration incomplete",
+      "mcp_available": "MCP available",
+      "mcp_fallback": "Terraform/API fallback",
+      "complete": "✅ {count} cloud provider(s) configured",
+      "skipped": "ℹ️ Cloud provider configuration skipped"
     },
     "inventory": {
       "title": "🖥️ Inventory Setup",
