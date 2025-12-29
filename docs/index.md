@@ -25,11 +25,11 @@ SSH inventory, safe remote execution, diagnostics, and automation.
 
     Async SSH pool, jump hosts, connection testing, and inventory import/export.
 
--   :material-robot:{ .lg .middle } **Local-First Routing + LLM Fallback**
+-   :material-robot:{ .lg .middle } **DIAGNOSTIC/CHANGE Architecture**
 
     ---
 
-    Intent routing prefers local classifiers when available, with safe fallbacks.
+    Smart routing between read-only investigation and controlled mutations with HITL approval.
 
 -   :material-security:{ .lg .middle } **Secure by Design**
 
