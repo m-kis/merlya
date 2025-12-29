@@ -13,6 +13,7 @@
   <a href="https://pypi.org/project/merlya/"><img src="https://img.shields.io/pypi/pyversions/merlya" alt="Python"></a>
   <a href="https://pypi.org/project/merlya/"><img src="https://img.shields.io/pypi/dm/merlya" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue" alt="License"></a>
+  <a href="https://merlya.m-kis.fr/"><img src="https://img.shields.io/badge/docs-merlya.m--kis.fr-40C4E0" alt="Documentation"></a>
 </p>
 
 <p align="center">
