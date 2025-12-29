@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import subprocess
+import subprocess  # nosec B404 - required for tool detection
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -335,7 +335,7 @@ class CapabilityDetector:
             return None
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 - cmd is validated
                 cmd,
                 capture_output=True,
                 text=True,
@@ -361,7 +361,7 @@ class CapabilityDetector:
             return True  # No config check
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 - cmd is predefined
                 cmd,
                 capture_output=True,
                 timeout=5,

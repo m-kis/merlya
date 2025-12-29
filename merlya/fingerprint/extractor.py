@@ -8,9 +8,12 @@ semantic signatures from commands.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from merlya.fingerprint.models import FingerprintResult, SemanticSignature
+
+# Type alias for risk levels
+RiskLevel = Literal["low", "medium", "high", "critical"]
 
 if TYPE_CHECKING:
     from merlya.fingerprint.cache import FingerprintCache
@@ -309,7 +312,7 @@ class SemanticSignatureExtractor:
             original_command=command,
         )
 
-    def _assess_http_risk(self, verb: str) -> str:
+    def _assess_http_risk(self, verb: str) -> RiskLevel:
         """Assess risk level for HTTP operations."""
         if verb in ("DELETE", "PUT", "PATCH"):
             return "high"
@@ -317,7 +320,7 @@ class SemanticSignatureExtractor:
             return "medium"
         return "low"
 
-    def _assess_service_risk(self, action: str) -> str:
+    def _assess_service_risk(self, action: str) -> RiskLevel:
         """Assess risk level for service operations."""
         if action in ("stop", "disable"):
             return "high"

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, Literal, cast
 
 from loguru import logger
 
@@ -94,7 +94,7 @@ class FingerprintCache:
 
         record = ApprovalRecord(
             signature_hash=signature.signature_hash,
-            scope=scope.value,
+            scope=cast("Literal['once', 'session', 'permanent']", scope.value),
             approved=approved,
             original_command=signature.original_command,
             host=host,
@@ -170,7 +170,7 @@ class FingerprintCache:
         approved_count = sum(1 for r in self._cache.values() if r.approved)
         refused_count = len(self._cache) - approved_count
 
-        scope_counts = {}
+        scope_counts: dict[str, int] = {}
         for record in self._cache.values():
             scope_counts[record.scope] = scope_counts.get(record.scope, 0) + 1
 

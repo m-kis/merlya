@@ -55,7 +55,7 @@ class SemanticSignature(BaseModel):
     # Metadata
     extracted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def signature_hash(self) -> str:
         """

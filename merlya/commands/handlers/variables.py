@@ -426,13 +426,6 @@ async def cmd_secret_clear_elevation(ctx: SharedContext, args: list[str]) -> Com
             ctx.secrets.delete(secret)
             count += 1
 
-        # Also clear permission manager cache
-        try:
-            permissions = await ctx.get_permissions()
-            permissions.clear_cache()
-        except Exception:
-            pass
-
         if count == 0:
             return CommandResult(success=True, message="No elevation passwords to clear.")
         return CommandResult(
@@ -451,13 +444,6 @@ async def cmd_secret_clear_elevation(ctx: SharedContext, args: list[str]) -> Com
         )
 
     ctx.secrets.delete(secret_key)
-
-    # Clear from permission manager cache too
-    try:
-        permissions = await ctx.get_permissions()
-        permissions.clear_cache(host)
-    except Exception:
-        pass
 
     return CommandResult(
         success=True,
