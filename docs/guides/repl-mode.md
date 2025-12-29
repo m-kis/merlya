@@ -79,7 +79,7 @@ Merlya > /help
 Merlya > /hosts
 Merlya > /hosts add prod-db --test
 Merlya > /model provider openai
-Merlya > /model model gpt-4o
+Merlya > /model brain gpt-4o
 Merlya > /new "Debugging nginx issue"
 ```
 
@@ -103,14 +103,16 @@ Provider: ✅ openrouter (amazon/nova-2-lite-v1:free)
 
 Shows the configured LLM provider and model.
 
-### Router Status
+### Center Classifier
 
 ```
-Router: ✅ local (intent-classifier-v1)
+Classifier: ✅ DIAGNOSTIC/CHANGE router
 ```
 
-- **local**: Using pattern matching for intent classification (fast, offline)
-- **llm fallback**: Using LLM for routing when confidence is low
+Routes requests between:
+
+- **DIAGNOSTIC**: Read-only investigation (SSH read, logs, kubectl get)
+- **CHANGE**: Controlled mutations via Pipelines with HITL approval
 
 ### Keyring Status
 

@@ -97,15 +97,22 @@ def register_all_tools(agent: Agent) -> None:
     # ...
 ```
 
-### Step 3: Update Router (Optional)
+### Step 3: Update Center Classifier (Optional)
 
-Add keywords to activate your tool in `merlya/router/intent_classifier.py`:
+If your tool performs mutations, add patterns to `merlya/router/center_classifier.py`:
 
 ```python
-TOOL_KEYWORDS = {
+# For CHANGE operations (mutations)
+CHANGE_PATTERNS = [
     # ...
-    "backup": ["backup", "archive", "snapshot", "tar", "zip"],
-}
+    r"\b(backup|archive|snapshot)\\b",
+]
+
+# For DIAGNOSTIC operations (read-only)
+DIAGNOSTIC_PATTERNS = [
+    # ...
+    r"\b(list|show)\\s+(backups?|archives?)\\b",
+]
 ```
 
 ## Adding New Commands

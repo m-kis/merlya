@@ -75,7 +75,7 @@ If you skip the wizard or want to change settings later:
     merlya
     # then inside the REPL:
     /model provider openrouter
-    /model model amazon/nova-2-lite-v1:free
+    /model brain amazon/nova-2-lite-v1:free
     ```
 
 === "CI/CD (API keys via environment variables)"
