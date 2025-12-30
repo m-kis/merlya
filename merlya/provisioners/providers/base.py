@@ -274,7 +274,8 @@ class ProviderCapabilities(BaseModel):
     can_delete: bool = True
     can_start_stop: bool = True
     can_resize: bool = True
-    can_snapshot: bool = True
+    # Snapshots require provider-specific APIs; default to False unless implemented.
+    can_snapshot: bool = False
 
     # Networking
     supports_vpc: bool = True
@@ -284,12 +285,13 @@ class ProviderCapabilities(BaseModel):
 
     # Storage
     supports_block_storage: bool = True
-    supports_object_storage: bool = True
+    # Object storage (e.g., S3) is not part of the core provider interface.
+    supports_object_storage: bool = False
 
     # Advanced
     supports_auto_scaling: bool = False
-    supports_load_balancing: bool = True
-    supports_dns: bool = True
+    supports_load_balancing: bool = False
+    supports_dns: bool = False
 
     # Backend availability
     has_mcp_support: bool = False

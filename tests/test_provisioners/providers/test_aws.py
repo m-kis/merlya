@@ -6,7 +6,7 @@ v0.9.0: Initial tests.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -44,7 +44,60 @@ class TestAWSProviderProperties:
         assert caps.has_mcp_support is True
         assert caps.has_terraform_support is True
         assert caps.supports_vpc is True
-        assert caps.supports_auto_scaling is True
+        assert caps.can_snapshot is False
+        assert caps.supports_object_storage is False
+        assert caps.supports_auto_scaling is False
+        assert caps.supports_load_balancing is False
+        assert caps.supports_dns is False
+
+    def test_capabilities_match_implemented_methods(
+        self, provider: AWSProvider
+    ) -> None:
+        """Assert capability flags match implemented methods."""
+
+        def _has_all_methods(method_names: tuple[str, ...]) -> bool:
+            for method_name in method_names:
+                attr = getattr(provider, method_name, None)
+                if not callable(attr):
+                    return False
+            return True
+
+        expected_methods: dict[str, tuple[str, ...]] = {
+            "can_snapshot": (
+                "create_snapshot",
+                "list_snapshots",
+                "delete_snapshot",
+            ),
+            "supports_object_storage": (
+                "list_buckets",
+                "create_bucket",
+                "delete_bucket",
+                "put_object",
+                "get_object",
+                "delete_object",
+            ),
+            "supports_auto_scaling": (
+                "create_auto_scaling_group",
+                "list_auto_scaling_groups",
+                "update_auto_scaling_group",
+                "delete_auto_scaling_group",
+            ),
+            "supports_load_balancing": (
+                "create_load_balancer",
+                "list_load_balancers",
+                "delete_load_balancer",
+            ),
+            "supports_dns": (
+                "create_dns_record",
+                "list_dns_records",
+                "delete_dns_record",
+            ),
+        }
+
+        caps = provider.capabilities
+        for capability_name, method_names in expected_methods.items():
+            implemented = _has_all_methods(method_names)
+            assert getattr(caps, capability_name) == implemented
 
 
 class TestAWSProviderCredentials:
@@ -121,6 +174,43 @@ class TestAWSProviderOperations:
         assert instances[0].id == "i-abc123"
         assert instances[0].name == "web-01"
         assert instances[0].status == InstanceStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_list_instances_uses_to_thread(
+        self, provider_with_client: AWSProvider, mock_boto3_client: MagicMock
+    ) -> None:
+        """Ensure boto3 calls don't block the event loop."""
+        mock_boto3_client.describe_instances.return_value = {"Reservations": []}
+
+        with patch(
+            "merlya.provisioners.providers.aws.asyncio.to_thread",
+            new_callable=AsyncMock,
+        ) as mock_to_thread:
+            mock_to_thread.side_effect = (
+                lambda func, *args, **kwargs: func(*args, **kwargs)
+            )
+            await provider_with_client.list_instances()
+            assert mock_to_thread.await_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_list_instances_warns_on_unsupported_filters(
+        self, provider_with_client: AWSProvider, mock_boto3_client: MagicMock
+    ) -> None:
+        """Unsupported filter keys should not be silently ignored."""
+        mock_boto3_client.describe_instances.return_value = {"Reservations": []}
+
+        with (
+            patch(
+                "merlya.provisioners.providers.aws.asyncio.to_thread",
+                new_callable=AsyncMock,
+            ) as mock_to_thread,
+            patch("merlya.provisioners.providers.aws.logger.warning") as warn,
+        ):
+            mock_to_thread.side_effect = (
+                lambda func, *args, **kwargs: func(*args, **kwargs)
+            )
+            await provider_with_client.list_instances(filters={"unsupported": "x"})
+            warn.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_list_instances_with_filters(

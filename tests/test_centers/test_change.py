@@ -300,3 +300,254 @@ class TestLastResult:
     def test_last_result_initially_none(self, center: ChangeCenter) -> None:
         """Test last_result is None initially."""
         assert center.last_result is None
+
+
+class TestTryProvisioner:
+    """Tests for _try_provisioner method."""
+
+    async def test_returns_none_without_iac_operation(
+        self,
+        center: ChangeCenter,
+    ) -> None:
+        """Test returns None when no iac_operation in extra."""
+        deps = CenterDeps(target="local", task="restart nginx")
+
+        result = await center._try_provisioner(deps)
+
+        assert result is None
+
+    async def test_returns_none_for_unknown_operation(
+        self,
+        center: ChangeCenter,
+    ) -> None:
+        """Test returns None for unknown IaC operation."""
+        deps = CenterDeps(
+            target="local",
+            task="do something",
+            extra={"iac_operation": "unknown_op"},
+        )
+
+        result = await center._try_provisioner(deps)
+
+        assert result is None
+
+    async def test_maps_provision_to_create(
+        self,
+        center: ChangeCenter,
+    ) -> None:
+        """Test provision operation maps to CREATE action."""
+        from merlya.provisioners.base import ProvisionerAction
+
+        deps = CenterDeps(
+            target="local",
+            task="create vm",
+            extra={
+                "iac_operation": "provision",
+                "cloud_provider": "aws",
+            },
+        )
+
+        with patch("merlya.provisioners.registry.ProvisionerRegistry") as mock_registry_cls:
+            mock_registry = MagicMock()
+            mock_registry_cls.get_instance.return_value = mock_registry
+            mock_provisioner = MagicMock()
+            mock_registry.get_provisioner.return_value = mock_provisioner
+            mock_provisioner.execute = AsyncMock(return_value=MagicMock())
+
+            await center._try_provisioner(deps)
+
+            # Verify provisioner was called
+            mock_provisioner.execute.assert_called_once()
+            call_args = mock_provisioner.execute.call_args[0][0]
+            assert call_args.action == ProvisionerAction.CREATE
+
+    async def test_maps_destroy_to_delete(
+        self,
+        center: ChangeCenter,
+    ) -> None:
+        """Test destroy operation maps to DELETE action."""
+        from merlya.provisioners.base import ProvisionerAction
+
+        deps = CenterDeps(
+            target="local",
+            task="destroy vm",
+            extra={
+                "iac_operation": "destroy",
+                "cloud_provider": "aws",
+            },
+        )
+
+        with patch("merlya.provisioners.registry.ProvisionerRegistry") as mock_registry_cls:
+            mock_registry = MagicMock()
+            mock_registry_cls.get_instance.return_value = mock_registry
+            mock_provisioner = MagicMock()
+            mock_registry.get_provisioner.return_value = mock_provisioner
+            mock_provisioner.execute = AsyncMock(return_value=MagicMock())
+
+            await center._try_provisioner(deps)
+
+            call_args = mock_provisioner.execute.call_args[0][0]
+            assert call_args.action == ProvisionerAction.DELETE
+
+    async def test_returns_none_when_no_provisioner(
+        self,
+        center: ChangeCenter,
+    ) -> None:
+        """Test returns None when no provisioner available."""
+        deps = CenterDeps(
+            target="local",
+            task="create vm",
+            extra={
+                "iac_operation": "provision",
+                "cloud_provider": "unknown_provider",
+            },
+        )
+
+        with patch("merlya.provisioners.registry.ProvisionerRegistry") as mock_registry_cls:
+            mock_registry = MagicMock()
+            mock_registry_cls.get_instance.return_value = mock_registry
+            mock_registry.get_provisioner.return_value = None
+
+            result = await center._try_provisioner(deps)
+
+            assert result is None
+
+    async def test_returns_failed_result_on_exception(
+        self,
+        center: ChangeCenter,
+    ) -> None:
+        """Test returns failed result on provisioner exception."""
+        deps = CenterDeps(
+            target="local",
+            task="create vm",
+            extra={
+                "iac_operation": "provision",
+                "cloud_provider": "aws",
+            },
+        )
+
+        with patch("merlya.provisioners.registry.ProvisionerRegistry") as mock_registry_cls:
+            mock_registry = MagicMock()
+            mock_registry_cls.get_instance.return_value = mock_registry
+            mock_provisioner = MagicMock()
+            mock_registry.get_provisioner.return_value = mock_provisioner
+            mock_provisioner.execute = AsyncMock(side_effect=RuntimeError("Test error"))
+
+            result = await center._try_provisioner(deps)
+
+            assert result is not None
+            assert result.success is False
+            assert result.aborted is True
+            assert "Test error" in result.aborted_reason
+
+
+class TestFormatProvisionerResult:
+    """Tests for _format_provisioner_result method."""
+
+    def test_format_aborted_result(self, center: ChangeCenter) -> None:
+        """Test formatting aborted provisioner result."""
+        from merlya.provisioners.base import ProvisionerAction, ProvisionerResult
+
+        result = ProvisionerResult(
+            success=False,
+            action=ProvisionerAction.CREATE,
+            aborted=True,
+            aborted_reason="User declined",
+        )
+
+        formatted = center._format_provisioner_result(result)
+
+        assert "aborted" in formatted.lower()
+        assert "User declined" in formatted
+
+    def test_format_success_create_result(self, center: ChangeCenter) -> None:
+        """Test formatting successful CREATE result."""
+        from merlya.provisioners.base import ApplyOutput, ProvisionerAction, ProvisionerResult
+
+        result = ProvisionerResult(
+            success=True,
+            action=ProvisionerAction.CREATE,
+            apply=ApplyOutput(
+                success=True,
+                resources_created=["r1", "r2", "r3"],
+                outputs={"instance_id": "i-12345", "public_ip": "1.2.3.4"},
+            ),
+            duration_seconds=2.5,
+        )
+
+        formatted = center._format_provisioner_result(result)
+
+        assert "successfully" in formatted.lower()
+        assert "Created: 3" in formatted
+        assert "instance_id" in formatted
+        assert "2500ms" in formatted
+
+    def test_format_success_update_result(self, center: ChangeCenter) -> None:
+        """Test formatting successful UPDATE result."""
+        from merlya.provisioners.base import ApplyOutput, ProvisionerAction, ProvisionerResult
+
+        result = ProvisionerResult(
+            success=True,
+            action=ProvisionerAction.UPDATE,
+            apply=ApplyOutput(
+                success=True,
+                resources_updated=["r1", "r2"],
+            ),
+        )
+
+        formatted = center._format_provisioner_result(result)
+
+        assert "Updated: 2" in formatted
+
+    def test_format_success_delete_result(self, center: ChangeCenter) -> None:
+        """Test formatting successful DELETE result."""
+        from merlya.provisioners.base import ApplyOutput, ProvisionerAction, ProvisionerResult
+
+        result = ProvisionerResult(
+            success=True,
+            action=ProvisionerAction.DELETE,
+            apply=ApplyOutput(
+                success=True,
+                resources_deleted=["r1"],
+            ),
+        )
+
+        formatted = center._format_provisioner_result(result)
+
+        assert "Deleted: 1" in formatted
+
+    def test_format_failed_result(self, center: ChangeCenter) -> None:
+        """Test formatting failed provisioner result."""
+        from merlya.provisioners.base import ApplyOutput, ProvisionerAction, ProvisionerResult
+
+        result = ProvisionerResult(
+            success=False,
+            action=ProvisionerAction.CREATE,
+            apply=ApplyOutput(
+                success=False,
+                rollback_data={"state": "previous"},
+            ),
+        )
+
+        formatted = center._format_provisioner_result(result)
+
+        assert "failed" in formatted.lower()
+        assert "Rollback data available" in formatted
+
+    def test_format_truncates_long_outputs(self, center: ChangeCenter) -> None:
+        """Test output values are truncated if too long."""
+        from merlya.provisioners.base import ApplyOutput, ProvisionerAction, ProvisionerResult
+
+        result = ProvisionerResult(
+            success=True,
+            action=ProvisionerAction.CREATE,
+            apply=ApplyOutput(
+                success=True,
+                outputs={"long_value": "x" * 100},
+            ),
+        )
+
+        formatted = center._format_provisioner_result(result)
+
+        assert "..." in formatted
+        assert "x" * 100 not in formatted
