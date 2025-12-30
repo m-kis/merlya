@@ -230,9 +230,12 @@ class MCPBackend(AbstractProvisionerBackend):
 
         try:
             # Use provided IDs or created resources
-            to_destroy = resource_ids or [
-                r.get("instance_id") for r in self._created_resources if r.get("instance_id")
-            ]
+            if resource_ids is not None:
+                to_destroy = resource_ids
+            else:
+                to_destroy = [
+                    r.get("instance_id") for r in self._created_resources if r.get("instance_id")
+                ]
 
             for resource_id in to_destroy:
                 success = await self._terminate_instance_via_mcp(resource_id)
@@ -340,7 +343,7 @@ class MCPBackend(AbstractProvisionerBackend):
                     {
                         "ResourceType": "instance",
                         "Tags": [{"Key": "Name", "Value": spec.name}]
-                        + [{"Key": k, "Value": v} for k, v in spec.tags.items()],
+                        + [{"Key": k, "Value": v} for k, v in (spec.tags or {}).items()],
                     }
                 ],
             }
