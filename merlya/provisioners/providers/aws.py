@@ -8,6 +8,7 @@ v0.9.0: Initial implementation.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -35,6 +36,9 @@ class AWSProvider(AbstractCloudProvider):
 
     Implements instance operations using boto3 SDK.
     MCP integration planned for future versions.
+
+    Note: boto3 is synchronous; AWS API calls are executed via asyncio.to_thread()
+    to avoid blocking the event loop.
     """
 
     def __init__(self, ctx: SharedContext) -> None:
@@ -60,16 +64,21 @@ class AWSProvider(AbstractCloudProvider):
             can_delete=True,
             can_start_stop=True,
             can_resize=True,
-            can_snapshot=True,
+            # TODO(PROV-AWS-001): Add EC2/EBS snapshot support (docs/tickets.md#prov-aws-001).
+            can_snapshot=False,
             supports_vpc=True,
             supports_security_groups=True,
             supports_public_ip=True,
             supports_private_networking=True,
             supports_block_storage=True,
-            supports_object_storage=True,
-            supports_auto_scaling=True,
-            supports_load_balancing=True,
-            supports_dns=True,
+            # TODO(PROV-AWS-002): Add S3 object storage support (docs/tickets.md#prov-aws-002).
+            supports_object_storage=False,
+            # TODO(PROV-AWS-003): Add Auto Scaling Groups support (docs/tickets.md#prov-aws-003).
+            supports_auto_scaling=False,
+            # TODO(PROV-AWS-004): Add ELB/ALB/NLB support (docs/tickets.md#prov-aws-004).
+            supports_load_balancing=False,
+            # TODO(PROV-AWS-005): Add Route 53 DNS record management (docs/tickets.md#prov-aws-005).
+            supports_dns=False,
             has_mcp_support=True,  # @aws-sdk/mcp available
             has_terraform_support=True,
             has_sdk_support=True,
@@ -115,12 +124,17 @@ class AWSProvider(AbstractCloudProvider):
         logger.debug(f"AWS EC2 client created for region {self._region}")
         return self._client
 
+    async def _ec2_call(self, method_name: str, /, **kwargs: Any) -> Any:
+        """Run a boto3 EC2 client call off the event loop."""
+        client = await self._get_client()
+        method = getattr(client, method_name)
+        return await asyncio.to_thread(method, **kwargs)
+
     async def validate_credentials(self) -> tuple[bool, str | None]:
         """Validate AWS credentials."""
         try:
-            client = await self._get_client()
             # Try a simple API call
-            client.describe_regions(DryRun=False)
+            await self._ec2_call("describe_regions", DryRun=False)
             return True, None
         except CredentialsError as e:
             return False, str(e)
@@ -136,11 +150,10 @@ class AWSProvider(AbstractCloudProvider):
         self, filters: dict[str, Any] | None = None
     ) -> list[Instance]:
         """List EC2 instances."""
-        client = await self._get_client()
-
         # Convert filters to AWS format
         aws_filters = []
         if filters:
+            supported_keys = {"status", "name"}
             for key, value in filters.items():
                 if key == "status":
                     aws_filters.append(
@@ -150,10 +163,12 @@ class AWSProvider(AbstractCloudProvider):
                     aws_filters.append({"Name": "tag:Name", "Values": [value]})
                 elif key.startswith("tag:"):
                     aws_filters.append({"Name": key, "Values": [value]})
+                elif key not in supported_keys:
+                    logger.warning(f"Ignoring unsupported filter key: {key}")
 
         try:
-            response = client.describe_instances(
-                Filters=aws_filters if aws_filters else []
+            response = await self._ec2_call(
+                "describe_instances", Filters=aws_filters if aws_filters else []
             )
         except Exception as e:
             raise ProviderError(
@@ -175,7 +190,9 @@ class AWSProvider(AbstractCloudProvider):
         client = await self._get_client()
 
         try:
-            response = client.describe_instances(InstanceIds=[instance_id])
+            response = await asyncio.to_thread(
+                client.describe_instances, InstanceIds=[instance_id]
+            )
         except client.exceptions.ClientError as e:
             if "InvalidInstanceID" in str(e):
                 return None
@@ -193,8 +210,6 @@ class AWSProvider(AbstractCloudProvider):
 
     async def create_instance(self, spec: InstanceSpec) -> Instance:
         """Create a new EC2 instance."""
-        client = await self._get_client()
-
         # Convert spec to AWS config
         config = spec.to_provider_config(ProviderType.AWS)
 
@@ -238,7 +253,7 @@ class AWSProvider(AbstractCloudProvider):
             ]
 
         try:
-            response = client.run_instances(**params)
+            response = await self._ec2_call("run_instances", **params)
         except Exception as e:
             raise ProviderError(
                 f"Failed to create instance: {e}",
@@ -258,8 +273,6 @@ class AWSProvider(AbstractCloudProvider):
         self, instance_id: str, updates: dict[str, Any]
     ) -> Instance:
         """Update an EC2 instance."""
-        client = await self._get_client()
-
         # EC2 instance updates are limited
         # Most require stop -> modify -> start
 
@@ -271,7 +284,8 @@ class AWSProvider(AbstractCloudProvider):
                 await self.wait_for_status(instance_id, InstanceStatus.STOPPED)
 
             try:
-                client.modify_instance_attribute(
+                await self._ec2_call(
+                    "modify_instance_attribute",
                     InstanceId=instance_id,
                     InstanceType={"Value": updates["instance_type"]},
                 )
@@ -289,7 +303,9 @@ class AWSProvider(AbstractCloudProvider):
         if "tags" in updates:
             tags = [{"Key": k, "Value": v} for k, v in updates["tags"].items()]
             try:
-                client.create_tags(Resources=[instance_id], Tags=tags)
+                await self._ec2_call(
+                    "create_tags", Resources=[instance_id], Tags=tags
+                )
             except Exception as e:
                 raise ProviderError(
                     f"Failed to update tags: {e}",
@@ -312,7 +328,9 @@ class AWSProvider(AbstractCloudProvider):
         client = await self._get_client()
 
         try:
-            client.terminate_instances(InstanceIds=[instance_id])
+            await asyncio.to_thread(
+                client.terminate_instances, InstanceIds=[instance_id]
+            )
             logger.info(f"Terminated AWS instance: {instance_id}")
             return True
         except client.exceptions.ClientError as e:
@@ -327,10 +345,8 @@ class AWSProvider(AbstractCloudProvider):
 
     async def start_instance(self, instance_id: str) -> Instance:
         """Start a stopped EC2 instance."""
-        client = await self._get_client()
-
         try:
-            client.start_instances(InstanceIds=[instance_id])
+            await self._ec2_call("start_instances", InstanceIds=[instance_id])
             logger.info(f"Started AWS instance: {instance_id}")
         except Exception as e:
             raise ProviderError(
@@ -350,10 +366,8 @@ class AWSProvider(AbstractCloudProvider):
 
     async def stop_instance(self, instance_id: str) -> Instance:
         """Stop a running EC2 instance."""
-        client = await self._get_client()
-
         try:
-            client.stop_instances(InstanceIds=[instance_id])
+            await self._ec2_call("stop_instances", InstanceIds=[instance_id])
             logger.info(f"Stopped AWS instance: {instance_id}")
         except Exception as e:
             raise ProviderError(
@@ -379,8 +393,6 @@ class AWSProvider(AbstractCloudProvider):
 
         Useful for finding image IDs for instance creation.
         """
-        client = await self._get_client()
-
         aws_filters = []
         if filters:
             for key, value in filters.items():
@@ -400,7 +412,7 @@ class AWSProvider(AbstractCloudProvider):
             params["Owners"] = ["amazon", "self"]
 
         try:
-            response = client.describe_images(**params)
+            response = await self._ec2_call("describe_images", **params)
         except Exception as e:
             raise ProviderError(
                 f"Failed to list images: {e}",
@@ -412,10 +424,8 @@ class AWSProvider(AbstractCloudProvider):
 
     async def list_regions(self) -> list[str]:
         """List available AWS regions."""
-        client = await self._get_client()
-
         try:
-            response = client.describe_regions()
+            response = await self._ec2_call("describe_regions")
         except Exception as e:
             raise ProviderError(
                 f"Failed to list regions: {e}",

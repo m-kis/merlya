@@ -7,12 +7,13 @@ v0.9.0: Initial tests.
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from merlya.provisioners.backends.base import BackendType
-from merlya.provisioners.backends.terraform import TerraformBackend
+from merlya.provisioners.backends.terraform import TerraformBackend, _sanitize_resource_name
 from merlya.provisioners.base import ProvisionerAction, ProvisionerDeps
 from merlya.provisioners.providers.base import InstanceSpec, ProviderType
 
@@ -158,13 +159,64 @@ class TestTerraformConfigGeneration:
 
         assert 'provider "aws"' in config
         assert 'region = "us-east-1"' in config
-        assert 'resource "aws_instance" "web-server"' in config
+        assert 'resource "aws_instance" "web_server"' in config
         assert 'ami-ubuntu' in config
         assert 't3.medium' in config
         assert 'subnet-123' in config
         assert "sg-456" in config
         assert 'Name = "web-server"' in config
         assert 'env = "test"' in config
+
+
+class TestTerraformResourceNameSanitization:
+    def test_sanitize_resource_name_replaces_hyphens(self) -> None:
+        assert _sanitize_resource_name("web-server") == "web_server"
+
+    def test_sanitize_resource_name_prefixes_invalid_start(self) -> None:
+        assert _sanitize_resource_name("1bad") == "_1bad"
+
+    def test_sanitize_resource_name_fallback_when_empty(self) -> None:
+        assert _sanitize_resource_name("") == "_unnamed"
+
+
+class TestTerraformPlanWorkingDirectory:
+    @pytest.mark.asyncio
+    async def test_plan_errors_without_workdir_and_specs(self) -> None:
+        ctx = MagicMock()
+        deps = ProvisionerDeps(action=ProvisionerAction.CREATE, provider="aws")
+        backend = TerraformBackend(ctx, deps)
+
+        result = await backend.plan([], ProviderType.AWS)
+
+        assert result.success is False
+        assert any("working directory" in err.lower() for err in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_plan_generates_config_when_no_workdir(self) -> None:
+        ctx = MagicMock()
+        deps = ProvisionerDeps(action=ProvisionerAction.CREATE, provider="aws")
+        backend = TerraformBackend(ctx, deps)
+        backend._initialized = True  # Skip init for unit test
+
+        with patch.object(backend, "_run_terraform", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = (
+                0,
+                "Plan: 0 to add, 0 to change, 0 to destroy.",
+                "",
+            )
+
+            specs = [InstanceSpec(name="test", image="ami-123")]
+            result = await backend.plan(specs, ProviderType.AWS)
+
+        try:
+            assert result.success is True
+            assert backend._working_dir
+            assert backend._temp_dir
+            assert (Path(backend._working_dir) / "main.tf").exists()
+            assert mock_run.await_count == 1
+            assert mock_run.call_args.args[0] == "plan"
+        finally:
+            backend.cleanup()
 
 
 class TestTerraformOperations:

@@ -51,10 +51,10 @@ def _sanitize_resource_name(name: str) -> str:
     """Sanitize name for use as Terraform resource identifier.
 
     Terraform resource names must start with a letter or underscore
-    and contain only letters, digits, underscores, and hyphens.
+    and contain only letters, digits, and underscores.
     """
-    # Replace invalid characters with underscores
-    sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+    # Replace invalid characters (including hyphens) with underscores
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
     # Ensure starts with letter or underscore
     if sanitized and not sanitized[0].isalpha() and sanitized[0] != "_":
         sanitized = "_" + sanitized
@@ -143,9 +143,10 @@ class TerraformBackend(AbstractProvisionerBackend):
 
         if cwd is None:
             raise BackendExecutionError(
-                "No working directory configured. Call generate_config() or set working_dir.",
+                "No working directory configured for Terraform",
                 backend=BackendType.TERRAFORM,
                 operation=args[0] if args else "unknown",
+                details={},
             )
 
         logger.debug(f"Running: {' '.join(cmd)} in {cwd}")
@@ -215,9 +216,17 @@ class TerraformBackend(AbstractProvisionerBackend):
         result = BackendResult(operation="plan")
 
         try:
-            # Generate config if no working directory is set
-            if not self._working_dir and not self._temp_dir:
-                await self.generate_config(specs, provider)
+            cwd = self._working_dir or self._temp_dir
+            if cwd is None:
+                if specs:
+                    await self.generate_config(specs, provider)
+                else:
+                    raise BackendExecutionError(
+                        "No working directory configured for Terraform",
+                        backend=BackendType.TERRAFORM,
+                        operation="plan",
+                        details={},
+                    )
 
             # Ensure initialized
             if not self._initialized:
