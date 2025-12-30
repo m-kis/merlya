@@ -36,9 +36,9 @@ resource "aws_instance" "{{ vm_name }}" {
   }
 
   tags = {
-    Name = "{{ vm_name }}"
+    Name = "{{ vm_name }}"{{ "," if tags else "" }}
 {% for key, value in tags.items() %}
-    {{ key }} = "{{ value }}"
+    {{ key }} = "{{ value }}"{{ "," if not loop.last else "" }}
 {% endfor %}
   }
 }
@@ -113,16 +113,30 @@ resource "azurerm_linux_virtual_machine" "{{ vm_name }}" {
     disk_size_gb         = {{ disk_size_gb }}
   }
 
+{#- Azure image_id must be in format publisher:offer:sku:version -#}
+{%- set image_parts = image_id.split(':') if image_id else [] -%}
+{%- if image_parts|length == 4 -%}
   source_image_reference {
-    publisher = "{{ image_id.split(':')[0] }}"
-    offer     = "{{ image_id.split(':')[1] }}"
-    sku       = "{{ image_id.split(':')[2] }}"
-    version   = "{{ image_id.split(':')[3] }}"
+    publisher = "{{ image_parts[0] }}"
+    offer     = "{{ image_parts[1] }}"
+    sku       = "{{ image_parts[2] }}"
+    version   = "{{ image_parts[3] }}"
   }
+{%- else -%}
+  # ERROR: image_id must be in format publisher:offer:sku:version
+  # Received: {{ image_id | default('(not provided)') }}
+  # Example: Canonical:UbuntuServer:18.04-LTS:latest
+  source_image_reference {
+    publisher = "INVALID_IMAGE_ID_FORMAT"
+    offer     = "INVALID_IMAGE_ID_FORMAT"
+    sku       = "INVALID_IMAGE_ID_FORMAT"
+    version   = "INVALID_IMAGE_ID_FORMAT"
+  }
+{%- endif -%}
 
   tags = {
 {% for key, value in tags.items() %}
-    {{ key }} = "{{ value }}"
+    {{ key }} = "{{ value }}"{{ "," if not loop.last else "" }}
 {% endfor %}
   }
 }

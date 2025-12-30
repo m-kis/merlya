@@ -4,13 +4,15 @@ Merlya Templates - Instantiation.
 Template rendering with Jinja2.
 
 v0.9.0: Initial implementation.
+v0.9.1: Context manager protocol, improved backend handling.
 """
 
 from __future__ import annotations
 
+import contextlib
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from loguru import logger
@@ -23,13 +25,43 @@ from merlya.templates.models import (
     TemplateValidationError,
 )
 
+if TYPE_CHECKING:
+    from types import TracebackType
+
 
 class TemplateInstantiator:
-    """Render templates with variable substitution."""
+    """
+    Render templates with variable substitution.
+
+    Can be used as a context manager for automatic cleanup:
+
+        with TemplateInstantiator() as instantiator:
+            instance = instantiator.instantiate(template, variables, provider)
+            # Use instance...
+        # Temporary directories are automatically cleaned up
+    """
 
     def __init__(self) -> None:
         """Initialize the instantiator."""
         self._temp_dirs: list[Path] = []
+
+    def __enter__(self) -> TemplateInstantiator:
+        """Context manager entry."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Context manager exit with automatic cleanup."""
+        self.cleanup()
+
+    def __del__(self) -> None:
+        """Clean up on deletion (safety net)."""
+        with contextlib.suppress(Exception):
+            self.cleanup()
 
     def instantiate(
         self,
@@ -103,6 +135,7 @@ class TemplateInstantiator:
             rendered_files = self._render_template_files(
                 template=template,
                 backend_config=backend_config,
+                backend=backend,
                 variables=self._build_render_context(instance),
                 output_path=output_path,
             )
@@ -136,6 +169,7 @@ class TemplateInstantiator:
         self,
         template: Template,
         backend_config: Any,
+        backend: IaCBackend,
         variables: dict[str, Any],
         output_path: Path,
     ) -> dict[str, str]:
@@ -148,7 +182,7 @@ class TemplateInstantiator:
 
         # Set up Jinja2 environment
         template_dir = template.source_path
-        if backend_config.backend == IaCBackend.TERRAFORM:
+        if backend == IaCBackend.TERRAFORM:
             template_dir = template.source_path / "terraform"
 
         if not template_dir.exists():

@@ -178,3 +178,87 @@ class TestTemplateRegistry:
         registry.clear()
 
         assert len(registry.list_all()) == 0
+
+    def test_version_comparison_highest_wins(
+        self, registry: TemplateRegistry
+    ) -> None:
+        """Test that unversioned key points to highest version."""
+        # Register v1.0.0 first
+        v1 = Template(
+            name="versioned-template",
+            version="1.0.0",
+            category=TemplateCategory.COMPUTE,
+            providers=["aws"],
+        )
+        registry.register(v1)
+
+        # Register v2.0.0
+        v2 = Template(
+            name="versioned-template",
+            version="2.0.0",
+            category=TemplateCategory.COMPUTE,
+            providers=["aws"],
+        )
+        registry.register(v2)
+
+        # Unversioned lookup should return v2.0.0 (highest)
+        result = registry.get("versioned-template")
+        assert result.version == "2.0.0"
+
+        # Now register v1.5.0 (lower than current highest)
+        v15 = Template(
+            name="versioned-template",
+            version="1.5.0",
+            category=TemplateCategory.COMPUTE,
+            providers=["aws"],
+        )
+        registry.register(v15)
+
+        # Unversioned lookup should still return v2.0.0
+        result = registry.get("versioned-template")
+        assert result.version == "2.0.0"
+
+    def test_manual_registration_preserved_on_force_reload(
+        self, registry: TemplateRegistry, sample_template: Template
+    ) -> None:
+        """Test that manual registrations are preserved when force reloading."""
+        # Manually register a template
+        registry.register(sample_template)
+        assert registry.has("test-template")
+
+        # Force reload (should preserve manual registrations)
+        registry.load_templates(force=True)
+
+        # Manual registration should still exist
+        assert registry.has("test-template")
+
+    def test_unregister_resets_loaded_when_empty(
+        self, registry: TemplateRegistry, sample_template: Template
+    ) -> None:
+        """Test that _loaded is reset when registry becomes empty."""
+        registry.register(sample_template)
+        assert registry._loaded is True
+
+        # Unregister the only template
+        registry.unregister("test-template")
+
+        # _loaded should be reset to False
+        assert registry._loaded is False
+
+    def test_reset_instance_clears_state(self) -> None:
+        """Test that reset_instance clears the existing instance state."""
+        reg1 = TemplateRegistry.get_instance()
+        template = Template(
+            name="temp-template",
+            version="1.0.0",
+            category=TemplateCategory.COMPUTE,
+            providers=["aws"],
+        )
+        reg1.register(template)
+
+        # Reset should clear state
+        TemplateRegistry.reset_instance()
+
+        # New instance should be empty
+        reg2 = TemplateRegistry.get_instance()
+        assert reg2.has("temp-template") is False

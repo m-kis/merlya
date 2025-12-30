@@ -13,6 +13,7 @@ import pytest
 from merlya.templates.loaders.embedded import EmbeddedTemplateLoader
 from merlya.templates.loaders.filesystem import FilesystemTemplateLoader
 from merlya.templates.models import IaCBackend, TemplateCategory
+from merlya.templates.models import TemplateParseError
 
 
 class TestFilesystemTemplateLoader:
@@ -74,6 +75,50 @@ outputs:
         loader = FilesystemTemplateLoader(tmp_path / "nonexistent")
         templates = loader.load_all()
         assert templates == []
+
+    def test_parse_template_yaml_rejects_empty_yaml(self, tmp_path: Path) -> None:
+        loader = FilesystemTemplateLoader(tmp_path)
+
+        with pytest.raises(TemplateParseError, match=r"Template YAML is empty"):
+            loader._parse_template_yaml("", source_path=tmp_path / "template")
+
+    def test_parse_template_yaml_rejects_non_mapping_root(self, tmp_path: Path) -> None:
+        loader = FilesystemTemplateLoader(tmp_path)
+
+        with pytest.raises(TemplateParseError, match=r"root must be a mapping"):
+            loader._parse_template_yaml("- name: test", source_path=tmp_path / "template")
+
+    def test_parse_template_yaml_rejects_malformed_yaml(self, tmp_path: Path) -> None:
+        loader = FilesystemTemplateLoader(tmp_path)
+
+        with pytest.raises(TemplateParseError, match=r"Failed to parse template YAML"):
+            loader._parse_template_yaml("name: [", source_path=tmp_path / "template")
+
+    def test_parse_template_yaml_rejects_non_string_keys(self, tmp_path: Path) -> None:
+        loader = FilesystemTemplateLoader(tmp_path)
+
+        with pytest.raises(TemplateParseError, match=r"root keys must be strings"):
+            loader._parse_template_yaml("1: a", source_path=tmp_path / "template")
+
+    def test_parse_template_yaml_rejects_variable_missing_name(self, tmp_path: Path) -> None:
+        loader = FilesystemTemplateLoader(tmp_path)
+
+        content = """
+name: test-template
+version: "1.0.0"
+description: Test template
+category: compute
+providers:
+  - aws
+backends:
+  - backend: terraform
+    entry_point: main.tf
+variables:
+  - type: string
+"""
+
+        with pytest.raises(TemplateParseError, match=r"missing required 'name'"):
+            loader._parse_template_yaml(content, source_path=tmp_path / "template")
 
 
 class TestEmbeddedTemplateLoader:

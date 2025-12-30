@@ -204,6 +204,12 @@ class TemplateNotFoundError(TemplateError):
     pass
 
 
+class TemplateParseError(TemplateError):
+    """Template parsing failed."""
+
+    pass
+
+
 class TemplateValidationError(TemplateError):
     """Template validation failed."""
 

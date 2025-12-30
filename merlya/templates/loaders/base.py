@@ -9,8 +9,9 @@ v0.9.0: Initial implementation.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from loguru import logger
@@ -21,6 +22,7 @@ from merlya.templates.models import (
     TemplateBackendConfig,
     TemplateCategory,
     TemplateOutput,
+    TemplateParseError,
     TemplateVariable,
     VariableType,
 )
@@ -62,9 +64,40 @@ class AbstractTemplateLoader(ABC):
 
         Returns:
             Parsed Template object.
+
+        Raises:
+            TemplateParseError: If YAML is invalid or has an unexpected shape.
         """
-        data = yaml.safe_load(content)
-        return self._dict_to_template(data, source_path)
+        source_context = f" ({source_path})" if source_path else ""
+
+        try:
+            loaded = yaml.safe_load(content)
+        except yaml.YAMLError as e:
+            raise TemplateParseError(
+                f"Failed to parse template YAML{source_context}: {e}"
+            ) from e
+
+        if loaded is None:
+            raise TemplateParseError(f"Template YAML is empty{source_context}")
+
+        if not isinstance(loaded, Mapping):
+            raise TemplateParseError(
+                "Template YAML root must be a mapping/dict, "
+                f"got {type(loaded).__name__}{source_context}"
+            )
+
+        data: dict[Any, Any] = dict(loaded)
+        if not data:
+            raise TemplateParseError(f"Template YAML contains no data{source_context}")
+
+        non_string_keys = [key for key in data.keys() if not isinstance(key, str)]
+        if non_string_keys:
+            raise TemplateParseError(
+                "Template YAML root keys must be strings"
+                f"{source_context}; invalid keys: {non_string_keys!r}"
+            )
+
+        return self._dict_to_template(cast(dict[str, Any], data), source_path)
 
     def _dict_to_template(self, data: dict[str, Any], source_path: Path | None = None) -> Template:
         """
@@ -80,6 +113,24 @@ class AbstractTemplateLoader(ABC):
         # Parse variables
         variables = []
         for var_data in data.get("variables", []):
+            if not isinstance(var_data, Mapping):
+                raise TemplateParseError(
+                    "Template variable entries must be mappings/dicts, "
+                    f"got {type(var_data).__name__}"
+                )
+
+            if "name" not in var_data:
+                raise TemplateParseError(
+                    f"Variable missing required 'name' field: {dict(var_data)!r}"
+                )
+
+            var_name = var_data["name"]
+            if not isinstance(var_name, str) or not var_name.strip():
+                raise TemplateParseError(
+                    "Variable 'name' must be a non-empty string, "
+                    f"got {var_name!r}"
+                )
+
             var_type = var_data.get("type", "string")
             try:
                 var_type_enum = VariableType(var_type)
@@ -89,7 +140,7 @@ class AbstractTemplateLoader(ABC):
 
             variables.append(
                 TemplateVariable(
-                    name=var_data["name"],
+                    name=var_name,
                     type=var_type_enum,
                     description=var_data.get("description", ""),
                     required=var_data.get("required", True),
