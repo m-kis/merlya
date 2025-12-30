@@ -150,7 +150,7 @@ class ProvisionerRegistry:
             return self._default_backends[provider]
 
         # Fall back to first registered
-        for (p, b) in self._provisioners:
+        for p, b in self._provisioners:
             if p == provider:
                 return b
 
@@ -190,9 +190,7 @@ class ProvisionerRegistry:
         """
         from merlya.provisioners.base import ProvisionerDeps, ResourceSpec
 
-        resource_specs = [
-            ResourceSpec(**r) if isinstance(r, dict) else r for r in resources
-        ]
+        resource_specs = [ResourceSpec(**r) if isinstance(r, dict) else r for r in resources]
 
         deps = ProvisionerDeps(
             action=action,

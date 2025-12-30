@@ -75,9 +75,7 @@ class AbstractTemplateLoader(ABC):
         try:
             loaded = yaml.safe_load(content)
         except yaml.YAMLError as e:
-            raise TemplateParseError(
-                f"Failed to parse template YAML{source_context}: {e}"
-            ) from e
+            raise TemplateParseError(f"Failed to parse template YAML{source_context}: {e}") from e
 
         if loaded is None:
             raise TemplateParseError(f"Template YAML is empty{source_context}")
@@ -129,8 +127,7 @@ class AbstractTemplateLoader(ABC):
             var_name = var_data["name"]
             if not isinstance(var_name, str) or not var_name.strip():
                 raise TemplateParseError(
-                    "Variable 'name' must be a non-empty string, "
-                    f"got {var_name!r}"
+                    f"Variable 'name' must be a non-empty string, got {var_name!r}"
                 )
 
             var_type = var_data.get("type", "string")

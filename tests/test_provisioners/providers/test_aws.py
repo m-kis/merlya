@@ -50,9 +50,7 @@ class TestAWSProviderProperties:
         assert caps.supports_load_balancing is False
         assert caps.supports_dns is False
 
-    def test_capabilities_match_implemented_methods(
-        self, provider: AWSProvider
-    ) -> None:
+    def test_capabilities_match_implemented_methods(self, provider: AWSProvider) -> None:
         """Assert capability flags match implemented methods."""
 
         def _has_all_methods(method_names: tuple[str, ...]) -> bool:
@@ -112,9 +110,7 @@ class TestAWSProviderCredentials:
     @pytest.mark.asyncio
     async def test_missing_credentials(self, provider: AWSProvider) -> None:
         """Test validation with missing credentials."""
-        with patch(
-            "merlya.provisioners.providers.aws.CredentialResolver"
-        ) as mock_resolver:
+        with patch("merlya.provisioners.providers.aws.CredentialResolver") as mock_resolver:
             mock_instance = MagicMock()
             mock_instance.resolve.return_value = MagicMock(
                 is_complete=False,
@@ -186,9 +182,7 @@ class TestAWSProviderOperations:
             "merlya.provisioners.providers.aws.asyncio.to_thread",
             new_callable=AsyncMock,
         ) as mock_to_thread:
-            mock_to_thread.side_effect = (
-                lambda func, *args, **kwargs: func(*args, **kwargs)
-            )
+            mock_to_thread.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
             await provider_with_client.list_instances()
             assert mock_to_thread.await_count >= 1
 
@@ -206,9 +200,7 @@ class TestAWSProviderOperations:
             ) as mock_to_thread,
             patch("merlya.provisioners.providers.aws.logger.warning") as warn,
         ):
-            mock_to_thread.side_effect = (
-                lambda func, *args, **kwargs: func(*args, **kwargs)
-            )
+            mock_to_thread.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
             await provider_with_client.list_instances(filters={"unsupported": "x"})
             warn.assert_called_once()
 
@@ -304,9 +296,7 @@ class TestAWSProviderOperations:
         result = await provider_with_client.delete_instance("i-todelete")
 
         assert result is True
-        mock_boto3_client.terminate_instances.assert_called_once_with(
-            InstanceIds=["i-todelete"]
-        )
+        mock_boto3_client.terminate_instances.assert_called_once_with(InstanceIds=["i-todelete"])
 
     @pytest.mark.asyncio
     async def test_start_instance(

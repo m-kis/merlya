@@ -339,9 +339,7 @@ class ConcreteProvider(AbstractCloudProvider):
     async def validate_credentials(self) -> tuple[bool, str | None]:
         return True, None
 
-    async def list_instances(
-        self, filters: dict[str, Any] | None = None
-    ) -> list[Instance]:
+    async def list_instances(self, filters: dict[str, Any] | None = None) -> list[Instance]:
         return []
 
     async def get_instance(self, instance_id: str) -> Instance | None:
@@ -355,9 +353,7 @@ class ConcreteProvider(AbstractCloudProvider):
             status=InstanceStatus.PENDING,
         )
 
-    async def update_instance(
-        self, instance_id: str, updates: dict[str, Any]
-    ) -> Instance:
+    async def update_instance(self, instance_id: str, updates: dict[str, Any]) -> Instance:
         return Instance(
             id=instance_id,
             name="updated",

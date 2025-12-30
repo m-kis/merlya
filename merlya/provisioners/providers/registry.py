@@ -121,9 +121,7 @@ class CloudProviderRegistry:
             provider_type = ProviderType(name.lower())
         except ValueError:
             available = [p.value for p in self.list_providers()]
-            raise ValueError(
-                f"Unknown provider: {name}. Available: {available}"
-            ) from None
+            raise ValueError(f"Unknown provider: {name}. Available: {available}") from None
 
         return self.get(provider_type)
 

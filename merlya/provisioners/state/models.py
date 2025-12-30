@@ -126,9 +126,7 @@ class DriftResult(BaseModel):
         return cls(resource_id=resource_id, status=DriftStatus.MISSING)
 
     @classmethod
-    def drifted(
-        cls, resource_id: str, differences: dict[str, tuple[Any, Any]]
-    ) -> DriftResult:
+    def drifted(cls, resource_id: str, differences: dict[str, tuple[Any, Any]]) -> DriftResult:
         """Create a drifted result with differences."""
         return cls(
             resource_id=resource_id,

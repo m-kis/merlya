@@ -271,7 +271,9 @@ class StateTracker:
         )
 
         if differences:
-            logger.warning(f"Drift detected for resource {resource_id}: {len(differences)} differences")
+            logger.warning(
+                f"Drift detected for resource {resource_id}: {len(differences)} differences"
+            )
             return DriftResult.drifted(resource_id, differences)
 
         return DriftResult.no_drift(resource_id)
@@ -356,7 +358,9 @@ class StateTracker:
             session_id=session_id,
             description=description,
         )
-        logger.info(f"Created state snapshot: {snapshot.snapshot_id} ({snapshot.resource_count} resources)")
+        logger.info(
+            f"Created state snapshot: {snapshot.snapshot_id} ({snapshot.resource_count} resources)"
+        )
         return snapshot
 
     async def get_snapshot(self, snapshot_id: str) -> StateSnapshot | None:

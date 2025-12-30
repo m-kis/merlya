@@ -108,9 +108,7 @@ class AWSProvider(AbstractCloudProvider):
             )
 
         # Get region
-        self._region = creds.credentials.get(
-            "AWS_DEFAULT_REGION", "us-east-1"
-        )
+        self._region = creds.credentials.get("AWS_DEFAULT_REGION", "us-east-1")
 
         # Create client with credentials
         self._client = boto3.client(
@@ -146,9 +144,7 @@ class AWSProvider(AbstractCloudProvider):
                 return False, "AWS session token expired"
             return False, f"AWS validation failed: {error_msg}"
 
-    async def list_instances(
-        self, filters: dict[str, Any] | None = None
-    ) -> list[Instance]:
+    async def list_instances(self, filters: dict[str, Any] | None = None) -> list[Instance]:
         """List EC2 instances."""
         # Convert filters to AWS format
         aws_filters = []
@@ -156,9 +152,7 @@ class AWSProvider(AbstractCloudProvider):
             supported_keys = {"status", "name"}
             for key, value in filters.items():
                 if key == "status":
-                    aws_filters.append(
-                        {"Name": "instance-state-name", "Values": [value]}
-                    )
+                    aws_filters.append({"Name": "instance-state-name", "Values": [value]})
                 elif key == "name":
                     aws_filters.append({"Name": "tag:Name", "Values": [value]})
                 elif key.startswith("tag:"):
@@ -190,9 +184,7 @@ class AWSProvider(AbstractCloudProvider):
         client = await self._get_client()
 
         try:
-            response = await asyncio.to_thread(
-                client.describe_instances, InstanceIds=[instance_id]
-            )
+            response = await asyncio.to_thread(client.describe_instances, InstanceIds=[instance_id])
         except client.exceptions.ClientError as e:
             if "InvalidInstanceID" in str(e):
                 return None
@@ -236,9 +228,7 @@ class AWSProvider(AbstractCloudProvider):
         # Tags
         tags = [{"Key": "Name", "Value": spec.name}]
         tags.extend([{"Key": k, "Value": v} for k, v in spec.tags.items()])
-        params["TagSpecifications"] = [
-            {"ResourceType": "instance", "Tags": tags}
-        ]
+        params["TagSpecifications"] = [{"ResourceType": "instance", "Tags": tags}]
 
         # Block device for root disk
         if config.get("root_block_device"):
@@ -269,9 +259,7 @@ class AWSProvider(AbstractCloudProvider):
         logger.info(f"Created AWS instance: {instance.id}")
         return instance
 
-    async def update_instance(
-        self, instance_id: str, updates: dict[str, Any]
-    ) -> Instance:
+    async def update_instance(self, instance_id: str, updates: dict[str, Any]) -> Instance:
         """Update an EC2 instance."""
         # EC2 instance updates are limited
         # Most require stop -> modify -> start
@@ -303,9 +291,7 @@ class AWSProvider(AbstractCloudProvider):
         if "tags" in updates:
             tags = [{"Key": k, "Value": v} for k, v in updates["tags"].items()]
             try:
-                await self._ec2_call(
-                    "create_tags", Resources=[instance_id], Tags=tags
-                )
+                await self._ec2_call("create_tags", Resources=[instance_id], Tags=tags)
             except Exception as e:
                 raise ProviderError(
                     f"Failed to update tags: {e}",
@@ -328,9 +314,7 @@ class AWSProvider(AbstractCloudProvider):
         client = await self._get_client()
 
         try:
-            await asyncio.to_thread(
-                client.terminate_instances, InstanceIds=[instance_id]
-            )
+            await asyncio.to_thread(client.terminate_instances, InstanceIds=[instance_id])
             logger.info(f"Terminated AWS instance: {instance_id}")
             return True
         except client.exceptions.ClientError as e:
@@ -385,9 +369,7 @@ class AWSProvider(AbstractCloudProvider):
             )
         return instance
 
-    async def list_images(
-        self, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    async def list_images(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """
         List available AMIs.
 

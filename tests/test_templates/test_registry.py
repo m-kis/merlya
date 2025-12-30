@@ -61,9 +61,7 @@ class TestTemplateRegistry:
         reg2 = TemplateRegistry.get_instance()
         assert reg1 is not reg2
 
-    def test_register_and_get(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_register_and_get(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test registering and retrieving a template."""
         registry.register(sample_template)
 
@@ -80,18 +78,14 @@ class TestTemplateRegistry:
         with pytest.raises(TemplateNotFoundError):
             registry.get("nonexistent")
 
-    def test_has(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_has(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test checking template existence."""
         assert registry.has("test-template") is False
 
         registry.register(sample_template)
         assert registry.has("test-template") is True
 
-    def test_find_by_category(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_find_by_category(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test finding templates by category."""
         registry.register(sample_template)
 
@@ -102,9 +96,7 @@ class TestTemplateRegistry:
         results = registry.find(category=TemplateCategory.NETWORK)
         assert len(results) == 0
 
-    def test_find_by_provider(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_find_by_provider(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test finding templates by provider."""
         registry.register(sample_template)
 
@@ -114,9 +106,7 @@ class TestTemplateRegistry:
         results = registry.find(provider="gcp")
         assert len(results) == 0
 
-    def test_find_by_backend(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_find_by_backend(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test finding templates by backend."""
         registry.register(sample_template)
 
@@ -126,9 +116,7 @@ class TestTemplateRegistry:
         results = registry.find(backend=IaCBackend.PULUMI)
         assert len(results) == 0
 
-    def test_find_by_tags(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_find_by_tags(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test finding templates by tags."""
         registry.register(sample_template)
 
@@ -141,27 +129,21 @@ class TestTemplateRegistry:
         results = registry.find(tags=["nonexistent"])
         assert len(results) == 0
 
-    def test_list_all(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_list_all(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test listing all templates."""
         registry.register(sample_template)
 
         templates = registry.list_all()
         assert len(templates) == 1
 
-    def test_list_names(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_list_names(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test listing template names."""
         registry.register(sample_template)
 
         names = registry.list_names()
         assert "test-template" in names
 
-    def test_unregister(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_unregister(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test unregistering a template."""
         registry.register(sample_template)
         assert registry.has("test-template")
@@ -170,18 +152,14 @@ class TestTemplateRegistry:
         assert result is True
         assert registry.has("test-template") is False
 
-    def test_clear(
-        self, registry: TemplateRegistry, sample_template: Template
-    ) -> None:
+    def test_clear(self, registry: TemplateRegistry, sample_template: Template) -> None:
         """Test clearing all templates."""
         registry.register(sample_template)
         registry.clear()
 
         assert len(registry.list_all()) == 0
 
-    def test_version_comparison_highest_wins(
-        self, registry: TemplateRegistry
-    ) -> None:
+    def test_version_comparison_highest_wins(self, registry: TemplateRegistry) -> None:
         """Test that unversioned key points to highest version."""
         # Register v1.0.0 first
         v1 = Template(

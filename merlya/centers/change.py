@@ -126,7 +126,9 @@ class ChangeCenter(AbstractCenter):
                     post_check_passed=None,
                     data={
                         "provisioner": True,
-                        "action": provisioner_result.action.value if provisioner_result.action else None,
+                        "action": provisioner_result.action.value
+                        if provisioner_result.action
+                        else None,
                         "provider": deps.extra.get("cloud_provider"),
                         "resources_created": provisioner_result.resources_created,
                         "resources_updated": provisioner_result.resources_updated,

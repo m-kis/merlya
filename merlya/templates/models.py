@@ -187,9 +187,7 @@ class TemplateInstance(BaseModel):
 
             # Allowed values check
             if var.allowed_values and value not in var.allowed_values:
-                errors.append(
-                    f"Variable '{var.name}' must be one of: {var.allowed_values}"
-                )
+                errors.append(f"Variable '{var.name}' must be one of: {var.allowed_values}")
 
             # Regex validation for string variables
             if var.validation_regex and isinstance(value, str):

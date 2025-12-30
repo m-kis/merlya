@@ -277,7 +277,9 @@ class StateRepository:
                 )
 
                 await db.commit()
-                logger.debug(f"🗄️ Saved snapshot {snapshot.snapshot_id} with {len(resource_ids)} resources")
+                logger.debug(
+                    f"🗄️ Saved snapshot {snapshot.snapshot_id} with {len(resource_ids)} resources"
+                )
             except Exception as e:
                 await db.rollback()
                 logger.error(f"❌ Failed to save snapshot {snapshot.snapshot_id}: {e}")
@@ -441,13 +443,9 @@ class StateRepository:
             created_at=self._parse_datetime(row["created_at"]),
             updated_at=self._parse_datetime(row["updated_at"]),
             last_checked_at=(
-                self._parse_datetime(row["last_checked_at"])
-                if row["last_checked_at"]
-                else None
+                self._parse_datetime(row["last_checked_at"]) if row["last_checked_at"] else None
             ),
             previous_config=(
-                json.loads(row["previous_config"])
-                if row["previous_config"]
-                else None
+                json.loads(row["previous_config"]) if row["previous_config"] else None
             ),
         )

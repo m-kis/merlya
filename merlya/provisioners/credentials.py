@@ -193,9 +193,7 @@ class CredentialResolver:
 
         return result
 
-    def _resolve_credential(
-        self, secret_name: str, env_var: str
-    ) -> tuple[str | None, str]:
+    def _resolve_credential(self, secret_name: str, env_var: str) -> tuple[str | None, str]:
         """
         Resolve a single credential from multiple sources.
 

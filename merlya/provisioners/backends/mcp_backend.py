@@ -199,9 +199,7 @@ class MCPBackend(AbstractProvisionerBackend):
             for spec in self._planned_specs:
                 instance_result = await self._create_instance_via_mcp(spec)
                 if instance_result:
-                    result.resources_created.append(
-                        f"{self._provider.value}_instance.{spec.name}"
-                    )
+                    result.resources_created.append(f"{self._provider.value}_instance.{spec.name}")
                     self._created_resources.append(instance_result)
                 else:
                     result.errors.append(f"Failed to create {spec.name}")
@@ -262,9 +260,7 @@ class MCPBackend(AbstractProvisionerBackend):
         ]
         return await self.destroy(resource_ids)
 
-    async def _create_instance_via_mcp(
-        self, spec: InstanceSpec
-    ) -> dict[str, Any] | None:
+    async def _create_instance_via_mcp(self, spec: InstanceSpec) -> dict[str, Any] | None:
         """Create instance using MCP tool call."""
         if not hasattr(self._ctx, "mcp_manager") or not self._ctx.mcp_manager:
             logger.warning("MCP manager not available")
@@ -283,9 +279,7 @@ class MCPBackend(AbstractProvisionerBackend):
         try:
             # Call MCP tool
             server_name = f"{self._provider.value}-mcp"
-            response = await self._ctx.mcp_manager.call_tool(
-                server_name, tool_name, tool_args
-            )
+            response = await self._ctx.mcp_manager.call_tool(server_name, tool_name, tool_args)
 
             if response and response.get("success"):
                 return {
@@ -306,8 +300,9 @@ class MCPBackend(AbstractProvisionerBackend):
             return False
 
         server_config = MCP_SERVERS.get(self._provider, {})
-        tool_name = server_config.get("tools", {}).get("terminate_instance") or \
-                    server_config.get("tools", {}).get("delete_instance")
+        tool_name = server_config.get("tools", {}).get("terminate_instance") or server_config.get(
+            "tools", {}
+        ).get("delete_instance")
 
         if not tool_name:
             return False
@@ -317,8 +312,9 @@ class MCPBackend(AbstractProvisionerBackend):
             response = await self._ctx.mcp_manager.call_tool(
                 server_name,
                 tool_name,
-                {"instance_ids": [instance_id]} if self._provider == ProviderType.AWS
-                else {"instance_id": instance_id}
+                {"instance_ids": [instance_id]}
+                if self._provider == ProviderType.AWS
+                else {"instance_id": instance_id},
             )
             return bool(response and response.get("success"))
 

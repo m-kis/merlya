@@ -43,22 +43,16 @@ class MockProvider(AbstractCloudProvider):
     async def validate_credentials(self) -> tuple[bool, str | None]:
         return True, None
 
-    async def list_instances(
-        self, filters: dict[str, Any] | None = None
-    ) -> list[Instance]:
+    async def list_instances(self, filters: dict[str, Any] | None = None) -> list[Instance]:
         return []
 
     async def get_instance(self, instance_id: str) -> Instance | None:
         return None
 
     async def create_instance(self, spec: InstanceSpec) -> Instance:
-        return Instance(
-            id="mock-id", name=spec.name, provider=ProviderType.AWS
-        )
+        return Instance(id="mock-id", name=spec.name, provider=ProviderType.AWS)
 
-    async def update_instance(
-        self, instance_id: str, updates: dict[str, Any]
-    ) -> Instance:
+    async def update_instance(self, instance_id: str, updates: dict[str, Any]) -> Instance:
         return Instance(id=instance_id, name="updated", provider=ProviderType.AWS)
 
     async def delete_instance(self, instance_id: str) -> bool:
@@ -239,9 +233,7 @@ class TestCloudProviderRegistry:
         assert ProviderType.GCP not in mcp_providers
 
         # Find providers without auto-scaling
-        no_autoscale = registry.find_providers_with_capability(
-            "supports_auto_scaling", False
-        )
+        no_autoscale = registry.find_providers_with_capability("supports_auto_scaling", False)
         assert ProviderType.GCP in no_autoscale
 
     def test_list_providers_empty(self) -> None:
