@@ -246,6 +246,10 @@ class TestSnapshotOperations:
         self, repo: StateRepository, sample_snapshot: StateSnapshot
     ) -> None:
         """Test saving and retrieving a snapshot."""
+        # First save the resources (snapshots only store references)
+        for resource in sample_snapshot.resources.values():
+            await repo.save_resource(resource)
+
         await repo.save_snapshot(sample_snapshot)
 
         result = await repo.get_snapshot("snap-001")
@@ -276,6 +280,34 @@ class TestSnapshotOperations:
 
         result = await repo.list_snapshots()
         assert len(result) == 2
+
+    async def test_list_snapshots_include_resources(self, repo: StateRepository) -> None:
+        """Test listing snapshots with include_resources parameter."""
+        # Create and save a resource
+        resource = ResourceState(
+            resource_id="i-12345",
+            resource_type="aws_instance",
+            name="web-server",
+            provider="aws",
+            status=ResourceStatus.ACTIVE,
+        )
+        await repo.save_resource(resource)
+
+        # Create snapshot with the resource
+        snapshot = StateSnapshot(snapshot_id="snap-001", description="Test")
+        snapshot.add_resource(resource)
+        await repo.save_snapshot(snapshot)
+
+        # Without include_resources (default): no resources loaded
+        result = await repo.list_snapshots()
+        assert len(result) == 1
+        assert result[0].resource_count == 0
+
+        # With include_resources=True: resources are loaded
+        result_with_resources = await repo.list_snapshots(include_resources=True)
+        assert len(result_with_resources) == 1
+        assert result_with_resources[0].resource_count == 1
+        assert "i-12345" in result_with_resources[0].resources
 
     async def test_create_snapshot_from_current(self, repo: StateRepository) -> None:
         """Test creating a snapshot from current state."""

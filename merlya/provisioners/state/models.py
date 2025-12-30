@@ -8,6 +8,7 @@ v0.9.0: Initial implementation.
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
@@ -92,8 +93,8 @@ class ResourceState(BaseModel):
         self.last_checked_at = datetime.now(UTC)
 
     def save_for_rollback(self) -> None:
-        """Save current actual_config for potential rollback."""
-        self.previous_config = self.actual_config.copy()
+        """Save current actual_config for potential rollback (deep copy)."""
+        self.previous_config = copy.deepcopy(self.actual_config)
 
     def has_drift(self) -> bool:
         """Check if resource has drifted from expected state."""

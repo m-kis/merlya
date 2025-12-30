@@ -9,10 +9,11 @@ v0.9.0: Initial implementation.
 from __future__ import annotations
 
 import json
+import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 from loguru import logger
@@ -83,7 +84,7 @@ class StateRepository:
             await db.commit()
 
         self._initialized = True
-        logger.debug(f"State repository initialized at {self._db_path}")
+        logger.debug(f"🗄️ State repository initialized at {self._db_path}")
 
     async def _migrate(self, db: aiosqlite.Connection, from_version: int) -> None:
         """Run database migrations."""
@@ -136,7 +137,7 @@ class StateRepository:
                 (self.SCHEMA_VERSION,),
             )
 
-            logger.info("Migrated state database to version 1")
+            logger.info("✅ Migrated state database to version 1")
 
     async def save_resource(self, resource: ResourceState) -> None:
         """Save or update a resource state."""
@@ -199,6 +200,14 @@ class StateRepository:
             await db.commit()
             return cursor.rowcount > 0
 
+    def _validate_filter_param(self, name: str, value: str | None) -> None:
+        """Validate a filter parameter against injection attempts."""
+        if value is None:
+            return
+        # Allow alphanumeric, underscores, hyphens, and dots
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", value):
+            raise ValueError(f"Invalid {name}: {value}")
+
     async def list_resources(
         self,
         provider: str | None = None,
@@ -208,8 +217,12 @@ class StateRepository:
         """List resources with optional filters."""
         await self.initialize()
 
+        # Validate inputs
+        self._validate_filter_param("provider", provider)
+        self._validate_filter_param("resource_type", resource_type)
+
         query = "SELECT * FROM resources WHERE 1=1"
-        params: list[str] = []
+        params: list[Any] = []
 
         if provider:
             query += " AND provider = ?"
@@ -231,59 +244,44 @@ class StateRepository:
             return [self._row_to_resource(row) for row in rows]
 
     async def save_snapshot(self, snapshot: StateSnapshot) -> None:
-        """Save a state snapshot."""
+        """
+        Save a state snapshot with transaction rollback on error.
+
+        Note: Snapshots store references to resources via resource_ids.
+        Resources should be saved separately via save_resource() before
+        creating a snapshot. This method only saves snapshot metadata,
+        not resource data, to avoid overwriting live resource states.
+        """
         await self.initialize()
 
         resource_ids = list(snapshot.resources.keys())
 
         async with aiosqlite.connect(self._db_path) as db:
-            # Save snapshot metadata
-            await db.execute(
-                """
-                INSERT OR REPLACE INTO snapshots (
-                    snapshot_id, provider, session_id, resource_ids,
-                    created_at, description
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    snapshot.snapshot_id,
-                    snapshot.provider,
-                    snapshot.session_id,
-                    json.dumps(resource_ids),
-                    snapshot.created_at.isoformat(),
-                    snapshot.description,
-                ),
-            )
-
-            # Save all resources
-            for resource in snapshot.resources.values():
+            try:
+                # Save snapshot metadata only (resources are referenced, not copied)
                 await db.execute(
                     """
-                    INSERT OR REPLACE INTO resources (
-                        resource_id, resource_type, name, provider, region,
-                        status, expected_config, actual_config, tags, outputs,
-                        created_at, updated_at, last_checked_at, previous_config
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO snapshots (
+                        snapshot_id, provider, session_id, resource_ids,
+                        created_at, description
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        resource.resource_id,
-                        resource.resource_type,
-                        resource.name,
-                        resource.provider,
-                        resource.region,
-                        resource.status.value,
-                        json.dumps(resource.expected_config),
-                        json.dumps(resource.actual_config),
-                        json.dumps(resource.tags),
-                        json.dumps(resource.outputs),
-                        resource.created_at.isoformat(),
-                        resource.updated_at.isoformat(),
-                        resource.last_checked_at.isoformat() if resource.last_checked_at else None,
-                        json.dumps(resource.previous_config) if resource.previous_config else None,
+                        snapshot.snapshot_id,
+                        snapshot.provider,
+                        snapshot.session_id,
+                        json.dumps(resource_ids),
+                        snapshot.created_at.isoformat(),
+                        snapshot.description,
                     ),
                 )
 
-            await db.commit()
+                await db.commit()
+                logger.debug(f"🗄️ Saved snapshot {snapshot.snapshot_id} with {len(resource_ids)} resources")
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"❌ Failed to save snapshot {snapshot.snapshot_id}: {e}")
+                raise
 
     async def get_snapshot(self, snapshot_id: str) -> StateSnapshot | None:
         """Get a snapshot by ID."""
@@ -308,13 +306,17 @@ class StateRepository:
                 resource = await self.get_resource(resource_id)
                 if resource:
                     resources[resource_id] = resource
+                else:
+                    logger.warning(
+                        f"⚠️ Snapshot {row['snapshot_id']}: resource {resource_id} not found"
+                    )
 
             return StateSnapshot(
                 snapshot_id=row["snapshot_id"],
                 provider=row["provider"],
                 session_id=row["session_id"],
                 resources=resources,
-                created_at=datetime.fromisoformat(row["created_at"]),
+                created_at=self._parse_datetime(row["created_at"]),
                 description=row["description"],
             )
 
@@ -322,12 +324,26 @@ class StateRepository:
         self,
         provider: str | None = None,
         limit: int = 100,
+        include_resources: bool = False,
     ) -> list[StateSnapshot]:
-        """List recent snapshots."""
+        """
+        List recent snapshots.
+
+        Args:
+            provider: Filter by provider.
+            limit: Maximum number of snapshots to return.
+            include_resources: If True, load full resource data for each snapshot.
+                             If False (default), returns lightweight snapshot metadata
+                             for better performance. Use get_snapshot() to load full
+                             resource data for specific snapshots.
+        """
         await self.initialize()
 
+        # Validate inputs
+        self._validate_filter_param("provider", provider)
+
         query = "SELECT * FROM snapshots WHERE 1=1"
-        params: list[str | int] = []
+        params: list[Any] = []
 
         if provider:
             query += " AND provider = ?"
@@ -343,13 +359,19 @@ class StateRepository:
 
             snapshots = []
             for row in rows:
-                resource_ids = json.loads(row["resource_ids"])
                 resources: dict[str, ResourceState] = {}
 
-                for resource_id in resource_ids:
-                    resource = await self.get_resource(resource_id)
-                    if resource:
-                        resources[resource_id] = resource
+                # Only load resources if explicitly requested
+                if include_resources:
+                    resource_ids = json.loads(row["resource_ids"])
+                    for resource_id in resource_ids:
+                        resource = await self.get_resource(resource_id)
+                        if resource:
+                            resources[resource_id] = resource
+                        else:
+                            logger.warning(
+                                f"⚠️ Snapshot {row['snapshot_id']}: resource {resource_id} not found"
+                            )
 
                 snapshots.append(
                     StateSnapshot(
@@ -357,7 +379,7 @@ class StateRepository:
                         provider=row["provider"],
                         session_id=row["session_id"],
                         resources=resources,
-                        created_at=datetime.fromisoformat(row["created_at"]),
+                        created_at=self._parse_datetime(row["created_at"]),
                         description=row["description"],
                     )
                 )
@@ -396,6 +418,13 @@ class StateRepository:
             await db.execute("DELETE FROM snapshots")
             await db.commit()
 
+    def _parse_datetime(self, value: str) -> datetime:
+        """Parse ISO datetime string with timezone awareness."""
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+
     def _row_to_resource(self, row: aiosqlite.Row) -> ResourceState:
         """Convert a database row to ResourceState."""
         return ResourceState(
@@ -409,10 +438,10 @@ class StateRepository:
             actual_config=json.loads(row["actual_config"]),
             tags=json.loads(row["tags"]),
             outputs=json.loads(row["outputs"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=self._parse_datetime(row["created_at"]),
+            updated_at=self._parse_datetime(row["updated_at"]),
             last_checked_at=(
-                datetime.fromisoformat(row["last_checked_at"])
+                self._parse_datetime(row["last_checked_at"])
                 if row["last_checked_at"]
                 else None
             ),

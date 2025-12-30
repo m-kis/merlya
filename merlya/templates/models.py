@@ -8,10 +8,12 @@ v0.9.0: Initial implementation.
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from pydantic import BaseModel, Field
 
 
@@ -188,6 +190,17 @@ class TemplateInstance(BaseModel):
                 errors.append(
                     f"Variable '{var.name}' must be one of: {var.allowed_values}"
                 )
+
+            # Regex validation for string variables
+            if var.validation_regex and isinstance(value, str):
+                try:
+                    if not re.match(var.validation_regex, value):
+                        errors.append(
+                            f"Variable '{var.name}' does not match pattern: {var.validation_regex}"
+                        )
+                except re.error as e:
+                    logger.warning(f"Invalid regex pattern for '{var.name}': {e}")
+                    errors.append(f"Invalid regex pattern for variable '{var.name}': {e}")
 
         return errors
 

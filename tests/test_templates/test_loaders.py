@@ -70,6 +70,32 @@ outputs:
         template = loader.load("nonexistent")
         assert template is None
 
+    def test_load_rejects_path_traversal(self, temp_template_dir: Path) -> None:
+        """Reject attempts to escape the configured template base directory."""
+        base_dir = temp_template_dir
+        outside_dir = base_dir.parent / "sensitive-template"
+        outside_dir.mkdir()
+
+        # This is outside the base_dir and should never be readable via load().
+        (outside_dir / "template.yaml").write_text(
+            """
+name: sensitive-template
+version: "1.0.0"
+description: Should not be loadable
+category: compute
+providers:
+  - aws
+backends:
+  - backend: terraform
+    entry_point: main.tf
+""",
+            encoding="utf-8",
+        )
+
+        loader = FilesystemTemplateLoader(base_dir)
+        assert loader.load("../sensitive-template") is None
+        assert loader.load(str(outside_dir)) is None
+
     def test_load_from_nonexistent_dir(self, tmp_path: Path) -> None:
         """Test loading from non-existent directory."""
         loader = FilesystemTemplateLoader(tmp_path / "nonexistent")

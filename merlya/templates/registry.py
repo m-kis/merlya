@@ -55,6 +55,7 @@ class TemplateRegistry:
         self._manual_templates: dict[str, Template] = {}
         self._loaders: list[AbstractTemplateLoader] = []
         self._loaded = False
+        self._load_lock = threading.Lock()  # Protects _loaded flag and load operations
 
     @classmethod
     def get_instance(cls) -> TemplateRegistry:
@@ -73,45 +74,47 @@ class TemplateRegistry:
             cls._instance = None
 
     def register_loader(self, loader: AbstractTemplateLoader) -> None:
-        """Register a template loader."""
-        self._loaders.append(loader)
-        self._loaded = False  # Force reload on next access
+        """Register a template loader (thread-safe)."""
+        with self._load_lock:
+            self._loaders.append(loader)
+            self._loaded = False  # Force reload on next access
 
     def load_templates(self, force: bool = False) -> None:
         """
-        Load templates from all registered loaders.
+        Load templates from all registered loaders (thread-safe).
 
         Manual registrations are preserved when force=True.
         """
-        if self._loaded and not force:
-            return
+        with self._load_lock:
+            if self._loaded and not force:
+                return
 
-        # Preserve manually registered templates
-        manual_backup = self._manual_templates.copy()
+            # Preserve manually registered templates
+            manual_backup = self._manual_templates.copy()
 
-        self._templates.clear()
+            self._templates.clear()
 
-        # Restore manual registrations first
-        for template in manual_backup.values():
-            self._register(template)
-        self._manual_templates = manual_backup
+            # Restore manual registrations first
+            for template in manual_backup.values():
+                self._register(template)
+            self._manual_templates = manual_backup
 
-        for loader in self._loaders:
-            try:
-                templates = loader.load_all()
-                for template in templates:
-                    self._register(template)
-            except Exception as e:
-                logger.warning(f"Failed to load templates from {loader}: {e}")
+            for loader in self._loaders:
+                try:
+                    templates = loader.load_all()
+                    for template in templates:
+                        self._register(template)
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load templates from {loader}: {e}")
 
-        self._loaded = True
-        logger.debug(f"Loaded {len(self._templates)} templates")
+            self._loaded = True
+            logger.debug(f"📁 Loaded {len(self._templates)} templates")
 
     def _register(self, template: Template) -> None:
         """Register a single template."""
         key = f"{template.name}:{template.version}"
         if key in self._templates:
-            logger.warning(f"Template {key} already registered, overwriting")
+            logger.warning(f"⚠️ Template {key} already registered, overwriting")
         self._templates[key] = template
 
         # Also register without version for latest lookup (highest version wins)
@@ -130,20 +133,21 @@ class TemplateRegistry:
 
     def register(self, template: Template) -> None:
         """
-        Manually register a template.
+        Manually register a template (thread-safe).
 
         Manually registered templates are preserved when load_templates(force=True)
         is called, unlike templates loaded from loaders.
         """
-        self._register(template)
+        with self._load_lock:
+            self._register(template)
 
-        # Track manual registrations separately for preservation
-        key = f"{template.name}:{template.version}"
-        self._manual_templates[key] = template
-        self._manual_templates[template.name] = template
+            # Track manual registrations separately for preservation
+            key = f"{template.name}:{template.version}"
+            self._manual_templates[key] = template
+            self._manual_templates[template.name] = template
 
-        # Mark as loaded so load_templates() doesn't clear manual registrations
-        self._loaded = True
+            # Mark as loaded so load_templates() doesn't clear manual registrations
+            self._loaded = True
 
     def get(self, name: str, version: str | None = None) -> Template:
         """
@@ -229,23 +233,25 @@ class TemplateRegistry:
         return name in self._templates
 
     def unregister(self, name: str) -> bool:
-        """Unregister a template by name."""
-        removed = False
-        keys_to_remove = [k for k in self._templates if k == name or k.startswith(f"{name}:")]
-        for key in keys_to_remove:
-            del self._templates[key]
-            # Also remove from manual registrations
-            self._manual_templates.pop(key, None)
-            removed = True
+        """Unregister a template by name (thread-safe)."""
+        with self._load_lock:
+            removed = False
+            keys_to_remove = [k for k in self._templates if k == name or k.startswith(f"{name}:")]
+            for key in keys_to_remove:
+                del self._templates[key]
+                # Also remove from manual registrations
+                self._manual_templates.pop(key, None)
+                removed = True
 
-        # Reset loaded flag if registry is now empty (allows reload from loaders)
-        if not self._templates:
-            self._loaded = False
+            # Reset loaded flag if registry is now empty (allows reload from loaders)
+            if not self._templates:
+                self._loaded = False
 
-        return removed
+            return removed
 
     def clear(self) -> None:
-        """Clear all registered templates."""
-        self._templates.clear()
-        self._manual_templates.clear()
-        self._loaded = False
+        """Clear all registered templates (thread-safe)."""
+        with self._load_lock:
+            self._templates.clear()
+            self._manual_templates.clear()
+            self._loaded = False
