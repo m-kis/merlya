@@ -46,7 +46,7 @@ class StateRepository:
             ctx: SharedContext for configuration access.
         """
         if db_path is None and ctx is not None:
-            db_path = ctx.config_dir / "provisioner_state.db"
+            db_path = ctx.config.general.data_dir / "provisioner_state.db"
         elif db_path is None:
             db_path = Path.home() / ".merlya" / "provisioner_state.db"
 

@@ -402,7 +402,8 @@ class AWSProvider(AbstractCloudProvider):
                 operation="list_images",
             ) from e
 
-        return response.get("Images", [])
+        images: list[dict[str, Any]] = response.get("Images", [])
+        return images
 
     async def list_regions(self) -> list[str]:
         """List available AWS regions."""
