@@ -199,13 +199,13 @@ class TemplateInstantiator:
 
         # If no files specified, find all .j2 files
         if not files_to_render and template_dir.exists():
-            files_to_render = [
-                str(f.relative_to(template_dir))
-                for f in template_dir.rglob("*.j2")
-            ]
+            files_to_render = [str(f.relative_to(template_dir)) for f in template_dir.rglob("*.j2")]
 
         # Also include entry point if it's a .j2 file
-        if backend_config.entry_point.endswith(".j2") and backend_config.entry_point not in files_to_render:
+        if (
+            backend_config.entry_point.endswith(".j2")
+            and backend_config.entry_point not in files_to_render
+        ):
             files_to_render.append(backend_config.entry_point)
 
         # Render each file

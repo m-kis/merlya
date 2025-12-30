@@ -550,9 +550,7 @@ Determine severity and if destructive."""
             raw_input=user_input,
         )
 
-    def _determine_severity(
-        self, entities: ExtractedEntities, is_destructive: bool
-    ) -> str:
+    def _determine_severity(self, entities: ExtractedEntities, is_destructive: bool) -> str:
         """
         Determine severity based on entities and operation type.
 

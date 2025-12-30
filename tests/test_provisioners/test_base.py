@@ -151,9 +151,7 @@ class TestProvisionerDeps:
             action=ProvisionerAction.UPDATE,
             provider="gcp",
             backend="terraform",
-            resources=[
-                ResourceSpec(resource_type="vm", name="test", provider="gcp")
-            ],
+            resources=[ResourceSpec(resource_type="vm", name="test", provider="gcp")],
             working_dir="/tmp/tf",
             dry_run=True,
             auto_rollback=False,
@@ -263,9 +261,7 @@ class TestAbstractProvisioner:
         )
 
     @pytest.mark.asyncio
-    async def test_successful_execution(
-        self, mock_ctx: MagicMock, deps: ProvisionerDeps
-    ) -> None:
+    async def test_successful_execution(self, mock_ctx: MagicMock, deps: ProvisionerDeps) -> None:
         """Test successful execution flow."""
         provisioner = ConcreteProvisioner(mock_ctx, deps)
         result = await provisioner.execute()
@@ -277,9 +273,7 @@ class TestAbstractProvisioner:
         assert result.duration_seconds > 0
 
     @pytest.mark.asyncio
-    async def test_dry_run_skips_apply(
-        self, mock_ctx: MagicMock
-    ) -> None:
+    async def test_dry_run_skips_apply(self, mock_ctx: MagicMock) -> None:
         """Test dry run skips apply stage."""
         deps = ProvisionerDeps(
             action=ProvisionerAction.CREATE,
@@ -295,9 +289,7 @@ class TestAbstractProvisioner:
         assert result.apply is None
 
     @pytest.mark.asyncio
-    async def test_hitl_rejection(
-        self, mock_ctx: MagicMock, deps: ProvisionerDeps
-    ) -> None:
+    async def test_hitl_rejection(self, mock_ctx: MagicMock, deps: ProvisionerDeps) -> None:
         """Test HITL rejection aborts execution."""
         mock_ctx.hitl.request_approval = AsyncMock(return_value=False)
         provisioner = ConcreteProvisioner(mock_ctx, deps)
@@ -308,9 +300,7 @@ class TestAbstractProvisioner:
         assert result.aborted_at == ProvisionerStage.HITL
 
     @pytest.mark.asyncio
-    async def test_generate_summary(
-        self, mock_ctx: MagicMock, deps: ProvisionerDeps
-    ) -> None:
+    async def test_generate_summary(self, mock_ctx: MagicMock, deps: ProvisionerDeps) -> None:
         """Test summary generation."""
         provisioner = ConcreteProvisioner(mock_ctx, deps)
         plan = PlanOutput(

@@ -195,9 +195,7 @@ class TestIaCSeverity:
 
     def test_destroy_in_prod_is_critical(self, extractor: SmartExtractor) -> None:
         """Destroy in production should be critical."""
-        result = extractor._extract_with_regex(
-            "destroy the production infrastructure"
-        )
+        result = extractor._extract_with_regex("destroy the production infrastructure")
         assert result.intent.severity == "critical"
 
     def test_destroy_without_env_is_high(self, extractor: SmartExtractor) -> None:
@@ -246,9 +244,7 @@ class TestDetermineSeverity:
 
     def test_critical_destroy_in_prod(self, extractor: SmartExtractor) -> None:
         """Destroy in production is critical."""
-        entities = ExtractedEntities(
-            environment="production", iac_operation="destroy"
-        )
+        entities = ExtractedEntities(environment="production", iac_operation="destroy")
         severity = extractor._determine_severity(entities, is_destructive=True)
         assert severity == "critical"
 
@@ -266,17 +262,13 @@ class TestDetermineSeverity:
 
     def test_high_provision_in_prod(self, extractor: SmartExtractor) -> None:
         """Provision in production is high severity."""
-        entities = ExtractedEntities(
-            environment="production", iac_operation="provision"
-        )
+        entities = ExtractedEntities(environment="production", iac_operation="provision")
         severity = extractor._determine_severity(entities, is_destructive=False)
         assert severity == "high"
 
     def test_medium_staging_operations(self, extractor: SmartExtractor) -> None:
         """Staging operations are medium severity."""
-        entities = ExtractedEntities(
-            environment="staging", iac_operation="provision"
-        )
+        entities = ExtractedEntities(environment="staging", iac_operation="provision")
         severity = extractor._determine_severity(entities, is_destructive=False)
         assert severity == "medium"
 

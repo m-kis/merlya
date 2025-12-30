@@ -149,9 +149,7 @@ class ConcreteBackend(AbstractProvisionerBackend):
     async def initialize(self) -> BackendResult:
         return BackendResult(success=True, operation="init")
 
-    async def plan(
-        self, specs: list[InstanceSpec], provider: ProviderType
-    ) -> BackendResult:
+    async def plan(self, specs: list[InstanceSpec], provider: ProviderType) -> BackendResult:
         return BackendResult(
             success=True,
             operation="plan",

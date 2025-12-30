@@ -202,9 +202,7 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
     return LLMConfig(provider=provider, model=model, api_key_env=env_key, fallback_model=fallback)
 
 
-async def run_mcp_setup(
-    ui: ConsoleUI, ctx: SharedContext | None = None
-) -> list[MCPProviderConfig]:
+async def run_mcp_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> list[MCPProviderConfig]:
     """
     Run MCP cloud provider setup wizard.
 
@@ -241,7 +239,7 @@ async def run_mcp_setup(
 
     # Show available providers
     provider_list = "\n".join(
-        f"  {i+1}. {name}" for i, (_, (name, _, _)) in enumerate(MCP_PROVIDERS.items())
+        f"  {i + 1}. {name}" for i, (_, (name, _, _)) in enumerate(MCP_PROVIDERS.items())
     )
     ui.info(t("setup.mcp_config.available_providers") + "\n" + provider_list)
 
@@ -319,10 +317,13 @@ async def run_mcp_setup(
 
         if all_secrets_present:
             mcp_status = (
-                t("setup.mcp_config.mcp_available") if mcp_package
+                t("setup.mcp_config.mcp_available")
+                if mcp_package
                 else t("setup.mcp_config.mcp_fallback")
             )
-            ui.success(t("setup.mcp_config.provider_ready", provider=display_name) + f" ({mcp_status})")
+            ui.success(
+                t("setup.mcp_config.provider_ready", provider=display_name) + f" ({mcp_status})"
+            )
         else:
             ui.warning(t("setup.mcp_config.provider_incomplete", provider=display_name))
 

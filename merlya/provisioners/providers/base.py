@@ -57,16 +57,12 @@ class InstanceSpec(BaseModel):
     region: str | None = Field(default=None, description="Region/zone for deployment")
     network: str | None = Field(default=None, description="Network/VPC ID")
     subnet: str | None = Field(default=None, description="Subnet ID")
-    security_groups: list[str] = Field(
-        default_factory=list, description="Security group IDs"
-    )
+    security_groups: list[str] = Field(default_factory=list, description="Security group IDs")
     public_ip: bool = Field(default=False, description="Assign public IP")
     ssh_key_name: str | None = Field(default=None, description="SSH key name")
     user_data: str | None = Field(default=None, description="Cloud-init user data")
     tags: dict[str, str] = Field(default_factory=dict, description="Resource tags")
-    extra: dict[str, Any] = Field(
-        default_factory=dict, description="Provider-specific options"
-    )
+    extra: dict[str, Any] = Field(default_factory=dict, description="Provider-specific options")
 
     def to_provider_config(self, provider: ProviderType) -> dict[str, Any]:
         """Convert to provider-specific configuration."""
@@ -196,9 +192,7 @@ class Instance(BaseModel):
     region: str | None = Field(default=None)
     created_at: datetime | None = Field(default=None)
     spec: InstanceSpec | None = Field(default=None, description="Original spec if known")
-    provider_metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Raw provider data"
-    )
+    provider_metadata: dict[str, Any] = Field(default_factory=dict, description="Raw provider data")
     tags: dict[str, str] = Field(default_factory=dict)
 
     @classmethod
@@ -219,9 +213,7 @@ class Instance(BaseModel):
             id=data.get("InstanceId", ""),
             name=name,
             provider=ProviderType.AWS,
-            status=status_map.get(
-                data.get("State", {}).get("Name", ""), InstanceStatus.UNKNOWN
-            ),
+            status=status_map.get(data.get("State", {}).get("Name", ""), InstanceStatus.UNKNOWN),
             public_ip=data.get("PublicIpAddress"),
             private_ip=data.get("PrivateIpAddress"),
             region=data.get("Placement", {}).get("AvailabilityZone"),
@@ -345,9 +337,7 @@ class AbstractCloudProvider(ABC):
         ...
 
     @abstractmethod
-    async def list_instances(
-        self, filters: dict[str, Any] | None = None
-    ) -> list[Instance]:
+    async def list_instances(self, filters: dict[str, Any] | None = None) -> list[Instance]:
         """
         List instances with optional filters.
 
@@ -389,9 +379,7 @@ class AbstractCloudProvider(ABC):
         ...
 
     @abstractmethod
-    async def update_instance(
-        self, instance_id: str, updates: dict[str, Any]
-    ) -> Instance:
+    async def update_instance(self, instance_id: str, updates: dict[str, Any]) -> Instance:
         """
         Update an existing instance.
 

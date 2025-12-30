@@ -160,9 +160,9 @@ class TestTerraformConfigGeneration:
         assert 'provider "aws"' in config
         assert 'region = "us-east-1"' in config
         assert 'resource "aws_instance" "web_server"' in config
-        assert 'ami-ubuntu' in config
-        assert 't3.medium' in config
-        assert 'subnet-123' in config
+        assert "ami-ubuntu" in config
+        assert "t3.medium" in config
+        assert "subnet-123" in config
         assert "sg-456" in config
         assert 'Name = "web-server"' in config
         assert 'env = "test"' in config
@@ -292,7 +292,9 @@ class TestTerraformOperations:
     @pytest.mark.asyncio
     async def test_validate_failure(self, backend: TerraformBackend) -> None:
         """Test validation failure."""
-        mock_output = '{"valid": false, "diagnostics": [{"severity": "error", "summary": "Invalid config"}]}'
+        mock_output = (
+            '{"valid": false, "diagnostics": [{"severity": "error", "summary": "Invalid config"}]}'
+        )
 
         with patch.object(backend, "_run_terraform", new_callable=AsyncMock) as mock_run:
             mock_run.return_value = (0, mock_output, "")
