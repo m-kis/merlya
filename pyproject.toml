@@ -56,6 +56,9 @@ dependencies = [
     # Config
     "pyyaml>=6.0",
 
+    # Templates
+    "jinja2>=3.1",
+
     # Utils
     "psutil>=6.1",
     "ddgs>=9.9",

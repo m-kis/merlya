@@ -232,7 +232,9 @@ class MCPBackend(AbstractProvisionerBackend):
                 to_destroy = resource_ids
             else:
                 to_destroy = [
-                    r.get("instance_id") for r in self._created_resources if r.get("instance_id")
+                    str(r.get("instance_id"))
+                    for r in self._created_resources
+                    if r.get("instance_id") is not None
                 ]
 
             for resource_id in to_destroy:
@@ -309,12 +311,16 @@ class MCPBackend(AbstractProvisionerBackend):
 
         try:
             server_name = f"{self._provider.value}-mcp"
+            # Build arguments based on provider API
+            args: dict[str, Any] = (
+                {"instance_ids": [instance_id]}
+                if self._provider == ProviderType.AWS
+                else {"instance_id": instance_id}
+            )
             response = await self._ctx.mcp_manager.call_tool(
                 server_name,
                 tool_name,
-                {"instance_ids": [instance_id]}
-                if self._provider == ProviderType.AWS
-                else {"instance_id": instance_id},
+                args,
             )
             return bool(response and response.get("success"))
 

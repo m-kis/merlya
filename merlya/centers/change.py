@@ -117,12 +117,19 @@ class ChangeCenter(AbstractCenter):
             provisioner_result = await self._try_provisioner(deps)
             if provisioner_result is not None:
                 duration = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+                # Extract apply results (if available)
+                apply_result = provisioner_result.apply
+                rollback_data = apply_result.rollback_data if apply_result else None
+                resources_created = apply_result.resources_created if apply_result else []
+                resources_updated = apply_result.resources_updated if apply_result else []
+                resources_deleted = apply_result.resources_deleted if apply_result else []
+
                 return CenterResult(
                     success=provisioner_result.success,
                     message=self._format_provisioner_result(provisioner_result),
                     mode=self.mode,
                     applied=provisioner_result.success and not provisioner_result.aborted,
-                    rollback_available=provisioner_result.rollback_data is not None,
+                    rollback_available=rollback_data is not None,
                     post_check_passed=None,
                     data={
                         "provisioner": True,
@@ -130,9 +137,9 @@ class ChangeCenter(AbstractCenter):
                         if provisioner_result.action
                         else None,
                         "provider": deps.extra.get("cloud_provider"),
-                        "resources_created": provisioner_result.resources_created,
-                        "resources_updated": provisioner_result.resources_updated,
-                        "resources_deleted": provisioner_result.resources_deleted,
+                        "resources_created": resources_created,
+                        "resources_updated": resources_updated,
+                        "resources_deleted": resources_deleted,
                         "aborted": provisioner_result.aborted,
                         "aborted_reason": provisioner_result.aborted_reason,
                     },
@@ -445,24 +452,26 @@ class ChangeCenter(AbstractCenter):
                 logger.warning(f"Unknown IaC operation: {iac_operation}")
                 return None
 
-            # Get provisioner for provider
-            provisioner = registry.get_provisioner(cloud_provider)
-            if provisioner is None:
-                logger.warning(f"No provisioner available for provider: {cloud_provider}")
-                return None
-
             # Build provisioner deps
             provisioner_deps = ProvisionerDeps(
                 action=action,
                 provider=cloud_provider or "auto",
                 resources=deps.extra.get("resources", []),
-                template_name=deps.extra.get("template"),
-                template_vars=deps.extra.get("template_vars", {}),
                 dry_run=deps.extra.get("dry_run", False),
+                extra={
+                    "template_name": deps.extra.get("template"),
+                    "template_vars": deps.extra.get("template_vars", {}),
+                },
             )
 
-            # Execute provisioner
-            return await provisioner.execute(provisioner_deps)
+            # Get provisioner and execute
+            try:
+                provisioner = registry.get(provisioner_deps)
+                result: ProvisionerResult = await provisioner.execute()
+                return result
+            except ValueError as e:
+                logger.warning(f"No provisioner available for provider {cloud_provider}: {e}")
+                return None
 
         except ImportError as e:
             logger.debug(f"Provisioner module not available: {e}")

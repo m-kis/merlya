@@ -188,10 +188,14 @@ class TemplateInstantiator:
         if not template_dir.exists():
             template_dir = template.source_path
 
-        env = Environment(
+        # Note: autoescape is disabled intentionally for IaC templates.
+        # Terraform/Pulumi/Ansible configs are not HTML and don't need HTML escaping.
+        # Escaping would break valid HCL/YAML syntax in generated infrastructure code.
+        env = Environment(  # nosec B701 - IaC templates require raw output, not HTML escaping
             loader=FileSystemLoader(str(template_dir)),
             undefined=StrictUndefined,
             keep_trailing_newline=True,
+            autoescape=False,
         )
 
         # Get files to render

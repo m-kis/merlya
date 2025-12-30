@@ -399,7 +399,8 @@ class TerraformBackend(AbstractProvisionerBackend):
         try:
             _, stdout, _ = await self._run_terraform("show", "-json", check=False)
             if stdout.strip():
-                return json.loads(stdout)
+                result: dict[str, Any] = json.loads(stdout)
+                return result
         except (json.JSONDecodeError, BackendError):
             pass
         return {}

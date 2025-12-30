@@ -351,15 +351,17 @@ class TestTryProvisioner:
             mock_registry = MagicMock()
             mock_registry_cls.get_instance.return_value = mock_registry
             mock_provisioner = MagicMock()
-            mock_registry.get_provisioner.return_value = mock_provisioner
+            mock_registry.get.return_value = mock_provisioner
             mock_provisioner.execute = AsyncMock(return_value=MagicMock())
 
             await center._try_provisioner(deps)
 
-            # Verify provisioner was called
-            mock_provisioner.execute.assert_called_once()
-            call_args = mock_provisioner.execute.call_args[0][0]
+            # Verify registry.get was called with ProvisionerDeps containing correct action
+            mock_registry.get.assert_called_once()
+            call_args = mock_registry.get.call_args[0][0]
             assert call_args.action == ProvisionerAction.CREATE
+            # Verify provisioner.execute was called
+            mock_provisioner.execute.assert_called_once()
 
     async def test_maps_destroy_to_delete(
         self,
@@ -381,12 +383,12 @@ class TestTryProvisioner:
             mock_registry = MagicMock()
             mock_registry_cls.get_instance.return_value = mock_registry
             mock_provisioner = MagicMock()
-            mock_registry.get_provisioner.return_value = mock_provisioner
+            mock_registry.get.return_value = mock_provisioner
             mock_provisioner.execute = AsyncMock(return_value=MagicMock())
 
             await center._try_provisioner(deps)
 
-            call_args = mock_provisioner.execute.call_args[0][0]
+            call_args = mock_registry.get.call_args[0][0]
             assert call_args.action == ProvisionerAction.DELETE
 
     async def test_returns_none_when_no_provisioner(
@@ -406,7 +408,7 @@ class TestTryProvisioner:
         with patch("merlya.provisioners.registry.ProvisionerRegistry") as mock_registry_cls:
             mock_registry = MagicMock()
             mock_registry_cls.get_instance.return_value = mock_registry
-            mock_registry.get_provisioner.return_value = None
+            mock_registry.get.side_effect = ValueError("No provisioner for unknown_provider")
 
             result = await center._try_provisioner(deps)
 
@@ -430,7 +432,7 @@ class TestTryProvisioner:
             mock_registry = MagicMock()
             mock_registry_cls.get_instance.return_value = mock_registry
             mock_provisioner = MagicMock()
-            mock_registry.get_provisioner.return_value = mock_provisioner
+            mock_registry.get.return_value = mock_provisioner
             mock_provisioner.execute = AsyncMock(side_effect=RuntimeError("Test error"))
 
             result = await center._try_provisioner(deps)

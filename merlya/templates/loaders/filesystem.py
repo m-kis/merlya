@@ -35,7 +35,7 @@ class FilesystemTemplateLoader(AbstractTemplateLoader):
 
     def load_all(self) -> list[Template]:
         """Load all templates from the base directory."""
-        templates = []
+        templates: list[Template] = []
 
         if not self._base_path.exists():
             logger.warning(f"Template directory does not exist: {self._base_path}")
