@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -32,6 +33,32 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
     from merlya.provisioners.base import ProvisionerDeps
     from merlya.provisioners.providers.base import InstanceSpec
+
+
+def _escape_hcl_string(value: str) -> str:
+    """Escape special characters for HCL string values."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("${", "$${")  # Escape interpolation
+    )
+
+
+def _sanitize_resource_name(name: str) -> str:
+    """Sanitize name for use as Terraform resource identifier.
+
+    Terraform resource names must start with a letter or underscore
+    and contain only letters, digits, underscores, and hyphens.
+    """
+    # Replace invalid characters with underscores
+    sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+    # Ensure starts with letter or underscore
+    if sanitized and not sanitized[0].isalpha() and sanitized[0] != "_":
+        sanitized = "_" + sanitized
+    return sanitized or "_unnamed"
 
 
 class TerraformBackend(AbstractProvisionerBackend):
@@ -114,6 +141,13 @@ class TerraformBackend(AbstractProvisionerBackend):
         cmd = ["terraform", *args]
         cwd = self._working_dir or self._temp_dir
 
+        if cwd is None:
+            raise BackendExecutionError(
+                "No working directory configured. Call generate_config() or set working_dir.",
+                backend=BackendType.TERRAFORM,
+                operation=args[0] if args else "unknown",
+            )
+
         logger.debug(f"Running: {' '.join(cmd)} in {cwd}")
 
         # Use create_subprocess with explicit args (no shell injection possible)
@@ -174,13 +208,17 @@ class TerraformBackend(AbstractProvisionerBackend):
 
     async def plan(
         self,
-        _specs: list[InstanceSpec],
-        _provider: ProviderType,
+        specs: list[InstanceSpec],
+        provider: ProviderType,
     ) -> BackendResult:
         """Generate Terraform plan."""
         result = BackendResult(operation="plan")
 
         try:
+            # Generate config if no working directory is set
+            if not self._working_dir and not self._temp_dir:
+                await self.generate_config(specs, provider)
+
             # Ensure initialized
             if not self._initialized:
                 init_result = await self.initialize()
@@ -226,10 +264,12 @@ class TerraformBackend(AbstractProvisionerBackend):
             # Build apply args
             apply_args = ["apply", "-input=false", "-auto-approve"]
 
-            # Use plan file if available
-            plan_path = Path(self._working_dir or ".") / self._plan_file
-            if plan_path.exists():
-                apply_args.append(self._plan_file)
+            # Use plan file if available (use consistent cwd logic)
+            cwd = self._working_dir or self._temp_dir
+            if cwd:
+                plan_path = Path(cwd) / self._plan_file
+                if plan_path.exists():
+                    apply_args.append(self._plan_file)
 
             _, stdout, stderr = await self._run_terraform(*apply_args)
 
@@ -261,6 +301,14 @@ class TerraformBackend(AbstractProvisionerBackend):
         result = BackendResult(operation="destroy")
 
         try:
+            # Ensure initialized
+            if not self._initialized:
+                init_result = await self.initialize()
+                if not init_result.success:
+                    result.errors.extend(init_result.errors)
+                    result.finalize()
+                    return result
+
             # Build destroy args
             destroy_args = ["destroy", "-input=false", "-auto-approve"]
 
@@ -453,26 +501,31 @@ class TerraformBackend(AbstractProvisionerBackend):
 
             # Resources
             for spec in specs:
-                lines.append(f'resource "aws_instance" "{spec.name}" {{')
+                resource_name = _sanitize_resource_name(spec.name)
+                lines.append(f'resource "aws_instance" "{resource_name}" {{')
                 config = spec.to_provider_config(provider)
-                lines.append(f'  ami           = "{config["ami"]}"')
-                lines.append(f'  instance_type = "{config["instance_type"]}"')
+                lines.append(f'  ami           = "{_escape_hcl_string(config["ami"])}"')
+                lines.append(f'  instance_type = "{_escape_hcl_string(config["instance_type"])}"')
 
                 if config.get("subnet_id"):
-                    lines.append(f'  subnet_id = "{config["subnet_id"]}"')
+                    lines.append(f'  subnet_id = "{_escape_hcl_string(config["subnet_id"])}"')
                 if config.get("vpc_security_group_ids"):
-                    sg_ids = ", ".join(f'"{sg}"' for sg in config["vpc_security_group_ids"])
+                    sg_ids = ", ".join(
+                        f'"{_escape_hcl_string(sg)}"' for sg in config["vpc_security_group_ids"]
+                    )
                     lines.append(f"  vpc_security_group_ids = [{sg_ids}]")
                 if config.get("key_name"):
-                    lines.append(f'  key_name = "{config["key_name"]}"')
+                    lines.append(f'  key_name = "{_escape_hcl_string(config["key_name"])}"')
                 if config.get("associate_public_ip_address"):
                     lines.append("  associate_public_ip_address = true")
 
-                # Tags
+                # Tags (escape values to prevent HCL injection)
                 lines.append("  tags = {")
-                lines.append(f'    Name = "{spec.name}"')
+                lines.append(f'    Name = "{_escape_hcl_string(spec.name)}"')
                 for key, value in spec.tags.items():
-                    lines.append(f'    {key} = "{value}"')
+                    escaped_key = _escape_hcl_string(key)
+                    escaped_value = _escape_hcl_string(value)
+                    lines.append(f'    {escaped_key} = "{escaped_value}"')
                 lines.append("  }")
                 lines.append("}")
                 lines.append("")
