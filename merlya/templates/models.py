@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - Required at runtime for Pydantic
 from typing import Any
 
 from loguru import logger

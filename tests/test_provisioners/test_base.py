@@ -16,7 +16,6 @@ from merlya.provisioners.base import (
     ApplyOutput,
     DiffOutput,
     PlanOutput,
-    PostCheckOutput,
     ProvisionerAction,
     ProvisionerDeps,
     ProvisionerResult,

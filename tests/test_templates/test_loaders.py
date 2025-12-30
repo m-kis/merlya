@@ -12,8 +12,7 @@ import pytest
 
 from merlya.templates.loaders.embedded import EmbeddedTemplateLoader
 from merlya.templates.loaders.filesystem import FilesystemTemplateLoader
-from merlya.templates.models import IaCBackend, TemplateCategory
-from merlya.templates.models import TemplateParseError
+from merlya.templates.models import IaCBackend, TemplateCategory, TemplateParseError
 
 
 class TestFilesystemTemplateLoader:
