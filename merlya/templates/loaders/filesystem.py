@@ -9,11 +9,14 @@ v0.9.0: Initial implementation.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from merlya.templates.loaders.base import AbstractTemplateLoader
-from merlya.templates.models import Template
+
+if TYPE_CHECKING:
+    from merlya.templates.models import Template
 
 
 class FilesystemTemplateLoader(AbstractTemplateLoader):

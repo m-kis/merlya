@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 from loguru import logger
@@ -26,6 +25,9 @@ from merlya.templates.models import (
     TemplateVariable,
     VariableType,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class AbstractTemplateLoader(ABC):
@@ -90,14 +92,14 @@ class AbstractTemplateLoader(ABC):
         if not data:
             raise TemplateParseError(f"Template YAML contains no data{source_context}")
 
-        non_string_keys = [key for key in data.keys() if not isinstance(key, str)]
+        non_string_keys = [key for key in data if not isinstance(key, str)]
         if non_string_keys:
             raise TemplateParseError(
                 "Template YAML root keys must be strings"
                 f"{source_context}; invalid keys: {non_string_keys!r}"
             )
 
-        return self._dict_to_template(cast(dict[str, Any], data), source_path)
+        return self._dict_to_template(cast("dict[str, Any]", data), source_path)
 
     def _dict_to_template(self, data: dict[str, Any], source_path: Path | None = None) -> Template:
         """
