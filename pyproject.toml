@@ -59,6 +59,7 @@ dependencies = [
     # Utils
     "psutil>=6.1",
     "ddgs>=9.9",
+    "packaging>=24.0",
 
     # Security: pin transitive dependencies with known CVEs
     "urllib3>=2.6.0",  # CVE-2025-66418, CVE-2025-66471

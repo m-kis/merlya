@@ -206,3 +206,94 @@ class TestBuiltinTemplateInstantiation:
         assert "google" in content.lower() or "gcp" in content.lower()
 
         instantiator.cleanup()
+
+
+class TestTemplateInstantiatorContextManager:
+    """Test TemplateInstantiator context manager protocol."""
+
+    @pytest.fixture
+    def basic_template(self, tmp_path: Path) -> Template:
+        """Create a basic template with files."""
+        # Create template directory
+        template_dir = tmp_path / "test-template" / "terraform"
+        template_dir.mkdir(parents=True)
+
+        # Create a simple template file
+        (template_dir / "main.tf.j2").write_text("""
+# VM: {{ vm_name }}
+resource "test" "{{ vm_name }}" {
+  name = "{{ vm_name }}"
+}
+""")
+
+        return Template(
+            name="test-template",
+            category=TemplateCategory.COMPUTE,
+            providers=["aws"],
+            backends=[
+                TemplateBackendConfig(
+                    backend=IaCBackend.TERRAFORM,
+                    entry_point="main.tf.j2",
+                    files=["main.tf.j2"],
+                )
+            ],
+            variables=[
+                TemplateVariable(name="vm_name", required=True),
+            ],
+            source_path=tmp_path / "test-template",
+        )
+
+    def test_context_manager_cleanup(self, basic_template: Template) -> None:
+        """Test context manager automatically cleans up temp directories."""
+        temp_path = None
+
+        with TemplateInstantiator() as instantiator:
+            instance = instantiator.instantiate(
+                template=basic_template,
+                variables={"vm_name": "test-vm"},
+                provider="aws",
+            )
+            temp_path = instance.output_path
+            assert temp_path is not None
+            assert temp_path.exists()
+
+        # After exiting context, temp directory should be cleaned up
+        assert temp_path is not None
+        assert not temp_path.exists()
+
+    def test_context_manager_cleanup_on_exception(self, basic_template: Template) -> None:
+        """Test context manager cleans up even when exception occurs."""
+        temp_path = None
+
+        try:
+            with TemplateInstantiator() as instantiator:
+                instance = instantiator.instantiate(
+                    template=basic_template,
+                    variables={"vm_name": "test-vm"},
+                    provider="aws",
+                )
+                temp_path = instance.output_path
+                assert temp_path.exists()
+                raise ValueError("Test exception")
+        except ValueError:
+            pass
+
+        # Temp directory should still be cleaned up
+        assert temp_path is not None
+        assert not temp_path.exists()
+
+    def test_explicit_cleanup(self, basic_template: Template) -> None:
+        """Test explicit cleanup method."""
+        instantiator = TemplateInstantiator()
+        instance = instantiator.instantiate(
+            template=basic_template,
+            variables={"vm_name": "test-vm"},
+            provider="aws",
+        )
+        temp_path = instance.output_path
+        assert temp_path is not None
+        assert temp_path.exists()
+
+        # Explicit cleanup
+        instantiator.cleanup()
+        assert not temp_path.exists()
