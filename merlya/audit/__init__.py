@@ -8,11 +8,54 @@ Provides audit logging for security-sensitive operations:
 - Configuration changes
 """
 
+from merlya.audit.formatters import (
+    is_sensitive_key,
+    is_sensitive_value,
+    sanitize_args,
+    sanitize_value,
+)
+from merlya.audit.log_methods import (
+    log_command,
+    log_destructive,
+    log_skill,
+    log_tool,
+)
 from merlya.audit.logger import (
-    AuditEvent,
+    LOGFIRE_AVAILABLE,
     AuditLogger,
-    ObservabilityStatus,
     get_audit_logger,
 )
+from merlya.audit.models import AuditEvent, AuditEventType, ObservabilityStatus
+from merlya.audit.storage import (
+    MAX_RECENT_LIMIT,
+    ensure_table,
+    export_json,
+    get_recent,
+    store_event,
+)
 
-__all__ = ["AuditEvent", "AuditLogger", "ObservabilityStatus", "get_audit_logger"]
+__all__ = [
+    "LOGFIRE_AVAILABLE",
+    # Storage
+    "MAX_RECENT_LIMIT",
+    # Logger
+    "AuditEvent",
+    "AuditEventType",
+    "AuditLogger",
+    "ObservabilityStatus",
+    "ensure_table",
+    "export_json",
+    "get_audit_logger",
+    "get_recent",
+    # Formatters
+    "is_sensitive_key",
+    "is_sensitive_value",
+    # Log methods
+    "log_command",
+    "log_destructive",
+    "log_skill",
+    "log_tool",
+    "sanitize_args",
+    "sanitize_value",
+    "store_event",
+]

@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
+from merlya.agent.types import WebSearchResponse
+
 if TYPE_CHECKING:
     from merlya.agent.main import AgentDependencies
 else:
-    AgentDependencies = Any  # type: ignore
+    AgentDependencies = Any
 
 
 def register_web_tools(agent: Agent[Any, Any]) -> None:
@@ -26,7 +28,7 @@ def register_web_tools(agent: Agent[Any, Any]) -> None:
         max_results: int = 5,
         region: str | None = None,
         safesearch: str = "moderate",
-    ) -> dict[str, Any]:
+    ) -> WebSearchResponse:
         """
         Perform a web search using DuckDuckGo.
 
@@ -52,12 +54,12 @@ def register_web_tools(agent: Agent[Any, Any]) -> None:
             safesearch=safesearch,
         )
         if result.success:
-            return cast("dict[str, Any]", result.data)
+            return cast("WebSearchResponse", result.data)
         # Only retry on rate limiting - network errors aren't recoverable by retrying
         error_msg = getattr(result, "error", "") or ""
         if "rate limit" in error_msg.lower():
             raise ModelRetry("Rate limited. Try a different query or wait.")
-        return {"error": error_msg or "Web search failed", "results": []}
+        return WebSearchResponse(error=error_msg or "Web search failed", results=[])
 
 
 __all__ = ["register_web_tools"]

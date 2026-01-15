@@ -600,7 +600,24 @@ class SSHAuthManager:
         return self.secrets.has(f"ssh:password:{host_id}")
 
     async def _prompt_auth_method(self, hostname: str, username: str | None) -> str:
-        """Prompt user to choose authentication method."""
+        """Prompt user to choose authentication method.
+
+        Raises:
+            RuntimeError: If called in non-interactive mode (auto_confirm=True).
+        """
+        # Check for non-interactive mode BEFORE attempting prompt
+        if getattr(self.ui, "auto_confirm", False):
+            user_display = f"{username}@" if username else ""
+            raise RuntimeError(
+                f"Cannot configure SSH authentication in non-interactive mode.\n"
+                f"No authentication method configured for {user_display}{hostname}.\n\n"
+                f"To fix this, configure authentication before running in batch mode:\n"
+                f"  1. Run interactively: merlya\n"
+                f"  2. Execute: /ssh connect {hostname}\n"
+                f"  3. Follow the prompts to configure authentication\n\n"
+                f"Or use: /secret set ssh:password:{hostname} (for password auth)"
+            )
+
         user_display = f"{username}@" if username else ""
         self.ui.info(f"No authentication configured for {user_display}{hostname}")
 

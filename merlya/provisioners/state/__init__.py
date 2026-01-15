@@ -13,12 +13,13 @@ from merlya.provisioners.state.models import (
     ResourceStatus,
     StateSnapshot,
 )
-from merlya.provisioners.state.repository import StateRepository
+from merlya.provisioners.state.repository import MissingResourcesError, StateRepository
 from merlya.provisioners.state.tracker import StateTracker
 
 __all__ = [
     "DriftResult",
     "DriftStatus",
+    "MissingResourcesError",
     "ResourceState",
     "ResourceStatus",
     "StateRepository",

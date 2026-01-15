@@ -18,7 +18,7 @@ from merlya.provisioners.state.models import (
     ResourceStatus,
     StateSnapshot,
 )
-from merlya.provisioners.state.repository import StateRepository
+from merlya.provisioners.state.repository import MissingResourcesError, StateRepository
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -390,7 +390,13 @@ class StateTracker:
         Returns:
             The restored snapshot or None if not found.
         """
-        snapshot = await self._repo.get_snapshot(snapshot_id)
+        try:
+            snapshot = await self._repo.get_snapshot(snapshot_id)
+        except MissingResourcesError as e:
+            logger.error(
+                f"Cannot restore snapshot {e.snapshot_id}: missing resources {e.missing_resource_ids}"
+            )
+            raise
         if snapshot is None:
             logger.warning(f"Snapshot not found: {snapshot_id}")
             return None

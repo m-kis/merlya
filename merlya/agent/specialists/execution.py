@@ -7,7 +7,7 @@ Write operations with confirmation (30 tool calls max).
 from __future__ import annotations
 
 from loguru import logger
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.usage import UsageLimits
 
 from merlya.agent.confirmation import ConfirmationResult, confirm_command
@@ -88,10 +88,23 @@ def _register_tools(
             # Redirect to bash for local targets
             logger.info(f"🖥️ Target is local, executing locally: {command[:50]}...")
 
-            # Check for loop BEFORE confirmation
+            # Check for loop BEFORE anything else
+            # Return soft error instead of ModelRetry to avoid exhausting retries
             would_loop, reason = ctx.deps.tracker.would_loop("local", command)
             if would_loop:
-                raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+                return SSHResult(
+                    success=False,
+                    stdout="",
+                    stderr="",
+                    exit_code=-1,
+                    error=f"🛑 LOOP DETECTED: {reason}\n"
+                    "You have repeated this command too many times. "
+                    "Try a DIFFERENT approach or report your findings.",
+                )
+
+            # Record BEFORE confirmation - track proposals, not just executions
+            # This prevents infinite loops of cancelled commands
+            ctx.deps.tracker.record("local", command)
 
             # Confirmation for local commands
             if require_confirmation and not ctx.deps.confirmation_state.should_skip(command):
@@ -109,8 +122,6 @@ def _register_tools(
                         exit_code=-1,
                     )
 
-            ctx.deps.tracker.record("local", command)
-
             result = await _bash_execute(ctx.deps.context, command, timeout)
             return SSHResult(
                 success=result.success,
@@ -123,10 +134,23 @@ def _register_tools(
         # For remote targets, use actual SSH
         effective_host = host
 
-        # Check for loop BEFORE confirmation
+        # Check for loop BEFORE anything else
+        # Return soft error instead of ModelRetry to avoid exhausting retries
         would_loop, reason = ctx.deps.tracker.would_loop(effective_host, command)
         if would_loop:
-            raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+            return SSHResult(
+                success=False,
+                stdout="",
+                stderr="",
+                exit_code=-1,
+                error=f"🛑 LOOP DETECTED: {reason}\n"
+                "You have repeated this command too many times. "
+                "Try a DIFFERENT approach or report your findings.",
+            )
+
+        # Record BEFORE confirmation - track proposals, not just executions
+        # This prevents infinite loops of cancelled commands
+        ctx.deps.tracker.record(effective_host, command)
 
         # Confirmation for external commands
         if require_confirmation and not ctx.deps.confirmation_state.should_skip(command):
@@ -160,8 +184,6 @@ def _register_tools(
                     error="User cancelled credential prompt",
                 )
 
-        ctx.deps.tracker.record(effective_host, command)
-
         result = await _ssh_execute(
             ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin
         )
@@ -182,10 +204,23 @@ def _register_tools(
         """Execute a local command (kubectl, docker, aws, etc.)."""
         from merlya.tools.core import bash_execute as _bash_execute
 
-        # Check for loop BEFORE confirmation
+        # Check for loop BEFORE anything else
+        # Return soft error instead of ModelRetry to avoid exhausting retries
         would_loop, reason = ctx.deps.tracker.would_loop("local", command)
         if would_loop:
-            raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+            return SSHResult(
+                success=False,
+                stdout="",
+                stderr="",
+                exit_code=-1,
+                error=f"🛑 LOOP DETECTED: {reason}\n"
+                "You have repeated this command too many times. "
+                "Try a DIFFERENT approach or report your findings.",
+            )
+
+        # Record BEFORE confirmation - track proposals, not just executions
+        # This prevents infinite loops of cancelled commands
+        ctx.deps.tracker.record("local", command)
 
         # Confirmation for external commands
         if require_confirmation and not ctx.deps.confirmation_state.should_skip(command):
@@ -202,8 +237,6 @@ def _register_tools(
                     stderr="Cancelled by user",
                     exit_code=-1,
                 )
-
-        ctx.deps.tracker.record("local", command)
 
         result = await _bash_execute(ctx.deps.context, command, timeout)
         return SSHResult(

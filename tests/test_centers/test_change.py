@@ -26,6 +26,10 @@ def mock_ctx() -> MagicMock:
     ctx = MagicMock()
     ctx.hosts = MagicMock()
     ctx.hosts.get_by_name = AsyncMock(return_value=MagicMock(name="web-01"))
+    ctx.hosts.get_by_hostname = AsyncMock(return_value=None)
+    ctx.hosts.get_all = AsyncMock(return_value=[])
+    ctx.session = MagicMock()
+    ctx.session.last_remote_target = None
     ctx.ui = MagicMock()
     ctx.ui.prompt_confirm = AsyncMock(return_value=True)
     ctx.auto_confirm = False

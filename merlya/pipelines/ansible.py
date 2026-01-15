@@ -8,6 +8,8 @@ Supports three modes: ad-hoc, inline (generated playbook), and repository.
 from __future__ import annotations
 
 import tempfile
+import warnings
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -37,6 +39,24 @@ class AnsibleMode(str, Enum):
     REPOSITORY = "repository"  # Playbook from existing IaC repository
 
 
+@dataclass
+class AnsibleConfig:
+    """Configuration for Ansible pipeline.
+
+    Groups configuration parameters to reduce __init__ complexity.
+    """
+
+    mode: AnsibleMode = AnsibleMode.AD_HOC
+    module: str | None = None
+    module_args: str | None = None
+    playbook_path: str | None = None
+    playbook_content: str | None = None
+    inventory: str | None = None
+    extra_vars: dict[str, Any] = field(default_factory=dict)
+    rollback_playbook: str | None = None
+    check_tasks: list[str] = field(default_factory=list)
+
+
 class AnsiblePipeline(AbstractPipeline):
     """
     Pipeline for Ansible operations.
@@ -56,7 +76,10 @@ class AnsiblePipeline(AbstractPipeline):
         self,
         ctx: SharedContext,
         deps: PipelineDeps,
-        mode: AnsibleMode = AnsibleMode.AD_HOC,
+        config: AnsibleConfig | None = None,
+        *,
+        # Legacy parameters for backwards compatibility (deprecated)
+        mode: AnsibleMode | None = None,
         module: str | None = None,
         module_args: str | None = None,
         playbook_path: str | None = None,
@@ -72,26 +95,60 @@ class AnsiblePipeline(AbstractPipeline):
         Args:
             ctx: Shared context.
             deps: Pipeline dependencies.
-            mode: Execution mode (ad_hoc, inline, repository).
-            module: Ansible module name for ad-hoc mode (e.g., "service", "package").
-            module_args: Module arguments for ad-hoc mode.
-            playbook_path: Path to playbook for repository mode.
-            playbook_content: YAML content for inline mode.
-            inventory: Inventory path or host pattern.
-            extra_vars: Extra variables to pass to ansible.
-            rollback_playbook: Playbook to run on rollback.
-            check_tasks: Tasks to run for post-check verification.
+            config: Ansible configuration (preferred).
+            mode: (Deprecated) Use config.mode instead.
+            module: (Deprecated) Use config.module instead.
+            module_args: (Deprecated) Use config.module_args instead.
+            playbook_path: (Deprecated) Use config.playbook_path instead.
+            playbook_content: (Deprecated) Use config.playbook_content instead.
+            inventory: (Deprecated) Use config.inventory instead.
+            extra_vars: (Deprecated) Use config.extra_vars instead.
+            rollback_playbook: (Deprecated) Use config.rollback_playbook instead.
+            check_tasks: (Deprecated) Use config.check_tasks instead.
         """
         super().__init__(ctx, deps)
-        self._mode = mode
-        self._module = module
-        self._module_args = module_args
-        self._playbook_path = playbook_path
-        self._playbook_content = playbook_content
-        self._inventory = inventory or deps.target
-        self._extra_vars = extra_vars or {}
-        self._rollback_playbook = rollback_playbook
-        self._check_tasks = check_tasks or []
+
+        # Handle backwards compatibility
+        if config is not None:
+            # Use config object
+            self._mode = config.mode
+            self._module = config.module
+            self._module_args = config.module_args
+            self._playbook_path = config.playbook_path
+            self._playbook_content = config.playbook_content
+            self._inventory = config.inventory or deps.target
+            self._extra_vars = config.extra_vars
+            self._rollback_playbook = config.rollback_playbook
+            self._check_tasks = config.check_tasks
+        else:
+            # Legacy mode - emit deprecation warning if using individual params
+            legacy_params = [
+                mode,
+                module,
+                module_args,
+                playbook_path,
+                playbook_content,
+                inventory,
+                extra_vars,
+                rollback_playbook,
+                check_tasks,
+            ]
+            if any(p is not None for p in legacy_params):
+                warnings.warn(
+                    "Passing individual parameters to AnsiblePipeline is deprecated. "
+                    "Use AnsibleConfig instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            self._mode = mode or AnsibleMode.AD_HOC
+            self._module = module
+            self._module_args = module_args
+            self._playbook_path = playbook_path
+            self._playbook_content = playbook_content
+            self._inventory = inventory or deps.target
+            self._extra_vars = extra_vars or {}
+            self._rollback_playbook = rollback_playbook
+            self._check_tasks = check_tasks or []
 
         # Temp file for inline playbook
         self._temp_playbook: Path | None = None

@@ -28,6 +28,15 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
+class MissingResourcesError(LookupError):
+    """Raised when a snapshot references resources that are not present."""
+
+    def __init__(self, snapshot_id: str, missing_resource_ids: list[str]):
+        self.snapshot_id = snapshot_id
+        self.missing_resource_ids = missing_resource_ids
+        super().__init__(f"Snapshot {snapshot_id} is missing resources: {missing_resource_ids}")
+
+
 class StateRepository:
     """
     SQLite-based state persistence.
@@ -286,7 +295,11 @@ class StateRepository:
                 raise
 
     async def get_snapshot(self, snapshot_id: str) -> StateSnapshot | None:
-        """Get a snapshot by ID."""
+        """Get a snapshot by ID.
+
+        Raises:
+            MissingResourcesError: If the snapshot references resources that cannot be loaded.
+        """
         await self.initialize()
 
         async with aiosqlite.connect(self._db_path) as db:
@@ -303,15 +316,20 @@ class StateRepository:
             # Load resources
             resource_ids = json.loads(row["resource_ids"])
             resources: dict[str, ResourceState] = {}
+            missing_resource_ids: list[str] = []
 
             for resource_id in resource_ids:
                 resource = await self.get_resource(resource_id)
-                if resource:
+                if resource is not None:
                     resources[resource_id] = resource
                 else:
-                    logger.warning(
-                        f"⚠️ Snapshot {row['snapshot_id']}: resource {resource_id} not found"
-                    )
+                    missing_resource_ids.append(resource_id)
+
+            if missing_resource_ids:
+                raise MissingResourcesError(
+                    snapshot_id=row["snapshot_id"],
+                    missing_resource_ids=missing_resource_ids,
+                )
 
             return StateSnapshot(
                 snapshot_id=row["snapshot_id"],
@@ -366,14 +384,18 @@ class StateRepository:
                 # Only load resources if explicitly requested
                 if include_resources:
                     resource_ids = json.loads(row["resource_ids"])
+                    missing_resource_ids: list[str] = []
                     for resource_id in resource_ids:
                         resource = await self.get_resource(resource_id)
-                        if resource:
+                        if resource is not None:
                             resources[resource_id] = resource
                         else:
-                            logger.warning(
-                                f"⚠️ Snapshot {row['snapshot_id']}: resource {resource_id} not found"
-                            )
+                            missing_resource_ids.append(resource_id)
+
+                    if missing_resource_ids:
+                        logger.warning(
+                            f"⚠️ Snapshot {row['snapshot_id']}: missing resources {missing_resource_ids}"
+                        )
 
                 snapshots.append(
                     StateSnapshot(
