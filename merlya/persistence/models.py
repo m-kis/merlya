@@ -6,15 +6,40 @@ Pydantic models for database entities.
 
 from __future__ import annotations
 
+import re
+import socket
 import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Import directly from types to avoid circular import through core.__init__
 from merlya.core.types import HostStatus
+
+# Validation constants
+MAX_HOSTNAME_LENGTH = 253  # RFC 1035
+MIN_PORT = 1
+MAX_PORT = 65535
+MAX_NAME_LENGTH = 100
+
+# Valid hostname pattern (RFC 1123)
+HOSTNAME_PATTERN = re.compile(
+    r"^(?=.{1,253}$)(?!-)[a-zA-Z0-9-]{1,63}(?<!-)(\.[a-zA-Z0-9-]{1,63})*$"
+)
+
+# Valid IPv4 pattern
+IPV4_PATTERN = re.compile(
+    r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+    r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+)
+
+# Valid name pattern (alphanumeric, dash, underscore, dot)
+NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+
+# Valid tag pattern (exported for reuse in hosts_formats.py)
+TAG_PATTERN = re.compile(r"^[a-zA-Z0-9_:-]{1,50}$")
 
 
 class ElevationMethod(str, Enum):
@@ -80,6 +105,62 @@ class Host(BaseModel):
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate host name."""
+        if not v or not v.strip():
+            raise ValueError("Host name cannot be empty")
+        v = v.strip()
+        if len(v) > MAX_NAME_LENGTH:
+            raise ValueError(f"Host name exceeds maximum length ({MAX_NAME_LENGTH} chars)")
+        if not NAME_PATTERN.match(v):
+            raise ValueError(
+                f"Invalid host name '{v}'. "
+                "Use only letters, numbers, dots, hyphens, and underscores. "
+                "Must start with alphanumeric."
+            )
+        return v
+
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str) -> str:
+        """Validate hostname (IPv4, IPv6, or DNS name)."""
+        if not v or not v.strip():
+            raise ValueError("Hostname cannot be empty")
+        v = v.strip()
+        if len(v) > MAX_HOSTNAME_LENGTH:
+            raise ValueError(f"Hostname exceeds maximum length ({MAX_HOSTNAME_LENGTH} chars)")
+        # Allow IPv4 addresses
+        if IPV4_PATTERN.match(v):
+            return v
+        # Allow IPv6 addresses
+        try:
+            socket.inet_pton(socket.AF_INET6, v)
+            return v
+        except OSError:
+            pass
+        # Validate hostname format (RFC 1123)
+        if not HOSTNAME_PATTERN.match(v):
+            raise ValueError(
+                f"Invalid hostname '{v}'. Must be a valid IPv4/IPv6 address or RFC 1123 hostname."
+            )
+        return v
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        """Validate SSH port."""
+        if not MIN_PORT <= v <= MAX_PORT:
+            raise ValueError(f"Port must be between {MIN_PORT} and {MAX_PORT}")
+        return v
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: list[str]) -> list[str]:
+        """Validate and sanitize tags."""
+        return [tag for tag in v if tag and TAG_PATTERN.match(tag)]
 
 
 class Variable(BaseModel):

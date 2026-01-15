@@ -256,17 +256,25 @@ def run_repl_mode(verbose: bool = False, debug_http: bool = False) -> None:
 
 def run_batch_mode(args: argparse.Namespace) -> None:
     """Run non-interactive batch mode."""
+    import sys
+
     from merlya.cli.run import run_from_file, run_single
     from merlya.core.logging import configure_logging
 
     verbose = getattr(args, "verbose", False)
     configure_logging(console_level="DEBUG" if verbose else "INFO")
 
+    # In batch mode, auto_confirm should be True if:
+    # 1. User explicitly passed --yes, OR
+    # 2. stdin is not a TTY (non-interactive environment like CI/CD)
+    is_interactive_stdin = sys.stdin.isatty()
+    auto_confirm = args.yes or not is_interactive_stdin
+
     if args.file:
         exit_code = asyncio.run(
             run_from_file(
                 args.file,
-                auto_confirm=args.yes,
+                auto_confirm=auto_confirm,
                 quiet=args.quiet,
                 output_format=args.format,
                 verbose=verbose,
@@ -277,7 +285,7 @@ def run_batch_mode(args: argparse.Namespace) -> None:
         exit_code = asyncio.run(
             run_single(
                 args.task,
-                auto_confirm=args.yes,
+                auto_confirm=auto_confirm,
                 quiet=args.quiet,
                 output_format=args.format,
                 verbose=verbose,
@@ -285,7 +293,7 @@ def run_batch_mode(args: argparse.Namespace) -> None:
             )
         )
     else:
-        print("Error: Either a task or --file is required", file=sys.stderr)
+        logger.error("❌ Either a task or --file is required")
         sys.exit(1)
 
     sys.exit(exit_code)
@@ -304,7 +312,7 @@ def run_config_command(args: argparse.Namespace) -> None:
     elif args.config_action == "show":
         _config_show(config)
     else:
-        print("Usage: merlya config {set,get,show}", file=sys.stderr)
+        logger.error("❌ Usage: merlya config {set,get,show}")
         sys.exit(1)
 
 
@@ -313,12 +321,12 @@ def _config_set(config: object, key: str, value: str) -> None:
     from merlya.config import Config
 
     if not isinstance(config, Config):
-        print("Error: Invalid config", file=sys.stderr)
+        logger.error("❌ Invalid config")
         sys.exit(1)
 
     parts = key.split(".")
     if len(parts) != 2:
-        print(f"Error: Invalid key format '{key}'. Use section.key", file=sys.stderr)
+        logger.error(f"❌ Invalid key format '{key}'. Use section.key")
         sys.exit(1)
 
     section, attr = parts
@@ -335,7 +343,7 @@ def _config_set(config: object, key: str, value: str) -> None:
 
     section_name = section_map.get(section)
     if not section_name or not hasattr(config, section_name):
-        print(f"Error: Unknown section '{section}'", file=sys.stderr)
+        logger.error(f"❌ Unknown section '{section}'")
         sys.exit(1)
 
     section_obj = getattr(config, section_name)
@@ -357,7 +365,7 @@ def _config_set(config: object, key: str, value: str) -> None:
     attr_name = attr_map.get(attr, attr)
 
     if not hasattr(section_obj, attr_name):
-        print(f"Error: Unknown key '{attr}' in section '{section}'", file=sys.stderr)
+        logger.error(f"❌ Unknown key '{attr}' in section '{section}'")
         sys.exit(1)
 
     # Normalize log level values to lowercase
@@ -366,7 +374,7 @@ def _config_set(config: object, key: str, value: str) -> None:
 
     setattr(section_obj, attr_name, value)
     config.save()
-    print(f"Set {key} = {value}")
+    logger.info(f"✅ Set {key} = {value}")
 
 
 def _config_get(config: object, key: str) -> None:
@@ -374,12 +382,12 @@ def _config_get(config: object, key: str) -> None:
     from merlya.config import Config
 
     if not isinstance(config, Config):
-        print("Error: Invalid config", file=sys.stderr)
+        logger.error("❌ Invalid config")
         sys.exit(1)
 
     parts = key.split(".")
     if len(parts) != 2:
-        print(f"Error: Invalid key format '{key}'. Use section.key", file=sys.stderr)
+        logger.error(f"❌ Invalid key format '{key}'. Use section.key")
         sys.exit(1)
 
     section, attr = parts
@@ -394,7 +402,7 @@ def _config_get(config: object, key: str) -> None:
 
     section_name = section_map.get(section)
     if not section_name or not hasattr(config, section_name):
-        print(f"Error: Unknown section '{section}'", file=sys.stderr)
+        logger.error(f"❌ Unknown section '{section}'")
         sys.exit(1)
 
     section_obj = getattr(config, section_name)
@@ -415,11 +423,11 @@ def _config_get(config: object, key: str) -> None:
     attr_name = attr_map.get(attr, attr)
 
     if not hasattr(section_obj, attr_name):
-        print(f"Error: Unknown key '{attr}'", file=sys.stderr)
+        logger.error(f"❌ Unknown key '{attr}'")
         sys.exit(1)
 
     value = getattr(section_obj, attr_name)
-    print(value)
+    logger.info(f"ℹ️ {value}")
 
 
 def _config_show(config: object) -> None:
@@ -429,7 +437,7 @@ def _config_show(config: object) -> None:
     from merlya.config import Config
 
     if not isinstance(config, Config):
-        print("Error: Invalid config", file=sys.stderr)
+        logger.error("❌ Invalid config")
         sys.exit(1)
 
     # Convert to dict for display

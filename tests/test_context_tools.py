@@ -7,7 +7,7 @@ Tests HostsSummary, HostDetails, GroupSummary and async functions.
 from __future__ import annotations
 
 from datetime import UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -309,13 +309,6 @@ class TestListHostsSummary:
     """Tests for list_hosts_summary function."""
 
     @pytest.fixture
-    def mock_context(self):
-        """Create a mock context."""
-        ctx = MagicMock()
-        ctx.db = MagicMock()
-        return ctx
-
-    @pytest.fixture
     def mock_hosts(self):
         """Create mock host objects."""
         hosts = []
@@ -327,68 +320,58 @@ class TestListHostsSummary:
             hosts.append(host)
         return hosts
 
+    @pytest.fixture
+    def mock_context(self, mock_hosts):
+        """Create a mock context with hosts repository."""
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=mock_hosts)
+        ctx.hosts.get_by_tag = AsyncMock(
+            return_value=[h for h in mock_hosts if "production" in h.tags]
+        )
+        return ctx
+
     @pytest.mark.asyncio
-    async def test_list_hosts_summary_basic(self, mock_context, mock_hosts):
+    async def test_list_hosts_summary_basic(self, mock_context):
         """Test basic host summary listing."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=mock_hosts)
+        summary = await list_hosts_summary(mock_context)
 
-            summary = await list_hosts_summary(mock_context)
-
-            assert summary.total_count == 5
-            assert summary.healthy_count == 4
-            assert summary.unhealthy_count == 1
-            assert len(summary.sample_hosts) == 5
+        assert summary.total_count == 5
+        assert summary.healthy_count == 4
+        assert summary.unhealthy_count == 1
+        assert len(summary.sample_hosts) == 5
 
     @pytest.mark.asyncio
-    async def test_list_hosts_summary_with_tag_filter(self, mock_context, mock_hosts):
+    async def test_list_hosts_summary_with_tag_filter(self, mock_context):
         """Test host summary with tag filter."""
-        production_hosts = [h for h in mock_hosts if "production" in h.tags]
+        summary = await list_hosts_summary(mock_context, tag="production")
 
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_by_tag = AsyncMock(return_value=production_hosts)
-
-            summary = await list_hosts_summary(mock_context, tag="production")
-
-            mock_repo.get_by_tag.assert_called_once_with("production")
-            assert summary.total_count == 3
+        mock_context.hosts.get_by_tag.assert_called_once_with("production")
+        assert summary.total_count == 3
 
     @pytest.mark.asyncio
-    async def test_list_hosts_summary_with_status_filter(self, mock_context, mock_hosts):
+    async def test_list_hosts_summary_with_status_filter(self, mock_context):
         """Test host summary with status filter."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=mock_hosts)
+        summary = await list_hosts_summary(mock_context, status="healthy")
 
-            summary = await list_hosts_summary(mock_context, status="healthy")
-
-            # Should filter to only healthy hosts
-            assert summary.total_count == 4
+        # Should filter to only healthy hosts
+        assert summary.total_count == 4
 
     @pytest.mark.asyncio
-    async def test_list_hosts_summary_empty(self, mock_context):
+    async def test_list_hosts_summary_empty(self):
         """Test host summary with no hosts."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=[])
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[])
 
-            summary = await list_hosts_summary(mock_context)
+        summary = await list_hosts_summary(ctx)
 
-            assert summary.total_count == 0
-            assert summary.healthy_count == 0
+        assert summary.total_count == 0
+        assert summary.healthy_count == 0
 
 
 class TestGetHostDetails:
     """Tests for get_host_details function."""
-
-    @pytest.fixture
-    def mock_context(self):
-        """Create a mock context."""
-        ctx = MagicMock()
-        ctx.db = MagicMock()
-        return ctx
 
     @pytest.fixture
     def mock_host(self):
@@ -409,68 +392,59 @@ class TestGetHostDetails:
         host.metadata = {}
         return host
 
+    @pytest.fixture
+    def mock_context(self, mock_host):
+        """Create a mock context with hosts repository."""
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_by_name = AsyncMock(return_value=mock_host)
+        ctx.hosts.get_by_id = AsyncMock(return_value=None)
+        return ctx
+
     @pytest.mark.asyncio
-    async def test_get_host_details_found(self, mock_context, mock_host):
+    async def test_get_host_details_found(self, mock_context):
         """Test getting details for existing host."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_by_name = AsyncMock(return_value=mock_host)
+        details = await get_host_details(mock_context, "web-01")
 
-            details = await get_host_details(mock_context, "web-01")
-
-            assert details is not None
-            assert details.name == "web-01"
-            assert details.hostname == "192.168.1.10"
+        assert details is not None
+        assert details.name == "web-01"
+        assert details.hostname == "192.168.1.10"
 
     @pytest.mark.asyncio
     async def test_get_host_details_not_found_by_name(self, mock_context, mock_host):
         """Test fallback to ID lookup when name not found."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_by_name = AsyncMock(return_value=None)
-            mock_repo.get_by_id = AsyncMock(return_value=mock_host)
+        mock_context.hosts.get_by_name = AsyncMock(return_value=None)
+        mock_context.hosts.get_by_id = AsyncMock(return_value=mock_host)
 
-            details = await get_host_details(mock_context, "abc123")
+        details = await get_host_details(mock_context, "abc123")
 
-            mock_repo.get_by_id.assert_called_once_with("abc123")
-            assert details is not None
+        mock_context.hosts.get_by_id.assert_called_once_with("abc123")
+        assert details is not None
 
     @pytest.mark.asyncio
     async def test_get_host_details_not_found(self, mock_context):
         """Test host not found."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_by_name = AsyncMock(return_value=None)
-            mock_repo.get_by_id = AsyncMock(return_value=None)
+        mock_context.hosts.get_by_name = AsyncMock(return_value=None)
+        mock_context.hosts.get_by_id = AsyncMock(return_value=None)
 
-            details = await get_host_details(mock_context, "nonexistent")
+        details = await get_host_details(mock_context, "nonexistent")
 
-            assert details is None
+        assert details is None
 
     @pytest.mark.asyncio
     async def test_get_host_details_no_os_info(self, mock_context, mock_host):
         """Test host without OS info."""
         mock_host.os_info = None
+        mock_context.hosts.get_by_name = AsyncMock(return_value=mock_host)
 
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_by_name = AsyncMock(return_value=mock_host)
+        details = await get_host_details(mock_context, "web-01")
 
-            details = await get_host_details(mock_context, "web-01")
-
-            assert details is not None
-            assert details.os_info is None
+        assert details is not None
+        assert details.os_info is None
 
 
 class TestListGroups:
     """Tests for list_groups function."""
-
-    @pytest.fixture
-    def mock_context(self):
-        """Create a mock context."""
-        ctx = MagicMock()
-        ctx.db = MagicMock()
-        return ctx
 
     @pytest.fixture
     def mock_hosts_with_tags(self):
@@ -489,106 +463,102 @@ class TestListGroups:
             hosts.append(host)
         return hosts
 
+    @pytest.fixture
+    def mock_context(self, mock_hosts_with_tags):
+        """Create a mock context with hosts repository."""
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=mock_hosts_with_tags)
+        return ctx
+
     @pytest.mark.asyncio
-    async def test_list_groups_basic(self, mock_context, mock_hosts_with_tags):
+    async def test_list_groups_basic(self, mock_context):
         """Test basic group listing."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=mock_hosts_with_tags)
+        groups = await list_groups(mock_context)
 
-            groups = await list_groups(mock_context)
-
-            # Should have production, web, db, staging groups
-            assert len(groups) >= 3
-            group_names = [g.name for g in groups]
-            assert "production" in group_names
+        # Should have production, web, db, staging groups
+        assert len(groups) >= 3
+        group_names = [g.name for g in groups]
+        assert "production" in group_names
 
     @pytest.mark.asyncio
-    async def test_list_groups_sorted_by_count(self, mock_context, mock_hosts_with_tags):
+    async def test_list_groups_sorted_by_count(self, mock_context):
         """Test groups are sorted by host count (descending)."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=mock_hosts_with_tags)
+        groups = await list_groups(mock_context)
 
-            groups = await list_groups(mock_context)
-
-            # Should be sorted by count descending
-            for i in range(len(groups) - 1):
-                assert groups[i].host_count >= groups[i + 1].host_count
+        # Should be sorted by count descending
+        for i in range(len(groups) - 1):
+            assert groups[i].host_count >= groups[i + 1].host_count
 
     @pytest.mark.asyncio
-    async def test_list_groups_empty(self, mock_context):
+    async def test_list_groups_empty(self):
         """Test with no hosts."""
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=[])
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[])
 
-            groups = await list_groups(mock_context)
+        groups = await list_groups(ctx)
 
-            assert groups == []
+        assert groups == []
 
 
 class TestGetInfrastructureContext:
     """Tests for get_infrastructure_context function."""
 
-    @pytest.fixture
-    def mock_context(self):
-        """Create a mock context."""
-        ctx = MagicMock()
-        ctx.db = MagicMock()
-        return ctx
-
     @pytest.mark.asyncio
-    async def test_get_context_basic(self, mock_context):
+    async def test_get_context_basic(self):
         """Test basic infrastructure context."""
         mock_host = MagicMock()
         mock_host.name = "web-01"
         mock_host.health_status = "healthy"
         mock_host.tags = ["production"]
 
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=[mock_host])
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[mock_host])
+        ctx.hosts.get_by_tag = AsyncMock(return_value=[mock_host])
 
-            context = await get_infrastructure_context(mock_context)
+        context = await get_infrastructure_context(ctx)
 
-            assert "📊 Inventory:" in context
-            assert "1 hosts" in context
+        assert "📊 Inventory:" in context
+        assert "1 hosts" in context
 
     @pytest.mark.asyncio
-    async def test_get_context_includes_groups(self, mock_context):
+    async def test_get_context_includes_groups(self):
         """Test context includes groups by default."""
         mock_host = MagicMock()
         mock_host.name = "web-01"
         mock_host.health_status = "healthy"
         mock_host.tags = ["production"]
 
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=[mock_host])
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[mock_host])
+        ctx.hosts.get_by_tag = AsyncMock(return_value=[mock_host])
 
-            context = await get_infrastructure_context(mock_context, include_groups=True)
+        context = await get_infrastructure_context(ctx, include_groups=True)
 
-            assert "📁 Groups:" in context
+        assert "📁 Groups:" in context
 
     @pytest.mark.asyncio
-    async def test_get_context_without_groups(self, mock_context):
+    async def test_get_context_without_groups(self):
         """Test context without groups."""
         mock_host = MagicMock()
         mock_host.name = "web-01"
         mock_host.health_status = "healthy"
         mock_host.tags = []
 
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=[mock_host])
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=[mock_host])
+        ctx.hosts.get_by_tag = AsyncMock(return_value=[])
 
-            context = await get_infrastructure_context(mock_context, include_groups=False)
+        context = await get_infrastructure_context(ctx, include_groups=False)
 
-            assert "📁 Groups:" not in context
+        assert "📁 Groups:" not in context
 
     @pytest.mark.asyncio
-    async def test_get_context_limits_groups(self, mock_context):
+    async def test_get_context_limits_groups(self):
         """Test that groups are limited by max_groups."""
         hosts = []
         for i in range(10):
@@ -598,11 +568,12 @@ class TestGetInfrastructureContext:
             host.tags = [f"tag-{i}"]  # Each host has unique tag
             hosts.append(host)
 
-        with patch("merlya.persistence.repositories.HostRepository") as MockRepo:
-            mock_repo = MockRepo.return_value
-            mock_repo.get_all = AsyncMock(return_value=hosts)
+        ctx = MagicMock()
+        ctx.hosts = MagicMock()
+        ctx.hosts.get_all = AsyncMock(return_value=hosts)
+        ctx.hosts.get_by_tag = AsyncMock(return_value=[])
 
-            context = await get_infrastructure_context(mock_context, max_groups=3)
+        context = await get_infrastructure_context(ctx, max_groups=3)
 
-            # Should mention "and X more groups"
-            assert "more groups" in context
+        # Should mention "and X more groups"
+        assert "more groups" in context

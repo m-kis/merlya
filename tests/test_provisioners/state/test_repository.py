@@ -11,7 +11,7 @@ from merlya.provisioners.state.models import (
     ResourceStatus,
     StateSnapshot,
 )
-from merlya.provisioners.state.repository import StateRepository
+from merlya.provisioners.state.repository import MissingResourcesError, StateRepository
 
 
 class TestStateRepositoryInit:
@@ -264,6 +264,58 @@ class TestSnapshotOperations:
         """Test getting a snapshot that doesn't exist."""
         result = await repo.get_snapshot("nonexistent")
         assert result is None
+
+    async def test_get_snapshot_missing_resources_raises(self, repo: StateRepository) -> None:
+        """Test missing snapshot resources are surfaced as an error."""
+        snapshot = StateSnapshot(snapshot_id="snap-001", description="Test snapshot")
+        snapshot.add_resource(
+            ResourceState(
+                resource_id="i-missing",
+                resource_type="aws_instance",
+                name="web-server",
+                provider="aws",
+                status=ResourceStatus.ACTIVE,
+            )
+        )
+        await repo.save_snapshot(snapshot)
+
+        with pytest.raises(MissingResourcesError) as excinfo:
+            await repo.get_snapshot("snap-001")
+
+        assert excinfo.value.snapshot_id == "snap-001"
+        assert excinfo.value.missing_resource_ids == ["i-missing"]
+
+    async def test_get_snapshot_partial_missing_resources_raises(
+        self, repo: StateRepository
+    ) -> None:
+        """Test snapshots with some missing resources raise with missing ids."""
+        present = ResourceState(
+            resource_id="i-present",
+            resource_type="aws_instance",
+            name="present",
+            provider="aws",
+            status=ResourceStatus.ACTIVE,
+        )
+        await repo.save_resource(present)
+
+        snapshot = StateSnapshot(snapshot_id="snap-001")
+        snapshot.add_resource(present)
+        snapshot.add_resource(
+            ResourceState(
+                resource_id="i-missing",
+                resource_type="aws_instance",
+                name="missing",
+                provider="aws",
+                status=ResourceStatus.ACTIVE,
+            )
+        )
+        await repo.save_snapshot(snapshot)
+
+        with pytest.raises(MissingResourcesError) as excinfo:
+            await repo.get_snapshot("snap-001")
+
+        assert excinfo.value.snapshot_id == "snap-001"
+        assert excinfo.value.missing_resource_ids == ["i-missing"]
 
     async def test_list_snapshots_empty(self, repo: StateRepository) -> None:
         """Test listing snapshots when empty."""

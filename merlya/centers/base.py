@@ -143,23 +143,41 @@ class AbstractCenter(ABC):
         """
         Validate and resolve target host.
 
+        Uses HostTargetResolver to support:
+        - Local aliases (local, localhost, 127.0.0.1)
+        - Hosts from inventory (by name or hostname)
+        - Direct IP addresses (no inventory required)
+        - DNS-resolvable hostnames (no inventory required)
+
         Args:
             target: Host name or pattern (may include @ prefix).
 
         Returns:
             Resolved Host, LocalHost for local targets, or None if not found.
         """
-        # Strip @ prefix if present (users may type "@pine64" to reference a host)
-        clean_target = target.lstrip("@")
+        from merlya.hosts import HostTargetResolver, TargetType
+        from merlya.persistence.models import Host
 
-        # Handle "local" target specially - no database lookup needed
-        if clean_target.lower() in ("local", "localhost", "127.0.0.1", "::1"):
+        resolver = HostTargetResolver(self._ctx)
+        resolved = await resolver.resolve(target)
+
+        if resolved.target_type == TargetType.LOCAL:
             return LocalHost()
 
-        try:
-            return await self._ctx.hosts.get_by_name(clean_target)
-        except Exception:
-            return None
+        if resolved.target_type == TargetType.REMOTE:
+            # Return the inventory host if found
+            if resolved.host_entry:
+                return resolved.host_entry
+
+            # Create an ephemeral Host for direct IP/DNS connections
+            return Host(
+                name=resolved.original_query,
+                hostname=resolved.hostname,
+                port=22,
+            )
+
+        # UNKNOWN target - could not resolve
+        return None
 
     def _create_result(
         self,

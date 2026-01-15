@@ -7,6 +7,8 @@ Uses loguru with emoji conventions for visual feedback.
 from __future__ import annotations
 
 import sys
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,6 +25,23 @@ _configured = False
 
 # Default log directory
 DEFAULT_LOG_DIR = Path.home() / ".merlya" / "logs"
+
+
+@dataclass
+class LoggingConfig:
+    """Configuration for logging.
+
+    Groups configuration parameters to reduce configure_logging() complexity.
+    """
+
+    console_level: str = "INFO"
+    file_level: str = "DEBUG"
+    log_dir: Path | None = None
+    log_file: str = "merlya.log"
+    max_size: str = "10 MB"
+    retention: str = "7 days"
+    colorize: bool = True
+    force: bool = False
 
 
 class LogEmoji:
@@ -55,58 +74,101 @@ class LogEmoji:
 
 
 def configure_logging(
-    console_level: str = "INFO",
-    file_level: str = "DEBUG",
+    config: LoggingConfig | None = None,
+    *,
+    # Legacy parameters for backwards compatibility (deprecated)
+    console_level: str | None = None,
+    file_level: str | None = None,
     log_dir: Path | None = None,
-    log_file: str = "merlya.log",
-    max_size: str = "10 MB",
-    retention: str = "7 days",
-    colorize: bool = True,
-    force: bool = False,
+    log_file: str | None = None,
+    max_size: str | None = None,
+    retention: str | None = None,
+    colorize: bool | None = None,
+    force: bool | None = None,
 ) -> Logger:
     """
     Configure logging for Merlya.
 
     Args:
-        console_level: Console log level (DEBUG, INFO, WARNING, ERROR).
-        file_level: File log level.
-        log_dir: Directory for log files.
-        log_file: Log file name.
-        max_size: Max size before rotation.
-        retention: How long to keep old logs.
-        colorize: Enable console colors.
-        force: Force reconfiguration even if already configured.
+        config: Logging configuration (preferred).
+        console_level: (Deprecated) Use config.console_level instead.
+        file_level: (Deprecated) Use config.file_level instead.
+        log_dir: (Deprecated) Use config.log_dir instead.
+        log_file: (Deprecated) Use config.log_file instead.
+        max_size: (Deprecated) Use config.max_size instead.
+        retention: (Deprecated) Use config.retention instead.
+        colorize: (Deprecated) Use config.colorize instead.
+        force: (Deprecated) Use config.force instead.
 
     Returns:
         Configured logger instance.
     """
     global _configured
-    if _configured and not force:
+
+    # Handle backwards compatibility
+    if config is not None:
+        _console_level = config.console_level
+        _file_level = config.file_level
+        _log_dir = config.log_dir
+        _log_file = config.log_file
+        _max_size = config.max_size
+        _retention = config.retention
+        _colorize = config.colorize
+        _force = config.force
+    else:
+        # Legacy mode - emit deprecation warning if using individual params
+        legacy_params = [
+            console_level,
+            file_level,
+            log_dir,
+            log_file,
+            max_size,
+            retention,
+            colorize,
+            force,
+        ]
+        if any(p is not None for p in legacy_params):
+            warnings.warn(
+                "Passing individual parameters to configure_logging() is deprecated. "
+                "Use LoggingConfig instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        _console_level = console_level if console_level is not None else "INFO"
+        _file_level = file_level if file_level is not None else "DEBUG"
+        _log_dir = log_dir
+        _log_file = log_file if log_file is not None else "merlya.log"
+        _max_size = max_size if max_size is not None else "10 MB"
+        _retention = retention if retention is not None else "7 days"
+        _colorize = colorize if colorize is not None else True
+        _force = force if force is not None else False
+
+    if _configured and not _force:
         return logger
 
     # Reset handlers when forcing reconfigure
     logger.remove()
 
     # Ensure log directory exists
-    log_path = log_dir or DEFAULT_LOG_DIR
+    log_path = _log_dir or DEFAULT_LOG_DIR
     log_path.mkdir(parents=True, exist_ok=True)
 
     # Console handler - formatted for readability
     logger.add(
         sys.stderr,
         format="<level>{message}</level>",
-        level=console_level.upper(),
-        colorize=colorize,
+        level=_console_level.upper(),
+        colorize=_colorize,
         filter=lambda record: record["level"].name != "TRACE",
     )
 
     # File handler - detailed with timestamp
     logger.add(
-        log_path / log_file,
+        log_path / _log_file,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-        level=file_level.upper(),
-        rotation=max_size,
-        retention=retention,
+        level=_file_level.upper(),
+        rotation=_max_size,
+        retention=_retention,
         compression="gz",
         enqueue=True,  # Thread-safe
     )

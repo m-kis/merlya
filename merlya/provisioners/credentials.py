@@ -261,7 +261,7 @@ class CredentialResolver:
                 return config[profile][key]
 
         except Exception as e:
-            logger.debug(f"Failed to parse AWS credentials: {e}")
+            logger.warning(f"⚠️ Failed to parse AWS credentials file: {e}")
 
         return None
 

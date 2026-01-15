@@ -479,7 +479,8 @@ class SessionManager:
                 # Commit is handled by transaction context manager
 
         except Exception as e:
-            logger.warning(f"⚠️ Failed to persist session: {e}")
+            logger.error(f"❌ Failed to persist session: {e}", exc_info=True)
+            # Don't re-raise - session loss is recoverable but log as error
 
     async def load_session(self, session_id: str) -> SessionState | None:
         """

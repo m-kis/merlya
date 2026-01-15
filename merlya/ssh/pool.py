@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -40,8 +41,10 @@ from merlya.ssh.prompt_detection import PASSWORD_PROMPT_PATTERNS
 
 __all__ = [
     "PASSWORD_PROMPT_PATTERNS",
+    "PoolConfig",
     "SSHConnection",
     "SSHConnectionOptions",
+    "SSHExecuteOptions",
     "SSHPool",
     "SSHResult",
 ]
@@ -62,6 +65,22 @@ class PoolConfig:
     auto_add_host_keys: bool = True
     very_verbose_debug: bool = False
     max_channels_per_host: int = 4
+
+
+@dataclass
+class SSHExecuteOptions:
+    """Options for SSH command execution.
+
+    Groups execution options to reduce execute() parameter count.
+    """
+
+    timeout: int = 60
+    input_data: str | None = None
+    username: str | None = None
+    private_key: str | None = None
+    options: SSHConnectionOptions | None = None
+    host_name: str | None = None
+    retry: bool = True
 
 
 class SSHPool(SSHPoolConnectMixin, SFTPOperations):
@@ -318,51 +337,97 @@ class SSHPool(SSHPoolConnectMixin, SFTPOperations):
         self,
         host: str,
         command: str,
-        timeout: int = 60,
+        exec_options: SSHExecuteOptions | None = None,
+        *,
+        # Legacy parameters for backwards compatibility (deprecated)
+        timeout: int | None = None,
         input_data: str | None = None,
         username: str | None = None,
         private_key: str | None = None,
         options: SSHConnectionOptions | None = None,
         host_name: str | None = None,
-        retry: bool = True,
+        retry: bool | None = None,
     ) -> SSHResult:
-        """Execute a command on a host with retry and circuit breaker."""
+        """Execute a command on a host with retry and circuit breaker.
+
+        Args:
+            host: Target host.
+            command: Command to execute.
+            exec_options: Execution options (preferred).
+            timeout: (Deprecated) Use exec_options.timeout instead.
+            input_data: (Deprecated) Use exec_options.input_data instead.
+            username: (Deprecated) Use exec_options.username instead.
+            private_key: (Deprecated) Use exec_options.private_key instead.
+            options: (Deprecated) Use exec_options.options instead.
+            host_name: (Deprecated) Use exec_options.host_name instead.
+            retry: (Deprecated) Use exec_options.retry instead.
+
+        Returns:
+            SSHResult with command output.
+        """
         if not host or not host.strip():
             raise ValueError("Host cannot be empty")
         if not command or not command.strip():
             raise ValueError("Command cannot be empty")
 
+        # Handle backwards compatibility
+        if exec_options is not None:
+            _timeout = exec_options.timeout
+            _input_data = exec_options.input_data
+            _username = exec_options.username
+            _private_key = exec_options.private_key
+            _options = exec_options.options
+            _host_name = exec_options.host_name
+            _retry = exec_options.retry
+        else:
+            # Legacy mode - emit deprecation warning if using individual params
+            legacy_params = [timeout, input_data, username, private_key, options, host_name, retry]
+            if any(p is not None for p in legacy_params):
+                warnings.warn(
+                    "Passing individual parameters to SSHPool.execute() is deprecated. "
+                    "Use SSHExecuteOptions instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            _timeout = timeout if timeout is not None else 60
+            _input_data = input_data
+            _username = username
+            _private_key = private_key
+            _options = options
+            _host_name = host_name
+            _retry = retry if retry is not None else True
+
         circuit = self._get_circuit_breaker(host)
         if not circuit.can_execute():
             retry_in = circuit.time_until_retry()
             raise RuntimeError(
-                f"🔌 Circuit breaker open for {host}. "
+                f"Circuit breaker open for {host}. "
                 f"Too many failures. Retry in {retry_in}s or use reset_circuit()"
             )
 
         params = ExecuteParams(
             host=host,
             command=command,
-            timeout=timeout,
-            input_data=input_data,
-            options=options,
-            host_name=host_name,
+            timeout=_timeout,
+            input_data=_input_data,
+            options=_options,
+            host_name=_host_name,
         )
 
-        max_attempts = self.max_retries if retry else 1
+        max_attempts = self.max_retries if _retry else 1
         last_error: Exception | None = None
 
         for attempt in range(max_attempts):
             try:
-                return await self._execute_once(params, circuit, username, private_key)
+                return await self._execute_once(params, circuit, _username, _private_key)
             except Exception as e:
                 last_error = e
 
-                if retry and is_transient_error(e) and attempt < max_attempts - 1:
+                if _retry and is_transient_error(e) and attempt < max_attempts - 1:
                     logger.warning(
-                        f"⚠️ Transient error on {host} (attempt {attempt + 1}/{max_attempts}): {e}"
+                        f"Transient error on {host} (attempt {attempt + 1}/{max_attempts}): {e}"
                     )
-                    await self._invalidate_connection(host, username, options)
+                    await self._invalidate_connection(host, _username, _options)
                     delay = self.retry_delay * (2**attempt)
                     await asyncio.sleep(delay)
                     continue
