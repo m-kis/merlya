@@ -11,11 +11,17 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import Agent, ModelRetry, RunContext
 
 from merlya.agent.tools_common import check_recoverable_error
+from merlya.agent.types import (
+    DirectoryListResponse,
+    FileReadResponse,
+    FileSearchResponse,
+    FileWriteResponse,
+)
 
 if TYPE_CHECKING:
     from merlya.agent.main import AgentDependencies
 else:
-    AgentDependencies = Any  # type: ignore
+    AgentDependencies = Any
 
 
 def register_file_tools(agent: Agent[Any, Any]) -> None:
@@ -28,7 +34,7 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
         path: str,
         lines: int | None = None,
         tail: bool = False,
-    ) -> dict[str, Any]:
+    ) -> FileReadResponse:
         """
         Read file content from a remote host.
 
@@ -49,13 +55,13 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _read_file(ctx.deps.context, host, path, lines=lines, tail=tail)
         if result.success:
-            return {"content": result.data}
+            return FileReadResponse(content=str(result.data) if result.data else "")
         if check_recoverable_error(result.error):
             raise ModelRetry(
                 f"File '{path}' not found on '{host}'. "
                 "Check the path or use search_files() to find it."
             )
-        return {"error": result.error}
+        return FileReadResponse(error=result.error)
 
     @agent.tool
     async def write_file(
@@ -64,7 +70,7 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
         path: str,
         content: str,
         backup: bool = True,
-    ) -> dict[str, Any]:
+    ) -> FileWriteResponse:
         """
         Write content to a file on a remote host.
 
@@ -85,12 +91,14 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _write_file(ctx.deps.context, host, path, content, backup=backup)
         if result.success:
-            return {"success": True, "message": result.data}
+            return FileWriteResponse(
+                success=True, message=str(result.data) if result.data else None, error=None
+            )
         if check_recoverable_error(result.error):
             raise ModelRetry(
                 f"Cannot write to '{path}' on '{host}'. Check the path exists or verify host name."
             )
-        return {"success": False, "error": result.error}
+        return FileWriteResponse(success=False, message=None, error=result.error)
 
     @agent.tool
     async def list_directory(
@@ -99,7 +107,7 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
         path: str,
         all_files: bool = False,
         long_format: bool = False,
-    ) -> dict[str, Any]:
+    ) -> DirectoryListResponse:
         """
         List directory contents on a remote host.
 
@@ -119,13 +127,18 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
             ctx.deps.context, host, path, all_files=all_files, long_format=long_format
         )
         if result.success:
-            return {"entries": result.data}
+            # Cast the result data to expected type
+            from typing import cast
+
+            return DirectoryListResponse(
+                entries=cast("list[Any]", result.data) if result.data else []
+            )
         if check_recoverable_error(result.error):
             raise ModelRetry(
                 f"Directory '{path}' not found on '{host}'. "
                 "Check the path or use search_files() to find it."
             )
-        return {"error": result.error}
+        return DirectoryListResponse(error=result.error)
 
     @agent.tool
     async def search_files(
@@ -135,7 +148,7 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
         pattern: str,
         file_type: str | None = None,
         max_depth: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> FileSearchResponse:
         """
         Search for files on a remote host.
 
@@ -159,13 +172,16 @@ def register_file_tools(agent: Agent[Any, Any]) -> None:
             ctx.deps.context, host, path, pattern, file_type=file_type, max_depth=max_depth
         )
         if result.success:
-            return {"files": result.data, "count": len(result.data) if result.data else 0}
+            # Cast the result data to expected type
+            from typing import cast
+
+            return FileSearchResponse(files=cast("list[str]", result.data) if result.data else [])
         if check_recoverable_error(result.error):
             raise ModelRetry(
                 f"Search path '{path}' not found on '{host}'. "
                 "Check the path or verify host name with list_hosts()."
             )
-        return {"error": result.error}
+        return FileSearchResponse(error=result.error)
 
 
 __all__ = ["register_file_tools"]

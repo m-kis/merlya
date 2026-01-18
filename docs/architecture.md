@@ -41,6 +41,31 @@ merlya/
 │   ├── terraform.py # TerraformPipeline
 │   ├── kubernetes.py # KubernetesPipeline
 │   └── bash.py     # BashPipeline (fallback)
+├── provisioners/   # Multi-cloud IaC provisioning (v0.9.0)
+│   ├── base.py     # AbstractProvisioner, ProvisionerResult
+│   ├── registry.py # ProvisionerRegistry (singleton)
+│   ├── credentials.py # CredentialResolver (multi-source)
+│   ├── backends/   # IaC backend implementations
+│   │   ├── base.py # AbstractProvisionerBackend, BackendType
+│   │   ├── terraform.py # TerraformBackend
+│   │   └── mcp_backend.py # MCPBackend
+│   ├── providers/  # Cloud provider abstractions
+│   │   ├── base.py # AbstractCloudProvider, ProviderType
+│   │   └── registry.py # CloudProviderRegistry
+│   └── state/      # Resource state tracking
+│       ├── models.py # ResourceState, StateSnapshot, DriftResult
+│       ├── repository.py # SQLite persistence
+│       └── tracker.py # StateTracker (drift detection)
+├── templates/      # IaC template system (v0.9.0)
+│   ├── models.py   # Template, TemplateVariable, TemplateInstance
+│   ├── registry.py # TemplateRegistry (thread-safe singleton)
+│   ├── instantiation.py # TemplateInstantiator (Jinja2)
+│   ├── loaders/    # Template loading strategies
+│   │   ├── base.py # AbstractTemplateLoader
+│   │   ├── filesystem.py # FilesystemTemplateLoader
+│   │   └── embedded.py # EmbeddedTemplateLoader
+│   └── builtin/    # Built-in templates
+│       └── basic-vm/ # Basic VM template (AWS/GCP/Azure)
 ├── repl/           # Interactive console
 ├── router/         # Intent classification
 │   ├── classifier.py # IntentRouter with fast/heavy path
@@ -495,3 +520,235 @@ The agent decides which tools to call based on:
 1. Router-suggested tools
 2. System prompt guidance
 3. LLM reasoning
+
+### 14. Provisioners System (`merlya/provisioners/`)
+
+Multi-cloud IaC provisioning abstraction layer for creating, updating, and destroying infrastructure resources.
+
+**Architecture:**
+
+```text
+ProvisionerRegistry (singleton)
+    └── AbstractProvisioner
+            ├── AbstractCloudProvider (AWS, GCP, Azure, etc.)
+            └── AbstractProvisionerBackend (Terraform, MCP)
+```
+
+**Key Classes:**
+
+- `AbstractProvisioner` - Base class defining the provisioning workflow
+- `ProvisionerRegistry` - Thread-safe singleton for provisioner discovery
+- `CredentialResolver` - Multi-source credential resolution (keyring, env, files)
+
+**Provisioner Actions:**
+```python
+class ProvisionerAction(str, Enum):
+    CREATE = "create"   # Provision new resources
+    UPDATE = "update"   # Modify existing resources
+    DELETE = "delete"   # Destroy resources
+```
+
+**Provisioning Stages:**
+```python
+class ProvisionerStage(str, Enum):
+    VALIDATE = "validate"      # Check credentials and inputs
+    PLAN = "plan"              # Generate execution plan
+    DIFF = "diff"              # Show changes (dry-run)
+    SUMMARY = "summary"        # Human-readable summary
+    HITL = "hitl"              # User approval required
+    APPLY = "apply"            # Execute changes
+    POST_CHECK = "post_check"  # Verify success
+    ROLLBACK = "rollback"      # Revert on failure
+```
+
+**Backends:**
+
+| Backend          | Use Case                         | MCP Support |
+|------------------|----------------------------------|-------------|
+| TerraformBackend | Cloud infrastructure via HCL     | Optional    |
+| MCPBackend       | Direct cloud API via MCP servers | Primary     |
+
+**Providers:**
+
+| Provider | Type          | Backend Priority |
+|----------|---------------|------------------|
+| AWS      | Public Cloud  | MCP → Terraform  |
+| GCP      | Public Cloud  | MCP → Terraform  |
+| Azure    | Public Cloud  | MCP → Terraform  |
+| Proxmox  | Private Cloud | API → Terraform  |
+
+### 15. Templates System (`merlya/templates/`)
+
+Reusable IaC template system with Jinja2 rendering and validation.
+
+**Key Classes:**
+
+- `Template` - Template definition with variables and outputs
+- `TemplateRegistry` - Thread-safe singleton for template discovery
+- `TemplateInstantiator` - Jinja2-based template rendering
+- `AbstractTemplateLoader` - Interface for template sources
+
+**Template Categories:**
+
+```python
+class TemplateCategory(str, Enum):
+    COMPUTE = "compute"       # VMs, instances
+    NETWORK = "network"       # VPCs, subnets, firewalls
+    STORAGE = "storage"       # Disks, buckets, volumes
+    DATABASE = "database"     # RDS, Cloud SQL, etc.
+    CONTAINER = "container"   # Kubernetes, ECS
+    SECURITY = "security"     # IAM, certificates
+```
+
+**Variable Types:**
+```python
+class VariableType(str, Enum):
+    STRING = "string"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    LIST = "list"
+    MAP = "map"
+    SECRET = "secret"  # Masked in logs
+```
+
+**Template YAML Schema:**
+
+```yaml
+name: basic-vm
+version: "1.0.0"
+category: compute
+description: "Basic VM with customizable specs"
+providers: [aws, gcp, azure]
+backends:
+  - backend: terraform
+    entry_point: main.tf.j2
+variables:
+  - name: vm_name
+    type: string
+    required: true
+    description: "Instance name"
+  - name: instance_type
+    type: string
+    provider_defaults:
+      aws: "t3.micro"
+      gcp: "e2-micro"
+outputs:
+  - name: public_ip
+    description: "Public IP address"
+```
+
+**Template Loading:**
+
+```python
+# Registry auto-discovers templates from multiple sources
+registry = TemplateRegistry.get_instance()
+registry.register_loader(FilesystemTemplateLoader(path))
+registry.register_loader(EmbeddedTemplateLoader())
+
+# Get and instantiate template
+template = registry.get("basic-vm", version="1.0.0")
+instance = instantiator.instantiate(
+    template=template,
+    variables={"vm_name": "web-01", "cpu": 2, "memory_gb": 4},
+    provider="aws",
+    backend=IaCBackend.TERRAFORM
+)
+```
+
+**Version Management:**
+
+- Templates stored with versioned keys (`name:version`) and unversioned (`name`)
+- Unversioned key always points to highest semantic version
+- Manual registrations preserved on reload
+
+### 16. State Tracking (`merlya/provisioners/state/`)
+
+SQLite-based resource state management with drift detection.
+
+**Key Classes:**
+
+- `ResourceState` - State of a single managed resource
+- `StateSnapshot` - Point-in-time snapshot of all resources
+- `DriftResult` - Result of drift detection comparison
+- `StateTracker` - Coordinates state operations
+- `StateRepository` - SQLite persistence layer
+
+**Resource Status:**
+
+```python
+class ResourceStatus(str, Enum):
+    PENDING = "pending"     # Planned but not created
+    CREATING = "creating"   # Creation in progress
+    ACTIVE = "active"       # Exists and healthy
+    UPDATING = "updating"   # Update in progress
+    DELETING = "deleting"   # Deletion in progress
+    DELETED = "deleted"     # Has been deleted
+    FAILED = "failed"       # Operation failed
+    UNKNOWN = "unknown"     # State cannot be determined
+```
+
+**Drift Detection:**
+
+```python
+class DriftStatus(str, Enum):
+    NO_DRIFT = "no_drift"  # Matches expected state
+    DRIFTED = "drifted"    # Differs from expected
+    MISSING = "missing"    # Resource no longer exists
+    UNKNOWN = "unknown"    # Unable to determine
+```
+
+**State Persistence:**
+
+```python
+# ResourceState includes rollback data
+resource.save_for_rollback()  # Deep copy of actual_config
+resource.previous_config      # Available for restore
+
+# Snapshots enable point-in-time recovery
+snapshot = await tracker.create_snapshot(
+    provider="aws",
+    description="Pre-deployment backup"
+)
+```
+
+**Database Schema:**
+
+```sql
+-- Resources table
+CREATE TABLE resources (
+    resource_id TEXT PRIMARY KEY,
+    resource_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    region TEXT,
+    status TEXT NOT NULL,
+    expected_config TEXT NOT NULL,  -- JSON
+    actual_config TEXT NOT NULL,    -- JSON
+    tags TEXT NOT NULL,             -- JSON
+    outputs TEXT NOT NULL,          -- JSON
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_checked_at TEXT,
+    previous_config TEXT            -- JSON (for rollback)
+);
+
+-- Snapshots table
+CREATE TABLE snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    provider TEXT,
+    session_id TEXT,
+    resource_ids TEXT NOT NULL,     -- JSON array
+    created_at TEXT NOT NULL,
+    description TEXT
+);
+```
+
+**State Workflow:**
+
+```text
+1. Plan      → Save expected_config
+2. Apply     → Update actual_config, status=ACTIVE
+3. Check     → Compare expected vs actual
+4. Drift     → Generate DriftResult with differences
+5. Rollback  → Restore from previous_config
+```

@@ -7,7 +7,7 @@ Security scans and compliance (25 tool calls max).
 from __future__ import annotations
 
 from loguru import logger
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.usage import UsageLimits
 
 from merlya.agent.specialists.deps import SpecialistDeps
@@ -92,9 +92,18 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
                 )
 
         # Check for loop BEFORE recording
+        # Return soft error instead of ModelRetry to avoid exhausting retries
         would_loop, reason = ctx.deps.tracker.would_loop(host, command)
         if would_loop:
-            raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+            return SSHResult(
+                success=False,
+                stdout="",
+                stderr="",
+                exit_code=-1,
+                error=f"🛑 LOOP DETECTED: {reason}\n"
+                "You have repeated this command too many times. "
+                "Try a DIFFERENT approach or report your findings.",
+            )
 
         ctx.deps.tracker.record(host, command)
 
@@ -116,9 +125,18 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
         """Execute a local security command."""
         from merlya.tools.core import bash_execute as _bash_execute
 
+        # Return soft error instead of ModelRetry to avoid exhausting retries
         would_loop, reason = ctx.deps.tracker.would_loop("local", command)
         if would_loop:
-            raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
+            return SSHResult(
+                success=False,
+                stdout="",
+                stderr="",
+                exit_code=-1,
+                error=f"🛑 LOOP DETECTED: {reason}\n"
+                "You have repeated this command too many times. "
+                "Try a DIFFERENT approach or report your findings.",
+            )
 
         ctx.deps.tracker.record("local", command)
 
@@ -154,4 +172,4 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
             )
         except Exception as e:
             logger.error(f"❌ Scan error for {host}: {e}", exc_info=True)
-            return ScanResult(success=False, error="Scan failed. Check logs.")
+            return ScanResult(success=False, error=f"Scan failed: {type(e).__name__}: {e}")

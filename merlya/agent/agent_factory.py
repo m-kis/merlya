@@ -7,7 +7,7 @@ Creates and configures the PydanticAI agent with all tools and validators.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -57,7 +57,7 @@ def create_agent(
     return agent
 
 
-def _register_router_context_prompt(agent: Agent[Any, Any]) -> None:
+def _register_router_context_prompt(agent: Agent[AgentDependencies, AgentResponse]) -> None:
     """Register the router context system prompt."""
 
     @agent.system_prompt
@@ -112,7 +112,7 @@ def _register_router_context_prompt(agent: Agent[Any, Any]) -> None:
         return "\n".join(parts) if parts else ""
 
 
-def _register_response_validator(agent: Agent[Any, Any]) -> None:
+def _register_response_validator(agent: Agent[AgentDependencies, AgentResponse]) -> None:
     """Register the response validator."""
 
     @agent.output_validator

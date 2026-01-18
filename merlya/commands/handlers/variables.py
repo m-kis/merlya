@@ -81,6 +81,22 @@ async def cmd_variable_set(ctx: SharedContext, args: list[str]) -> CommandResult
     name = args_filtered[0]
     value = " ".join(args_filtered[1:])
 
+    # Validate variable name
+    if not name or not name.strip():
+        return CommandResult(
+            success=False,
+            message="Variable name cannot be empty.",
+        )
+
+    # Variable names must start with a letter and contain only alphanumeric chars, hyphens, underscores
+    import re
+
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", name):
+        return CommandResult(
+            success=False,
+            message="Variable name must start with a letter and contain only letters, numbers, hyphens, and underscores.",
+        )
+
     await ctx.variables.set(name, value, is_env=is_env)
 
     return CommandResult(success=True, message=ctx.t("commands.variable.set", name=name))
@@ -354,6 +370,23 @@ async def cmd_secret_set(ctx: SharedContext, args: list[str]) -> CommandResult:
         return CommandResult(success=False, message="Usage: `/secret set <name>`")
 
     name = args[0]
+
+    # Validate secret name
+    if not name or not name.strip():
+        return CommandResult(
+            success=False,
+            message="Secret name cannot be empty.",
+        )
+
+    # Secret names must start with a letter and contain only valid characters
+    import re
+
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_:-]*$", name):
+        return CommandResult(
+            success=False,
+            message="Secret name must start with a letter and contain only letters, numbers, hyphens, underscores, and colons.",
+        )
+
     value = await ctx.ui.prompt_secret(ctx.t("prompts.enter_value", field=name))
 
     if not value:

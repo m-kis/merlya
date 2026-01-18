@@ -8,6 +8,8 @@ Supports apply, rollout, scale, and delete operations.
 from __future__ import annotations
 
 import tempfile
+import warnings
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -39,6 +41,24 @@ class KubernetesOperation(str, Enum):
     PATCH = "patch"  # kubectl patch
 
 
+@dataclass
+class KubernetesConfig:
+    """Configuration for Kubernetes pipeline.
+
+    Groups configuration parameters to reduce __init__ complexity.
+    """
+
+    operation: KubernetesOperation = KubernetesOperation.APPLY
+    manifest_path: str | None = None
+    manifest_content: str | None = None
+    resource_type: str | None = None
+    resource_name: str | None = None
+    namespace: str = "default"
+    replicas: int | None = None
+    context: str | None = None
+    kubeconfig: str | None = None
+
+
 class KubernetesPipeline(AbstractPipeline):
     """
     Pipeline for Kubernetes operations.
@@ -60,12 +80,15 @@ class KubernetesPipeline(AbstractPipeline):
         self,
         ctx: SharedContext,
         deps: PipelineDeps,
-        operation: KubernetesOperation = KubernetesOperation.APPLY,
+        config: KubernetesConfig | None = None,
+        *,
+        # Legacy parameters for backwards compatibility (deprecated)
+        operation: KubernetesOperation | None = None,
         manifest_path: str | None = None,
         manifest_content: str | None = None,
         resource_type: str | None = None,
         resource_name: str | None = None,
-        namespace: str = "default",
+        namespace: str | None = None,
         replicas: int | None = None,
         context: str | None = None,
         kubeconfig: str | None = None,
@@ -76,26 +99,60 @@ class KubernetesPipeline(AbstractPipeline):
         Args:
             ctx: Shared context.
             deps: Pipeline dependencies.
-            operation: Type of Kubernetes operation.
-            manifest_path: Path to manifest file(s) for apply.
-            manifest_content: YAML content for inline apply.
-            resource_type: Resource type (deployment, service, etc).
-            resource_name: Resource name.
-            namespace: Kubernetes namespace.
-            replicas: Number of replicas for scale operation.
-            context: Kubernetes context to use.
-            kubeconfig: Path to kubeconfig file.
+            config: Kubernetes configuration (preferred).
+            operation: (Deprecated) Use config.operation instead.
+            manifest_path: (Deprecated) Use config.manifest_path instead.
+            manifest_content: (Deprecated) Use config.manifest_content instead.
+            resource_type: (Deprecated) Use config.resource_type instead.
+            resource_name: (Deprecated) Use config.resource_name instead.
+            namespace: (Deprecated) Use config.namespace instead.
+            replicas: (Deprecated) Use config.replicas instead.
+            context: (Deprecated) Use config.context instead.
+            kubeconfig: (Deprecated) Use config.kubeconfig instead.
         """
         super().__init__(ctx, deps)
-        self._operation = operation
-        self._manifest_path = manifest_path
-        self._manifest_content = manifest_content
-        self._resource_type = resource_type
-        self._resource_name = resource_name
-        self._namespace = namespace
-        self._replicas = replicas
-        self._context = context
-        self._kubeconfig = kubeconfig
+
+        # Handle backwards compatibility
+        if config is not None:
+            # Use config object
+            self._operation = config.operation
+            self._manifest_path = config.manifest_path
+            self._manifest_content = config.manifest_content
+            self._resource_type = config.resource_type
+            self._resource_name = config.resource_name
+            self._namespace = config.namespace
+            self._replicas = config.replicas
+            self._context = config.context
+            self._kubeconfig = config.kubeconfig
+        else:
+            # Legacy mode - emit deprecation warning if using individual params
+            legacy_params = [
+                operation,
+                manifest_path,
+                manifest_content,
+                resource_type,
+                resource_name,
+                namespace,
+                replicas,
+                context,
+                kubeconfig,
+            ]
+            if any(p is not None for p in legacy_params):
+                warnings.warn(
+                    "Passing individual parameters to KubernetesPipeline is deprecated. "
+                    "Use KubernetesConfig instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            self._operation = operation or KubernetesOperation.APPLY
+            self._manifest_path = manifest_path
+            self._manifest_content = manifest_content
+            self._resource_type = resource_type
+            self._resource_name = resource_name
+            self._namespace = namespace or "default"
+            self._replicas = replicas
+            self._context = context
+            self._kubeconfig = kubeconfig
 
         # Temp file for inline manifest
         self._temp_manifest: Path | None = None

@@ -7,6 +7,8 @@ Supports init, plan, apply, and destroy with proper state handling.
 
 from __future__ import annotations
 
+import warnings
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -25,6 +27,21 @@ from merlya.pipelines.base import (
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
+
+
+@dataclass
+class TerraformConfig:
+    """Configuration for Terraform pipeline.
+
+    Groups configuration parameters to reduce __init__ complexity.
+    """
+
+    working_dir: str | None = None
+    var_file: str | None = None
+    variables: dict[str, Any] = field(default_factory=dict)
+    backend_config: dict[str, str] = field(default_factory=dict)
+    auto_approve: bool = False
+    destroy_mode: bool = False
 
 
 class TerraformPipeline(AbstractPipeline):
@@ -48,12 +65,15 @@ class TerraformPipeline(AbstractPipeline):
         self,
         ctx: SharedContext,
         deps: PipelineDeps,
+        config: TerraformConfig | None = None,
+        *,
+        # Legacy parameters for backwards compatibility (deprecated)
         working_dir: str | None = None,
         var_file: str | None = None,
         variables: dict[str, Any] | None = None,
         backend_config: dict[str, str] | None = None,
-        auto_approve: bool = False,
-        destroy_mode: bool = False,
+        auto_approve: bool | None = None,
+        destroy_mode: bool | None = None,
     ):
         """
         Initialize Terraform pipeline.
@@ -61,20 +81,48 @@ class TerraformPipeline(AbstractPipeline):
         Args:
             ctx: Shared context.
             deps: Pipeline dependencies.
-            working_dir: Directory containing Terraform files.
-            var_file: Path to tfvars file.
-            variables: Variables to pass via -var.
-            backend_config: Backend configuration overrides.
-            auto_approve: Skip confirmation in non-interactive mode.
-            destroy_mode: If True, run terraform destroy.
+            config: Terraform configuration (preferred).
+            working_dir: (Deprecated) Use config.working_dir instead.
+            var_file: (Deprecated) Use config.var_file instead.
+            variables: (Deprecated) Use config.variables instead.
+            backend_config: (Deprecated) Use config.backend_config instead.
+            auto_approve: (Deprecated) Use config.auto_approve instead.
+            destroy_mode: (Deprecated) Use config.destroy_mode instead.
         """
         super().__init__(ctx, deps)
-        self._working_dir = working_dir or deps.working_dir or "."
-        self._var_file = var_file
-        self._variables = variables or {}
-        self._backend_config = backend_config or {}
-        self._auto_approve = auto_approve
-        self._destroy_mode = destroy_mode
+
+        # Handle backwards compatibility
+        if config is not None:
+            # Use config object
+            self._working_dir = config.working_dir or deps.working_dir or "."
+            self._var_file = config.var_file
+            self._variables = config.variables
+            self._backend_config = config.backend_config
+            self._auto_approve = config.auto_approve
+            self._destroy_mode = config.destroy_mode
+        else:
+            # Legacy mode - emit deprecation warning if using individual params
+            legacy_params = [
+                working_dir,
+                var_file,
+                variables,
+                backend_config,
+                auto_approve,
+                destroy_mode,
+            ]
+            if any(p is not None for p in legacy_params):
+                warnings.warn(
+                    "Passing individual parameters to TerraformPipeline is deprecated. "
+                    "Use TerraformConfig instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            self._working_dir = working_dir or deps.working_dir or "."
+            self._var_file = var_file
+            self._variables = variables or {}
+            self._backend_config = backend_config or {}
+            self._auto_approve = auto_approve or False
+            self._destroy_mode = destroy_mode or False
 
         # State for rollback
         self._plan_file: str = ".merlya_tfplan"

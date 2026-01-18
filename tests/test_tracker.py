@@ -1,8 +1,11 @@
 """Tests for the ToolCallTracker loop detection module."""
 
 from merlya.agent.tracker import (
+    MAX_CATEGORY_COMMANDS,
     MAX_SAME_FINGERPRINT,
+    MAX_TOTAL_CALLS_SESSION,
     ToolCallTracker,
+    _get_command_category,
     _normalize_command_for_fingerprint,
 )
 
@@ -86,11 +89,11 @@ class TestToolCallTracker:
         """Repeating pattern A→B→C→D→A→B→C→D should trigger loop."""
         tracker = ToolCallTracker()
 
-        # Pattern: cmd1 → cmd2 → cmd3 → cmd4 (repeated)
-        # With PATTERN_WINDOW_SIZE=8, we need 4 commands repeated twice
-        pattern = ["cmd1", "cmd2", "cmd3", "cmd4"]
+        # Pattern: cmd1 → cmd2 → cmd3 (repeated)
+        # With PATTERN_WINDOW_SIZE=6, we need 3 commands repeated twice
+        pattern = ["cmd1", "cmd2", "cmd3"]
 
-        # Repeat pattern twice (A→B→C→D→A→B→C→D)
+        # Repeat pattern twice (A→B→C→A→B→C)
         for _ in range(2):
             for cmd in pattern:
                 tracker.record("host", cmd)
@@ -196,19 +199,18 @@ class TestToolCallTracker:
         """would_loop() should detect pattern about to repeat."""
         tracker = ToolCallTracker()
 
-        # Pattern: A → B → C → D (will be checked when adding A again)
-        # With PATTERN_WINDOW_SIZE=8, we need 4 commands
-        pattern = ["cmd1", "cmd2", "cmd3", "cmd4"]
+        # Pattern: A → B → C (will be checked when adding A again)
+        # With PATTERN_WINDOW_SIZE=6, we need 3 commands
+        pattern = ["cmd1", "cmd2", "cmd3"]
         for cmd in pattern:
             tracker.record("host", cmd)
 
-        # Record first part of repeat (cmd1, cmd2, cmd3)
+        # Record first part of repeat (cmd1, cmd2)
         tracker.record("host", "cmd1")
         tracker.record("host", "cmd2")
-        tracker.record("host", "cmd3")
 
-        # About to add cmd4 which would create pattern A→B→C→D→A→B→C→D
-        would_loop, reason = tracker.would_loop("host", "cmd4")
+        # About to add cmd3 which would create pattern A→B→C→A→B→C
+        would_loop, reason = tracker.would_loop("host", "cmd3")
         assert would_loop
         assert "pattern" in reason.lower()
 
@@ -255,21 +257,19 @@ class TestToolCallTracker:
         """Trying same command with different elevation should trigger loop."""
         tracker = ToolCallTracker()
 
-        # Try sudo, fails, try su, fails, try sudo again = loop
-        # With MAX_SAME_FINGERPRINT=5, we need 5 calls to hit threshold
+        # Try sudo, fails, try su, fails, try doas = loop
+        # With MAX_SAME_FINGERPRINT=3, we need 3 calls to hit threshold
         # All these normalize to the same fingerprint: ELEV:cat /etc/shadow
         tracker.record("host", "sudo cat /etc/shadow")
         tracker.record("host", "su -c 'cat /etc/shadow'")
-        tracker.record("host", "sudo -S cat /etc/shadow")
         tracker.record("host", "doas cat /etc/shadow")
-        tracker.record("host", "sudo -s cat /etc/shadow")  # lowercase -s also normalizes
 
-        # At threshold (5), not looping yet
+        # At threshold (3), not looping yet
         is_loop, _ = tracker.is_looping()
         assert not is_loop
 
         # But one more would loop
-        would_loop, reason = tracker.would_loop("host", "sudo cat /etc/shadow")
+        would_loop, reason = tracker.would_loop("host", "sudo -S cat /etc/shadow")
         assert would_loop
         assert "already executed" in reason.lower()
 
@@ -316,3 +316,126 @@ class TestNormalizeCommand:
         """Rest of command after elevation prefix should be preserved."""
         result = _normalize_command_for_fingerprint("sudo systemctl restart nginx")
         assert result == "ELEV:systemctl restart nginx"
+
+
+class TestCommandCategory:
+    """Tests for command category detection."""
+
+    def test_systemctl_category(self) -> None:
+        """systemctl commands should be categorized."""
+        assert _get_command_category("systemctl status nginx") == "systemctl"
+        assert _get_command_category("sudo systemctl restart odoo") == "systemctl"
+        assert _get_command_category("SYSTEMCTL stop sshd") == "systemctl"
+
+    def test_docker_category(self) -> None:
+        """docker/podman commands should be categorized."""
+        assert _get_command_category("docker ps") == "docker"
+        assert _get_command_category("sudo docker exec -it web bash") == "docker"
+        assert _get_command_category("podman run alpine") == "docker"
+
+    def test_kubectl_category(self) -> None:
+        """kubectl commands should be categorized."""
+        assert _get_command_category("kubectl get pods") == "kubectl"
+        assert _get_command_category("sudo kubectl apply -f deploy.yaml") == "kubectl"
+
+    def test_apt_category(self) -> None:
+        """apt/dpkg commands should be categorized."""
+        assert _get_command_category("apt update") == "apt"
+        assert _get_command_category("apt-get install nginx") == "apt"
+        assert _get_command_category("sudo dpkg -i package.deb") == "apt"
+
+    def test_no_category(self) -> None:
+        """Generic commands should have no category."""
+        assert _get_command_category("ls -la") is None
+        assert _get_command_category("cat /etc/passwd") is None
+        assert _get_command_category("uptime") is None
+
+    def test_category_count_tracking(self) -> None:
+        """Tracker should count category usage."""
+        tracker = ToolCallTracker()
+
+        tracker.record("host", "systemctl status nginx")
+        tracker.record("host", "systemctl restart odoo")
+        tracker.record("host", "systemctl stop ssh")
+
+        assert tracker.category_counts.get("host:systemctl") == 3
+
+    def test_category_loop_detection(self) -> None:
+        """Too many commands in same category should trigger loop detection."""
+        tracker = ToolCallTracker()
+
+        # Record MAX_CATEGORY_COMMANDS different systemctl commands
+        for i in range(MAX_CATEGORY_COMMANDS):
+            tracker.record("host", f"systemctl status service{i}")
+
+        # Next systemctl command should trigger loop
+        would_loop, reason = tracker.would_loop("host", "systemctl restart nginx")
+        assert would_loop
+        assert "systemctl" in reason.lower()
+        assert "too many" in reason.lower()
+
+    def test_category_different_hosts_independent(self) -> None:
+        """Category counts should be tracked per-host."""
+        tracker = ToolCallTracker()
+
+        # Record commands on different hosts
+        for i in range(MAX_CATEGORY_COMMANDS):
+            tracker.record("host1", f"systemctl status service{i}")
+
+        # Host2 should still be allowed
+        would_loop, _ = tracker.would_loop("host2", "systemctl restart nginx")
+        assert not would_loop
+
+    def test_category_reset(self) -> None:
+        """Reset should clear category counts."""
+        tracker = ToolCallTracker()
+
+        tracker.record("host", "systemctl status nginx")
+        assert tracker.category_counts.get("host:systemctl") == 1
+
+        tracker.reset()
+        assert len(tracker.category_counts) == 0
+
+
+class TestSessionLimit:
+    """Tests for session-wide tool call limit."""
+
+    def test_session_limit_blocks_after_threshold(self) -> None:
+        """After MAX_TOTAL_CALLS_SESSION, all commands are blocked."""
+        tracker = ToolCallTracker()
+
+        # Record exactly MAX_TOTAL_CALLS_SESSION calls
+        for i in range(MAX_TOTAL_CALLS_SESSION):
+            tracker.record("host", f"unique_cmd_{i}")
+
+        assert tracker.total_calls == MAX_TOTAL_CALLS_SESSION
+
+        # Next call should be blocked
+        would_loop, reason = tracker.would_loop("host", "another_unique_cmd")
+        assert would_loop
+        assert "session limit" in reason.lower()
+
+    def test_session_limit_is_looping_check(self) -> None:
+        """is_looping returns True when session limit exceeded."""
+        tracker = ToolCallTracker()
+
+        # Record more than MAX_TOTAL_CALLS_SESSION
+        for i in range(MAX_TOTAL_CALLS_SESSION + 1):
+            tracker.record("host", f"unique_cmd_{i}")
+
+        is_loop, reason = tracker.is_looping()
+        assert is_loop
+        assert "session limit" in reason.lower()
+
+    def test_session_limit_resets(self) -> None:
+        """Reset clears session count."""
+        tracker = ToolCallTracker()
+
+        for i in range(MAX_TOTAL_CALLS_SESSION):
+            tracker.record("host", f"cmd_{i}")
+
+        tracker.reset()
+
+        # Should be allowed again
+        would_loop, _ = tracker.would_loop("host", "new_cmd")
+        assert not would_loop

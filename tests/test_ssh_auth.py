@@ -137,6 +137,7 @@ class TestSSHAuthManagerPrepareAuth:
         secrets.get.return_value = None
         secrets.has.return_value = False
         ui = MagicMock()
+        ui.auto_confirm = False  # Enable interactive mode for prompts
         ui.info = MagicMock()
         ui.prompt = AsyncMock(return_value="key")  # User chooses key auth
         ui.prompt_secret = AsyncMock(return_value=None)
@@ -761,6 +762,7 @@ class TestSSHAuthManagerPrompts:
         """Test _prompt_auth_method returns password when selected."""
         secrets = MagicMock()
         ui = MagicMock()
+        ui.auto_confirm = False  # Enable interactive mode for prompts
         ui.prompt = AsyncMock(return_value="password")
         ui.info = MagicMock()
         manager = SSHAuthManager(secrets, ui)
@@ -775,6 +777,7 @@ class TestSSHAuthManagerPrompts:
         """Test _prompt_auth_method returns key by default."""
         secrets = MagicMock()
         ui = MagicMock()
+        ui.auto_confirm = False  # Enable interactive mode for prompts
         ui.prompt = AsyncMock(return_value="key")
         ui.info = MagicMock()
         manager = SSHAuthManager(secrets, ui)
@@ -1204,6 +1207,7 @@ class TestSSHAuthManagerPrepareAuthEdgeCases:
         secrets.has.return_value = False
         secrets.get.return_value = None
         ui = MagicMock()
+        ui.auto_confirm = False  # Enable interactive mode for prompts
         ui.info = MagicMock()
         ui.prompt = AsyncMock(return_value="password")  # User chooses password
         ui.prompt_secret = AsyncMock(return_value="user_password")
@@ -1234,6 +1238,7 @@ class TestSSHAuthManagerPrepareAuthEdgeCases:
         secrets.has.return_value = False
         secrets.get.return_value = None
         ui = MagicMock()
+        ui.auto_confirm = False  # Enable interactive mode for prompts
         ui.info = MagicMock()
         ui.prompt = AsyncMock(return_value="key")
         ui.prompt_secret = AsyncMock(return_value=None)

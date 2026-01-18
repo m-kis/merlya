@@ -101,9 +101,17 @@ async def ssh_execute(
     """
     Execute a command on a host via SSH.
 
+    IMPORTANT: This function ALWAYS executes on the specified host.
+    - If host is "local"/"localhost"/"127.0.0.1" → executes locally via bash
+    - Otherwise → executes remotely via SSH
+
+    The agent MUST specify the correct host. If the user mentions a host/IP
+    in their request, the agent MUST pass that host to this function.
+
     Args:
         ctx: Shared context.
-        host: Host name or hostname. Accepts @hostname format (@ will be stripped).
+        host: Host name or hostname. REQUIRED - must match user's request.
+              Accepts @hostname format (@ will be stripped).
         command: Command to execute. Can contain @secret-name references.
         timeout: Command timeout in seconds.
         connect_timeout: Optional connection timeout.
@@ -120,7 +128,24 @@ async def ssh_execute(
     Secret Format: @service:host:field (e.g., @sudo:192.168.1.7:password)
     Use request_credentials(service='sudo', host='hostname') to store credentials first.
     """
+    from merlya.hosts import HostTargetResolver, TargetType
+
     safe_command = command
+
+    # VALIDATION: Empty host is an error
+    if not host or not host.strip():
+        return ToolResult(
+            success=False,
+            error=(
+                "❌ MISSING HOST: The 'host' parameter is required.\n\n"
+                "You MUST specify which host to execute on:\n"
+                "- ssh_execute(host='192.168.1.7', command='...')  # Direct IP\n"
+                "- ssh_execute(host='pine64', command='...')       # Inventory name\n"
+                "- ssh_execute(host='local', command='...')        # Local machine\n\n"
+                "⚠️ Check the user's request for the target host/IP!"
+            ),
+            data={"command": command[:50]},
+        )
 
     # VALIDATION: Detect common LLM mistake of passing password reference as host
     if host.startswith("@") and any(
@@ -136,21 +161,53 @@ async def ssh_execute(
             data={"host": host},
         )
 
-    # Strip @ prefix from host if present (LLM may pass @hostname format)
-    if host.startswith("@"):
-        host = host[1:]
-        logger.debug(f"🖥️ Stripped @ prefix, using host: {host}")
+    # Use centralized HostTargetResolver for consistent routing
+    resolver = HostTargetResolver(ctx)
+    try:
+        target = await resolver.resolve(host)
+    except Exception as e:
+        logger.error(f"❌ Host resolution failed: {e}")
+        return ToolResult(
+            success=False,
+            error=f"❌ Failed to resolve host '{host}': {e}",
+            data={"host": host},
+        )
 
-    # Handle "local" target - execute locally without SSH
-    if host.lower() in ("local", "localhost", "127.0.0.1", "::1"):
-        logger.info(f"🖥️ Running locally: {command[:50]}...")
+    # Handle LOCAL target - execute via bash
+    if target.target_type == TargetType.LOCAL:
+        logger.info(f"🖥️ Target '{host}' resolved to LOCAL, running locally: {command[:50]}...")
         from merlya.tools.core.bash import bash_execute
 
         return await bash_execute(ctx, command, timeout=timeout)
 
+    # Handle UNKNOWN target - fail with helpful message
+    if target.target_type == TargetType.UNKNOWN:
+        suggestions = await resolver.find_similar_hosts(host)
+        error_msg = (
+            f"❌ HOST NOT FOUND: '{host}' is not in inventory and DNS resolution failed.\n\n"
+        )
+        if suggestions:
+            error_msg += f"💡 Did you mean: {', '.join(suggestions)}?\n\n"
+        error_msg += (
+            f"Options:\n"
+            f"1. Add to inventory: /hosts add {host}\n"
+            f"2. Use direct IP: ssh_execute(host='<IP_ADDRESS>', command='...')\n"
+            f"3. Check the user's request for the correct hostname/IP\n\n"
+            f"⚠️ DO NOT execute locally - the user specified a remote host!"
+        )
+        return ToolResult(
+            success=False,
+            error=error_msg,
+            data={"host": host, "suggestions": suggestions},
+        )
+
+    # REMOTE target - use resolved hostname for SSH
+    resolved_host = target.hostname
+    logger.info(f"🖥️ Target '{host}' resolved to REMOTE: {resolved_host} (source: {target.source})")
+
     try:
         # Validate and prepare command
-        command, safe_command, error = await _prepare_command(ctx, host, command)
+        command, safe_command, error = await _prepare_command(ctx, resolved_host, command)
         if error:
             return error
 
@@ -166,7 +223,7 @@ async def ssh_execute(
                         "🔐 stdin must be a @secret-xxx reference, not plaintext. "
                         "Use request_credentials() first to store the password securely."
                     ),
-                    data={"host": host},
+                    data={"host": resolved_host},
                 )
             # Resolve the @secret reference to get the actual password
             resolved_stdin, _ = await resolve_all_references(stdin, ctx)
@@ -178,14 +235,14 @@ async def ssh_execute(
                 return ToolResult(
                     success=False,
                     error=f"🔐 Secret '{safe_stdin}' not found. Use request_credentials() to store it first.",
-                    data={"host": host},
+                    data={"host": resolved_host},
                 )
             input_data = resolved_stdin
             logger.debug(f"🔑 stdin resolved successfully (length: {len(input_data)} chars)")
         else:
             # Check if command needs stdin but it wasn't provided
             # Try to auto-resolve from secrets store for known elevation patterns
-            input_data = await _auto_resolve_elevation_password(ctx, host, command)
+            input_data = await _auto_resolve_elevation_password(ctx, resolved_host, command)
             if input_data is None and _needs_elevation_password(command):
                 # Check if we're in non-interactive mode
                 is_non_interactive = ctx.auto_confirm or getattr(ctx.ui, "auto_confirm", False)
@@ -199,16 +256,16 @@ async def ssh_execute(
                         error=(
                             f"🔐 ELEVATION IMPOSSIBLE in non-interactive mode.\n\n"
                             f"Command '{short_cmd}' requires sudo/su password, but:\n"
-                            f"- No password found in keyring for {host}\n"
+                            f"- No password found in keyring for {resolved_host}\n"
                             f"- Cannot prompt user (--yes mode)\n\n"
                             f"SOLUTIONS (before running with --yes):\n"
-                            f"1. Store password: merlya secret set sudo:{host}:password\n"
-                            f"2. Configure NOPASSWD sudo on {host}\n"
+                            f"1. Store password: merlya secret set sudo:{resolved_host}:password\n"
+                            f"2. Configure NOPASSWD sudo on {resolved_host}\n"
                             f"3. Run in interactive mode (without --yes)\n\n"
                             f"⚠️ DO NOT retry elevated commands - they will always fail."
                         ),
                         data={
-                            "host": host,
+                            "host": resolved_host,
                             "command": command[:50],
                             "needs_credentials": True,
                             "non_interactive": True,
@@ -221,26 +278,32 @@ async def ssh_execute(
                         success=False,
                         error=(
                             f"🔐 ELEVATION REQUIRED: Command '{short_cmd}' needs a password.\n\n"
-                            f"The password for {host} was not found in the secrets store.\n\n"
+                            f"The password for {resolved_host} was not found in the secrets store.\n\n"
                             f"To fix this:\n"
-                            f"1. Call: request_credentials(service='sudo', host='{host}')\n"
-                            f"2. Then retry with: ssh_execute(host='{host}', command='{short_cmd}', stdin='@sudo:{host}:password')\n\n"
+                            f"1. Call: request_credentials(service='sudo', host='{resolved_host}')\n"
+                            f"2. Then retry with: ssh_execute(host='{resolved_host}', command='{short_cmd}', stdin='@sudo:{resolved_host}:password')\n\n"
                             f"⚠️ DO NOT execute without stdin - it will timeout waiting for password input."
                         ),
-                        data={"host": host, "command": command[:50], "needs_credentials": True},
+                        data={
+                            "host": resolved_host,
+                            "command": command[:50],
+                            "needs_credentials": True,
+                        },
                     )
 
-        # Lookup host entry early to get elevation_method
-        host_entry: Host | None = await ctx.hosts.get_by_name(host)
+        # Use host_entry from resolver if available, otherwise lookup
+        host_entry: Host | None = target.host_entry
+        if host_entry is None:
+            host_entry = await ctx.hosts.get_by_name(resolved_host)
 
         # Auto-transform command based on known elevation method
         # Priority: Host model > memory cache
         host_elevation = getattr(host_entry, "elevation_method", None) if host_entry else None
-        command = _auto_transform_elevation_command(host, command, host_elevation)
+        command = _auto_transform_elevation_command(resolved_host, command, host_elevation)
 
         # Build execution context (reuses host_entry lookup)
         exec_ctx = await _build_context(
-            ctx, host, command, timeout, connect_timeout, via, host_entry
+            ctx, resolved_host, command, timeout, connect_timeout, via, host_entry
         )
 
         # Execute command (input_data enables PTY for su/sudo -S automatically)
@@ -254,13 +317,18 @@ async def ssh_execute(
             exec_ctx.ssh_opts,
         )
 
+        # Update session context for follow-up questions
+        # This allows "check memory" after "check disk on pine64" to target pine64
+        if result.exit_code == 0:
+            resolver.update_session_target(target)
+
         return _build_result(result, exec_ctx, safe_command)
 
     except asyncio.CancelledError:
         # Propagate cancellation so REPL Ctrl+C can abort long-running actions/prompts.
         raise
     except Exception as e:
-        return _handle_error(e, host, safe_command, via)
+        return _handle_error(e, resolved_host, safe_command, via)
 
 
 # Global credential hints: maps host -> secret_key for custom password references
@@ -418,11 +486,23 @@ def _auto_transform_elevation_command(
         logger.debug(f"   Transformed: {transformed[:50]}")
         return transformed
 
-    if uses_su and known_method in ("sudo", "sudo-S"):
+    if uses_su and known_method in ("sudo", "sudo-S", "sudo_password"):
         # LLM used su but sudo is what works
-        method = "sudo-S" if "-s" in command.lower() else "sudo"
+        method = "sudo-S" if known_method == "sudo_password" else "sudo"
         transformed = format_elevated_command(base_cmd, method)
         logger.info(f"🔄 Auto-transformed: su → sudo for {host}")
+        return transformed
+
+    # Transform sudo to sudo -S when host requires password
+    # Check if already has -S flag (note: checking for lowercase -s as cmd_lower is used)
+    if (
+        uses_sudo
+        and known_method == "sudo_password"
+        and " -s " not in cmd_lower
+        and not cmd_lower.startswith("sudo -s")
+    ):
+        transformed = format_elevated_command(base_cmd, "sudo-S")
+        logger.info(f"🔄 Auto-transformed: sudo → sudo -S for {host} (password required)")
         return transformed
 
     return command  # No transformation needed

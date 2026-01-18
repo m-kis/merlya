@@ -1,6 +1,6 @@
 [project]
 name = "merlya"
-version = "0.8.0"
+version = "0.8.1"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
     { name = "Cedric", email = "infra@merlya.fr" }
@@ -56,9 +56,13 @@ dependencies = [
     # Config
     "pyyaml>=6.0",
 
+    # Templates
+    "jinja2>=3.1",
+
     # Utils
     "psutil>=6.1",
     "ddgs>=9.9",
+    "packaging>=24.0",
 
     # Security: pin transitive dependencies with known CVEs
     "urllib3>=2.6.0",  # CVE-2025-66418, CVE-2025-66471
