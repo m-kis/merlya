@@ -125,11 +125,11 @@ class TestOrchestratorCreation:
         """Test that create_orchestrator returns an Agent."""
         with (
             patch(
-                "merlya.agent.orchestrator.get_model_for_role",
+                "merlya.agent.orchestrator.core.get_model_for_role",
                 return_value="test-model",
             ),
             patch(
-                "merlya.agent.orchestrator.get_pydantic_model_string",
+                "merlya.agent.orchestrator.core.get_pydantic_model_string",
                 return_value="test:test-model",
             ),
         ):
@@ -143,11 +143,11 @@ class TestOrchestratorCreation:
         """Test that create_orchestrator accepts model override."""
         with (
             patch(
-                "merlya.agent.orchestrator.get_model_for_role",
+                "merlya.agent.orchestrator.core.get_model_for_role",
                 return_value="default-model",
             ),
             patch(
-                "merlya.agent.orchestrator.get_pydantic_model_string",
+                "merlya.agent.orchestrator.core.get_pydantic_model_string",
                 return_value="test:custom-model",
             ) as mock_get_string,
         ):

@@ -10,17 +10,19 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import Agent, RunContext  # noqa: TC002
 
+from merlya.agent.types import MCPCallResponse, MCPToolsListResponse
+
 if TYPE_CHECKING:
     from merlya.agent.main import AgentDependencies
 else:
-    AgentDependencies = Any  # type: ignore
+    AgentDependencies = Any
 
 
 def register_mcp_tools(agent: Agent[Any, Any]) -> None:
     """Register MCP bridge tools."""
 
     @agent.tool
-    async def list_mcp_tools(ctx: RunContext[AgentDependencies]) -> dict[str, Any]:
+    async def list_mcp_tools(ctx: RunContext[AgentDependencies]) -> MCPToolsListResponse:
         """
         List available MCP tools with their schemas.
 
@@ -38,17 +40,19 @@ def register_mcp_tools(agent: Agent[Any, Any]) -> None:
         Returns:
             List of tools with names, descriptions, and parameter schemas.
         """
+        from merlya.agent.types import MCPToolInfo
+
         manager = await ctx.deps.context.get_mcp_manager()
         tools = await manager.list_tools()
 
         # Build detailed tool info for LLM
-        tool_details = []
+        tool_details: list[MCPToolInfo] = []
         for tool in tools:
-            detail: dict[str, Any] = {
-                "name": tool.name,
-                "description": tool.description or "No description",
-                "server": tool.server,
-            }
+            detail = MCPToolInfo(
+                name=tool.name,
+                description=tool.description or "No description",
+                server=tool.server,
+            )
             # Include schema so LLM knows required parameters
             if tool.input_schema:
                 detail["parameters"] = tool.input_schema
@@ -57,14 +61,14 @@ def register_mcp_tools(agent: Agent[Any, Any]) -> None:
                     detail["required_params"] = tool.input_schema["required"]
             tool_details.append(detail)
 
-        return {"tools": tool_details, "count": len(tools)}
+        return MCPToolsListResponse(tools=tool_details, count=len(tools))
 
     @agent.tool
     async def call_mcp_tool(
         ctx: RunContext[AgentDependencies],
         tool: str,
-        arguments: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        arguments: dict[str, object] | None = None,
+    ) -> MCPCallResponse:
         """
         Call an MCP tool by name with arguments.
 
@@ -81,7 +85,8 @@ def register_mcp_tools(agent: Agent[Any, Any]) -> None:
             Tool execution result with content and any structured data.
         """
         manager = await ctx.deps.context.get_mcp_manager()
-        return await manager.call_tool(tool, arguments or {})
+        result = await manager.call_tool(tool, arguments or {})
+        return MCPCallResponse(success=True, result=result)
 
     @agent.tool
     async def request_confirmation(

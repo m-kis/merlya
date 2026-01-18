@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2025-01-15
+
+### Fixed
+
+- **SSH tools import error**: Fixed `HostManager` import (now uses `HostRepository`)
+- **Batch mode SSH blocking**: Fixed SSH authentication prompts blocking non-interactive mode
+  - Detects non-TTY stdin automatically and sets `auto_confirm=True`
+  - Raises clear error with instructions when SSH auth not pre-configured
+- **sudo → sudo -S transformation**: Auto-transforms `sudo` to `sudo -S` for hosts with `sudo_password` elevation
+- **Input validation**: Added validation for variable, secret, and host names
+  - Variable names must start with letter, contain only alphanumeric, hyphens, underscores
+  - Host names must start with alphanumeric, contain only alphanumeric, dots, hyphens, underscores
+
+### Changed
+
+- **Lint compliance**: Fixed all ruff lint errors for CI compatibility
+- **Type imports**: Fixed pydantic_ai type imports for runtime availability
+
+---
+
 ## [0.8.0] - 2025-12-29
 
 ### Added

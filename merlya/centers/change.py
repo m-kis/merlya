@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from merlya.capabilities.models import HostCapabilities, LocalCapabilities
     from merlya.core.context import SharedContext
     from merlya.pipelines.base import AbstractPipeline, PipelineDeps, PipelineResult
+    from merlya.provisioners.base import ProvisionerResult
 
 
 class ChangeCenter(AbstractCenter):
@@ -112,7 +113,42 @@ class ChangeCenter(AbstractCenter):
             # 2. Detect capabilities
             caps = await self._get_capabilities(deps.target, host)
 
-            # 3. Select appropriate pipeline
+            # 3. Check for IaC provisioning task first
+            provisioner_result = await self._try_provisioner(deps)
+            if provisioner_result is not None:
+                duration = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+                # Extract apply results (if available)
+                apply_result = provisioner_result.apply
+                rollback_data = apply_result.rollback_data if apply_result else None
+                resources_created = apply_result.resources_created if apply_result else []
+                resources_updated = apply_result.resources_updated if apply_result else []
+                resources_deleted = apply_result.resources_deleted if apply_result else []
+
+                return CenterResult(
+                    success=provisioner_result.success,
+                    message=self._format_provisioner_result(provisioner_result),
+                    mode=self.mode,
+                    applied=provisioner_result.success and not provisioner_result.aborted,
+                    rollback_available=rollback_data is not None,
+                    post_check_passed=None,
+                    data={
+                        "provisioner": True,
+                        "action": provisioner_result.action.value
+                        if provisioner_result.action
+                        else None,
+                        "provider": deps.extra.get("cloud_provider"),
+                        "resources_created": resources_created,
+                        "resources_updated": resources_updated,
+                        "resources_deleted": resources_deleted,
+                        "aborted": provisioner_result.aborted,
+                        "aborted_reason": provisioner_result.aborted_reason,
+                    },
+                    started_at=start_time,
+                    completed_at=datetime.now(UTC),
+                    duration_ms=duration,
+                )
+
+            # 4. Select appropriate pipeline
             pipeline = await self._select_pipeline(deps, caps)
             if pipeline is None:
                 return self._create_result(
@@ -121,7 +157,7 @@ class ChangeCenter(AbstractCenter):
                     data={"available_tools": self._list_available_tools(caps)},
                 )
 
-            # 4. Execute pipeline (includes HITL)
+            # 5. Execute pipeline (includes HITL)
             logger.info(f"📋 Using {pipeline.name} pipeline for {deps.target}")
             result = await pipeline.execute()
             self._last_pipeline_result = result
@@ -372,3 +408,129 @@ class ChangeCenter(AbstractCenter):
     def last_result(self) -> PipelineResult | None:
         """Get last pipeline execution result."""
         return self._last_pipeline_result
+
+    async def _try_provisioner(self, deps: CenterDeps) -> ProvisionerResult | None:
+        """
+        Try to handle task as IaC provisioning operation.
+
+        Checks if the task is an IaC operation (provision, update, destroy)
+        and routes to the appropriate provisioner.
+
+        Args:
+            deps: Center dependencies with task and extra context.
+
+        Returns:
+            ProvisionerResult if handled as IaC, None otherwise.
+        """
+        # Check if this is an IaC task via extra context
+        iac_operation = deps.extra.get("iac_operation")
+        cloud_provider = deps.extra.get("cloud_provider")
+
+        if not iac_operation:
+            return None
+
+        logger.info(f"🏗️ IaC operation detected: {iac_operation} on {cloud_provider or 'auto'}")
+
+        try:
+            from merlya.provisioners.base import ProvisionerAction, ProvisionerDeps
+            from merlya.provisioners.registry import ProvisionerRegistry
+
+            # Get provisioner registry
+            registry = ProvisionerRegistry.get_instance()
+
+            # Map operation to action
+            action_map = {
+                "provision": ProvisionerAction.CREATE,
+                "create": ProvisionerAction.CREATE,
+                "update": ProvisionerAction.UPDATE,
+                "modify": ProvisionerAction.UPDATE,
+                "destroy": ProvisionerAction.DELETE,
+                "delete": ProvisionerAction.DELETE,
+            }
+            action = action_map.get(iac_operation.lower())
+            if action is None:
+                logger.warning(f"Unknown IaC operation: {iac_operation}")
+                return None
+
+            # Build provisioner deps
+            provisioner_deps = ProvisionerDeps(
+                action=action,
+                provider=cloud_provider or "auto",
+                resources=deps.extra.get("resources", []),
+                dry_run=deps.extra.get("dry_run", False),
+                extra={
+                    "template_name": deps.extra.get("template"),
+                    "template_vars": deps.extra.get("template_vars", {}),
+                },
+            )
+
+            # Get provisioner and execute
+            try:
+                provisioner = registry.get(provisioner_deps)
+                result: ProvisionerResult = await provisioner.execute()
+                return result
+            except ValueError as e:
+                logger.warning(f"No provisioner available for provider {cloud_provider}: {e}")
+                return None
+
+        except ImportError as e:
+            logger.debug(f"Provisioner module not available: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Provisioner execution failed: {e}")
+            # Return failed result instead of None to indicate we tried
+            from merlya.provisioners.base import ProvisionerAction, ProvisionerResult
+
+            return ProvisionerResult(
+                success=False,
+                action=ProvisionerAction.CREATE,
+                aborted=True,
+                aborted_reason=str(e),
+            )
+
+    def _format_provisioner_result(self, result: ProvisionerResult) -> str:
+        """Format provisioner result for human consumption."""
+        lines = []
+
+        if result.aborted:
+            lines.append(f"⏹️ Provisioner aborted: {result.aborted_reason}")
+            return "\n".join(lines)
+
+        action_emoji = {
+            "CREATE": "🆕",
+            "UPDATE": "🔄",
+            "DELETE": "🗑️",
+        }
+        emoji = action_emoji.get(result.action.value if result.action else "", "🏗️")
+
+        if result.success:
+            lines.append(f"{emoji} Provisioning completed successfully")
+
+            # Get resource counts from apply result
+            if result.apply:
+                if result.apply.resources_created:
+                    lines.append(f"   Created: {len(result.apply.resources_created)} resources")
+                if result.apply.resources_updated:
+                    lines.append(f"   Updated: {len(result.apply.resources_updated)} resources")
+                if result.apply.resources_deleted:
+                    lines.append(f"   Deleted: {len(result.apply.resources_deleted)} resources")
+
+                if result.apply.outputs:
+                    lines.append("   Outputs:")
+                    for key, value in result.apply.outputs.items():
+                        # Truncate long values
+                        display_value = str(value)[:50]
+                        if len(str(value)) > 50:
+                            display_value += "..."
+                        lines.append(f"      {key}: {display_value}")
+
+        else:
+            lines.append(f"{emoji} Provisioning failed")
+
+            if result.apply and result.apply.rollback_data:
+                lines.append("   ↩️ Rollback data available")
+
+        if result.duration_seconds:
+            lines.append(f"   Duration: {int(result.duration_seconds * 1000)}ms")
+
+        return "\n".join(lines)

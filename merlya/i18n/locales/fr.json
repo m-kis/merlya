@@ -330,7 +330,8 @@
       "options": "  1. English\n  2. Français"
     },
     "step_llm": "📡 **Étape 1 : Configuration LLM**",
-    "step_inventory": "🖥️ **Étape 2 : Détection des inventaires**",
+    "step_mcp": "☁️ **Étape 2 : Providers Cloud (Optionnel)**",
+    "step_inventory": "🖥️ **Étape 3 : Détection des inventaires**",
     "llm_config": {
       "title": "📡 Configuration du Provider LLM",
       "providers": "Providers disponibles :\n  1. OpenRouter (recommandé - multi-modèles)\n  2. Anthropic (Claude direct)\n  3. OpenAI (modèles GPT)\n  4. Mistral (Mistral AI)\n  5. Groq (inférence rapide)\n  6. Ollama (modèles locaux)",
@@ -342,6 +343,24 @@
       "api_key_saved": "✅ Clé API configurée et stockée de manière sécurisée",
       "api_key_missing": "⚠️ Aucune clé API fournie",
       "skipped": "⚠️ Configuration LLM ignorée"
+    },
+    "mcp_config": {
+      "title": "☁️ Configuration des Providers Cloud",
+      "intro": "Configurez les providers cloud pour le provisionnement IaC.\n\nProviders supportés : AWS, Google Cloud, Azure, OVH, DigitalOcean.\nLes identifiants seront stockés de manière sécurisée dans le keyring système.",
+      "enable_prompt": "Configurer les providers cloud pour le provisionnement d'infrastructure ?",
+      "available_providers": "📋 Providers cloud disponibles :",
+      "select_providers": "Sélectionnez les providers (numéros séparés par des virgules, ou 'all')",
+      "configuring": "🔧 Configuration de {provider}...",
+      "secret_found": "✅ {secret} trouvé ({source})",
+      "enter_secret": "Entrez {secret} ({env_var})",
+      "secret_saved": "✅ {secret} stocké de manière sécurisée",
+      "secret_missing": "⚠️ {secret} non fourni",
+      "provider_ready": "✅ {provider} configuré",
+      "provider_incomplete": "⚠️ Configuration de {provider} incomplète",
+      "mcp_available": "MCP disponible",
+      "mcp_fallback": "Fallback Terraform/API",
+      "complete": "✅ {count} provider(s) cloud configuré(s)",
+      "skipped": "ℹ️ Configuration des providers cloud ignorée"
     },
     "inventory": {
       "title": "🖥️ Configuration de l'inventaire",

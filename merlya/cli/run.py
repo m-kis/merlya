@@ -8,7 +8,6 @@ Supports both natural language commands (via AI agent) and slash commands.
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from enum import Enum
@@ -280,6 +279,11 @@ async def run_batch(
     ctx.quiet = quiet
     ctx.output_format = output_format
 
+    # Ensure UI also has the non-interactive flag set
+    # (in case UI was already created by previous SharedContext usage)
+    ctx.ui.auto_confirm = auto_confirm
+    ctx.ui.quiet = quiet
+
     # Load API keys from keyring into environment
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
 
@@ -310,7 +314,9 @@ async def run_batch(
 
     if not health.can_start:
         if output_format == "json":
-            print(json.dumps({"success": False, "error": "Health checks failed"}))
+            print(
+                json.dumps({"success": False, "error": "Health checks failed"})
+            )  # JSON output - intentional print
         else:
             ctx.ui.error("Cannot start: critical checks failed")
         return BatchResult(success=False, tasks=[], total=0, passed=0, failed=0)
@@ -424,7 +430,7 @@ async def run_batch(
 
         # Output final result (must happen before ctx.close())
         if output_format == "json":
-            print(json.dumps(batch_result.to_dict(), indent=2))
+            print(json.dumps(batch_result.to_dict(), indent=2))  # JSON output - intentional print
         elif not quiet:
             ctx.ui.newline()
             status = "success" if batch_result.success else "error"
@@ -610,16 +616,20 @@ async def run_from_file(
         tasks = load_tasks_from_file(file_path, default_model=model_role)
     except FileNotFoundError as e:
         if output_format == "json":
-            print(json.dumps({"success": False, "error": str(e)}))
+            print(
+                json.dumps({"success": False, "error": str(e)})
+            )  # JSON output - intentional print
         else:
-            print(f"Error: {e}", file=sys.stderr)
+            logger.error(f"❌ {e}")
         return 1
 
     if not tasks:
         if output_format == "json":
-            print(json.dumps({"success": False, "error": "No tasks found in file"}))
+            print(
+                json.dumps({"success": False, "error": "No tasks found in file"})
+            )  # JSON output - intentional print
         else:
-            print("Error: No tasks found in file", file=sys.stderr)
+            logger.error("❌ No tasks found in file")
         return 1
 
     result = await run_batch(

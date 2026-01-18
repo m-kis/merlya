@@ -32,10 +32,21 @@ class LLMConfig:
 
 
 @dataclass
+class MCPProviderConfig:
+    """MCP provider configuration result."""
+
+    provider_id: str
+    name: str
+    configured: bool = False
+    mcp_package: str | None = None
+
+
+@dataclass
 class SetupResult:
     """Result of setup wizard."""
 
     llm_config: LLMConfig | None = None
+    mcp_providers: list[MCPProviderConfig] = field(default_factory=list)
     hosts_imported: int = 0
     hosts_skipped: int = 0
     sources_imported: list[str] = field(default_factory=list)
@@ -52,7 +63,7 @@ class InventorySource:
     host_count: int
 
 
-# Provider config: (provider_name, env_key, default_model, fallback_model)
+# LLM Provider config: (provider_name, env_key, default_model, fallback_model)
 PROVIDERS = {
     "1": (
         "openrouter",
@@ -70,6 +81,51 @@ PROVIDERS = {
     "4": ("mistral", "MISTRAL_API_KEY", "mistral-large-latest", "mistral:mistral-small-latest"),
     "5": ("groq", "GROQ_API_KEY", "llama-3.3-70b-versatile", "groq:llama-3.1-8b-instant"),
     "6": ("ollama", None, "llama3.2", "ollama:llama3.2"),
+}
+
+# MCP Cloud Provider config for IaC provisioning
+# Format: (display_name, mcp_package, [(secret_name, env_var_name, description), ...])
+MCP_PROVIDERS = {
+    "aws": (
+        "AWS",
+        "@aws-sdk/mcp",
+        [
+            ("aws-access-key", "AWS_ACCESS_KEY_ID", "AWS Access Key ID"),
+            ("aws-secret-key", "AWS_SECRET_ACCESS_KEY", "AWS Secret Access Key"),
+        ],
+    ),
+    "gcp": (
+        "Google Cloud",
+        "@google-cloud/mcp",
+        [
+            ("gcp-credentials-json", "GOOGLE_APPLICATION_CREDENTIALS", "GCP Service Account JSON"),
+        ],
+    ),
+    "azure": (
+        "Azure",
+        "@azure/mcp",
+        [
+            ("azure-client-id", "AZURE_CLIENT_ID", "Azure Client ID"),
+            ("azure-client-secret", "AZURE_CLIENT_SECRET", "Azure Client Secret"),
+            ("azure-tenant-id", "AZURE_TENANT_ID", "Azure Tenant ID"),
+        ],
+    ),
+    "ovh": (
+        "OVH",
+        None,  # No MCP yet, fallback to API
+        [
+            ("ovh-application-key", "OVH_APPLICATION_KEY", "OVH Application Key"),
+            ("ovh-application-secret", "OVH_APPLICATION_SECRET", "OVH Application Secret"),
+            ("ovh-consumer-key", "OVH_CONSUMER_KEY", "OVH Consumer Key"),
+        ],
+    ),
+    "digitalocean": (
+        "DigitalOcean",
+        None,  # No MCP yet, fallback to API
+        [
+            ("digitalocean-token", "DIGITALOCEAN_TOKEN", "DigitalOcean API Token"),
+        ],
+    ),
 }
 
 
@@ -144,6 +200,140 @@ async def run_llm_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> LLMC
             fallback = f"{provider}:{fallback}"
 
     return LLMConfig(provider=provider, model=model, api_key_env=env_key, fallback_model=fallback)
+
+
+async def run_mcp_setup(ui: ConsoleUI, ctx: SharedContext | None = None) -> list[MCPProviderConfig]:
+    """
+    Run MCP cloud provider setup wizard.
+
+    Configures cloud provider credentials for IaC provisioning.
+    Credentials are stored securely in the system keyring.
+
+    Args:
+        ui: Console UI.
+        ctx: Optional shared context for i18n.
+
+    Returns:
+        List of configured MCP provider configs.
+    """
+    from merlya.secrets import has_secret, set_secret
+
+    def t(translation_key: str, **kwargs: Any) -> str:
+        if ctx:
+            return ctx.i18n.t(translation_key, **kwargs)
+        return translation_key
+
+    configured: list[MCPProviderConfig] = []
+
+    # Ask if user wants to configure cloud providers
+    ui.panel(
+        t("setup.mcp_config.intro"),
+        title=t("setup.mcp_config.title"),
+        style="info",
+    )
+
+    do_setup = await ui.prompt_confirm(t("setup.mcp_config.enable_prompt"), default=False)
+    if not do_setup:
+        ui.info(t("setup.mcp_config.skipped"))
+        return configured
+
+    # Show available providers
+    provider_list = "\n".join(
+        f"  {i + 1}. {name}" for i, (_, (name, _, _)) in enumerate(MCP_PROVIDERS.items())
+    )
+    ui.info(t("setup.mcp_config.available_providers") + "\n" + provider_list)
+
+    # Ask which providers to configure
+    provider_ids = list(MCP_PROVIDERS.keys())
+    selection = await ui.prompt(
+        t("setup.mcp_config.select_providers"),
+        default="",
+    )
+
+    if not selection.strip():
+        ui.info(t("setup.mcp_config.skipped"))
+        return configured
+
+    # Parse selection (comma-separated numbers or "all")
+    selected_providers: list[str] = []
+    if selection.strip().lower() == "all":
+        selected_providers = provider_ids
+    else:
+        for part in selection.split(","):
+            part = part.strip()
+            if part.isdigit():
+                idx = int(part) - 1
+                if 0 <= idx < len(provider_ids):
+                    selected_providers.append(provider_ids[idx])
+
+    if not selected_providers:
+        ui.info(t("setup.mcp_config.skipped"))
+        return configured
+
+    # Configure each selected provider
+    for provider_id in selected_providers:
+        display_name, mcp_package, secrets = MCP_PROVIDERS[provider_id]
+
+        ui.newline()
+        ui.info(t("setup.mcp_config.configuring", provider=display_name))
+
+        all_secrets_present = True
+        missing_secrets: list[tuple[str, str, str]] = []
+
+        # Check which secrets are missing
+        for secret_name, env_var, description in secrets:
+            # Check env var first, then keyring
+            env_value = os.environ.get(env_var)
+            if env_value:
+                ui.success(t("setup.mcp_config.secret_found", secret=description, source="env"))
+            elif has_secret(secret_name):
+                ui.success(t("setup.mcp_config.secret_found", secret=description, source="keyring"))
+            else:
+                all_secrets_present = False
+                missing_secrets.append((secret_name, env_var, description))
+
+        # Prompt for missing secrets
+        for secret_name, env_var, description in missing_secrets:
+            value = await ui.prompt_secret(
+                t("setup.mcp_config.enter_secret", secret=description, env_var=env_var)
+            )
+            if value:
+                set_secret(secret_name, value)
+                os.environ[env_var] = value
+                ui.success(t("setup.mcp_config.secret_saved", secret=description))
+                all_secrets_present = True
+            else:
+                ui.warning(t("setup.mcp_config.secret_missing", secret=description))
+                all_secrets_present = False
+                break
+
+        config = MCPProviderConfig(
+            provider_id=provider_id,
+            name=display_name,
+            configured=all_secrets_present,
+            mcp_package=mcp_package,
+        )
+        configured.append(config)
+
+        if all_secrets_present:
+            mcp_status = (
+                t("setup.mcp_config.mcp_available")
+                if mcp_package
+                else t("setup.mcp_config.mcp_fallback")
+            )
+            ui.success(
+                t("setup.mcp_config.provider_ready", provider=display_name) + f" ({mcp_status})"
+            )
+        else:
+            ui.warning(t("setup.mcp_config.provider_incomplete", provider=display_name))
+
+    # Summary
+    configured_count = sum(1 for c in configured if c.configured)
+    if configured_count > 0:
+        ui.newline()
+        ui.success(t("setup.mcp_config.complete", count=configured_count))
+
+    return configured
 
 
 async def detect_inventory_sources(_ui: ConsoleUI) -> list[InventorySource]:
@@ -346,6 +536,17 @@ async def run_setup_wizard(ui: ConsoleUI, ctx: SharedContext | None = None) -> S
         ui.success(f"Provider: {llm_config.provider}, Model: {llm_config.model}")
     else:
         ui.warning(t("setup.llm_config.skipped"))
+
+    # MCP Cloud Providers Setup (optional)
+    ui.newline()
+    ui.info(t("setup.step_mcp"))
+    mcp_providers = await run_mcp_setup(ui, ctx)
+    result.mcp_providers = mcp_providers
+    if mcp_providers:
+        configured_count = sum(1 for p in mcp_providers if p.configured)
+        if configured_count > 0:
+            names = ", ".join(p.name for p in mcp_providers if p.configured)
+            ui.success(f"Cloud providers: {names}")
 
     # Inventory import
     ui.newline()

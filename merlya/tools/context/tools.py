@@ -136,15 +136,11 @@ async def list_hosts_summary(
         #    🏷️ Tags: production:42, web:20, db:10
         #    📋 Sample: web-01, web-02, db-01, api-01, cache-01
     """
-    from merlya.persistence.repositories import HostRepository
-
-    repo = HostRepository(ctx.db)
-
-    # Get hosts with optional filters
+    # Use ctx.hosts (injected HostRepository) instead of creating new instance
     if tag:
-        hosts = await repo.get_by_tag(tag)
+        hosts = await ctx.hosts.get_by_tag(tag)
     else:
-        hosts = await repo.get_all()
+        hosts = await ctx.hosts.get_all()
 
     # Apply status filter if specified
     if status:
@@ -204,14 +200,12 @@ async def get_host_details(
         if details:
             print(details.to_text())
     """
-    from merlya.persistence.repositories import HostRepository
-
-    repo = HostRepository(ctx.db)
-    host = await repo.get_by_name(host_name)
+    # Use ctx.hosts (injected HostRepository) instead of creating new instance
+    host = await ctx.hosts.get_by_name(host_name)
 
     if not host:
         # Try by ID
-        host = await repo.get_by_id(host_name)
+        host = await ctx.hosts.get_by_id(host_name)
 
     if not host:
         logger.warning(f"⚠️ Host not found: {host_name}")
@@ -254,10 +248,8 @@ async def list_groups(
         # 📁 production: 42 hosts (90% healthy) [web-01, db-01, api-01]
         # 📁 staging: 10 hosts (100% healthy) [stg-web-01, stg-db-01]
     """
-    from merlya.persistence.repositories import HostRepository
-
-    repo = HostRepository(ctx.db)
-    all_hosts = await repo.get_all()
+    # Use ctx.hosts (injected HostRepository) instead of creating new instance
+    all_hosts = await ctx.hosts.get_all()
 
     # Group hosts by tags
     groups: dict[str, list[Any]] = {}

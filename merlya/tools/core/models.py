@@ -7,13 +7,17 @@ Contains the ToolResult dataclass used by all tools.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Generic, TypeVar
+
+# Type variable for tool result data
+T = TypeVar("T")
 
 
 @dataclass
-class ToolResult:
-    """Result of a tool execution."""
+class ToolResult(Generic[T]):
+    """Result of a tool execution with typed data."""
 
     success: bool
-    data: Any
+    data: T
     error: str | None = None
+    severity: str | None = None

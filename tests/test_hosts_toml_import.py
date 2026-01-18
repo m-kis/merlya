@@ -7,10 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from merlya.commands.handlers.hosts_io import (
-    _import_toml,
-    detect_import_format,
-)
+from merlya.commands.handlers.hosts_formats import TomlImporter
+from merlya.commands.handlers.hosts_io import detect_import_format
 
 
 class TestDetectImportFormat:
@@ -48,7 +46,7 @@ class TestDetectImportFormat:
 
 
 class TestImportToml:
-    """Tests for _import_toml function."""
+    """Tests for TomlImporter class."""
 
     @pytest.fixture
     def mock_ctx(self):
@@ -59,8 +57,13 @@ class TestImportToml:
         ctx.hosts.create = AsyncMock()
         return ctx
 
+    @pytest.fixture
+    def importer(self):
+        """Create TomlImporter instance."""
+        return TomlImporter()
+
     @pytest.mark.asyncio
-    async def test_imports_hosts_section(self, mock_ctx):
+    async def test_imports_hosts_section(self, mock_ctx, importer):
         """Test importing hosts from [hosts.xxx] format."""
         content = """
 [hosts.internal-db]
@@ -73,14 +76,14 @@ port = 22
 hostname = "bastion.example.com"
 user = "admin"
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 2
         assert len(errors) == 0
         assert mock_ctx.hosts.create.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_imports_with_tags(self, mock_ctx):
+    async def test_imports_with_tags(self, mock_ctx, importer):
         """Test importing hosts with tags."""
         content = """
 [hosts.webserver]
@@ -88,7 +91,7 @@ hostname = "192.168.1.100"
 user = "www"
 tags = ["production", "web"]
 """
-        imported, _errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 1
         # Check the host was created with correct data
@@ -97,7 +100,7 @@ tags = ["production", "web"]
         assert "production" in call_args.tags
 
     @pytest.mark.asyncio
-    async def test_skips_existing_hosts(self, mock_ctx):
+    async def test_skips_existing_hosts(self, mock_ctx, importer):
         """Test that existing hosts are skipped."""
         mock_ctx.hosts.get_by_name = AsyncMock(return_value=MagicMock())  # Host exists
 
@@ -105,52 +108,52 @@ tags = ["production", "web"]
 [hosts.existing]
 hostname = "10.0.0.1"
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 0
         assert len(errors) == 1
         assert "already exists" in errors[0]
 
     @pytest.mark.asyncio
-    async def test_handles_missing_hostname(self, mock_ctx):
+    async def test_handles_missing_hostname(self, mock_ctx, importer):
         """Test error handling for missing hostname."""
         content = """
 [hosts.invalid]
 user = "admin"
 """
-        imported, errors = await _import_toml(mock_ctx, content)
+        imported, errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 0
         assert len(errors) == 1
         assert "missing hostname" in errors[0]
 
     @pytest.mark.asyncio
-    async def test_supports_host_alias(self, mock_ctx):
+    async def test_supports_host_alias(self, mock_ctx, importer):
         """Test that 'host' is accepted as alias for 'hostname'."""
         content = """
 [hosts.server]
 host = "10.0.0.1"
 """
-        imported, _errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 1
 
     @pytest.mark.asyncio
-    async def test_supports_bastion_alias(self, mock_ctx):
+    async def test_supports_bastion_alias(self, mock_ctx, importer):
         """Test that 'bastion' is accepted as alias for 'jump_host'."""
         content = """
 [hosts.internal]
 hostname = "10.0.0.1"
 bastion = "jump.example.com"
 """
-        imported, _errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 1
         call_args = mock_ctx.hosts.create.call_args[0][0]
         assert call_args.jump_host == "jump.example.com"
 
     @pytest.mark.asyncio
-    async def test_flat_structure(self, mock_ctx):
+    async def test_flat_structure(self, mock_ctx, importer):
         """Test importing hosts at root level (no [hosts] section)."""
         content = """
 [webserver]
@@ -161,6 +164,6 @@ user = "web"
 hostname = "10.0.0.2"
 user = "db"
 """
-        imported, _errors = await _import_toml(mock_ctx, content)
+        imported, _errors = await importer.import_hosts(mock_ctx, content, Path("/tmp/hosts.toml"))
 
         assert imported == 2

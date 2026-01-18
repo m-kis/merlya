@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from merlya.commands.handlers.hosts_io import (
-    _import_csv,
-    _import_json,
-    _import_toml,
-    _import_yaml,
+from merlya.commands.handlers.hosts_formats import (
+    CsvImporter,
+    JsonImporter,
+    TomlImporter,
+    YamlImporter,
 )
 from merlya.persistence.models import ElevationMethod
 
@@ -39,7 +39,8 @@ class TestTomlImport:
         toml_file = fixtures_dir / "hosts_with_elevation.toml"
         content = toml_file.read_text()
 
-        imported, errors = await _import_toml(mock_ctx, content)
+        importer = TomlImporter()
+        imported, errors = await importer.import_hosts(mock_ctx, content, toml_file)
 
         assert imported == 3
         assert len(errors) == 0
@@ -71,7 +72,8 @@ class TestYamlImport:
         yaml_file = fixtures_dir / "hosts_with_elevation.yaml"
         content = yaml_file.read_text()
 
-        imported, errors = await _import_yaml(mock_ctx, content)
+        importer = YamlImporter()
+        imported, errors = await importer.import_hosts(mock_ctx, content, yaml_file)
 
         assert imported == 3
         assert len(errors) == 0
@@ -98,7 +100,8 @@ class TestCsvImport:
         csv_file = fixtures_dir / "hosts_with_elevation.csv"
         content = csv_file.read_text()
 
-        imported, errors = await _import_csv(mock_ctx, content)
+        importer = CsvImporter()
+        imported, errors = await importer.import_hosts(mock_ctx, content, csv_file)
 
         assert imported == 3
         assert len(errors) == 0
@@ -126,7 +129,8 @@ class TestJsonImport:
         json_file = fixtures_dir / "hosts_with_elevation.json"
         content = json_file.read_text()
 
-        imported, errors = await _import_json(mock_ctx, content)
+        importer = JsonImporter()
+        imported, errors = await importer.import_hosts(mock_ctx, content, json_file)
 
         assert imported == 2
         assert len(errors) == 0

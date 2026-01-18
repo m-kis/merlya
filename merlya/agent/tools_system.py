@@ -11,11 +11,19 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic_ai import Agent, ModelRetry, RunContext
 
 from merlya.agent.tools_common import check_recoverable_error
+from merlya.agent.types import (
+    CPUInfo,
+    DiskUsageResponse,
+    MemoryInfo,
+    ProcessListResponse,
+    ServiceStatus,
+    SystemInfo,
+)
 
 if TYPE_CHECKING:
     from merlya.agent.main import AgentDependencies
 else:
-    AgentDependencies = Any  # type: ignore
+    AgentDependencies = Any
 
 
 def register_system_tools(agent: Agent[Any, Any]) -> None:
@@ -25,7 +33,7 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
     async def get_system_info(
         ctx: RunContext[AgentDependencies],
         host: str,
-    ) -> dict[str, Any]:
+    ) -> SystemInfo:
         """
         Get comprehensive system information from a host.
 
@@ -43,17 +51,17 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _get_system_info(ctx.deps.context, host)
         if result.success:
-            return cast("dict[str, Any]", result.data)
+            return cast("SystemInfo", result.data)
         if check_recoverable_error(result.error):
             raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
-        return {"error": result.error}
+        return SystemInfo(error=result.error)
 
     @agent.tool
     async def check_disk_usage(
         ctx: RunContext[AgentDependencies],
         host: str,
         path: str = "/",
-    ) -> dict[str, Any]:
+    ) -> DiskUsageResponse:
         """
         Check disk usage on a host.
 
@@ -72,16 +80,16 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _check_disk_usage(ctx.deps.context, host, path)
         if result.success:
-            return cast("dict[str, Any]", result.data)
+            return cast("DiskUsageResponse", result.data)
         if check_recoverable_error(result.error):
             raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
-        return {"error": result.error}
+        return DiskUsageResponse(error=result.error)
 
     @agent.tool
     async def check_memory(
         ctx: RunContext[AgentDependencies],
         host: str,
-    ) -> dict[str, Any]:
+    ) -> MemoryInfo:
         """
         Check memory usage on a host.
 
@@ -99,16 +107,16 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _check_memory(ctx.deps.context, host)
         if result.success:
-            return cast("dict[str, Any]", result.data)
+            return cast("MemoryInfo", result.data)
         if check_recoverable_error(result.error):
             raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
-        return {"error": result.error}
+        return MemoryInfo(error=result.error)
 
     @agent.tool
     async def check_cpu(
         ctx: RunContext[AgentDependencies],
         host: str,
-    ) -> dict[str, Any]:
+    ) -> CPUInfo:
         """
         Check CPU usage on a host.
 
@@ -126,17 +134,17 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _check_cpu(ctx.deps.context, host)
         if result.success:
-            return cast("dict[str, Any]", result.data)
+            return cast("CPUInfo", result.data)
         if check_recoverable_error(result.error):
             raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
-        return {"error": result.error}
+        return CPUInfo(error=result.error)
 
     @agent.tool
     async def check_service_status(
         ctx: RunContext[AgentDependencies],
         host: str,
         service: str,
-    ) -> dict[str, Any]:
+    ) -> ServiceStatus:
         """
         Check the status of a systemd service.
 
@@ -155,13 +163,13 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
 
         result = await _check_service_status(ctx.deps.context, host, service)
         if result.success:
-            return cast("dict[str, Any]", result.data)
+            return cast("ServiceStatus", result.data)
         if check_recoverable_error(result.error):
             raise ModelRetry(
                 f"Host '{host}' or service '{service}' not found. "
                 "Check names or use list_hosts()/ssh_execute to list services."
             )
-        return {"error": result.error}
+        return ServiceStatus(error=result.error)
 
     @agent.tool
     async def list_processes(
@@ -170,7 +178,7 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
         user: str | None = None,
         filter_name: str | None = None,
         limit: int = 10,
-    ) -> dict[str, Any]:
+    ) -> ProcessListResponse:
         """
         List running processes on a host.
 
@@ -198,10 +206,10 @@ def register_system_tools(agent: Agent[Any, Any]) -> None:
             limit=limit,
         )
         if result.success:
-            return {"processes": result.data}
+            return ProcessListResponse(processes=result.data)
         if check_recoverable_error(result.error):
             raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
-        return {"error": result.error, "processes": []}
+        return ProcessListResponse(error=result.error, processes=[])
 
 
 __all__ = ["register_system_tools"]

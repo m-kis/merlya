@@ -1,0 +1,95 @@
+name: basic-vm
+version: "1.0.0"
+description: Basic virtual machine instance
+category: compute
+author: Merlya
+tags:
+  - vm
+  - compute
+  - basic
+
+providers:
+  - aws
+  - gcp
+  - azure
+
+backends:
+  - backend: terraform
+    entry_point: main.tf.j2
+    files:
+      - main.tf.j2
+      - variables.tf.j2
+      - outputs.tf.j2
+
+variables:
+  - name: vm_name
+    type: string
+    description: Name of the virtual machine
+    required: true
+
+  - name: instance_type
+    type: string
+    description: Instance type/size
+    required: false
+    provider_defaults:
+      aws: "t3.micro"
+      gcp: "e2-micro"
+      azure: "Standard_B1s"
+
+  - name: image_id
+    type: string
+    description: OS image ID
+    required: true
+    provider_defaults:
+      aws: "ami-0c55b159cbfafe1f0"
+      gcp: "debian-cloud/debian-11"
+      azure: "Canonical:UbuntuServer:18.04-LTS:latest"
+
+  - name: disk_size_gb
+    type: number
+    description: Boot disk size in GB
+    required: false
+    default: 20
+    min_value: 10
+    max_value: 1000
+
+  - name: subnet_id
+    type: string
+    description: Subnet ID for the instance
+    required: false
+
+  - name: security_groups
+    type: list
+    description: Security group IDs
+    required: false
+    default: []
+
+  - name: public_ip
+    type: boolean
+    description: Assign public IP address
+    required: false
+    default: false
+
+  - name: ssh_key_name
+    type: string
+    description: SSH key pair name
+    required: false
+
+  - name: tags
+    type: map
+    description: Resource tags
+    required: false
+    default: {}
+
+outputs:
+  - name: instance_id
+    description: ID of the created instance
+    value_path: instance_id
+
+  - name: public_ip
+    description: Public IP address (if assigned)
+    value_path: public_ip
+
+  - name: private_ip
+    description: Private IP address
+    value_path: private_ip
