@@ -85,10 +85,15 @@ class CircuitBreaker:
                 if self.last_failure_time and (
                     time.time() - self.last_failure_time >= self.config.recovery_timeout
                 ):
-                    logger.debug("🔄 Circuit breaker: OPEN → HALF_OPEN (testing recovery)")
+                    logger.info("🔄 Circuit breaker: OPEN → HALF_OPEN (testing recovery)")
                     self.state = CircuitState.HALF_OPEN
                     self.success_count = 0
                 else:
+                    remaining = self.config.recovery_timeout - (time.time() - self.last_failure_time)
+                    logger.warning(
+                        f"🔴 Circuit breaker OPEN: {self.failure_count} failures, "
+                        f"recovery in {remaining:.1f}s"
+                    )
                     raise CircuitBreakerOpenError(
                         f"Circuit breaker is OPEN (failed {self.failure_count} times)"
                     )
@@ -107,7 +112,7 @@ class CircuitBreaker:
         async with self._lock:
             if self.state == CircuitState.HALF_OPEN:
                 self.success_count += 1
-                logger.debug(
+                logger.info(
                     f"🟢 Circuit breaker success in HALF_OPEN ({self.success_count}/{self.config.success_threshold})"
                 )
                 if self.success_count >= self.config.success_threshold:
@@ -117,6 +122,8 @@ class CircuitBreaker:
                     self.success_count = 0
             elif self.state == CircuitState.CLOSED:
                 # Reset failure count on success
+                if self.failure_count > 0:
+                    logger.debug(f"✅ Circuit breaker: Reset failure count (was {self.failure_count})")
                 self.failure_count = 0
 
     async def _on_failure(self) -> None:
@@ -255,8 +262,9 @@ def retry(
 
                     # Calculate exponential backoff delay
                     delay = min(initial_delay * (exponential_base ** (attempt - 1)), max_delay)
-                    logger.debug(
-                        f"🔄 Retry attempt {attempt}/{max_attempts} for {func.__name__} after {delay:.1f}s: {e}"
+                    error_msg = str(e)[:80] + "..." if len(str(e)) > 80 else str(e)
+                    logger.warning(
+                        f"🔄 Retry {attempt}/{max_attempts} for {func.__name__} after {delay:.1f}s: {error_msg}"
                     )
                     await asyncio.sleep(delay)
 

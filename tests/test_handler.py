@@ -13,7 +13,6 @@ from merlya.router.handler import (
     HandlerResponse,
     handle_agent,
     handle_fast_path,
-    handle_skill_flow,
     handle_user_message,
 )
 
@@ -216,34 +215,6 @@ class TestHandleFastPath:
 
 
 # ==============================================================================
-# Skill Flow Tests (DEPRECATED - skills have been removed)
-# ==============================================================================
-
-
-class TestHandleSkillFlow:
-    """Tests for handle_skill_flow function (DEPRECATED).
-
-    NOTE: Skills have been removed from Merlya.
-    handle_skill_flow() always returns None.
-    """
-
-    @pytest.mark.asyncio
-    async def test_skill_flow_returns_none(self, mock_context: MagicMock) -> None:
-        """Test skill flow always returns None (skills removed)."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="any_skill",
-            skill_confidence=0.95,
-        )
-
-        response = await handle_skill_flow(mock_context, "test input", route_result)
-
-        # Skills are removed, always returns None
-        assert response is None
-
-
-# ==============================================================================
 # Handle Agent Tests (DEPRECATED - now uses Orchestrator)
 # ==============================================================================
 
@@ -336,33 +307,6 @@ class TestRouterResultFastPathProperties:
         )
         assert result.is_fast_path is False
 
-    def test_is_skill_match_true(self) -> None:
-        """Test is_skill_match returns True with high confidence."""
-        result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="disk_audit",
-            skill_confidence=0.8,
-        )
-        assert result.is_skill_match is True
-
-    def test_is_skill_match_low_confidence(self) -> None:
-        """Test is_skill_match returns False with low confidence."""
-        result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="disk_audit",
-            skill_confidence=0.3,
-        )
-        assert result.is_skill_match is False
-
-    def test_is_skill_match_no_skill(self) -> None:
-        """Test is_skill_match returns False when no skill matched."""
-        result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-        )
-        assert result.is_skill_match is False
 
 
 # ==============================================================================
