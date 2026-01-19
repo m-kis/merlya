@@ -1931,7 +1931,7 @@ wheels = [
 
 [[package]]
 name = "merlya"
-version = "0.7.7"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -1939,6 +1939,7 @@ dependencies = [
     { name = "asyncssh" },
     { name = "ddgs" },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "keyring" },
     { name = "keyrings-alt", marker = "sys_platform == 'linux'" },
     { name = "logfire", extra = ["system-metrics"] },
@@ -1946,6 +1947,7 @@ dependencies = [
     { name = "mcp" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "packaging" },
     { name = "prompt-toolkit" },
     { name = "psutil" },
     { name = "pydantic" },
@@ -1980,6 +1982,7 @@ requires-dist = [
     { name = "asyncssh", specifier = ">=2.21" },
     { name = "ddgs", specifier = ">=9.9" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "keyring", specifier = ">=25.5" },
     { name = "keyrings-alt", marker = "sys_platform == 'linux'", specifier = ">=5.0" },
     { name = "logfire", extras = ["system-metrics"], specifier = ">=4.0" },
@@ -1992,6 +1995,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "openai", specifier = ">=1.50" },
+    { name = "packaging", specifier = ">=24.0" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "psutil", specifier = ">=6.1" },
     { name = "pydantic", specifier = ">=2.10" },

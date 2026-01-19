@@ -31,6 +31,9 @@ htmlcov/
 # IDE
 .idea/
 .vscode/
+.cursor/
+.windsurf/
+.kilocodemodes
 *.swp
 *.swo
 *~
@@ -60,3 +63,5 @@ rag/.wrangler/
 # Project specific
 .claude/
 ARCHITECTURE_DECISIONS.md
+_bmad/
+_bmad-output/

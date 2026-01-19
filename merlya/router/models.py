@@ -30,17 +30,11 @@ class RouterResult:
     jump_host: str | None = None  # Detected jump/bastion host for SSH tunneling
     fast_path: str | None = None  # Fast path intent if detected (e.g., "host.list")
     fast_path_args: dict[str, str] = field(default_factory=dict)  # Args extracted from pattern
-    skill_match: str | None = None  # Matched skill name if detected
-    skill_confidence: float = 0.0  # Confidence of skill match
     unresolved_hosts: list[str] = field(default_factory=list)
 
     @property
     def is_fast_path(self) -> bool:
         return self.fast_path is not None
-
-    @property
-    def is_skill_match(self) -> bool:
-        return self.skill_match is not None and self.skill_confidence >= 0.5
 
     @property
     def tool_calls_limit(self) -> int:

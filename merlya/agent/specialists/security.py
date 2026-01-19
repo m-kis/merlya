@@ -7,16 +7,13 @@ Security scans and compliance (25 tool calls max).
 from __future__ import annotations
 
 from loguru import logger
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.usage import UsageLimits
 
 from merlya.agent.specialists.deps import SpecialistDeps
-from merlya.agent.specialists.elevation import (
-    auto_collect_elevation_credentials,
-    needs_elevation_stdin,
-)
 from merlya.agent.specialists.prompts import SECURITY_PROMPT
-from merlya.agent.specialists.types import ScanResult, SSHResult
+from merlya.agent.specialists.tools import create_bash_tool, create_ssh_tool
+from merlya.agent.specialists.types import ScanResult
 from merlya.config.providers import get_model_for_role, get_pydantic_model_string
 
 
@@ -62,73 +59,15 @@ async def run_security_agent(
 
 
 def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
-    """Register security tools."""
+    """Register security tools using tool factories."""
 
-    @agent.tool
-    async def ssh_execute(
-        ctx: RunContext[SpecialistDeps],
-        host: str,
-        command: str,
-        timeout: int = 60,
-        stdin: str | None = None,
-    ) -> SSHResult:
-        """Execute a security command on a remote host."""
-        from merlya.tools.core import ssh_execute as _ssh_execute
+    # Use tool factory for ssh_execute (security mode - NO local redirect)
+    ssh_tool = create_ssh_tool(mode="security", requires_confirmation=False)
+    agent.tool(ssh_tool, name="ssh_execute")
 
-        # AUTO-ELEVATION: Collect credentials if needed
-        effective_stdin = stdin
-        if needs_elevation_stdin(command) and not stdin:
-            logger.debug(f"🔐 Auto-elevation: {command[:40]}...")
-            effective_stdin = await auto_collect_elevation_credentials(
-                ctx.deps.context, host, command
-            )
-            if not effective_stdin:
-                return SSHResult(
-                    success=False,
-                    stdout="",
-                    stderr="Credentials required but not provided",
-                    exit_code=-1,
-                    error="User cancelled credential prompt",
-                )
-
-        # Check for loop BEFORE recording
-        would_loop, reason = ctx.deps.tracker.would_loop(host, command)
-        if would_loop:
-            raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
-
-        ctx.deps.tracker.record(host, command)
-
-        result = await _ssh_execute(ctx.deps.context, host, command, timeout, stdin=effective_stdin)
-
-        return SSHResult(
-            success=result.success,
-            stdout=result.data.get("stdout", "") if result.data else "",
-            stderr=result.data.get("stderr", "") if result.data else "",
-            exit_code=result.data.get("exit_code", -1) if result.data else -1,
-        )
-
-    @agent.tool
-    async def bash(
-        ctx: RunContext[SpecialistDeps],
-        command: str,
-        timeout: int = 60,
-    ) -> SSHResult:
-        """Execute a local security command."""
-        from merlya.tools.core import bash_execute as _bash_execute
-
-        would_loop, reason = ctx.deps.tracker.would_loop("local", command)
-        if would_loop:
-            raise ModelRetry(f"{reason}. Try a DIFFERENT command.")
-
-        ctx.deps.tracker.record("local", command)
-
-        result = await _bash_execute(ctx.deps.context, command, timeout)
-        return SSHResult(
-            success=result.success,
-            stdout=result.data.get("stdout", "") if result.data else "",
-            stderr=result.data.get("stderr", "") if result.data else "",
-            exit_code=result.data.get("exit_code", -1) if result.data else -1,
-        )
+    # Use tool factory for bash (no confirmation for security scans)
+    bash_tool = create_bash_tool(requires_confirmation=False)
+    agent.tool(bash_tool, name="bash")
 
     @agent.tool
     async def scan_host(

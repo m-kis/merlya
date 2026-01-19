@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from merlya.core.resilience import circuit_breaker, retry
 from merlya.tools.core.models import ToolResult
 from merlya.tools.core.resolve import resolve_all_references
 from merlya.tools.core.security import detect_unsafe_password
@@ -89,6 +90,8 @@ def _redact_potential_password(stdin: str) -> str:
     return stdin
 
 
+@circuit_breaker(failure_threshold=5, recovery_timeout=60, success_threshold=2)
+@retry(max_attempts=3, initial_delay=1.0, max_delay=10.0)
 async def ssh_execute(
     ctx: SharedContext,
     host: str,

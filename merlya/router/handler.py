@@ -167,20 +167,6 @@ async def handle_fast_path(
     )
 
 
-async def handle_skill_flow(
-    _ctx: SharedContext,
-    _user_input: str,
-    _route_result: object,
-) -> HandlerResponse | None:
-    """
-    Legacy skill handler - DEPRECATED.
-
-    Skills have been removed. Returns None to indicate no skill handled the request.
-    """
-    logger.debug("⚠️ handle_skill_flow is deprecated, skills removed")
-    return None
-
-
 async def handle_agent(
     ctx: SharedContext,
     agent: object,

@@ -28,7 +28,6 @@ from merlya.router.handler import (
     HandlerResponse,
     handle_agent,
     handle_fast_path,
-    handle_skill_flow,
     handle_user_message,
 )
 from merlya.router.smart_extractor import (
@@ -59,6 +58,5 @@ __all__ = [
     "get_smart_extractor",
     "handle_agent",
     "handle_fast_path",
-    "handle_skill_flow",
     "handle_user_message",
 ]
