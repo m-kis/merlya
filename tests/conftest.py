@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,6 +21,22 @@ if TYPE_CHECKING:
 # Use pytest-asyncio's built-in event loop management
 # See: https://pytest-asyncio.readthedocs.io/en/latest/concepts.html
 pytest_plugins = ("pytest_asyncio",)
+
+
+# ==============================================================================
+# Global Fixtures for Interactive Mode
+# ==============================================================================
+
+
+@pytest.fixture(autouse=True)
+def mock_isatty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Mock sys.stdin.isatty() to return True for all tests.
+
+    This ensures that tests run as if in interactive mode, allowing
+    prompts and confirmations to work properly without special handling.
+    """
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
 
 # ==============================================================================
