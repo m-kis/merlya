@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import shlex
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -52,7 +52,7 @@ async def list_cron(
     host: str,
     user: str | None = None,
     include_system: bool = True,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     List crontab entries on a remote host.
 
@@ -115,7 +115,7 @@ async def add_cron(
     command: str,
     user: str | None = None,
     comment: str | None = None,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Add a crontab entry.
 
@@ -200,7 +200,7 @@ async def remove_cron(
     pattern: str,
     user: str | None = None,
     dry_run: bool = True,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Remove crontab entries matching a pattern.
 

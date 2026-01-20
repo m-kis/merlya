@@ -134,7 +134,7 @@ async def check_memory(
     ctx: SharedContext,
     host: str,
     threshold: int = 90,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check memory usage on a host.
 

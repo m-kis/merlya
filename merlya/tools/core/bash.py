@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import weakref
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -48,7 +48,7 @@ async def bash_execute(
     ctx: SharedContext,
     command: str,
     timeout: int = 60,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Execute a command locally on the Merlya host machine.
 

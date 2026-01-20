@@ -7,7 +7,7 @@ Security: All user inputs are sanitized with shlex.quote() to prevent command in
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from merlya.tools.core import ToolResult, ssh_execute
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 async def get_system_info(
     ctx: SharedContext,
     host: str,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Get system information from a host.
 

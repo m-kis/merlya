@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -97,7 +97,7 @@ async def ssh_execute(
     connect_timeout: int | None = None,
     via: str | None = None,
     stdin: str | None = None,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Execute a command on a host via SSH.
 
@@ -510,7 +510,7 @@ def _auto_transform_elevation_command(
 
 async def _prepare_command(
     ctx: SharedContext, host: str, command: str
-) -> tuple[str, str, ToolResult | None]:
+) -> tuple[str, str, ToolResult[Any] | None]:
     """Validate and prepare command for execution.
 
     Returns:
@@ -565,7 +565,7 @@ def _build_result(
     result: SSHResultProtocol,
     exec_ctx: ExecutionContext,
     safe_command: str,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """Build ToolResult from execution result."""
     from merlya.tools.core.ssh_patterns import is_auth_error, needs_elevation
 
@@ -615,7 +615,7 @@ def _build_result(
     )
 
 
-def _handle_error(e: Exception, host: str, command: str, via: str | None) -> ToolResult:
+def _handle_error(e: Exception, host: str, command: str, via: str | None) -> ToolResult[Any]:
     """Handle SSH execution error."""
     info = explain_ssh_error(e, host, via=via)
     logger.error(f"SSH failed: {info.symptom}")

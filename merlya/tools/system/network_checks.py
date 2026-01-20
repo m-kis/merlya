@@ -16,8 +16,8 @@ from merlya.tools.security.base import execute_security_command
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
-_PingFn = Callable[..., Awaitable[ToolResult]]
-_DNSLookupFn = Callable[..., Awaitable[ToolResult]]
+_PingFn = Callable[..., Awaitable[ToolResult[Any]]]
+_DNSLookupFn = Callable[..., Awaitable[ToolResult[Any]]]
 
 
 async def get_interface_info(ctx: SharedContext, host: str) -> dict[str, Any]:

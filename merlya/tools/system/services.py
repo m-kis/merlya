@@ -7,7 +7,7 @@ Manage systemd/init services on remote hosts with safety checks.
 from __future__ import annotations
 
 import shlex
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
@@ -47,7 +47,7 @@ async def manage_service(
     service: str,
     action: Literal["start", "stop", "restart", "reload", "status", "enable", "disable"],
     force: bool = False,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Manage a systemd/init service on a remote host.
 
@@ -138,7 +138,7 @@ async def list_services(
     ctx: SharedContext,
     host: str,
     filter_state: Literal["running", "stopped", "failed", "all"] = "all",
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     List services on a remote host.
 
@@ -267,7 +267,7 @@ def _build_service_command(
     return systemd_actions.get(action)
 
 
-def _parse_status_result(service: str, result: SSHResult) -> ToolResult:
+def _parse_status_result(service: str, result: SSHResult) -> ToolResult[Any]:
     """Parse service status output."""
 
     stdout = (result.stdout or "").lower()

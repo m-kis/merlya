@@ -133,7 +133,7 @@ async def search_web(
     region: str | None = None,
     safesearch: str = "moderate",
     timeout: float = 8.0,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Perform a web search using DuckDuckGo (ddgs).
 
