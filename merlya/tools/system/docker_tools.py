@@ -8,7 +8,7 @@ Security: All user inputs are sanitized with shlex.quote() to prevent command in
 from __future__ import annotations
 
 import shlex
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from merlya.tools.core import ToolResult, ssh_execute
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 async def check_docker(
     ctx: SharedContext,
     host: str,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check Docker status and containers.
 

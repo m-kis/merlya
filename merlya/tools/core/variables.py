@@ -6,7 +6,7 @@ Get and set user-defined variables.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -54,7 +54,7 @@ DANGEROUS_ENV_VARS: frozenset[str] = frozenset(
 async def get_variable(
     ctx: SharedContext,
     name: str,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Get a variable value.
 
@@ -92,7 +92,7 @@ async def set_variable(
     name: str,
     value: str,
     is_env: bool = False,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Set a variable.
 

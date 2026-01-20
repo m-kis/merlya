@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -76,7 +76,7 @@ async def health_summary(
     hosts: list[str] | None = None,
     include_services: bool = True,
     timeout_per_host: int = 15,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Get consolidated health summary for one or multiple hosts.
 

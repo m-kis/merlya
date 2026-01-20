@@ -21,7 +21,7 @@ async def list_hosts(
     tag: str | None = None,
     status: str | None = None,
     limit: int = 50,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     List hosts from inventory.
 
@@ -80,7 +80,7 @@ async def get_host(
     ctx: SharedContext,
     name: str,
     include_metadata: bool = True,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Get detailed information about a host.
 
