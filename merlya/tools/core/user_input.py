@@ -217,7 +217,9 @@ async def request_confirmation(
 
 
 # Shims to interaction.py for credential/elevation tools
-async def request_credentials(*args: Any, **kwargs: Any) -> ToolResult[dict[str, str]]:  # pragma: no cover
+async def request_credentials(
+    *args: Any, **kwargs: Any
+) -> ToolResult[dict[str, str]]:  # pragma: no cover
     """Request credentials from user (delegated to interaction.py)."""
     from merlya.tools.interaction import request_credentials as _rc
 
