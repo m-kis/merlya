@@ -10,6 +10,7 @@ repeatedly asks the same question.
 from __future__ import annotations
 
 import hashlib
+import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -31,6 +32,16 @@ class AskUserCache:
 
 # Maximum times the same question can be asked before returning cached answer
 MAX_SAME_QUESTION = 2
+
+
+def _is_interactive() -> bool:
+    """
+    Check if we're running in an interactive terminal.
+
+    Returns:
+        True if stdin is a TTY (interactive), False otherwise (piped/non-interactive)
+    """
+    return sys.stdin.isatty()
 
 
 def _get_ask_user_cache(ctx: SharedContext) -> AskUserCache:
@@ -103,6 +114,22 @@ async def ask_user(
                 error=None,
             )
 
+    # Check if we're in non-interactive mode
+    if not _is_interactive():
+        # In non-interactive mode, use default if provided, otherwise fail
+        if default:
+            logger.warning(
+                f"⚠️ Non-interactive mode detected. Using default value for: {question[:50]}"
+            )
+            return ToolResult(success=True, data=default)
+        else:
+            error_msg = (
+                "Cannot prompt for input in non-interactive mode. "
+                "Run in interactive terminal or provide defaults."
+            )
+            logger.error(f"❌ {error_msg}")
+            return ToolResult(success=False, data=None, error=error_msg)
+
     try:
         ui = ctx.ui
 
@@ -150,17 +177,31 @@ async def request_confirmation(
             error="Action description cannot be empty",
         )
 
-    try:
-        ui = ctx.ui
+    # Check if auto-confirm is enabled (from --yes flag)
+    ui = ctx.ui
+    if hasattr(ui, "auto_confirm") and ui.auto_confirm:
+        logger.info(f"✅ Auto-confirmed (--yes flag): {action}")
+        return ToolResult(success=True, data=True)
 
+    # Check if we're in non-interactive mode without auto-confirm
+    if not _is_interactive():
+        error_msg = (
+            "Cannot request confirmation in non-interactive mode. "
+            "Use --yes flag to auto-approve or run in interactive terminal."
+        )
+        logger.error(f"❌ {error_msg}")
+        logger.error(f"   Action that needs approval: {action}")
+        return ToolResult(success=False, data=False, error=error_msg)
+
+    try:
         # Format message based on risk
         risk_icons = {
-            "low": "",
-            "moderate": "",
-            "high": "",
-            "critical": "",
+            "low": "ℹ️",
+            "moderate": "⚠️",
+            "high": "🚨",
+            "critical": "🔴",
         }
-        icon = risk_icons.get(risk_level, "")
+        icon = risk_icons.get(risk_level, "⚠️")
 
         message = f"{icon} {action}"
         if details:
