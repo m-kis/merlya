@@ -64,7 +64,7 @@ async def ask_user(
     choices: list[str] | None = None,
     default: str | None = None,
     secret: bool = False,
-) -> ToolResult:
+) -> ToolResult[str | None]:
     """
     Ask the user for input.
 
@@ -117,7 +117,7 @@ async def ask_user(
     # Check if we're in non-interactive mode
     if not _is_interactive():
         # In non-interactive mode, use default if provided, otherwise fail
-        if default:
+        if default is not None:
             logger.warning(
                 f"⚠️ Non-interactive mode detected. Using default value for: {question[:50]}"
             )
@@ -156,7 +156,7 @@ async def request_confirmation(
     action: str,
     details: str | None = None,
     risk_level: str = "moderate",
-) -> ToolResult:
+) -> ToolResult[bool]:
     """
     Request user confirmation before an action.
 
@@ -217,14 +217,14 @@ async def request_confirmation(
 
 
 # Shims to interaction.py for credential/elevation tools
-async def request_credentials(*args: Any, **kwargs: Any) -> ToolResult:  # pragma: no cover
+async def request_credentials(*args: Any, **kwargs: Any) -> ToolResult[dict[str, str]]:  # pragma: no cover
     """Request credentials from user (delegated to interaction.py)."""
     from merlya.tools.interaction import request_credentials as _rc
 
     return await _rc(*args, **kwargs)  # type: ignore[return-value]
 
 
-async def request_elevation(*args: Any, **kwargs: Any) -> ToolResult:  # pragma: no cover
+async def request_elevation(*args: Any, **kwargs: Any) -> ToolResult[str]:  # pragma: no cover
     """Request privilege elevation (delegated to interaction.py)."""
     from merlya.tools.interaction import request_elevation as _re
 
