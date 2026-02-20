@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import shlex
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from merlya.tools.core import ToolResult, ssh_execute
 
@@ -109,7 +109,7 @@ async def list_processes(
     filter_name: str | None = None,
     limit: int = 20,
     sort_by: str = "cpu",
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     List running processes on a host.
 

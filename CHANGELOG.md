@@ -25,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security noise reduction**: suppressed false positive `B104` in target resolver checks.
 
 ---
-
 ## [0.8.1] - 2025-01-15
 
 ### Fixed

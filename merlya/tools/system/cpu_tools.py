@@ -141,7 +141,7 @@ async def check_cpu(
     ctx: SharedContext,
     host: str,
     threshold: float = 80.0,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check CPU usage on a host.
 

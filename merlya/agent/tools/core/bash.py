@@ -88,14 +88,13 @@ async def bash(
             f"⚠️ SECURITY WARNING: The AI agent wants to execute a critical/destructive command locally:\n> {command}\nDo you want to proceed? [y/N]"
         )
         if not confirmed or confirmed.lower() not in ("y", "yes"):
-           return {
-               "success": False,
-               "stdout": "",
-               "stderr": "",
-               "exit_code": -1,
-               "error": "User aborted critical command execution for safety."
-           }
-
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+                "error": "User aborted critical command execution for safety.",
+            }
     logger.info(f"🖥️ Running locally: {command[:60]}...")
 
     touch_activity()

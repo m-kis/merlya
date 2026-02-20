@@ -51,7 +51,7 @@ async def check_network(
     check_dns: bool = True,
     check_gateway: bool = True,
     check_internet: bool = True,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Perform network diagnostics from a remote host.
 
@@ -152,7 +152,7 @@ async def ping(
     target: str,
     count: int = 4,
     timeout: int = 5,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Ping a target from a remote host.
 
@@ -201,7 +201,7 @@ async def traceroute(
     host: str,
     target: str,
     max_hops: int = 20,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Run traceroute from a remote host.
 
@@ -264,7 +264,7 @@ async def check_port(
     target_host: str,
     port: int,
     timeout: int = 5,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check if a port is reachable from a remote host.
 
@@ -337,7 +337,7 @@ async def dns_lookup(
     host: str,
     query: str,
     record_type: str = "A",
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Perform DNS lookup from a remote host.
 

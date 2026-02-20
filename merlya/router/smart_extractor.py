@@ -66,8 +66,6 @@ class IntentClassification(BaseModel):
     is_destructive: bool = Field(default=False, description="Whether the action is destructive")
     severity: str = Field(default="low", description="Severity: low, medium, high, critical")
     reasoning: str | None = Field(default=None, description="Brief explanation")
-    needs_clarification: bool = Field(default=False, description="True if the request is missing critical context or target info")
-    clarification_message: str | None = Field(default=None, description="Question to ask the user if clarification is needed")
 
 
 class SmartExtractionResult(BaseModel):
@@ -203,7 +201,10 @@ class SmartExtractor:
         Returns:
             SmartExtractionResult with entities and intent classification.
         """
-        # Try LLM-based extraction
+        # Always run regex first for host detection (fast and reliable)
+        regex_result = self._extract_with_regex(user_input)
+
+        # Try LLM-based extraction for intent classification
         if await self._ensure_initialized() and self._agent:
             try:
                 llm_result = await asyncio.wait_for(
@@ -211,22 +212,21 @@ class SmartExtractor:
                     timeout=self.EXTRACTION_TIMEOUT,
                 )
                 if llm_result:
+                    # Merge: Use regex hosts if LLM missed them (LLM often misses custom hostnames)
+                    if regex_result.entities.hosts and not llm_result.entities.hosts:
+                        logger.debug(
+                            f"📋 Merging regex hosts {regex_result.entities.hosts} into LLM result"
+                        )
+                        llm_result.entities.hosts = regex_result.entities.hosts
                     return llm_result
             except TimeoutError:
                 logger.warning(f"⚠️ SmartExtractor timed out after {self.EXTRACTION_TIMEOUT}s")
             except Exception as e:
                 logger.warning(f"⚠️ SmartExtractor failed: {e}")
 
-        # Fallback if LLM fails or times out
-        logger.warning("📋 Returning empty extraction result due to LLM failure")
-        return SmartExtractionResult(
-            raw_input=user_input,
-            intent=IntentClassification(
-                center="DIAGNOSTIC",
-                confidence=0.0,
-                reasoning="LLM extraction failed, fallback triggered"
-            )
-        )
+        # Fallback to regex-based extraction
+        logger.debug("📋 Using regex extraction")
+        return regex_result
 
     async def _extract_with_llm(self, user_input: str) -> SmartExtractionResult | None:
         """Extract using LLM."""
@@ -261,7 +261,336 @@ Determine severity and if destructive."""
 
         return None
 
+    def _extract_with_regex(self, user_input: str) -> SmartExtractionResult:
+        """Fallback regex-based extraction."""
+        import re
 
+        entities = ExtractedEntities()
+        text = user_input
+
+        # Extract @mentions as hosts
+        host_mentions = re.findall(r"@([a-zA-Z][a-zA-Z0-9_.-]*)", text)
+        if host_mentions:
+            entities.hosts.extend(host_mentions)
+
+        # Extract IPs
+        ips = re.findall(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", text)
+        if ips:
+            entities.hosts.extend(ips)
+
+        # Common words to filter out (not hostnames)
+        common_words = {
+            "the",
+            "le",
+            "la",
+            "les",
+            "all",
+            "tous",
+            "toutes",
+            "my",
+            "mon",
+            "ma",
+            "mes",
+            "this",
+            "that",
+            "these",
+            "those",
+            "ce",
+            "cette",
+            "ces",
+            "cet",
+            "server",
+            "serveur",
+            "host",
+            "hôte",
+            "machine",
+            "instance",
+            "disk",
+            "disque",
+            "memory",
+            "mémoire",
+            "cpu",
+            "load",
+            "charge",
+            "space",
+            "espace",
+            "usage",
+            "file",
+            "fichier",
+            "log",
+            "logs",
+            "process",
+            "service",
+            "container",
+            "pod",
+            "node",
+            "cluster",
+            "and",
+            "or",
+            "et",
+            "ou",
+            "with",
+            "avec",
+            "for",
+            "pour",
+            "prod",
+            "production",
+            "staging",
+            "dev",
+            "development",
+            "test",
+        }
+
+        # Extract hosts after prepositions (extended patterns)
+        host_preposition_patterns = [
+            r"\b(?:on|sur|from|to|at|de)\s+([a-zA-Z][a-zA-Z0-9_.-]*)",
+            r"\b(?:serveur|server|host|machine|hôte|instance)\s+([a-zA-Z][a-zA-Z0-9_.-]*)",
+        ]
+        for pattern in host_preposition_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for h in matches:
+                if h.lower() not in common_words and h not in entities.hosts:
+                    entities.hosts.append(h)
+
+        # Detect standalone hostnames (alphanumeric with numbers/hyphens, looks like a server)
+        # Pattern: word with at least one digit or hyphen, typical server naming
+        standalone_host_pattern = (
+            r"\b([a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)+|[a-zA-Z]+\d+[a-zA-Z0-9]*)\b"
+        )
+        standalone_hosts = re.findall(standalone_host_pattern, text)
+        for h in standalone_hosts:
+            if h.lower() not in common_words and h not in entities.hosts:
+                entities.hosts.append(h)
+
+        # Extract paths
+        paths = re.findall(r"(/[a-zA-Z0-9_./-]+)", text)
+        if paths:
+            entities.paths = list(set(paths))
+
+        # Extract ports
+        ports = re.findall(r":(\d{2,5})\b", text)
+        if ports:
+            entities.ports = [int(p) for p in ports if 1 <= int(p) <= 65535]
+
+        # Extract services (known list)
+        services_pattern = (
+            r"\b(nginx|apache|mysql|postgres|redis|mongo|docker|k8s|kubernetes|systemd)\b"
+        )
+        services = re.findall(services_pattern, text, re.IGNORECASE)
+        if services:
+            entities.services = list({s.lower() for s in services})
+
+        # Extract environment
+        if re.search(r"\b(prod|production)\b", text, re.IGNORECASE):
+            entities.environment = "production"
+        elif re.search(r"\b(staging|preprod|stage)\b", text, re.IGNORECASE):
+            entities.environment = "staging"
+        elif re.search(r"\b(dev|development|local)\b", text, re.IGNORECASE):
+            entities.environment = "development"
+        elif re.search(r"\b(test|testing|qa|uat)\b", text, re.IGNORECASE):
+            entities.environment = "testing"
+
+        # Extract jump host
+        jump_match = re.search(
+            r"\b(?:via|through|en passant par)\s+@?([a-zA-Z][a-zA-Z0-9_.-]*)",
+            text,
+            re.IGNORECASE,
+        )
+        if jump_match:
+            entities.jump_host = jump_match.group(1)
+
+        # Extract IaC tools (v0.9.0)
+        iac_tools_pattern = (
+            r"\b(terraform|ansible|pulumi|cloudformation|cfn|arm|helm|kubectl|k8s|"
+            r"docker-compose|vagrant|packer|opentofu)\b"
+        )
+        iac_tools = re.findall(iac_tools_pattern, text, re.IGNORECASE)
+        if iac_tools:
+            # Normalize: cfn → cloudformation, k8s → kubernetes
+            normalized = []
+            for tool in {t.lower() for t in iac_tools}:
+                if tool == "cfn":
+                    normalized.append("cloudformation")
+                elif tool == "k8s":
+                    normalized.append("kubernetes")
+                else:
+                    normalized.append(tool)
+            entities.iac_tools = list(set(normalized))
+
+        # Extract cloud provider
+        provider_patterns = {
+            "aws": r"\b(aws|amazon|ec2|s3|rds|lambda|cloudwatch)\b",
+            "gcp": r"\b(gcp|google\s*cloud|gce|gke|bigquery)\b",
+            "azure": r"\b(azure|microsoft\s*cloud|aks|cosmos)\b",
+            "ovh": r"\b(ovh|ovhcloud)\b",
+            "proxmox": r"\b(proxmox|pve)\b",
+            "vmware": r"\b(vmware|vsphere|vcenter|esxi)\b",
+            "digitalocean": r"\b(digitalocean|do\s+droplet)\b",
+            "openstack": r"\b(openstack|nova|neutron)\b",
+        }
+        for provider, pattern in provider_patterns.items():
+            if re.search(pattern, text, re.IGNORECASE):
+                entities.cloud_provider = provider
+                break
+
+        # Extract infrastructure resources
+        resource_patterns = (
+            r"\b(vm|vms|instance|instances|server|servers|machine|machines|"
+            r"vpc|subnet|subnets|security[- ]?group|load[- ]?balancer|lb|elb|alb|nlb|"
+            r"database|db|rds|aurora|dynamo|bucket|s3|blob|storage|volume|disk|ebs|"
+            r"cluster|node|nodes|deployment|pod|pods|namespace|"
+            r"network|firewall|nat|gateway|route[- ]?table|"
+            r"lambda|function|api[- ]?gateway|cdn|cloudfront)\b"
+        )
+        resources = re.findall(resource_patterns, text, re.IGNORECASE)
+        if resources:
+            entities.infrastructure_resources = list({r.lower() for r in resources})
+
+        # Extract IaC operation type
+        # PROVISION patterns (creating new)
+        provision_patterns = [
+            r"\b(provision|provisionner|créer?|create|spin\s+up|allocate)\b.*"
+            r"\b(vm|instance|server|serveur|machine|infra|infrastructure|resource|ressource)",
+            r"\b(terraform|ansible|pulumi)\s+(apply|run)\b.*\b(new|nouveau)",
+            r"\b(deploy|déployer)\s+(new|nouvelle?|infrastructure|infra)\b",
+            r"\bnew\s+(vm|instance|server|serveur|machine|infrastructure)\b",
+        ]
+        # UPDATE patterns (modifying existing)
+        update_patterns = [
+            r"\b(update|mettre\s+[àa]\s+jour|upgrade|modifier|scale|resize)\b.*"
+            r"\b(vm|instance|server|serveur|machine|infra|resource|ressource)",
+            r"\b(apply|appliquer)\s+(changes?|modifications?|config)\b",
+            r"\b(augment|réduire|increase|decrease)\s+(cpu|ram|memory|disk|replicas|capacity)\b",
+            r"\b(scale|resize)\s+(up|down|out|in)\b",
+            r"\bmodify\s+(instance|vm|server|serveur|resource)\b",
+        ]
+        # DESTROY patterns
+        destroy_patterns = [
+            r"\b(destroy|détruire|teardown|deprovision|supprimer)\b.*"
+            r"\b(vm|instance|server|serveur|machine|infra|infrastructure|resource|ressource)",
+            r"\bterraform\s+destroy\b",
+            r"\b(delete|remove)\s+(all\s+)?(infrastructure|infra|resources?|ressources?)\b",
+        ]
+        # PLAN patterns (read-only preview)
+        plan_patterns = [
+            r"\bterraform\s+(plan|validate|fmt|show)\b",
+            r"\bansible[- ]playbook\s+.*--check\b",
+            r"\b(dry[- ]?run|preview|what[- ]?if)\b",
+            r"\bkubectl\s+(diff|get|describe)\b",
+        ]
+
+        text_lower_iac = text.lower()
+        if any(re.search(p, text_lower_iac) for p in destroy_patterns):
+            entities.iac_operation = "destroy"
+        elif any(re.search(p, text_lower_iac) for p in plan_patterns):
+            entities.iac_operation = "plan"
+        elif any(re.search(p, text_lower_iac) for p in update_patterns):
+            entities.iac_operation = "update"
+        elif (
+            any(re.search(p, text_lower_iac) for p in provision_patterns)
+            # Fallback: IaC tool + apply/run/execute = provision
+            or (entities.iac_tools and re.search(r"\b(apply|run|execute)\b", text_lower_iac))
+        ):
+            entities.iac_operation = "provision"
+
+        # Classify intent (simple heuristic)
+        text_lower = text.lower()
+
+        # CHANGE indicators
+        change_patterns = [
+            r"\b(restart|redémarrer|stop|start|deploy|install|update|fix|configure)\b",
+            r"\b(create|delete|remove|modify|enable|disable|kill)\b",
+            r"\b(répare|supprime|installe|démarre|arrête)\b",
+        ]
+        change_score = sum(1 for p in change_patterns if re.search(p, text_lower))
+
+        # DIAGNOSTIC indicators
+        diag_patterns = [
+            r"\b(check|verify|show|list|get|view|analyze|monitor|debug|diagnose)\b",
+            r"\b(vérifie|affiche|montre|analyse|surveille)\b",
+            r"^(what|why|how|when|where|quoi|comment|pourquoi)\b",
+            r"\?$",
+        ]
+        diag_score = sum(1 for p in diag_patterns if re.search(p, text_lower))
+
+        # IaC operation strongly influences intent (v0.9.0)
+        if entities.iac_operation in ("provision", "update", "destroy"):
+            change_score += 3  # Strong CHANGE signal
+        elif entities.iac_operation == "plan":
+            diag_score += 3  # Plan is read-only
+
+        # Determine intent
+        if change_score > diag_score:
+            center = "CHANGE"
+            confidence = min(0.6 + change_score * 0.1, 0.9)
+        else:
+            center = "DIAGNOSTIC"
+            confidence = min(0.6 + diag_score * 0.1, 0.9)
+
+        # Check destructive (includes IaC destroy operations)
+        destructive_patterns = (
+            r"\b(rm\s+-rf|delete|drop|truncate|format|kill\s+-9|shutdown|reboot)\b"
+        )
+        is_destructive = bool(re.search(destructive_patterns, text_lower))
+
+        # IaC destroy is always destructive (v0.9.0)
+        if entities.iac_operation == "destroy":
+            is_destructive = True
+
+        # Determine severity (v0.9.0 - IaC-aware)
+        severity = self._determine_severity(entities, is_destructive)
+
+        intent = IntentClassification(
+            center=center,
+            confidence=confidence,
+            is_destructive=is_destructive,
+            severity=severity,
+            reasoning="Regex fallback classification",
+        )
+
+        return SmartExtractionResult(
+            entities=entities,
+            intent=intent,
+            raw_input=user_input,
+        )
+
+    def _determine_severity(self, entities: ExtractedEntities, is_destructive: bool) -> str:
+        """
+        Determine severity based on entities and operation type.
+
+        Severity levels:
+        - critical: Production + destructive, or destroy in production
+        - high: Production operations, destroy in non-prod, urgent fixes
+        - medium: Staging/dev operations, routine updates
+        - low: Plan/preview, information requests
+
+        v0.9.0: IaC-aware severity determination.
+        """
+        env = entities.environment
+        iac_op = entities.iac_operation
+
+        # Critical: destroy in production OR any destructive in production
+        if env == "production" and (iac_op == "destroy" or is_destructive):
+            return "critical"
+
+        # High: destroy anywhere, or production modifications
+        if iac_op == "destroy":
+            return "high"
+        if env == "production" and iac_op in ("provision", "update"):
+            return "high"
+
+        # Medium: staging operations or provision/update in dev
+        if env == "staging" and iac_op in ("provision", "update", "destroy"):
+            return "medium"
+        if iac_op in ("provision", "update"):
+            return "medium"
+
+        # Low: plan operations or unknown
+        if iac_op == "plan":
+            return "low"
+
+        # Fallback: destructive commands are high, otherwise low
+        return "high" if is_destructive else "low"
 
     @property
     def model(self) -> str | None:
