@@ -11,7 +11,7 @@ import hashlib
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -45,7 +45,7 @@ async def compare_files(
     path2: str | None = None,
     show_diff: bool = True,
     context_lines: int = 3,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Compare files between two hosts or between host and local.
 
@@ -147,7 +147,7 @@ async def sync_file(
     dest_host: str,
     dest_path: str | None = None,
     backup: bool = True,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Sync a file from source to destination host.
 

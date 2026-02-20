@@ -36,7 +36,7 @@ async def check_service_status(
     ctx: SharedContext,
     host: str,
     service: str,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check the status of a systemd service.
 

@@ -11,7 +11,7 @@ so we proxy `ssh_execute` through this module and wire submodules to use it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from merlya.tools.core import ToolResult
 from merlya.tools.core import ssh_execute as _core_ssh_execute
@@ -56,7 +56,7 @@ async def _proxy_ssh_execute(
     timeout: int = 60,
     connect_timeout: int | None = None,
     via: str | None = None,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """Proxy to the module-level `ssh_execute` (supports monkeypatching in tests)."""
     return await ssh_execute(
         ctx,

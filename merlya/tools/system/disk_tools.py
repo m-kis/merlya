@@ -108,7 +108,7 @@ async def check_disk_usage(
     host: str,
     path: str = "/",
     threshold: int = 90,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check disk usage on a host.
 
@@ -172,7 +172,7 @@ async def check_all_disks(
     host: str,
     threshold: int = 90,
     exclude_types: list[str] | None = None,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Check disk usage on all mounted filesystems.
 

@@ -10,7 +10,7 @@ import re
 import shlex
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -225,9 +225,9 @@ def check_verification_result(
 
 
 def add_verification_to_result(
-    result: ToolResult,
+    result: ToolResult[Any],
     command: str,
-) -> ToolResult:
+) -> ToolResult[Any]:
     """
     Add verification hint to tool result if applicable.
 
