@@ -78,6 +78,23 @@ async def bash(
 
     ctx.deps.tracker.record("local", command)
 
+    # SECURITY HURDLE: Prompt user for confirmation on critical actions
+    if ctx.deps.router_result and (
+        getattr(ctx.deps.router_result, "is_destructive", False)
+        or getattr(ctx.deps.router_result, "severity", "low") == "critical"
+    ):
+        logger.warning(f"⚠️ Critical action detected (local): {command}")
+        confirmed = await ctx.deps.context.ui.prompt(
+            f"⚠️ SECURITY WARNING: The AI agent wants to execute a critical/destructive command locally:\n> {command}\nDo you want to proceed? [y/N]"
+        )
+        if not confirmed or confirmed.lower() not in ("y", "yes"):
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+                "error": "User aborted critical command execution for safety.",
+            }
     logger.info(f"🖥️ Running locally: {command[:60]}...")
 
     touch_activity()

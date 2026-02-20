@@ -116,7 +116,9 @@ class SSHConnectionBuilder:
 
         return options
 
-    async def setup_jump_tunnel(self, opts: SSHConnectionOptions) -> Any | None:
+    async def setup_jump_tunnel(
+        self, opts: SSHConnectionOptions, auth_manager: object | None = None
+    ) -> Any | None:
         """Setup jump host tunnel if configured."""
         import asyncssh
 
@@ -135,7 +137,29 @@ class SSHConnectionBuilder:
         if opts.jump_username:
             jump_options["username"] = opts.jump_username
 
-        if opts.jump_private_key:
+        # Use auth manager for jump host if available
+        if auth_manager:
+            from merlya.ssh.auth import SSHAuthManager
+
+            if isinstance(auth_manager, SSHAuthManager):
+                # The jump host typically isn't in inventory (or its ID is the host name itself)
+                auth_opts = await auth_manager.prepare_auth(
+                    hostname=opts.jump_host,
+                    username=opts.jump_username,
+                    private_key=opts.jump_private_key,
+                    host_name=opts.jump_host,
+                )
+                jump_options["preferred_auth"] = auth_opts.preferred_auth
+
+                if auth_opts.client_keys:
+                    jump_options["client_keys"] = auth_opts.client_keys
+                if auth_opts.password:
+                    jump_options["password"] = auth_opts.password
+                if auth_opts.agent_path:
+                    jump_options["agent_path"] = auth_opts.agent_path
+
+        # Fallback to key direct load if no auth manager or it didn't attach keys
+        if "client_keys" not in jump_options and opts.jump_private_key:
             jump_key_path = Path(opts.jump_private_key).expanduser()
             if jump_key_path.exists():
                 jump_key = await self._load_jump_key(jump_key_path)
@@ -249,7 +273,7 @@ class SSHConnectionBuilder:
         # Setup jump tunnel if needed
         tunnel: Any | None = None
         try:
-            tunnel = await self.setup_jump_tunnel(opts)
+            tunnel = await self.setup_jump_tunnel(opts, auth_manager)
             if tunnel:
                 options["tunnel"] = tunnel
 

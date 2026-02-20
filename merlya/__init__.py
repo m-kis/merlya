@@ -9,5 +9,5 @@ try:
 
     __version__ = version("merlya")
 except Exception:
-    __version__ = "0.8.2"  # Fallback
+    __version__ = "0.8.3"  # Fallback
 __author__ = "Cedric"

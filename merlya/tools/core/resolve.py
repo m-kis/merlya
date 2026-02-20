@@ -75,6 +75,23 @@ def _is_private_ip(ip_str: str) -> bool:
         return False
 
 
+def _looks_like_fqdn(hostname: str) -> bool:
+    """Return True when a token looks like a domain name."""
+    if not hostname or "." not in hostname:
+        return False
+
+    labels = hostname.rstrip(".").split(".")
+    if len(labels) < 2:
+        return False
+
+    label_pattern = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+    if not all(label_pattern.match(label) for label in labels):
+        return False
+
+    # TLD should look like a real domain suffix
+    return labels[-1].isalpha() and len(labels[-1]) >= 2
+
+
 def _is_secret_keyword_match(ref_name: str, hosts: list[Any]) -> bool:
     """
     Check if a reference name should be treated as a secret reference.
@@ -214,7 +231,13 @@ async def resolve_host_references(
                 else:
                     logger.debug(f"🌐 Resolved @{ref_name} via DNS → {resolved_ip}")
             except socket.gaierror:
-                pass  # DNS failed, continue to user prompt
+                # Keep well-formed FQDNs even if local DNS pre-check fails.
+                # Runtime resolution may still succeed in the execution context.
+                if _looks_like_fqdn(ref_name):
+                    replacement = ref_name
+                    logger.debug(
+                        f"🌐 Keeping @{ref_name} as hostname (DNS pre-check unavailable)"
+                    )
 
         # 3. Ask user for IP
         if replacement is None and ui:

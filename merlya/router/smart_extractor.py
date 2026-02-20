@@ -129,6 +129,10 @@ Extract entities and classify intent from the user's message.
 Mark as destructive if: rm -rf, delete, drop, truncate, format, kill -9, shutdown, reboot,
 terraform destroy, destroy infrastructure, teardown, deprovision
 
+## Agentic Clarity (Ambiguity Detection):
+- If the user request is extremely vague, ambiguous, or lacks a critical target (e.g. "restart the server" but no server is specified or in context), set `needs_clarification` to true.
+- If true, provide a concise `clarification_message` asking the user for the missing information in the same language as their prompt (e.g. "Which server would you like to restart?").
+
 Respond in JSON format matching the schema."""
 
 
@@ -141,7 +145,7 @@ class SmartExtractor:
     """
 
     # Timeout for extraction calls
-    EXTRACTION_TIMEOUT = 10.0
+    EXTRACTION_TIMEOUT = 20.0
 
     def __init__(self, config: Config) -> None:
         """

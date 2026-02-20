@@ -91,6 +91,8 @@ class SSHPool(SSHPoolConnectMixin, SFTPOperations):
     asyncio.Lock for connection pool operations.
 
     Features:
+    - Protocol-level Multiplexing (multiple channels over a single SSH transport)
+    - Concurrent Execution Throttling (Semaphores prevent MaxSessions exhaustion)
     - Connection reuse with timeout management
     - Circuit breaker per host (prevents cascade failures)
     - Automatic retry for transient errors
