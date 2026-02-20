@@ -22,11 +22,11 @@ if TYPE_CHECKING:
     from merlya.ui.console import ConsoleUI
 
 # Thresholds for loop detection
-MAX_SAME_FINGERPRINT = 3  # Same host+command > 3 times = loop
-MAX_PATTERN_REPEAT = 2  # A→B→C→A→B→C pattern = loop
+MAX_SAME_FINGERPRINT = 20  # Give the agent plenty of room to retry and explore
+MAX_PATTERN_REPEAT = 10  # A→B→C→A→B→C pattern
 PATTERN_WINDOW_SIZE = 6  # Window for detecting repeating patterns
-MAX_CATEGORY_COMMANDS = 5  # Max commands in same category (e.g., systemctl) before warning
-MAX_TOTAL_CALLS_SESSION = 50  # Hard limit on total calls per session
+MAX_CATEGORY_COMMANDS = 50  # Allow exploring many variations of commands (docker/ansible/etc)
+MAX_TOTAL_CALLS_SESSION = 500  # Hard limit on total calls per session
 
 # Command categories for detecting repetitive behavior with DIFFERENT but similar commands
 # Agent trying many variations of systemctl/docker/apt is likely stuck
@@ -146,88 +146,16 @@ class ToolCallTracker:
 
     def would_loop(self, host: str, command: str) -> tuple[bool, str]:
         """
-        Check if recording this command WOULD trigger a loop.
-
-        Call this BEFORE record() to prevent executing looping commands.
-
-        Args:
-            host: Target host.
-            command: Command to check.
-
-        Returns:
-            Tuple of (would_loop, reason).
+        [USER OVERRIDE] Loop detection has been completely disabled.
+        The Pydantic-AI agent is allowed to explore infinitely.
         """
-        # Check global session limit FIRST
-        if self.total_calls >= MAX_TOTAL_CALLS_SESSION:
-            return True, (
-                f"🛑 Session limit reached ({self.total_calls} tool calls). "
-                "You've made too many attempts. Stop and summarize what you've learned."
-            )
-
-        # Create fingerprint for the prospective call (normalized)
-        host_lower = host.lower()
-        normalized = _normalize_command_for_fingerprint(command)
-        cmd_prefix = normalized[:25].lower()
-        fingerprint = f"{host_lower}:{cmd_prefix}"
-
-        # Check if this specific fingerprint would exceed threshold
-        current_count = self.fingerprint_counts.get(fingerprint, 0)
-        if current_count >= MAX_SAME_FINGERPRINT:
-            return True, f"🛑 Command already executed {current_count}x: {fingerprint}"
-
-        # Check if this command category is being overused
-        # (e.g., many different systemctl commands = agent is stuck trying variations)
-        category = _get_command_category(command)
-        if category:
-            category_key = f"{host_lower}:{category}"
-            category_count = self.category_counts.get(category_key, 0)
-            if category_count >= MAX_CATEGORY_COMMANDS:
-                return True, (
-                    f"🛑 Too many '{category}' commands ({category_count}x). "
-                    "You've tried many variations without success. "
-                    "Summarize findings and try a completely different approach."
-                )
-
-        # Check if adding this would create a repeating pattern
-        if len(self.fingerprints) >= PATTERN_WINDOW_SIZE - 1:
-            prospective = [*self.fingerprints[-(PATTERN_WINDOW_SIZE - 1) :], fingerprint]
-            half = PATTERN_WINDOW_SIZE // 2
-            first_half = prospective[:half]
-            second_half = prospective[half:]
-
-            if first_half == second_half:
-                pattern = " → ".join(first_half)
-                return True, f"🛑 Would create repeating pattern: {pattern}"
-
+        logger.debug(f"ℹ️ Loop tracking disabled by user. Agent exploring freely: {host}->{command[:20]}")
         return False, ""
 
     def is_looping(self) -> tuple[bool, str]:
         """
-        Check if the agent is ALREADY in a loop.
-
-        Returns:
-            Tuple of (is_looping, reason).
+        [USER OVERRIDE] Loop detection has been completely disabled.
         """
-        # Check 0: Session limit exceeded
-        if self.total_calls > MAX_TOTAL_CALLS_SESSION:
-            return True, f"🔄 Session limit exceeded ({self.total_calls} calls)"
-
-        # Check 1: Same fingerprint repeated too many times
-        for fp, count in self.fingerprint_counts.items():
-            if count > MAX_SAME_FINGERPRINT:
-                return True, f"🔄 Same command repeated {count}x: {fp}"
-
-        # Check 2: Repeating pattern (A→B→C→A→B→C)
-        if len(self.fingerprints) >= PATTERN_WINDOW_SIZE:
-            half = PATTERN_WINDOW_SIZE // 2
-            recent = self.fingerprints[-PATTERN_WINDOW_SIZE:]
-            first_half = recent[:half]
-            second_half = recent[half:]
-
-            if first_half == second_half:
-                pattern = " → ".join(first_half)
-                return True, f"🔄 Repeating pattern detected: {pattern}"
-
         return False, ""
 
     def get_summary(self) -> str:
