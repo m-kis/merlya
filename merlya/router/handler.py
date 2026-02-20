@@ -6,7 +6,7 @@ Simplified handler that dispatches to Orchestrator for all non-slash commands.
 Architecture:
   User Input
   ├── "/" command → Slash command dispatch (handled in REPL)
-  └── Free text → Orchestrator (LLM) → Delegates to specialists
+  └── Free text → Agent (LLM)
 """
 
 from __future__ import annotations
@@ -17,8 +17,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 if TYPE_CHECKING:
-    from merlya.agent.main import AgentResponse
-    from merlya.agent.orchestrator import Orchestrator
+    from merlya.agent.main import AgentResponse, MerlyaAgent
     from merlya.core.context import SharedContext
 
 
@@ -55,45 +54,43 @@ class HandlerResponse:
 
 async def handle_message(
     ctx: SharedContext,
-    orchestrator: Orchestrator,
+    agent: MerlyaAgent,
     user_input: str,
+    route_result: object | None = None,
 ) -> HandlerResponse:
     """
-    Handle a user message by delegating to the Orchestrator.
+    Handle a user message by delegating to the MerlyaAgent.
 
     This is the main entry point for processing free text user input.
     Slash commands are handled separately in the REPL.
 
     Flow:
     1. Expand @ mentions (variables, hosts)
-    2. Send to Orchestrator
+    2. Send to Agent
     3. Return formatted response
 
     Args:
         ctx: Shared context.
-        orchestrator: Orchestrator instance.
+        agent: MerlyaAgent instance.
         user_input: User input text.
+        route_result: Optional routing result.
 
     Returns:
         HandlerResponse with the result.
     """
-    logger.debug(f"🤖 Processing with Orchestrator: {user_input[:50]}...")
+    logger.debug(f"🤖 Processing with Agent: {user_input[:50]}...")
 
     try:
-        # Process with orchestrator
-        result = await orchestrator.process(user_input)
+        # Process with agent
+        result = await agent.run(user_input, router_result=route_result)
 
         # Format response
         return HandlerResponse(
             message=result.message,
-            actions_taken=result.actions_summary or None,
-            suggestions=None,
-            handled_by="orchestrator",
-            raw_data={
-                "delegations": result.delegations,
-            }
-            if result.delegations
-            else None,
+            actions_taken=result.actions_taken or None,
+            suggestions=result.suggestions or None,
+            handled_by="agent",
+            raw_data=None,
         )
 
     except Exception as e:
@@ -128,10 +125,10 @@ async def handle_user_message(
     """
     logger.warning("⚠️ handle_user_message is deprecated, use handle_message instead")
 
-    # Try to use orchestrator if available in context
-    orchestrator = getattr(ctx, "_orchestrator", None)
-    if orchestrator:
-        return await handle_message(ctx, orchestrator, user_input)
+    # Try to use agent if available in context
+    agent_inst = getattr(ctx, "_agent", None)
+    if agent_inst:
+        return await handle_message(ctx, agent_inst, user_input, route_result)
 
     # Fallback to old agent if available
     if hasattr(agent, "run"):

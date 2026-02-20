@@ -137,13 +137,24 @@ class LoggingConfig(BaseModel):
 class MCPServerConfig(BaseModel):
     """Configuration for an MCP server."""
 
-    command: str = Field(description="Executable to start the MCP server")
+    command: str | None = Field(default=None, description="Executable to start the MCP server")
     args: list[str] = Field(default_factory=list, description="Arguments for the server command")
     env: dict[str, str] = Field(
         default_factory=dict, description="Environment variables for server"
     )
     cwd: Path | None = Field(default=None, description="Working directory for the server")
+
+    url: str | None = Field(default=None, description="URL for remote SSE MCP server")
+    headers: dict[str, str] = Field(
+        default_factory=dict, description="HTTP headers for remote server (e.g. Authorization)"
+    )
+
     enabled: bool = Field(default=True, description="Whether this server should be used")
+
+    @property
+    def is_remote(self) -> bool:
+        """Check if server is configured for remote SSE transport."""
+        return self.url is not None
 
 
 class MCPConfig(BaseModel):

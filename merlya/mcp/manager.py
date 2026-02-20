@@ -170,10 +170,12 @@ class MCPManager:
     async def add_server(
         self,
         name: str,
-        command: str,
+        command: str | None,
         args: list[str],
         env: dict[str, str],
         cwd: str | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         """Add a new MCP server configuration and persist it."""
         from pathlib import Path
@@ -183,6 +185,8 @@ class MCPManager:
             args=args,
             env=env,
             cwd=Path(cwd) if cwd else None,
+            url=url,
+            headers=headers or {},
             enabled=True,
         )
         self.config.save()
@@ -319,12 +323,21 @@ class MCPManager:
             if name in self._connected:
                 return group
 
-            params = self._build_server_params(name, self.config.mcp.servers[name])
             self._component_prefix = name
             try:
                 # Suppress warnings about missing optional MCP features
                 with suppress_mcp_capability_warnings():
-                    await group.connect_to_server(params)
+                    server_config = self.config.mcp.servers[name]
+                    if server_config.is_remote and server_config.url:
+                        from mcp.client.sse import sse_client
+                        headers = self._resolve_env(server_config.headers) if server_config.headers else None
+                        # sse_client returns an async context manager that yields (read_stream, write_stream)
+                        # connect_to_server expects either StdioServerParameters or an async context manager yielding streams
+                        await group.connect_to_server(sse_client(server_config.url, headers=headers))
+                    else:
+                        params = self._build_server_params(name, server_config)
+                        await group.connect_to_server(params)
+
                 self._connected.add(name)
                 logger.info(f"✅ MCP server connected: {name}")
                 return group
@@ -350,8 +363,11 @@ class MCPManager:
             logger.debug(f"🔧 MCP env merged: {list(custom_env.keys())} added to default env")
         # If no custom env, pass None to let SDK use get_default_environment()
 
+        # Command is required for stdio transport
+        command = server.command or "echo"
+
         return StdioServerParameters(
-            command=server.command,
+            command=command,
             args=server.args,
             env=merged_env,
             cwd=server.cwd,

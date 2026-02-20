@@ -121,17 +121,22 @@ def _make_circuit_breaker_response(host: str) -> dict[str, Any]:
     }
 
 
-def _validate_host_not_credential(host: str) -> None:
-    """Raise ModelRetry if host looks like a credential reference."""
+def _validate_host_not_credential(host: str) -> None | dict[str, Any]:
+    """Return error response if host looks like a credential reference."""
     credential_keywords = ("secret", "password", "sudo", "root", "cred")
     if host.startswith("@") and any(kw in host.lower() for kw in credential_keywords):
-        raise ModelRetry(
-            f"❌ WRONG: '{host}' is a password reference, not a host!\n"
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": -1,
+            "error": f"❌ WRONG ARGUMENT: '{host}' is a password reference, not a host!\n"
             "host = machine IP/name (e.g., '192.168.1.7')\n"
             "stdin = password reference (e.g., '@secret-sudo')\n"
             "CORRECT: ssh_execute(host='192.168.1.7', command='sudo -S cmd', "
-            "stdin='@secret-sudo')"
-        )
+            "stdin='@secret-sudo')",
+        }
+    return None
 
 
 def _detect_elevation_needs(command: str) -> bool:
@@ -150,8 +155,8 @@ async def _resolve_elevation_credentials(
     host: str,
     command: str,
     stdin: str | None,
-) -> str | None:
-    """Resolve elevation credentials, either from LLM-provided stdin or auto-lookup."""
+) -> str | dict[str, Any]:
+    """Resolve elevation credentials, either from LLM-provided stdin or auto-lookup. Returns dict on error."""
     from merlya.agent.specialists.elevation import auto_collect_elevation_credentials
 
     if stdin and stdin.startswith("@"):
@@ -169,13 +174,17 @@ async def _resolve_elevation_credentials(
         logger.debug(f"✅ Found stored credentials for elevation on {host}")
         return effective_stdin
 
-    raise ModelRetry(
-        f"❌ MISSING credentials for elevation on '{host}'.\n"
+    return {
+        "success": False,
+        "stdout": "",
+        "stderr": "",
+        "exit_code": -1,
+        "error": f"❌ MISSING credentials for elevation on '{host}'.\n"
         f"No stored credentials found. First call:\n"
         f"request_credentials(service='sudo', host='{host}')\n"
         f"Then retry with: ssh_execute(host='{host}', command='{command[:40]}...', "
-        f"stdin='@sudo:{host}:password')"
-    )
+        f"stdin='@sudo:{host}:password')",
+    }
 
 
 def _build_ssh_response(
@@ -225,10 +234,10 @@ async def _determine_execution_target(
         )
 
     if not host_in_request:
-        logger.warning(
-            f"⚠️ LLM picked target '{host}' not mentioned in task. Defaulting to 'local' for safety."
+        logger.debug(
+            f"ℹ️ LLM picked target '{host}' not explicitly mentioned in prompt. Assuming agent discovered it."
         )
-        return True
+        return False
 
     return False
 
@@ -264,11 +273,16 @@ async def ssh_execute(
     if is_local:
         return await _execute_local(ctx, command, timeout, _bash_execute, touch_activity)
 
-    _validate_host_not_credential(host)
+    validation_error = _validate_host_not_credential(host)
+    if validation_error:
+        return validation_error
 
     effective_stdin = stdin
     if _detect_elevation_needs(command):
-        effective_stdin = await _resolve_elevation_credentials(ctx, host, command, stdin)
+        check_result = await _resolve_elevation_credentials(ctx, host, command, stdin)
+        if isinstance(check_result, dict):
+            return check_result
+        effective_stdin = check_result
 
     return await _execute_remote(
         ctx,
@@ -339,6 +353,24 @@ async def _execute_remote(
     ctx.deps.context.last_remote_target = host
     logger.debug(f"📍 Conversation context updated: last_remote_target = {host}")
 
+    # SECURITY HURDLE: Prompt user for confirmation on critical actions
+    if ctx.deps.router_result and (
+        getattr(ctx.deps.router_result, "is_destructive", False)
+        or getattr(ctx.deps.router_result, "severity", "low") == "critical"
+    ):
+        logger.warning(f"⚠️ Critical action detected on {host}: {command}")
+        confirmed = await ctx.deps.context.ui.prompt(
+            f"⚠️ SECURITY WARNING: The AI agent wants to execute a critical/destructive command on {host}:\n> {command}\nDo you want to proceed? [y/N]"
+        )
+        if not confirmed or confirmed.lower() not in ("y", "yes"):
+           return {
+               "success": False,
+               "stdout": "",
+               "stderr": "",
+               "exit_code": -1,
+               "error": f"User aborted critical command execution on {host} for safety."
+           }
+
     touch_activity_fn()
     result = await ssh_execute_fn(ctx.deps.context, host, command, timeout, via=via, stdin=stdin)
     touch_activity_fn()
@@ -348,7 +380,13 @@ async def _execute_remote(
         return _make_circuit_breaker_response(host)
 
     if not result.success and check_recoverable_error(result.error):
-        raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": -1,
+            "error": f"❌ Host '{host}' connection failed. It may not exist or DNS/timeout occurred: {result.error}\nIf you tried to reach an unreachable host, try executing commands on the jump host first or run local discovery.",
+        }
 
     return _build_ssh_response(result, command, get_hint_fn)
 

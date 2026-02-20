@@ -32,33 +32,31 @@ DEFAULT_LIST_LIMIT = 10  # Default limit for list operations
 MAX_LIST_LIMIT = 100  # Maximum allowed list limit
 
 # Agent Limits
-DEFAULT_MAX_HISTORY_MESSAGES = 50  # Maximum messages to keep in history (default)
-DIAGNOSTIC_MAX_HISTORY_MESSAGES = 100  # For diagnostic tasks with many tool calls
-DEFAULT_REQUEST_LIMIT = 60  # Maximum LLM requests per run (fallback)
-DEFAULT_TOOL_CALLS_LIMIT = 30  # Maximum tool calls per run (hard stop)
+DEFAULT_MAX_HISTORY_MESSAGES = 1000  # Give the agent infinite history
+DIAGNOSTIC_MAX_HISTORY_MESSAGES = 2000
+DEFAULT_REQUEST_LIMIT = 500  # Massive request ceiling
+DEFAULT_TOOL_CALLS_LIMIT = 500  # Let the agent explore infinitely
 MIN_RESPONSE_LENGTH_WITH_ACTIONS = 20  # Minimum response length when actions taken
-HARD_MAX_HISTORY_MESSAGES = 200  # Absolute maximum to prevent unbounded growth
+HARD_MAX_HISTORY_MESSAGES = 5000  # Absolute maximum to prevent JSON unbounded growth
 
 # Mode-specific tool call limits (set by router based on task type)
-# IMPORTANT: These are HARD STOPS - loop detection in history.py is unreliable
-# due to history truncation resetting the tool call counter.
-# Keep these LOW to prevent runaway autonomous behavior.
-TOOL_CALLS_LIMIT_DIAGNOSTIC = 60  # Complex investigations
-TOOL_CALLS_LIMIT_REMEDIATION = 40  # Multi-step fixes
-TOOL_CALLS_LIMIT_QUERY = 30  # Information gathering
-TOOL_CALLS_LIMIT_CHAT = 15  # Simple conversations
+# IMPORTANT: Increased massively per user request to enable full autonomy
+TOOL_CALLS_LIMIT_DIAGNOSTIC = 500
+TOOL_CALLS_LIMIT_REMEDIATION = 500
+TOOL_CALLS_LIMIT_QUERY = 500
+TOOL_CALLS_LIMIT_CHAT = 500
 
 # Mode-specific request limits (should be >= tool_calls_limit)
-REQUEST_LIMIT_DIAGNOSTIC = 80  # Headroom for complex investigation
-REQUEST_LIMIT_REMEDIATION = 60  # Moderate for fix/deploy tasks
-REQUEST_LIMIT_QUERY = 40  # Enough for information gathering
-REQUEST_LIMIT_CHAT = 20  # Simple conversations
+REQUEST_LIMIT_DIAGNOSTIC = 1000
+REQUEST_LIMIT_REMEDIATION = 1000
+REQUEST_LIMIT_QUERY = 1000
+REQUEST_LIMIT_CHAT = 1000
 
 # Skill-specific limits (skills can involve complex multi-step operations)
-REQUEST_LIMIT_SKILL = 100  # Request limit for skill execution
+REQUEST_LIMIT_SKILL = 1000  # Request limit for skill execution
 
 # Tool retry configuration
-DEFAULT_TOOL_RETRIES = 3  # Allow tools to retry on ModelRetry (e.g., elevation flow)
+DEFAULT_TOOL_RETRIES = 50  # Let the model retry as many times as it needs to elevate/authenticate
 
 # LLM Request Timeouts (seconds) - per provider best practices
 # These are timeouts for individual API requests, not overall agent run time

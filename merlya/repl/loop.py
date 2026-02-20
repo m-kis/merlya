@@ -24,7 +24,7 @@ from merlya.config.constants import COMPLETION_CACHE_TTL_SECONDS
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from merlya.agent.orchestrator import Orchestrator
+    from merlya.agent.main import MerlyaAgent
     from merlya.core.context import SharedContext
 
 from loguru import logger
@@ -198,17 +198,17 @@ class REPL:
     def __init__(
         self,
         ctx: SharedContext,
-        orchestrator: Orchestrator,
+        agent: MerlyaAgent,
     ) -> None:
         """
         Initialize REPL.
 
         Args:
             ctx: Shared context.
-            orchestrator: Main orchestrator for LLM processing.
+            agent: Main agent for LLM processing.
         """
         self.ctx = ctx
-        self.orchestrator = orchestrator
+        self.agent = agent
         self.completer = MerlyaCompleter(ctx)
         self.running = False
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -268,9 +268,9 @@ class REPL:
                                 self.running = False
                                 break
                             if result.data.get("new_conversation"):
-                                self.orchestrator.reset()
+                                self.agent.clear_history()
                             if result.data.get("reload_agent"):
-                                self._reload_orchestrator()
+                                self._reload_agent()
 
                         # Display result
                         if result.success:
@@ -286,10 +286,31 @@ class REPL:
                 # Expand @ mentions (variables → values, secrets → kept as @ref)
                 expanded_input = await self._expand_mentions(user_input)
 
-                # Process with Orchestrator
+                # Process with Agent
                 try:
+                    # Provide conversational context to the stateless Router/SmartExtractor
+                    router_input = expanded_input
+                    if self.ctx.last_remote_target:
+                        router_input = f"{expanded_input}\n[Context: Ongoing conversation about host {self.ctx.last_remote_target}]"
+
+                    route_result = await self.ctx.router.route(router_input)
+
+                    # Agentic Clarity: Intercept ambiguous requests before hitting the main LLM agent
+                    if getattr(route_result, "needs_clarification", False) and not self.ctx.last_remote_target:
+                        msg = route_result.clarification_message or self.ctx.t("ui.needs_clarification", default="Could you please clarify your request?")
+                        self.ctx.ui.warning(self.ctx.t("ui.ambiguous_request", default="Ambiguous request detected."))
+                        clarification = await self.ctx.ui.prompt(msg)
+
+                        if not clarification:
+                            self.ctx.ui.muted(self.ctx.t("ui.cancelled", default="Cancelled."))
+                            continue
+
+                        # Append the clarification to the original input and route again
+                        expanded_input = f"{expanded_input}\nClarification: {clarification}"
+                        route_result = await self.ctx.router.route(expanded_input)
+
                     with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
-                        response = await handle_message(self.ctx, self.orchestrator, expanded_input)
+                        response = await handle_message(self.ctx, self.agent, expanded_input, route_result)
                 except asyncio.CancelledError:
                     # Handle Ctrl+C during orchestrator execution
                     self.ctx.ui.newline()
@@ -487,11 +508,11 @@ class REPL:
     def _show_welcome(self) -> None:
         """Show welcome message."""
         env = os.environ.get("MERLYA_ENV", "dev")
-        # Get model from orchestrator's provider config
-        model_name = self.orchestrator.model_override or self.ctx.config.model.model
-        orchestrator_model = f"{self.orchestrator.provider}:{model_name}"
+        # Get model from agent's config
+        model_name = self.agent.model or self.ctx.config.model.model
+        agent_model = model_name
         model_label = format_model_label(
-            orchestrator_model,
+            agent_model,
             self.ctx.config.model.provider,
             self.ctx.config.model.model,
         )
@@ -520,19 +541,18 @@ class REPL:
 
         return __version__
 
-    def _reload_orchestrator(self) -> None:
-        """Reload orchestrator with current model settings."""
-        from merlya.agent.orchestrator import Orchestrator
+    def _reload_agent(self) -> None:
+        """Reload agent with current model settings."""
+        from merlya.agent.main import MerlyaAgent
 
         provider = self.ctx.config.model.provider
         model = self.ctx.config.model.model
 
-        self.orchestrator = Orchestrator(
+        self.agent = MerlyaAgent(
             context=self.ctx,
-            provider=provider,
-            model_override=model,
+            model=f"{provider}:{model}",
         )
-        logger.info(f"🔄 Orchestrator reloaded with {provider}:{model}")
+        logger.info(f"🔄 Agent reloaded with {provider}:{model}")
 
 
 async def run_repl() -> None:
@@ -543,9 +563,9 @@ async def run_repl() -> None:
 
     Architecture:
       "/" commands → Slash command dispatch (fast-path)
-      Free text → Orchestrator (LLM delegates to specialists)
+      Free text → Agent (LLM)
     """
-    from merlya.agent.orchestrator import Orchestrator
+    from merlya.agent.main import MerlyaAgent
     from merlya.commands import init_commands
     from merlya.core.context import SharedContext
     from merlya.health import run_startup_checks
@@ -630,17 +650,24 @@ async def run_repl() -> None:
 
     ctx.health = health
 
-    # Create Orchestrator (main entry point for LLM processing)
+    # Initialize router
+    try:
+        await ctx.init_router()
+        # Eagerly load models in background to reduce latency on first prompt
+        asyncio.create_task(ctx.router.preload_models())
+    except Exception as e:
+        logger.warning(f"Failed to initialize router: {e}")
+
+    # Create Agent (main entry point for LLM processing)
     provider = ctx.config.model.provider
     model_override = ctx.config.model.model
-    orchestrator = Orchestrator(
+    agent = MerlyaAgent(
         context=ctx,
-        provider=provider,
-        model_override=model_override,
+        model=f"{provider}:{model_override}",
     )
     if is_debug:
-        ctx.ui.info(ctx.t("startup.orchestrator_ready", provider=provider))
+        ctx.ui.info(ctx.t("startup.agent_ready", provider=provider))
 
     # Run REPL
-    repl = REPL(ctx, orchestrator)
+    repl = REPL(ctx, agent)
     await repl.run()
