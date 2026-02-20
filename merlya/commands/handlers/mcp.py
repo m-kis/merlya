@@ -54,17 +54,17 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     servers = await manager.list_servers()
     if not servers:
         return CommandResult(
-            success=True, message="ℹ️ No MCP servers configured. Use `/mcp add <name> <command>`."
+            success=True, message="ℹ️ No MCP servers configured. Use `/mcp add <name> <command>` or `--url=<url>`."
         )
 
     ctx.ui.table(
-        headers=["Name", "Command", "Args", "Env", "Enabled"],
+        headers=["Name", "Transport", "Target", "Env/Headers", "Enabled"],
         rows=[
             [
                 srv["name"],
-                srv["command"],
-                " ".join(srv["args"]) if srv["args"] else "-",
-                ", ".join(srv["env_keys"]) if srv["env_keys"] else "-",
+                "Remote (SSE)" if srv.get("url") else "Local (stdio)",
+                srv.get("url") or f"{srv.get('command', '-')} {' '.join(srv.get('args', []))}",
+                ", ".join(srv.get("headers", {}).keys()) if srv.get("url") else ", ".join(srv.get("env_keys", [])),
                 "✅" if srv["enabled"] else "❌",
             ]
             for srv in servers
@@ -79,36 +79,41 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     "mcp",
     "add",
     "Add an MCP server",
-    "/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path] [--no-test]",
+    "/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path] [--url=URL] [--header=KEY=VALUE] [--no-test]",
 )
 async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
     """Add a new MCP server configuration and test connectivity."""
-    if len(args) < 2:
+    if len(args) < 1:
         return CommandResult(
             success=False,
             message=(
-                "Usage: `/mcp add <name> <command> [args...] [--env=KEY=VALUE] [--cwd=/path] [--no-test]`\n\n"
-                "**Example:**\n"
-                "```\n"
-                "/mcp add context7 npx -y @upstash/context7-mcp --env=CONTEXT7_API_KEY=${my-secret}\n"
-                "```\n"
+                "Usage: `/mcp add <name> <command> [args...] [--env=K=V] [--cwd=/p] [--url=URL] [--header=K=V] [--no-test]`\n\n"
+                "**Local Example:**\n"
+                "  `/mcp add context7 npx -y @upstash/context7-mcp --env=CONTEXT7_API_KEY=${my-secret}`\n"
+                "**Remote Example:**\n"
+                "  `/mcp add example --url=http://server:3000/sse --header=Authorization=Bearer ${my-secret}`\n\n"
                 "ℹ️ Use `${secret-name}` to reference secrets stored with `/secret set`"
             ),
         )
 
-    env, cwd, no_test, remaining = _extract_add_options(args[1:])
+    env, headers, url, cwd, no_test, remaining = _extract_add_options(args[1:])
     name = args[0]
-    if not remaining:
-        return CommandResult(success=False, message="❌ Missing command to start the MCP server.")
 
-    command = remaining[0]
-    cmd_args = remaining[1:]
+    command = None
+    cmd_args = []
+
+    if remaining:
+        command = remaining[0]
+        cmd_args = remaining[1:]
+
+    if not command and not url:
+        return CommandResult(success=False, message="❌ Missing either a command to start the MCP server or an --url for remote connection.")
 
     manager = await _manager(ctx)
     if await manager.show_server(name) is not None:
         return CommandResult(success=False, message=f"❌ MCP server '{name}' already exists.")
 
-    await manager.add_server(name, command, cmd_args, env, cwd=cwd)
+    await manager.add_server(name, command, cmd_args, env, cwd=cwd, url=url, headers=headers)
     logger.info(f"✅ MCP server '{name}' added")
 
     # Skip test if --no-test flag is provided
@@ -149,14 +154,22 @@ async def cmd_mcp_show(ctx: SharedContext, args: list[str]) -> CommandResult:
     if server is None:
         return CommandResult(success=False, message=f"❌ MCP server '{name}' not found.")
 
-    lines = [
-        f"**{name}**",
-        f"- Command: `{server.command}`",
-        f"- Args: `{' '.join(server.args) if server.args else '-'}`",
-        f"- Env keys: `{', '.join(server.env.keys()) if server.env else 'none'}`",
-    ]
-    if server.cwd:
-        lines.append(f"- CWD: `{server.cwd}`")
+    if server.is_remote:
+        lines = [
+            f"**{name}** (Remote / SSE)",
+            f"- URL: `{server.url}`",
+            f"- Headers: `{', '.join(server.headers.keys()) if server.headers else 'none'}`",
+        ]
+    else:
+        lines = [
+            f"**{name}** (Local / stdio)",
+            f"- Command: `{server.command}`",
+            f"- Args: `{' '.join(server.args) if server.args else '-'}`",
+            f"- Env keys: `{', '.join(server.env.keys()) if server.env else 'none'}`",
+        ]
+        if server.cwd:
+            lines.append(f"- CWD: `{server.cwd}`")
+
     lines.append(f"- Enabled: `{'yes' if server.enabled else 'no'}`")
     return CommandResult(success=True, message="\n".join(lines))
 
@@ -238,8 +251,9 @@ async def cmd_mcp_examples(_ctx: SharedContext, _args: list[str]) -> CommandResu
         "# GitHub - Repository management\n"
         "/secret set github-token <your-token>\n"
         "/mcp add github npx -y @modelcontextprotocol/server-github --env=GITHUB_TOKEN=${github-token}\n\n"
-        "# Filesystem - Local file access\n"
-        "/mcp add fs npx -y @modelcontextprotocol/server-filesystem /path/to/allowed/dir\n"
+        "# Remote MCP Server (SSE)\n"
+        "/secret set remote-token <secret>\n"
+        "/mcp add remote-svc --url=http://api.example.com/sse --header=Authorization=Bearer ${remote-token}\n"
         "```\n\n"
         "## 📁 Config File Format (~/.merlya/config.yaml)\n\n"
         "```yaml\n"
@@ -250,11 +264,10 @@ async def cmd_mcp_examples(_ctx: SharedContext, _args: list[str]) -> CommandResu
         "      args: [-y, '@upstash/context7-mcp']\n"
         "      env:\n"
         '        CONTEXT7_API_KEY: "${context7-token}"\n'
-        "    github:\n"
-        "      command: npx\n"
-        "      args: [-y, '@modelcontextprotocol/server-github']\n"
-        "      env:\n"
-        '        GITHUB_TOKEN: "${GITHUB_TOKEN}"\n'
+        "    remote-svc:\n"
+        "      url: 'http://api.example.com/sse'\n"
+        "      headers:\n"
+        '        Authorization: "Bearer ${remote-token}"\n'
         "```\n\n"
         "## 💡 Tips\n"
         "- Store secrets with `/secret set <name> <value>`\n"
@@ -267,14 +280,16 @@ async def cmd_mcp_examples(_ctx: SharedContext, _args: list[str]) -> CommandResu
 
 def _extract_add_options(
     args: list[str],
-) -> tuple[dict[str, str], str | None, bool, list[str]]:
+) -> tuple[dict[str, str], dict[str, str], str | None, str | None, bool, list[str]]:
     """
     Parse add command options from arguments.
 
     Returns:
-        Tuple of (env dict, cwd path, no_test flag, remaining args)
+        Tuple of (env dict, headers dict, url str, cwd path, no_test flag, remaining args)
     """
     env: dict[str, str] = {}
+    headers: dict[str, str] = {}
+    url: str | None = None
     cwd: str | None = None
     no_test: bool = False
     remaining: list[str] = []
@@ -285,6 +300,13 @@ def _extract_add_options(
             if "=" in kv:
                 key, val = kv.split("=", 1)
                 env[key] = val
+        elif arg.startswith("--header="):
+            kv = arg[len("--header=") :]
+            if "=" in kv:
+                key, val = kv.split("=", 1)
+                headers[key] = val
+        elif arg.startswith("--url="):
+            url = arg[len("--url=") :]
         elif arg.startswith("--cwd="):
             cwd = arg[len("--cwd=") :]
         elif arg == "--no-test":
@@ -292,7 +314,7 @@ def _extract_add_options(
         else:
             remaining.append(arg)
 
-    return env, cwd, no_test, remaining
+    return env, headers, url, cwd, no_test, remaining
 
 
 async def _test_newly_added_server(

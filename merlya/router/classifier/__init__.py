@@ -95,6 +95,14 @@ class IntentRouter:
             self._initialized = True
             logger.debug("IntentRouter initialized")
 
+    async def preload_models(self) -> None:
+        """Preload models (like SmartExtractor LLM) to reduce initial latency."""
+        if not self._initialized:
+            await self.initialize()
+
+        if self._smart_extractor:
+            await self._smart_extractor._ensure_initialized()
+            logger.debug("SmartExtractor models preloaded in background")
     def set_llm_fallback(self, model: str) -> None:
         """
         Set LLM model for fallback classification.

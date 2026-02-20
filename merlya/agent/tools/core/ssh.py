@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import ModelRetry, RunContext
 
 from merlya.agent.tools_common import check_recoverable_error
 
@@ -339,6 +339,25 @@ async def _execute_remote(
     ctx.deps.context.last_remote_target = host
     logger.debug(f"📍 Conversation context updated: last_remote_target = {host}")
 
+    # SECURITY HURDLE: Prompt user if router flagged severity/destructive intent
+    if ctx.deps.router_result and (
+        getattr(ctx.deps.router_result, "is_destructive", False)
+        or getattr(ctx.deps.router_result, "severity", "low") == "critical"
+    ):
+        logger.warning(f"⚠️ Critical action detected on {host}: {command}")
+        confirmed = await ctx.deps.context.ui.prompt(
+            f"⚠️ SECURITY WARNING: The AI agent wants to execute a critical/destructive "
+            f"command on {host}:\n> {command}\nDo you want to proceed? [y/N]"
+        )
+        if not confirmed or confirmed.lower() not in ("y", "yes"):
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+                "error": f"User aborted critical command execution on {host} for safety.",
+            }
+
     touch_activity_fn()
     result = await ssh_execute_fn(ctx.deps.context, host, command, timeout, via=via, stdin=stdin)
     touch_activity_fn()
@@ -348,11 +367,22 @@ async def _execute_remote(
         return _make_circuit_breaker_response(host)
 
     if not result.success and check_recoverable_error(result.error):
-        raise ModelRetry(f"Host '{host}' not found. Check the name or use list_hosts().")
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": -1,
+            "error": (
+                f"❌ Host '{host}' connection failed. It may not exist or DNS/timeout "
+                f"occurred: {result.error}\n"
+                "If you tried to reach an unreachable host, try executing commands on "
+                "the jump host first or run local discovery."
+            ),
+        }
 
     return _build_ssh_response(result, command, get_hint_fn)
 
 
-def register(agent: Agent[Any, Any]) -> None:
+def register(agent: Any) -> None:
     """Register SSH tool on agent."""
     agent.tool(ssh_execute)

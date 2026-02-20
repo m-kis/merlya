@@ -63,6 +63,8 @@ async def test_mcp_add_parses_env_and_args(
         ["-y", "@modelcontextprotocol/server-github"],
         {"GITHUB_TOKEN": "${GITHUB_TOKEN}"},
         cwd=None,
+        url=None,
+        headers={},
     )
     manager.test_server.assert_awaited_once_with("github")
 
@@ -114,9 +116,11 @@ class TestExtractAddOptions:
     def test_extracts_env_vars(self):
         """Parse --env=KEY=VALUE flags."""
         args = ["npx", "-y", "server", "--env=TOKEN=${secret}", "--env=PORT=8080"]
-        env, cwd, no_test, remaining = _extract_add_options(args)
+        env, headers, url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {"TOKEN": "${secret}", "PORT": "8080"}
+        assert headers == {}
+        assert url is None
         assert cwd is None
         assert no_test is False
         assert remaining == ["npx", "-y", "server"]
@@ -124,7 +128,7 @@ class TestExtractAddOptions:
     def test_extracts_cwd(self):
         """Parse --cwd=/path flag."""
         args = ["python", "server.py", "--cwd=/opt/mcp"]
-        env, cwd, no_test, remaining = _extract_add_options(args)
+        env, _headers, _url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {}
         assert cwd == "/opt/mcp"
@@ -134,7 +138,7 @@ class TestExtractAddOptions:
     def test_extracts_no_test_flag(self):
         """Parse --no-test flag."""
         args = ["npx", "-y", "server", "--no-test"]
-        env, cwd, no_test, remaining = _extract_add_options(args)
+        env, _headers, _url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {}
         assert cwd is None
@@ -143,10 +147,12 @@ class TestExtractAddOptions:
 
     def test_extracts_all_options(self):
         """Parse all options together."""
-        args = ["npx", "--env=KEY=val", "--cwd=/tmp", "--no-test", "-y", "pkg"]
-        env, cwd, no_test, remaining = _extract_add_options(args)
+        args = ["npx", "--env=KEY=val", "--cwd=/tmp", "--no-test", "-y", "pkg", "--url=http://api", "--header=Auth=Token"]
+        env, headers, url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {"KEY": "val"}
+        assert headers == {"Auth": "Token"}
+        assert url == "http://api"
         assert cwd == "/tmp"
         assert no_test is True
         assert remaining == ["npx", "-y", "pkg"]

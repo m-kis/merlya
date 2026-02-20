@@ -33,6 +33,10 @@ class RouterResult:
     skill_match: str | None = None  # Matched skill name if detected
     skill_confidence: float = 0.0  # Confidence of skill match
     unresolved_hosts: list[str] = field(default_factory=list)
+    needs_clarification: bool = False
+    clarification_message: str | None = None
+    is_destructive: bool = False
+    severity: str = "low"
 
     @property
     def is_fast_path(self) -> bool:

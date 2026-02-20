@@ -100,8 +100,9 @@ def mock_context() -> MagicMock:
     ctx.ui = MagicMock()
     ctx.ui.prompt = AsyncMock(return_value="")
 
-    # Explicitly set _orchestrator to None so legacy agent fallback works
+    # Explicitly set _orchestrator and _agent to None so legacy agent fallback works
     ctx._orchestrator = None
+    ctx._agent = None
 
     return ctx
 
