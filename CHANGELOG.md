@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-02-20
+
+### Added
+
+- **IaC provisioning architecture**: provider abstraction layer, Terraform/MCP backends, template registry, and SQLite resource state tracking.
+- **Setup wizard cloud provider step**: MCP cloud provider configuration with secure keyring storage.
+
+### Changed
+
+- **Agentic clarity in REPL**: clarified execution prompts and routing behavior for ambiguous requests.
+- **Change center integration**: provisioners now route through CHANGE workflows for controlled mutations.
+
+### Fixed
+
+- **CI and code quality hardening**: resolved lint/type issues and stabilized release validation flow.
+- **Security noise reduction**: suppressed false positive `B104` in target resolver checks.
+
+---
+
 ## [0.8.1] - 2025-01-15
 
 ### Fixed

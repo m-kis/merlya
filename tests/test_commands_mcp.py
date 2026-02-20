@@ -128,7 +128,7 @@ class TestExtractAddOptions:
     def test_extracts_cwd(self):
         """Parse --cwd=/path flag."""
         args = ["python", "server.py", "--cwd=/opt/mcp"]
-        env, headers, url, cwd, no_test, remaining = _extract_add_options(args)
+        env, _headers, _url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {}
         assert cwd == "/opt/mcp"
@@ -138,7 +138,7 @@ class TestExtractAddOptions:
     def test_extracts_no_test_flag(self):
         """Parse --no-test flag."""
         args = ["npx", "-y", "server", "--no-test"]
-        env, headers, url, cwd, no_test, remaining = _extract_add_options(args)
+        env, _headers, _url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {}
         assert cwd is None

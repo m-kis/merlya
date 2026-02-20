@@ -98,14 +98,14 @@ async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
 
     env, headers, url, cwd, no_test, remaining = _extract_add_options(args[1:])
     name = args[0]
-    
+
     command = None
     cmd_args = []
-    
+
     if remaining:
         command = remaining[0]
         cmd_args = remaining[1:]
-        
+
     if not command and not url:
         return CommandResult(success=False, message="❌ Missing either a command to start the MCP server or an --url for remote connection.")
 

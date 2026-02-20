@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import RunContext  # noqa: TC002
 
 from merlya.agent.tools_common import check_recoverable_error
 
@@ -391,6 +391,6 @@ async def _execute_remote(
     return _build_ssh_response(result, command, get_hint_fn)
 
 
-def register(agent: Agent[Any, Any]) -> None:
+def register(agent: Any) -> None:
     """Register SSH tool on agent."""
     agent.tool(ssh_execute)
