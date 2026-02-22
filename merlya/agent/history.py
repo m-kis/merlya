@@ -212,5 +212,3 @@ def create_history_processor(max_messages: int = 20) -> HistoryProcessor:
         return limit_history(messages, max_messages=max_messages)
 
     return processor
-
-

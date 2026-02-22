@@ -147,7 +147,16 @@ class TestExtractAddOptions:
 
     def test_extracts_all_options(self):
         """Parse all options together."""
-        args = ["npx", "--env=KEY=val", "--cwd=/tmp", "--no-test", "-y", "pkg", "--url=http://api", "--header=Auth=Token"]
+        args = [
+            "npx",
+            "--env=KEY=val",
+            "--cwd=/tmp",
+            "--no-test",
+            "-y",
+            "pkg",
+            "--url=http://api",
+            "--header=Auth=Token",
+        ]
         env, headers, url, cwd, no_test, remaining = _extract_add_options(args)
 
         assert env == {"KEY": "val"}

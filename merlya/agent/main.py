@@ -75,6 +75,7 @@ class MerlyaAgent:
         ensure_provider_env(self.context.config)
         self.model = model
         from merlya.agent.agent_factory import create_agent
+
         self._agent = create_agent(model)
         self._message_history: list[ModelMessage] = []
         self._active_conversation: Conversation | None = None

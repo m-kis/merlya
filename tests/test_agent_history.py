@@ -304,5 +304,3 @@ class TestGetUserMessageCount:
         ]
         # Only 1 user message, tool return is not a user message
         assert get_user_message_count(messages) == 1
-
-

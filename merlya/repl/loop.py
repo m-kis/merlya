@@ -635,11 +635,11 @@ async def run_repl() -> None:
         # Eagerly load models in background to reduce latency on first prompt
         preload_task = asyncio.create_task(ctx.router.preload_models())
         preload_task.add_done_callback(
-            lambda task: logger.debug(
-                f"Router model preload failed: {task.exception()}"
+            lambda task: (
+                logger.debug(f"Router model preload failed: {task.exception()}")
+                if task.exception()
+                else None
             )
-            if task.exception()
-            else None
         )
     except Exception as e:
         logger.warning(f"Failed to initialize router: {e}")
