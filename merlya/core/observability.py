@@ -35,7 +35,7 @@ from loguru import logger
 # Replace with your actual key after creating a PostHog project:
 #   https://posthog.com  (or EU: https://eu.posthog.com)
 _POSTHOG_API_KEY = "phc_JUT7Uk7kq0kL6DIDEBn5FUpUqjkckhPeE4umngsU8ou"
-_POSTHOG_HOST = "https://us.i.posthog.com"
+_POSTHOG_HOST = "https://eu.i.posthog.com"
 
 # Module state
 _telemetry_initialized = False
