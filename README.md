@@ -34,13 +34,14 @@ Merlya est un assistant CLI autonome qui comprend le contexte de votre infrastru
 ### Fonctionnalités clés
 
 - **Commandes en langage naturel** pour diagnostiquer et remédier vos environnements
-- **Architecture DIAGNOSTIC/CHANGE** : routage intelligent entre investigation read-only et mutations contrôlées
+- **Architecture spécialistes** : `MerlyaAgent` délègue aux spécialistes (diagnostic, exécution, sécurité) selon la demande
 - **Pool SSH async** avec MFA/2FA, jump hosts et SFTP
 - **Inventaire `/hosts`** avec import intelligent (SSH config, /etc/hosts, Ansible, TOML, CSV)
-- **Modèles brain/fast** : brain pour le raisonnement complexe, fast pour le routing rapide
+- **Modèles brain/fast** : brain pour le raisonnement complexe, fast pour les décisions rapides
 - **Pipelines IaC** : Ansible, Terraform, Kubernetes, Bash avec HITL obligatoire
 - **Élévation explicite** : configuration sudo/doas/su par host (pas d'auto-détection)
 - **Sécurité by design** : secrets dans le keyring, validation Pydantic, détection de boucles
+- **Observabilité** : métriques in-memory + circuit breaker / retry (`/metrics`)
 - **i18n** : français et anglais
 - **Intégration MCP** pour consommer des tools externes (GitHub, Slack, custom) via `/mcp`
 
@@ -57,35 +58,26 @@ Merlya est un assistant CLI autonome qui comprend le contexte de votre infrastru
 │                         SMART EXTRACTOR                                      │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
 │  │ Fast Model  │───▶│   Regex     │───▶│   Hosts     │                      │
-│  │ (routing)   │    │  Patterns   │    │  Inventory  │                      │
+│  │ (semantic)  │    │  Patterns   │    │  Inventory  │                      │
 │  └─────────────┘    └─────────────┘    └─────────────┘                      │
-│                              │                                               │
 │  Output: hosts=[web-01], via=bastion, context injected                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       CENTER CLASSIFIER                                      │
+│                          MERLYA AGENT                                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │ Pattern Matching + Fast LLM fallback → DIAGNOSTIC or CHANGE         │    │
+│  │  System prompt guides delegation decision (no separate classifier)  │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
+│        │                    │                    │                    │      │
+│        ▼                    ▼                    ▼                    ▼      │
+│  ┌──────────┐        ┌──────────┐        ┌──────────┐        ┌──────────┐   │
+│  │Diagnostic│        │Execution │        │Security  │        │ Query    │   │
+│  │Specialist│        │Specialist│        │Specialist│        │Specialist│   │
+│  │read-only │        │HITL+pipes│        │sec audits│        │inventory │   │
+│  └──────────┘        └──────────┘        └──────────┘        └──────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
-                          │                         │
-                          ▼                         ▼
-┌──────────────────────────────────┐  ┌──────────────────────────────────────┐
-│      DIAGNOSTIC CENTER           │  │         CHANGE CENTER                │
-│  ┌────────────────────────────┐  │  │  ┌────────────────────────────────┐  │
-│  │ Read-Only Investigation    │  │  │  │ Controlled Mutations via       │  │
-│  │ • SSH read commands        │  │  │  │ Pipelines + HITL               │  │
-│  │ • kubectl get/describe     │  │  │  │ • Ansible (ad-hoc/inline/repo) │  │
-│  │ • Log analysis             │  │  │  │ • Terraform                    │  │
-│  │ • System diagnostics       │  │  │  │ • Kubernetes apply             │  │
-│  │ • Evidence collection      │  │  │  │ • Bash (fallback)              │  │
-│  └────────────────────────────┘  │  │  └────────────────────────────────┘  │
-│  BLOCKED: rm, kill, restart...   │  │  Pipeline: Plan→Diff→HITL→Apply     │
-└──────────────────────────────────┘  └──────────────────────────────────────┘
-                          │                         │
-                          └───────────┬─────────────┘
+                                      │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           SECURITY LAYER                                     │
@@ -170,7 +162,8 @@ Voir `.env.example` pour la documentation complète des variables.
 > Check disk usage on web-prod-01
 > /hosts list
 > /ssh exec db-01 "uptime"
-> /model router show
+> /model show
+> /metrics
 > /variable set region eu-west-1
 > /mcp list
 ```
@@ -217,8 +210,7 @@ L'agent détecte les patterns répétitifs (même outil appelé 3+ fois, alterna
 | `OPENAI_API_KEY` | Clé OpenAI |
 | `MISTRAL_API_KEY` | Clé Mistral |
 | `GROQ_API_KEY` | Clé Groq |
-| `MERLYA_ROUTER_FALLBACK` | Modèle de fallback LLM |
-| `MERLYA_ROUTER_MODEL` | Override du modèle de router local |
+| `MERLYA_ROUTER_FALLBACK` | Modèle LLM de fallback pour le routage |
 
 ## Installation pour contributeurs
 

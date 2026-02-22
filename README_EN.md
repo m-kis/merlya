@@ -29,17 +29,21 @@
 
 ## Overview
 
-Merlya is an autonomous CLI assistant that understands your infrastructure context, plans intelligent actions, and executes them safely. It combines a local intent router (ONNX) with LLM fallback via PydanticAI, a secure SSH pool, and simplified inventory management.
+Merlya is an autonomous CLI assistant that understands your infrastructure context, plans intelligent actions, and executes them safely. It combines a **SmartExtractor** (LLM + regex hybrid) to extract hosts from natural language, a secure SSH pool, and simplified inventory management. A single `MerlyaAgent` delegates work to focused specialist agents based on the nature of the request.
 
 ### Key Features
 
-- Natural language commands to diagnose and remediate your environments
-- Async SSH pool with MFA/2FA, jump hosts, and SFTP
-- `/hosts` inventory with smart import (SSH config, /etc/hosts, Ansible)
-- Local-first router (gte/EmbeddingGemma/e5) with configurable LLM fallback
-- Security by design: secrets in keyring, Pydantic validation, consistent logging
-- Extensible (modular Docker/K8s/CI/CD agents) and i18n (fr/en)
-- MCP integration to consume external tools (GitHub, Slack, custom) via `/mcp`
+- **Natural language commands** to diagnose and remediate your environments
+- **Specialist agent architecture**: `MerlyaAgent` delegates to specialists (diagnostic, execution, security, query)
+- **Async SSH pool** with MFA/2FA, jump hosts, and SFTP
+- **`/hosts` inventory** with smart import (SSH config, /etc/hosts, Ansible, TOML, CSV)
+- **Brain/fast models**: brain for complex reasoning, fast for quick decisions
+- **IaC Pipelines**: Ansible, Terraform, Kubernetes, Bash with mandatory HITL
+- **Explicit elevation**: sudo/doas/su configured per host (no auto-detection)
+- **Security by design**: secrets in keyring, Pydantic validation, loop detection
+- **Observability**: in-memory metrics + circuit breaker / retry (`/metrics`)
+- **i18n**: English and French
+- **MCP integration** to consume external tools (GitHub, Slack, custom) via `/mcp`
 
 ### Architecture
 
@@ -51,29 +55,36 @@ Merlya is an autonomous CLI assistant that understands your infrastructure conte
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           INTENT ROUTER                                      │
+│                         SMART EXTRACTOR                                      │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
-│  │ ONNX Local  │───▶│ LLM Fallback│───▶│  Pattern    │                      │
-│  │ Embeddings  │    │ (if <0.7)   │    │  Matching   │                      │
+│  │ Fast Model  │───▶│   Regex     │───▶│   Hosts     │                      │
+│  │ (semantic)  │    │  Patterns   │    │  Inventory  │                      │
 │  └─────────────┘    └─────────────┘    └─────────────┘                      │
-│                              │                                               │
-│  Output: mode=DIAGNOSTIC, hosts=[web-01], via=bastion                       │
+│  Output: hosts=[web-01], via=bastion, context injected                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
-                    ┌─────────────────┼─────────────────┐
-                    ▼                 ▼                 ▼
-           ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-           │  FAST PATH   │  │    SKILL     │  │    AGENT     │
-           │ (DB queries) │  │  (workflows) │  │ (PydanticAI) │
-           └──────────────┘  └──────────────┘  └──────────────┘
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          MERLYA AGENT                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  System prompt guides delegation decision (no separate classifier)  │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│        │                    │                    │                    │      │
+│        ▼                    ▼                    ▼                    ▼      │
+│  ┌──────────┐        ┌──────────┐        ┌──────────┐        ┌──────────┐   │
+│  │Diagnostic│        │Execution │        │Security  │        │ Query    │   │
+│  │Specialist│        │Specialist│        │Specialist│        │Specialist│   │
+│  │read-only │        │HITL+pipes│        │sec audits│        │inventory │   │
+│  └──────────┘        └──────────┘        └──────────┘        └──────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           SECURITY LAYER                                     │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
 │  │  Keyring    │    │  Elevation  │    │    Loop     │                      │
-│  │  Secrets    │    │  Detection  │    │  Detection  │                      │
-│  │ @secret-ref │    │ sudo/doas/su│    │ (3+ repeat) │                      │
+│  │  Secrets    │    │  Explicit   │    │  Detection  │                      │
+│  │ @secret-ref │    │ (per-host)  │    │ (5+ repeat) │                      │
 │  └─────────────┘    └─────────────┘    └─────────────┘                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -151,7 +162,8 @@ See `.env.example` for complete variable documentation.
 > Check disk usage on web-prod-01
 > /hosts list
 > /ssh exec db-01 "uptime"
-> /model router show
+> /model show
+> /metrics
 > /variable set region eu-west-1
 > /mcp list
 ```
@@ -199,7 +211,6 @@ The agent detects repetitive patterns (same tool called 3+ times, A-B-A-B altern
 | `MISTRAL_API_KEY` | Mistral key |
 | `GROQ_API_KEY` | Groq key |
 | `MERLYA_ROUTER_FALLBACK` | LLM fallback model |
-| `MERLYA_ROUTER_MODEL` | Override local router model |
 
 ## Installation for Contributors
 
