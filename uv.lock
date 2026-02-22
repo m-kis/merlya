@@ -2090,7 +2090,7 @@ wheels = [
 
 [[package]]
 name = "merlya"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
