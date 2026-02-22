@@ -17,7 +17,9 @@ class TestStripElevationPrefix:
         assert _strip_elevation_prefix("sudo -s apt update") == "apt update"
 
     def test_strips_sudo_s_systemctl(self) -> None:
-        assert _strip_elevation_prefix("sudo -S systemctl restart nginx") == "systemctl restart nginx"
+        assert (
+            _strip_elevation_prefix("sudo -S systemctl restart nginx") == "systemctl restart nginx"
+        )
 
     # ------------------------------------------------------------------
     # Plain sudo (no -S)
@@ -79,7 +81,9 @@ class TestStripElevationPrefix:
 
     def test_grep_sudo_log_unchanged(self) -> None:
         """grep through sudo log should NOT be modified."""
-        assert _strip_elevation_prefix("grep sudo /var/log/auth.log") == "grep sudo /var/log/auth.log"
+        assert (
+            _strip_elevation_prefix("grep sudo /var/log/auth.log") == "grep sudo /var/log/auth.log"
+        )
 
     # ------------------------------------------------------------------
     # Chained commands — only the leading prefix is stripped

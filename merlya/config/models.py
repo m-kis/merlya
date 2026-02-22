@@ -26,6 +26,7 @@ class GeneralConfig(BaseModel):
         if isinstance(v, str):
             return v.lower()
         return v
+
     data_dir: Path = Field(default=Path.home() / ".merlya", description="Data directory path")
 
 

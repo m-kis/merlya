@@ -31,9 +31,7 @@ class CredentialBundle:
     stored: bool
 
 
-_SENSITIVE_FIELD_NAMES = frozenset(
-    {"password", "token", "secret", "key", "passphrase", "api_key"}
-)
+_SENSITIVE_FIELD_NAMES = frozenset({"password", "token", "secret", "key", "passphrase", "api_key"})
 
 
 def _sanitize_values(
