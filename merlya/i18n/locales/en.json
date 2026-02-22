@@ -41,7 +41,7 @@
     "prompt": "Start by asking me anything about your infrastructure!",
     "feedback": "📝 Feedback: https://github.com/m-kis/merlya/issues",
     "tip_specific": "Be specific in your requests",
-    "tip_target": "Specify the target server name or IP if possible",
+    "tip_target": "Use @hostname for inventory hosts, or IP for direct access",
     "tip_context": "Provide context (service name, error message, etc.)",
     "warning_header": "⚠️  EXPERIMENTAL SOFTWARE",
     "warning_body": "This tool is in early development. Use for debugging/testing only, NOT production.",

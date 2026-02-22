@@ -38,16 +38,36 @@ The REPL provides intelligent autocompletion:
 - **Host mentions**: Type `@` and press Tab to see available hosts
 - **Variable mentions**: Type `@` to reference saved variables
 
-### Host Names and Secret References
+### `@` Mentions — Hosts, Secrets, and Variables
 
-Reference inventory hosts with `@name`, secrets with `@name` in the task:
+The `@` prefix is used for three distinct purposes in Merlya. The system resolves each based on context:
+
+| Syntax | Where | Resolved by | Example |
+| ------ | ----- | ----------- | ------- |
+| `@name` as a **target** | `delegate_*(target="@web-01")` | Inventory lookup | `@web-01` → hostname + username from DB |
+| `@name:with:colons` in a **command** | Inside SSH/bash command strings | Keyring at execution time | `@db:password` → actual value, never logged |
+| `@variable` in **input text** | Anywhere in your message | REPL expansion before send | `@region` → `eu-west-1` |
+
+**Rule of thumb:**
+
+- `@hostname` (no colons) → inventory host target
+- `@namespace:name` (with colons) → secret reference
+- `@VARNAME` → local variable
 
 ```
 Merlya > Check memory on @web-01 and @web-02
-Merlya > Deploy using @deploy_key credentials
+# → agent resolves @web-01 from inventory (hostname + SSH username)
+
+Merlya > Connect to db-prod with password @db:password
+# → @db:password stays as-is until ssh_execute resolves it from keyring
+
+Merlya > Deploy to @region
+# → @region is expanded to its value (e.g. "eu-west-1") before sending to agent
 ```
 
-Host names (`@web-01`) are resolved from inventory. Secrets (`@deploy_key`) are resolved from keyring.
+**Collision prevention:** If a name exists as both a host and a secret, inventory takes precedence when used as a target. The system logs a warning and suggests namespacing the secret (e.g. rename `@web-01` → `@ssh:web-01`).
+
+**Undefined `@mention`:** If you type `@something` that doesn't exist yet, Merlya asks whether to create it as a variable, secret, or host — inline, without leaving the REPL.
 
 ### Command History
 

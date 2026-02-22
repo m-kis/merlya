@@ -13,6 +13,22 @@ As an infrastructure engineer, I've tested many AI agents: OpenHands, Gemini CLI
 
 These problems aren't anecdotal. In a production environment, they're deal-breakers.
 
+## `@name` — Host Target or Secret Reference?
+
+Merlya uses `@` for two separate purposes. The distinction is determined by **context**, not format. The formal rule to avoid any ambiguity:
+
+| `@` usage | Where it appears | Resolved by | Convention |
+| --------- | ---------------- | ----------- | ---------- |
+| `@web-01` as a **target** | `target=` argument to agent tools | Inventory DB lookup | No colons in host names |
+| `@db:password` in a **command** | Inside SSH/bash command strings | Keyring at execution time | Use `namespace:name` with colons |
+| `@variable` in **message text** | Anywhere in REPL input | REPL expansion before LLM | Plain names |
+
+**The `:` colon is the formal discriminator.** Secret names must be namespaced with `:` (e.g. `@db:prod:password`, `@elevation:web-01:password`). Host names cannot contain `:`. This makes the two namespaces structurally disjoint.
+
+If you type `@web-01` as a target but also have a secret named `web-01`, the system detects the collision, resolves to inventory, and warns you to rename the secret (e.g. `@ssh:web-01`).
+
+---
+
 ## Merlya's "Secret-Zero-Trust" Architecture
 
 Merlya was designed with a simple philosophy: **the LLM must never see secrets**.
