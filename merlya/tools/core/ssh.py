@@ -97,6 +97,7 @@ async def ssh_execute(
     connect_timeout: int | None = None,
     via: str | None = None,
     stdin: str | None = None,
+    username: str | None = None,
 ) -> ToolResult[Any]:
     """
     Execute a command on a host via SSH.
@@ -315,6 +316,7 @@ async def ssh_execute(
             exec_ctx.timeout,
             input_data,
             exec_ctx.ssh_opts,
+            username_override=username,
         )
 
         # Update session context for follow-up questions

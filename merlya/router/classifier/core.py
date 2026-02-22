@@ -91,10 +91,10 @@ async def classify_input(
                 confidence=confidence,
                 delegate_to=delegate_to,
                 jump_host=jump_host,
-                needs_clarification=extraction.intent.needs_clarification,
-                clarification_message=extraction.intent.clarification_message,
-                is_destructive=extraction.intent.is_destructive,
-                severity=extraction.intent.severity,
+                needs_clarification=getattr(extraction.intent, "needs_clarification", False),
+                clarification_message=getattr(extraction.intent, "clarification_message", None),
+                is_destructive=getattr(extraction.intent, "is_destructive", False),
+                severity=getattr(extraction.intent, "severity", "low"),
             )
 
         except Exception as e:

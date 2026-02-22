@@ -237,6 +237,7 @@ async def ssh_execute(
     timeout: int = 60,
     via: str | None = None,
     stdin: str | None = None,
+    username: str | None = None,
 ) -> dict[str, Any]:
     """Execute a command on a host via SSH.
 
@@ -246,6 +247,9 @@ async def ssh_execute(
         timeout: Command timeout in seconds (default: 60).
         via: Jump host/bastion for tunneling.
         stdin: Password reference for su/sudo -S (format: @service:host:password).
+        username: SSH username override. Use when user explicitly specifies a user
+                  (e.g., "connect as ubuntu", "avec le user ubuntu"). If None, uses
+                  the username from inventory or SSH config.
 
     Returns:
         Command output with stdout, stderr, exit_code, and verification hint.
@@ -278,6 +282,7 @@ async def ssh_execute(
         touch_activity,
         mask_sensitive_command,
         get_verification_hint,
+        username=username,
     )
 
 
@@ -321,6 +326,7 @@ async def _execute_remote(
     touch_activity_fn: Any,
     mask_fn: Any,
     get_hint_fn: Any,
+    username: str | None = None,
 ) -> dict[str, Any]:
     """Execute command remotely via SSH."""
     via_info = f" via {via}" if via else ""
@@ -356,7 +362,9 @@ async def _execute_remote(
             }
 
     touch_activity_fn()
-    result = await ssh_execute_fn(ctx.deps.context, host, command, timeout, via=via, stdin=stdin)
+    result = await ssh_execute_fn(
+        ctx.deps.context, host, command, timeout, via=via, stdin=stdin, username=username
+    )
     touch_activity_fn()
 
     if not result.success and result.data and result.data.get("circuit_breaker_open"):

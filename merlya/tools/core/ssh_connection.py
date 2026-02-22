@@ -106,6 +106,7 @@ async def execute_ssh_command(
     timeout: int,
     input_data: str | None,
     ssh_opts: SSHConnectionOptions,
+    username_override: str | None = None,
 ) -> Any:
     """
     Execute SSH command with proper options.
@@ -118,6 +119,7 @@ async def execute_ssh_command(
         timeout: Command timeout in seconds.
         input_data: Optional stdin data.
         ssh_opts: SSH connection options.
+        username_override: Optional username to use instead of host_entry.username.
 
     Returns:
         SSH execution result.
@@ -140,7 +142,7 @@ async def execute_ssh_command(
             command=command,
             timeout=timeout,
             input_data=input_data,
-            username=host_entry.username,
+            username=username_override or host_entry.username,
             private_key=host_entry.private_key,
             options=opts,
             host_name=host,
@@ -151,6 +153,7 @@ async def execute_ssh_command(
         command=command,
         timeout=timeout,
         input_data=input_data,
+        username=username_override,
         options=ssh_opts,
         host_name=host,
     )
