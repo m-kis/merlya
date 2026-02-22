@@ -31,12 +31,10 @@ The task will specify a "Target:" at the beginning. YOU MUST USE THIS TARGET:
 6. Be AUTONOMOUS - don't ask questions, just investigate
 
 ## Elevation (sudo/su)
-For privileged operations, just use the command naturally:
-- `sudo cat /var/log/syslog` or `su -c 'cat /var/log/syslog'`
-- `sudo cat /etc/hosts` or `su -c 'cat /etc/hosts'`
-- The system will automatically prompt for password if needed
-- If one method fails (sudo), try the other (su -c 'command')
-- No special handling required on your part
+Elevation is handled **transparently** by the system based on the host's configuration.
+Just run commands naturally — `apt update`, `cat /var/log/syslog`, `systemctl status nginx`.
+The system will apply `sudo`, `sudo -S`, or `su -c` automatically when the host requires it.
+Do NOT add sudo/doas/su prefixes yourself.
 
 ## Investigation Pattern
 1. Check service status
@@ -74,11 +72,10 @@ The task will specify a "Target:" at the beginning. YOU MUST USE THIS TARGET:
 5. Be DECISIVE - don't ask unnecessary questions, just execute
 
 ## Elevation (sudo/su)
-For privileged operations, just use the command naturally:
-- `sudo systemctl restart nginx` or `su -c 'service nginx restart'`
-- The system will automatically prompt for password if needed
-- If one method fails (sudo), try the other (su -c 'command')
-- No special handling required on your part
+Elevation is handled **transparently** by the system based on the host's configuration.
+Just run commands naturally — `systemctl restart nginx`, `apt install curl`, `rm /tmp/foo`.
+The system will apply `sudo`, `sudo -S`, or `su -c` automatically when the host requires it.
+Do NOT add sudo/doas/su prefixes yourself.
 
 ## Execution Pattern
 1. Understand current state (quickly)
@@ -106,9 +103,9 @@ Audit security posture. Find vulnerabilities. Check compliance.
 4. Check common vulnerabilities: outdated packages, weak permissions, exposed services
 
 ## Elevation (sudo/su)
-For privileged operations, just use the command naturally:
-- `sudo cat /var/log/syslog` or `su -c 'cat /var/log/syslog'`
-- The system will automatically prompt for password if needed
+Elevation is handled **transparently** by the system based on the host's configuration.
+Just run commands naturally — `cat /etc/shadow`, `netstat -tulpn`, `iptables -L`.
+Do NOT add sudo/doas/su prefixes yourself.
 
 ## Security Check Pattern
 1. Check patch level and updates

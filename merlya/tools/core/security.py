@@ -20,7 +20,8 @@ UNSAFE_PASSWORD_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Pattern 1: echo password | sudo -S
     # Matches: echo 'password' | sudo -S, echo password | sudo -S
     # Skips: echo '@secret' | sudo -S
-    re.compile(r"echo\s+['\"]?(?!@)[^'\"]+['\"]?\s*\|\s*sudo\s+-S", re.IGNORECASE),
+    # Skips: echo 'user:@secret' | sudo -S  (mixed content with @reference anywhere)
+    re.compile(r"echo\s+['\"]?(?!@\S)(?![^'\"]*@\S)[^'\"]+['\"]?\s*\|\s*sudo\s+-S", re.IGNORECASE),
     # Pattern 2: mysql -p'password' (with quotes)
     # Matches: -p'password', -p"password"
     # Skips: -p'@secret', -print, -pine64 (bare -p without quotes)

@@ -236,28 +236,52 @@ Generate a template file for variable import.
 
 ## Secrets
 
-Secrets are stored securely in the system keyring.
+Secrets are stored securely in the system keyring. The agent never receives raw values — only `@references` that are resolved at execution time.
 
 ### `/secret list`
-List all secrets (values hidden).
+List all secrets (names only, values never shown).
 
 ### `/secret set <name>`
-Set a secret (prompts for value).
+Store a secret (prompts for value securely).
 
 ```bash
-/secret set DB_PASSWORD
-# Prompts: Enter value for DB_PASSWORD: ****
+/secret set mytoken
+# Prompts: Enter value for mytoken: ****
+```
+
+**Setting a sudo/elevation password for a host:**
+
+```bash
+# Format: sudo:<hostname>:password  (for sudo)
+/secret set sudo:web-01:password
+
+# Format: root:<hostname>:password  (for su / root login)
+/secret set root:db-prod:password
+```
+
+Once stored, the agent uses `@sudo:web-01:password` as a reference and never sees the plaintext. You only need to do this manually to pre-populate the keyring (e.g. in CI or before a session). During interactive use, the agent prompts you automatically when it needs elevation credentials.
+
+**Setting credentials for a service (e.g. database):**
+
+```bash
+# Format: <service>:<host>:<field>
+/secret set mysql:db-prod:password
+/secret set mongo:db-prod:password
 ```
 
 ### `/secret delete <name>`
 Delete a secret.
+
+```bash
+/secret delete sudo:web-01:password
+```
 
 ### `/secret clear-elevation [<host>|--all]`
 Clear stored elevation (sudo/su) passwords.
 
 ```bash
 /secret clear-elevation           # List stored elevation passwords
-/secret clear-elevation web01     # Clear for specific host
+/secret clear-elevation web-01    # Clear for specific host
 /secret clear-elevation --all     # Clear all elevation passwords
 ```
 
