@@ -1,9 +1,10 @@
 """
 Merlya Agent - Main agent implementation.
 
-PydanticAI-based agent with ReAct loop and Orchestrator pattern.
+PydanticAI-based agent that delegates to specialists (DIAG/CHANGE guardrails).
 """
 
+from merlya.agent.agent_factory import create_agent
 from merlya.agent.confirmation import (
     ConfirmationResult,
     ConfirmationState,
@@ -13,7 +14,6 @@ from merlya.agent.confirmation import (
 )
 from merlya.agent.history import (
     create_history_processor,
-    create_loop_aware_history_processor,
     limit_history,
     validate_tool_pairing,
 )
@@ -21,13 +21,6 @@ from merlya.agent.main import (
     AgentDependencies,
     AgentResponse,
     MerlyaAgent,
-    create_agent,
-)
-from merlya.agent.orchestrator import (
-    Orchestrator,
-    OrchestratorDeps,
-    OrchestratorResponse,
-    create_orchestrator,
 )
 from merlya.agent.specialists import (
     run_diagnostic_agent,
@@ -44,15 +37,10 @@ __all__ = [
     "ConfirmationState",
     "DangerLevel",
     "MerlyaAgent",
-    "Orchestrator",
-    "OrchestratorDeps",
-    "OrchestratorResponse",
     "ToolCallTracker",
     "confirm_command",
     "create_agent",
     "create_history_processor",
-    "create_loop_aware_history_processor",
-    "create_orchestrator",
     "detect_danger_level",
     "limit_history",
     "run_diagnostic_agent",

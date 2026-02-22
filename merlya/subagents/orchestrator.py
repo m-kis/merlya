@@ -20,7 +20,6 @@ from merlya.subagents.timeout import ActivityTimeout
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
-    from merlya.skills.models import SkillConfig
 
 # Constants
 DEFAULT_MAX_CONCURRENT = 5
@@ -96,7 +95,7 @@ class SubagentOrchestrator:
         self,
         hosts: list[str],
         task: str,
-        skill: SkillConfig | None = None,
+        skill: Any | None = None,
         timeout: int | None = None,
         on_progress: Any | None = None,
     ) -> AggregatedResults:
@@ -225,7 +224,7 @@ class SubagentOrchestrator:
         self,
         host: str,
         task: str,
-        skill: SkillConfig | None,
+        skill: Any | None,
         max_timeout: float,
         idle_timeout: float,
         execution_id: str,  # noqa: ARG002 - Part of public API, may be used in future
@@ -379,7 +378,7 @@ class SubagentOrchestrator:
         self,
         host: str,
         task: str,
-        skill: SkillConfig | None = None,
+        skill: Any | None = None,
         timeout: int | None = None,
     ) -> SubagentResult:
         """

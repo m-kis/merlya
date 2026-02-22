@@ -2,7 +2,7 @@
 
 import pytest
 
-from merlya.centers.base import CenterMode
+from merlya.security import CenterMode
 from merlya.router.center_classifier import (
     CenterClassification,
     CenterClassifier,

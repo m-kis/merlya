@@ -19,7 +19,6 @@ from merlya.config.provider_env import ensure_provider_env
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
-    from merlya.skills.models import SkillConfig
 
 # Constants
 DEFAULT_SUBAGENT_MODEL = "anthropic:claude-3-5-sonnet-latest"
@@ -107,7 +106,7 @@ class SubagentFactory:
     def create(
         self,
         host: str,
-        skill: SkillConfig | None = None,
+        skill: Any | None = None,
         task: str = "",
         tools: list[str] | None = None,
         system_prompt: str | None = None,
@@ -163,7 +162,7 @@ class SubagentFactory:
         self,
         host: str,
         task: str,
-        skill: SkillConfig | None = None,
+        skill: Any | None = None,
         custom_prompt: str | None = None,
     ) -> str:
         """
