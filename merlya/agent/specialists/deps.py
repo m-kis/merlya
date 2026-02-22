@@ -25,9 +25,11 @@ class SpecialistDeps:
         tracker: Tool call tracker for loop detection.
         confirmation_state: State for command confirmation.
         target: Target host or "local".
+        username: SSH username override (from inventory or user@host syntax).
     """
 
     context: SharedContext
     tracker: ToolCallTracker = field(default_factory=ToolCallTracker)
     confirmation_state: ConfirmationState = field(default_factory=ConfirmationState)
     target: str = "local"
+    username: str | None = None

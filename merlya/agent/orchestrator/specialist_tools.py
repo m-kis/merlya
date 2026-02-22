@@ -14,7 +14,7 @@ from merlya.agent.main import AgentDependencies, AgentResponse  # noqa: TC001
 
 from .models import DelegationResult  # noqa: TC001
 from .specialist_runner import run_specialist_once, run_specialist_with_retry
-from .target_normalization import normalize_target
+from .target_normalization import resolve_target
 
 
 def register_specialist_tools(
@@ -43,8 +43,7 @@ def register_specialist_tools(
         """
         from merlya.agent.specialists import run_diagnostic_agent
 
-        # ENFORCE LOCAL: If task doesn't mention a specific host, use local
-        effective_target = await normalize_target(target, task, ctx.deps.context)
+        effective_target, username = await resolve_target(target, ctx.deps.context)
         logger.info(f"Delegating diagnostic to {effective_target}: {task[:50]}...")
 
         result = await run_specialist_with_retry(
@@ -53,6 +52,7 @@ def register_specialist_tools(
             specialist_type="diagnostic",
             target=effective_target,
             task=task,
+            username=username,
         )
 
         return result
@@ -80,8 +80,7 @@ def register_specialist_tools(
         """
         from merlya.agent.specialists import run_execution_agent
 
-        # ENFORCE LOCAL: If task doesn't mention a specific host, use local
-        effective_target = await normalize_target(target, task, ctx.deps.context)
+        effective_target, username = await resolve_target(target, ctx.deps.context)
         logger.info(f"Delegating execution to {effective_target}: {task[:50]}...")
 
         result = await run_specialist_with_retry(
@@ -90,6 +89,7 @@ def register_specialist_tools(
             specialist_type="execution",
             target=effective_target,
             task=task,
+            username=username,
             require_confirmation=require_confirmation,
         )
 

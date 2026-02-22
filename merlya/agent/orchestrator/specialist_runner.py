@@ -29,6 +29,7 @@ async def run_specialist_with_retry(
     specialist_type: Literal["diagnostic", "execution", "security", "query"],
     target: str,
     task: str,
+    username: str | None = None,
     **kwargs: object,
 ) -> DelegationResult:
     """
@@ -90,6 +91,7 @@ async def run_specialist_with_retry(
                 tracker=ctx.deps.tracker,
                 confirmation_state=ctx.deps.confirmation_state,
                 target=target,
+                username=username,
             )
             result = await specialist_fn(  # type: ignore[operator]
                 deps=deps,
@@ -144,6 +146,7 @@ async def run_specialist_once(
     specialist_type: Literal["diagnostic", "execution", "security", "query"],
     target: str,
     task: str,
+    username: str | None = None,
     **kwargs: object,
 ) -> DelegationResult:
     """
@@ -169,6 +172,7 @@ async def run_specialist_once(
             tracker=ctx.deps.tracker,
             confirmation_state=ctx.deps.confirmation_state,
             target=target,
+            username=username,
         )
         result = await specialist_fn(  # type: ignore[operator]
             deps=deps,

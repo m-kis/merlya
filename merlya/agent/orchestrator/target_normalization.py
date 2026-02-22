@@ -1,11 +1,19 @@
 """
-Target normalization for the orchestrator.
+Target resolution for the orchestrator.
 
-Contains logic to normalize target hosts and prevent random host selection.
+Resolves target specifications to (host, username) pairs.
+
+Supported formats:
+  - "local" / "localhost" / "127.0.0.1" / "::1"  → local execution
+  - "@name"               → inventory lookup by name, returns (hostname, username)
+  - "user@host"           → explicit username + IP/hostname
+  - "1.2.3.4"             → direct IP, no username
+  - anything else         → rejected, defaults to local
 """
 
 from __future__ import annotations
 
+import re as _re
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -13,65 +21,58 @@ from loguru import logger
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
+_LOCAL_NAMES = frozenset(("local", "localhost", "127.0.0.1", "::1"))
+_IP_RE = _re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
 
-async def normalize_target(target: str, task: str, context: SharedContext | None = None) -> str:
+
+async def resolve_target(
+    target: str,
+    context: SharedContext | None = None,
+) -> tuple[str, str | None]:
     """
-    Normalize target to ensure local operations don't use random hosts.
-
-    If the LLM picks a random host but the task doesn't explicitly mention
-    that host, we default to "local" to prevent SSH attempts to unreachable hosts.
+    Resolve a target specification to (host, username).
 
     Args:
-        target: Target provided by LLM.
-        task: Original task description.
-        context: Optional SharedContext for session context checks.
+        target: Target string in one of the supported formats.
+        context: Optional SharedContext for inventory lookups.
 
     Returns:
-        Normalized target ("local" if no specific host in task).
+        (host, username) where host is "local", an IP, or a hostname,
+        and username is None if not specified.
     """
-    # Already local
-    if target.lower() in ("local", "localhost", "127.0.0.1", "::1"):
-        return "local"
+    # Local aliases
+    if target.lower() in _LOCAL_NAMES:
+        return "local", None
 
-    # IP addresses are always explicit — the LLM can't hallucinate a specific IP
-    import re as _re
-    if _re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", target):
-        return target
+    # "user@host" syntax — explicit username + host (not starting with @)
+    if "@" in target and not target.startswith("@"):
+        username, host = target.split("@", 1)
+        if username and host:
+            logger.debug(f"Resolved user@host: username={username}, host={host}")
+            return host, username
 
-    # Check if target is explicitly mentioned in the task
-    task_lower = task.lower()
-    target_lower = target.lower()
+    # Direct IP — trust it, username must come from elsewhere
+    if _IP_RE.fullmatch(target):
+        return target, None
 
-    # Target is explicitly in task text
-    if target_lower in task_lower:
-        return target
+    # "@name" — inventory lookup
+    if target.startswith("@") and context:
+        name = target[1:]
+        entry = (
+            await context.hosts.get_by_name(name)
+            or await context.hosts.get_by_hostname(name)
+        )
+        if entry:
+            logger.debug(
+                f"Resolved @{name} → hostname={entry.hostname}, username={entry.username}"
+            )
+            return entry.hostname, entry.username
+        logger.warning(f"Host '@{name}' not found in inventory, defaulting to local")
+        return "local", None
 
-    # CONVERSATION CONTEXT: Check if target matches last_remote_target from session
-    if context:
-        last_target = context.last_remote_target
-        if last_target:
-            # Direct match
-            if target_lower == last_target.lower():
-                logger.debug(f"Target '{target}' matches session context (last_remote_target)")
-                return target
-
-            # Check if both resolve to the same inventory entry
-            # Try both get_by_name and get_by_hostname for flexibility
-            last_entry = await context.hosts.get_by_name(
-                last_target
-            ) or await context.hosts.get_by_hostname(last_target)
-            current_entry = await context.hosts.get_by_name(
-                target
-            ) or await context.hosts.get_by_hostname(target)
-            if last_entry and current_entry and last_entry.id == current_entry.id:
-                logger.debug(
-                    f"Target '{target}' resolves to same inventory as context '{last_target}'"
-                )
-                return target
-
-    # If the target hostname/IP is NOT mentioned in the task and not in session context,
-    # the LLM is picking a random host - default to local
+    # Unknown target (plain hostname without @) — reject to prevent hallucinations
     logger.warning(
-        f"LLM picked target '{target}' not mentioned in task. Defaulting to 'local' for safety."
+        f"Target '{target}' has no @ prefix and is not an IP or local alias. "
+        "Use '@hostname' for inventory hosts. Defaulting to local."
     )
-    return "local"
+    return "local", None

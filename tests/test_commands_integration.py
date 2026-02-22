@@ -559,6 +559,7 @@ class TestScanCommand:
     ):
         """Test /scan with unknown host."""
         mock_hosts_repo.get_by_name = AsyncMock(return_value=None)
+        mock_hosts_repo.get_by_hostname = AsyncMock(return_value=None)
         result = await registry.execute(mock_context, "/scan unknown-host")
         assert result is not None
         assert result.success is False

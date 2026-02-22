@@ -192,7 +192,7 @@ def _register_tools(
 
         result = await _ssh_execute(
             ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin,
-            username=username,
+            username=username or ctx.deps.username,
         )
 
         return SSHResult(

@@ -47,6 +47,7 @@ class TestScanCommand:
     async def test_scan_host_not_found(self, mock_context: MagicMock) -> None:
         """Test scan with unknown host."""
         mock_context.hosts.get_by_name = AsyncMock(return_value=None)
+        mock_context.hosts.get_by_hostname = AsyncMock(return_value=None)
 
         result = await cmd_scan(mock_context, ["unknown-host"])
 

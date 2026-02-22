@@ -315,6 +315,26 @@ async def _execute_local(
     }
 
 
+async def _auto_register_host(
+    context: Any,
+    host: str,
+    username: str | None,
+) -> None:
+    """Auto-register a host in inventory after its first successful SSH connection."""
+    from merlya.persistence.models import Host
+
+    existing = await context.hosts.get_by_hostname(host) or await context.hosts.get_by_name(host)
+    if existing:
+        return
+
+    try:
+        new_host = Host(name=host, hostname=host, username=username, tags=["auto-discovered"])
+        await context.hosts.create(new_host)
+        logger.info(f"✅ Auto-registered host in inventory: {host} (username={username})")
+    except Exception as e:
+        logger.debug(f"Could not auto-register {host}: {e}")
+
+
 async def _execute_remote(
     ctx: RunContext[AgentDependencies],
     host: str,
@@ -366,6 +386,9 @@ async def _execute_remote(
         ctx.deps.context, host, command, timeout, via=via, stdin=stdin, username=username
     )
     touch_activity_fn()
+
+    if result.success:
+        await _auto_register_host(ctx.deps.context, host, username)
 
     if not result.success and result.data and result.data.get("circuit_breaker_open"):
         logger.warning(f"🔌 Circuit breaker open for {host}")

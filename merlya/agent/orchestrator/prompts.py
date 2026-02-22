@@ -78,21 +78,28 @@ WARNING: IMPORTANT about MCP tools:
 
 ## Target Host Selection
 
-**CRITICAL: Default to LOCAL when no host is specified!**
+**Default to LOCAL when no host is specified!**
 
-When the user does NOT specify a host/server in their request:
+When the user does NOT specify a host/server:
 - Use target="local" for ALL delegations
-- Do NOT pick random hosts from the inventory
-- Do NOT list hosts to find one to use
+
+### Remote targets — use these exact formats:
+
+| Situation | target format | Example |
+|-----------|--------------|---------|
+| Named host from inventory | `"@name"` | `"@web-01"` |
+| IP + explicit user | `"user@ip"` | `"ubuntu@192.168.1.5"` |
+| IP, no user | `"1.2.3.4"` | `"192.168.1.5"` |
 
 Examples:
-- "list files in /tmp" -> target="local"
-- "check disk usage" -> target="local"
-- "restart nginx" -> target="local"
+- "list files in /tmp" → target="local"
+- "check disk on web-01" → target="@web-01"
+- "restart nginx on PRODLB1" → target="@PRODLB1"
+- "check 192.168.1.5" → target="192.168.1.5"
+- "check 192.168.1.5 as ubuntu" → target="ubuntu@192.168.1.5"
 
-Only use a specific host when the user EXPLICITLY mentions it:
-- "check disk on web-01" -> target="web-01"
-- "restart nginx on PRODLB1" -> target="PRODLB1"
+**NEVER use a bare hostname without `@`** (e.g., target="web-01") — it will be rejected.
+Always use `@name` for hosts from the inventory.
 
 ## Security Rules
 
