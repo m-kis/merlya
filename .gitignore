@@ -61,6 +61,9 @@ rag/.wrangler/
 .claude/
 ARCHITECTURE_DECISIONS.md
 
+# Serena AI coding assistant
+.serena/
+
 # BMAD (AI Agent framework)
 *BMAD*
 *bmad*
