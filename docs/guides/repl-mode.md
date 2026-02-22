@@ -40,14 +40,14 @@ The REPL provides intelligent autocompletion:
 
 ### Host Names and Secret References
 
-Reference hosts by name and secrets with `@` prefix:
+Reference inventory hosts with `@name`, secrets with `@name` in the task:
 
 ```
-Merlya > Check memory on web-01 and web-02
+Merlya > Check memory on @web-01 and @web-02
 Merlya > Deploy using @deploy_key credentials
 ```
 
-Host names are resolved from inventory. Secrets (`@name`) are resolved from keyring.
+Host names (`@web-01`) are resolved from inventory. Secrets (`@deploy_key`) are resolved from keyring.
 
 ### Command History
 

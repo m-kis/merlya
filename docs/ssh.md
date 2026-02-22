@@ -124,15 +124,22 @@ When you reference a host, Merlya resolves it in order:
 
 ### Host Names
 
-Reference hosts by their inventory name (without `@`):
+Reference inventory hosts with the `@` prefix:
 
 ```
-Check memory on web01
+Check memory on @web01
+Check disk on @web01
 ```
 
-This resolves `web01` from inventory and uses its configuration.
+This resolves `@web01` from inventory and uses its hostname, port, and username.
 
-> **Note**: The `@` prefix is reserved for secret references (e.g., `@db-password`), not host names.
+For direct IP addresses, you can also use:
+
+- `192.168.1.10` — direct IP (no inventory lookup)
+- `ubuntu@192.168.1.10` — direct IP with explicit username
+
+> **Note**: Secret references also use `@` (e.g., `@db-password`). The agent distinguishes
+> them by context: `@name` in a `target` field is a host, `@name` in a task description is a secret.
 
 ## SSH Configuration
 
