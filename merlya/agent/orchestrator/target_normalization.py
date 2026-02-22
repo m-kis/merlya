@@ -33,6 +33,11 @@ async def normalize_target(target: str, task: str, context: SharedContext | None
     if target.lower() in ("local", "localhost", "127.0.0.1", "::1"):
         return "local"
 
+    # IP addresses are always explicit — the LLM can't hallucinate a specific IP
+    import re as _re
+    if _re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", target):
+        return target
+
     # Check if target is explicitly mentioned in the task
     task_lower = task.lower()
     target_lower = target.lower()
