@@ -64,14 +64,9 @@ async def resolve_target(
             )
             return "local", None
         name = target[1:]
-        entry = (
-            await context.hosts.get_by_name(name)
-            or await context.hosts.get_by_hostname(name)
-        )
+        entry = await context.hosts.get_by_name(name) or await context.hosts.get_by_hostname(name)
         if entry:
-            logger.debug(
-                f"Resolved @{name} → hostname={entry.hostname}, username={entry.username}"
-            )
+            logger.debug(f"Resolved @{name} → hostname={entry.hostname}, username={entry.username}")
             return entry.hostname, entry.username
         logger.warning(f"Host '@{name}' not found in inventory, defaulting to local")
         return "local", None

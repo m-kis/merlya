@@ -90,9 +90,7 @@ class CircuitBreaker:
                     self.success_count = 0
                 else:
                     last_failure = self.last_failure_time or 0.0
-                    remaining = self.config.recovery_timeout - (
-                        time.time() - last_failure
-                    )
+                    remaining = self.config.recovery_timeout - (time.time() - last_failure)
                     logger.warning(
                         f"🔴 Circuit breaker OPEN: {self.failure_count} failures, "
                         f"recovery in {remaining:.1f}s"

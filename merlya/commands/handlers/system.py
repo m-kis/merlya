@@ -260,9 +260,7 @@ async def _scan_hosts_sequential(
     successes = 0
 
     for host_name in host_names:
-        host = await ctx.hosts.get_by_name(host_name) or await ctx.hosts.get_by_hostname(
-            host_name
-        )
+        host = await ctx.hosts.get_by_name(host_name) or await ctx.hosts.get_by_hostname(host_name)
         if not host:
             outputs.append(
                 f"❌ Host '{host_name}' not found. Use `/hosts add {host_name}` to add it."
