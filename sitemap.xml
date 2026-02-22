@@ -92,6 +92,13 @@
         <xhtml:link rel="alternate" hreflang="fr" href="https://merlya.m-kis.fr/fr/guides/automation/"/>
     </url>
     <url>
+        <loc>https://merlya.m-kis.fr/guides/elevation/</loc>
+        <lastmod>2026-02-22</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://merlya.m-kis.fr/guides/elevation/"/>
+        <xhtml:link rel="alternate" hreflang="fr" href="https://merlya.m-kis.fr/fr/guides/elevation/"/>
+    </url>
+    <url>
         <loc>https://merlya.m-kis.fr/guides/llm-providers/</loc>
         <lastmod>2026-02-22</lastmod>
         <changefreq>daily</changefreq>
@@ -237,6 +244,13 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="fr" href="https://merlya.m-kis.fr/fr/guides/automation/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://merlya.m-kis.fr/guides/automation/"/>
+    </url>
+    <url>
+        <loc>https://merlya.m-kis.fr/fr/guides/elevation/</loc>
+        <lastmod>2026-02-22</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="fr" href="https://merlya.m-kis.fr/fr/guides/elevation/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://merlya.m-kis.fr/guides/elevation/"/>
     </url>
     <url>
         <loc>https://merlya.m-kis.fr/fr/guides/llm-providers/</loc>
