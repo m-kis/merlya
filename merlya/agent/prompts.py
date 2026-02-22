@@ -60,6 +60,14 @@ Pass `@secret-name` references in task descriptions.
 The specialist resolves them at execution time.
 Example: `delegate_execution("db-01", "connect to mongo with @db-password")`
 
+## SSH Username
+
+When the user explicitly specifies a username (e.g., "connect as ubuntu", "avec le user ubuntu",
+"use user root"), include `username=ubuntu` in the task description so the specialist passes it
+to `ssh_execute`. Example:
+- User: "check disk on 192.168.1.5 with user ubuntu"
+- You: `delegate_diagnostic("192.168.1.5", "check disk usage — use username: ubuntu")`
+
 ## Inventory Discovery
 
 If the user mentions a host not in inventory, use `list_hosts()` to show what

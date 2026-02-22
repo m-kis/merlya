@@ -73,8 +73,14 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
         command: str,
         timeout: int = 60,
         stdin: str | None = None,
+        username: str | None = None,
     ) -> SSHResult:
-        """Execute a command on a remote host via SSH (read-only)."""
+        """Execute a command on a remote host via SSH (read-only).
+
+        Args:
+            username: SSH username override. Use when user explicitly specifies
+                      a user (e.g., "connect as ubuntu"). Overrides inventory default.
+        """
         from merlya.tools.core import bash_execute as _bash_execute
         from merlya.tools.core import ssh_execute as _ssh_execute
 
@@ -148,7 +154,8 @@ def _register_tools(agent: Agent[SpecialistDeps, str]) -> None:
         ctx.deps.tracker.record(effective_host, command)
 
         result = await _ssh_execute(
-            ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin
+            ctx.deps.context, effective_host, command, timeout, stdin=effective_stdin,
+            username=username,
         )
 
         return SSHResult(
