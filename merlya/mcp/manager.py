@@ -337,6 +337,7 @@ class MCPManager:
                         await group.connect_to_server(
                             SseServerParameters(url=server_config.url, headers=headers)
                         )
+
                     else:
                         params = self._build_server_params(name, server_config)
                         await group.connect_to_server(params)
