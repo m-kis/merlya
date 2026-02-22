@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from merlya.centers.base import CenterMode
+from merlya.security import CenterMode
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext

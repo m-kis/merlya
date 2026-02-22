@@ -66,6 +66,8 @@ class IntentClassification(BaseModel):
     is_destructive: bool = Field(default=False, description="Whether the action is destructive")
     severity: str = Field(default="low", description="Severity: low, medium, high, critical")
     reasoning: str | None = Field(default=None, description="Brief explanation")
+    needs_clarification: bool = Field(default=False, description="Whether clarification is needed")
+    clarification_message: str | None = Field(default=None, description="Message asking for clarification")
 
 
 class SmartExtractionResult(BaseModel):

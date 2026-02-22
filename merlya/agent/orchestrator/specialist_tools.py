@@ -1,7 +1,8 @@
 """
-Specialist delegation tools for the orchestrator.
+Specialist delegation tools.
 
 Contains @agent.tool decorated functions for delegating to specialists.
+Designed to be registered on the main MerlyaAgent (AgentDependencies).
 """
 
 from __future__ import annotations
@@ -9,19 +10,21 @@ from __future__ import annotations
 from loguru import logger
 from pydantic_ai import Agent, RunContext  # noqa: TC002 - required at runtime
 
-from .models import DelegationResult, OrchestratorDeps, OrchestratorResponse  # noqa: TC001
+from merlya.agent.main import AgentDependencies, AgentResponse  # noqa: TC001
+
+from .models import DelegationResult  # noqa: TC001
 from .specialist_runner import run_specialist_once, run_specialist_with_retry
 from .target_normalization import normalize_target
 
 
 def register_specialist_tools(
-    agent: Agent[OrchestratorDeps, OrchestratorResponse],
+    agent: Agent[AgentDependencies, AgentResponse],
 ) -> None:
     """Register specialist delegation tools."""
 
     @agent.tool
     async def delegate_diagnostic(
-        ctx: RunContext[OrchestratorDeps],
+        ctx: RunContext[AgentDependencies],
         target: str,
         task: str,
     ) -> DelegationResult:
@@ -56,7 +59,7 @@ def register_specialist_tools(
 
     @agent.tool
     async def delegate_execution(
-        ctx: RunContext[OrchestratorDeps],
+        ctx: RunContext[AgentDependencies],
         target: str,
         task: str,
         require_confirmation: bool = True,
@@ -94,7 +97,7 @@ def register_specialist_tools(
 
     @agent.tool
     async def delegate_security(
-        ctx: RunContext[OrchestratorDeps],
+        ctx: RunContext[AgentDependencies],
         target: str,
         task: str,
     ) -> DelegationResult:
@@ -128,7 +131,7 @@ def register_specialist_tools(
 
     @agent.tool
     async def delegate_query(
-        ctx: RunContext[OrchestratorDeps],
+        ctx: RunContext[AgentDependencies],
         question: str,
     ) -> DelegationResult:
         """
