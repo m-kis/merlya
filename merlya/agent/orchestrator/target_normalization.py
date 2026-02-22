@@ -56,7 +56,13 @@ async def resolve_target(
         return target, None
 
     # "@name" — inventory lookup
-    if target.startswith("@") and context:
+    if target.startswith("@"):
+        if not context:
+            logger.warning(
+                f"Target '{target}' requires inventory context, but none provided. "
+                "Defaulting to local."
+            )
+            return "local", None
         name = target[1:]
         entry = (
             await context.hosts.get_by_name(name)
