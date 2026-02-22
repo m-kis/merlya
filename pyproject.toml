@@ -24,7 +24,7 @@ classifiers = [
 
 dependencies = [
     # Agent Framework
-    "pydantic-ai>=1.26",
+    "pydantic-ai>=1.56.0",
     "pydantic>=2.10",
 
     # LLM Providers (via PydanticAI)
@@ -65,8 +65,11 @@ dependencies = [
     "packaging>=24.0",
 
     # Security: pin transitive dependencies with known CVEs
-    "urllib3>=2.6.0",  # CVE-2025-66418, CVE-2025-66471
-    "mcp>=1.23.0",     # CVE-2025-66416
+    "urllib3>=2.6.0",         # CVE-2025-66418, CVE-2025-66471
+    "mcp>=1.23.0",            # CVE-2025-66416
+    "cryptography>=46.0.5",   # CVE-2025-0293 (NULL ptr deref)
+    "protobuf>=6.33.5",       # CVE-2025-66467 (DoS)
+    "python-multipart>=0.0.22", # CVE-2025-66469 (DoS)
 ]
 
 [project.optional-dependencies]
