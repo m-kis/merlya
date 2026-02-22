@@ -168,34 +168,37 @@ Voir `.env.example` pour la documentation complète des variables.
 > /mcp list
 ```
 
-> **Note** : Les noms d'hôtes s'écrivent **sans préfixe `@`**. Le préfixe `@` est réservé aux références de secrets (ex: `@db-password`).
+> **Syntaxe des targets** :
+>
+> - `@web-01` → lookup inventaire (hostname + username résolus depuis la base)
+> - `ubuntu@192.168.1.5` → utilisateur SSH explicite + IP
+> - `192.168.1.5` → IP directe (username depuis l'inventaire si connu)
+> - `@db-password` → référence secret dans le keyring (résolu à l'exécution)
 
 ## Sécurité
 
-### Secrets et références @secret
+### Secrets — jamais exposés au LLM
 
-Les secrets (mots de passe, tokens, clés API) sont stockés dans le keyring système (macOS Keychain, Linux Secret Service) et référencés par `@nom-secret` dans les commandes :
+Les secrets (mots de passe, tokens, clés API) sont stockés dans le **keyring système** (macOS Keychain, Linux Secret Service) et référencés par `@nom-secret` :
 
 ```bash
 > Connect to MongoDB with @db-password
-# Merlya résout @db-password depuis le keyring avant exécution
-# Les logs affichent @db-password, jamais la vraie valeur
+# Le LLM voit "@db-password", jamais la valeur réelle
+# Résolution uniquement au moment de l'exécution
+# Logs : "mongo -p ***", jamais la vraie valeur
 ```
+
+### HITL — confirmation obligatoire
+
+Toute opération destructive (restart, écriture fichier, installation) requiert une **confirmation explicite** avant exécution. L'`ExecutionSpecialist` ne peut pas contourner ce mécanisme.
 
 ### Élévation de privilèges
 
-Merlya détecte automatiquement les capacités d'élévation (sudo, doas, su) et gère les mots de passe de manière sécurisée :
-
-1. **sudo NOPASSWD** - Meilleur choix, pas de mot de passe
-2. **doas** - Souvent sans mot de passe sur BSD
-3. **sudo avec mot de passe** - Fallback standard
-4. **su** - Dernier recours, nécessite le mot de passe root
-
-Les mots de passe d'élévation sont stockés dans le keyring et référencés par `@elevation:hostname:password`.
+L'élévation (sudo, doas, su) est **toujours explicite** — jamais auto-détectée. Elle se configure par host et les mots de passe sont stockés dans le keyring sous `elevation:hostname:password`.
 
 ### Détection de boucles
 
-L'agent détecte les patterns répétitifs (même outil appelé 3+ fois, alternance A-B-A-B) et injecte un message pour rediriger vers une approche différente.
+Le `ToolCallTracker` détecte les patterns répétitifs (même commande 3+ fois, alternance A-B-A-B) et stoppe l'exécution automatiquement.
 
 ## Configuration
 
@@ -255,6 +258,7 @@ Fichiers locaux :
 - [docs/tools.md](docs/tools.md) : tools et agents
 - [docs/ssh.md](docs/ssh.md) : SSH, bastions, MFA
 - [docs/extending.md](docs/extending.md) : extensions/agents
+- [SECURITY.md](SECURITY.md) : modèle de sécurité et signalement de vulnérabilités
 
 ## Contribuer
 
