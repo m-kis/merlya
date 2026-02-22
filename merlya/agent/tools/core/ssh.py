@@ -136,12 +136,9 @@ def _validate_host_not_credential(host: str) -> None:
 
 def _detect_elevation_needs(command: str) -> bool:
     """Detect if command needs stdin for elevation (sudo -S or su)."""
-    has_sudo_s = (
-        "sudo -S " in command
-        or "sudo -S" in command
-        or ("-S" in command and "sudo" in command.lower())
-    )
-    has_su = command.strip().startswith("su ") or " su -c" in command.lower()
+    cmd_lower = command.lower()
+    has_sudo_s = "sudo -s " in cmd_lower or ("sudo" in cmd_lower and "-s" in cmd_lower)
+    has_su = cmd_lower.strip().startswith("su ") or " su -c" in cmd_lower
     return has_sudo_s or has_su
 
 
@@ -362,7 +359,7 @@ async def _execute_remote(
     result = await ssh_execute_fn(ctx.deps.context, host, command, timeout, via=via, stdin=stdin)
     touch_activity_fn()
 
-    if not result.success and result.error and "circuit breaker open" in result.error.lower():
+    if not result.success and result.data and result.data.get("circuit_breaker_open"):
         logger.warning(f"🔌 Circuit breaker open for {host}")
         return _make_circuit_breaker_response(host)
 

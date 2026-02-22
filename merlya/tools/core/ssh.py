@@ -620,15 +620,18 @@ def _handle_error(e: Exception, host: str, command: str, via: str | None) -> Too
     info = explain_ssh_error(e, host, via=via)
     logger.error(f"SSH failed: {info.symptom}")
     logger.info(f"💡 {info.suggestion}")
+    data: dict[str, Any] = {
+        "host": host,
+        "command": command[:50],
+        "symptom": info.symptom,
+        "explanation": info.explanation,
+        "suggestion": info.suggestion,
+    }
+    if info.circuit_breaker_open:
+        data["circuit_breaker_open"] = True
     return ToolResult(
         success=False,
-        data={
-            "host": host,
-            "command": command[:50],
-            "symptom": info.symptom,
-            "explanation": info.explanation,
-            "suggestion": info.suggestion,
-        },
+        data=data,
         error=f"{info.symptom} - {info.explanation}",
     )
 
