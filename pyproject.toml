@@ -26,44 +26,34 @@ dependencies = [
     # Agent Framework
     "pydantic-ai>=1.56.0",
     "pydantic>=2.10",
-
     # LLM Providers (via PydanticAI)
     "openai>=1.50",
     "anthropic>=0.75",
     "httpx>=0.28",
-
     # Numeric (for various operations)
     "numpy>=1.26",
-
     # SSH
     "asyncssh>=2.21",
-
     # UI Console
     "rich>=14.0",
     "prompt-toolkit>=3.0",
-
     # Logging & Observability
     "loguru>=0.7",
-    "logfire[system-metrics]>=4.0",
-
+    "posthog>=3.0",
     # Persistence
     "aiosqlite>=0.21",
     # Secrets: core keyring + platform backends
     "keyring>=25.5",
     "keyrings.alt>=5.0; sys_platform == 'linux'",
     "secretstorage>=3.3; sys_platform == 'linux'",
-
     # Config
     "pyyaml>=6.0",
-
     # Templates
     "jinja2>=3.1",
-
     # Utils
     "psutil>=6.1",
     "ddgs>=9.9",
     "packaging>=24.0",
-
     # Security: pin transitive dependencies with known CVEs
     "urllib3>=2.6.0",         # CVE-2025-66418, CVE-2025-66471
     "mcp>=1.23.0",            # CVE-2025-66416

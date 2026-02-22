@@ -21,7 +21,6 @@ from merlya.audit.log_methods import (
     log_tool,
 )
 from merlya.audit.logger import (
-    LOGFIRE_AVAILABLE,
     AuditLogger,
     get_audit_logger,
 )
@@ -35,7 +34,6 @@ from merlya.audit.storage import (
 )
 
 __all__ = [
-    "LOGFIRE_AVAILABLE",
     # Storage
     "MAX_RECENT_LIMIT",
     # Logger

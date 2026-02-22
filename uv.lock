@@ -266,6 +266,15 @@ wheels = [
 ]
 
 [[package]]
+name = "backoff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001, upload-time = "2022-10-05T19:19:32.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148, upload-time = "2022-10-05T19:19:30.546Z" },
+]
+
+[[package]]
 name = "backports-tarfile"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1753,9 +1762,6 @@ wheels = [
 httpx = [
     { name = "opentelemetry-instrumentation-httpx" },
 ]
-system-metrics = [
-    { name = "opentelemetry-instrumentation-system-metrics" },
-]
 
 [[package]]
 name = "logfire-api"
@@ -2096,12 +2102,12 @@ dependencies = [
     { name = "jinja2" },
     { name = "keyring" },
     { name = "keyrings-alt", marker = "sys_platform == 'linux'" },
-    { name = "logfire", extra = ["system-metrics"] },
     { name = "loguru" },
     { name = "mcp" },
     { name = "numpy" },
     { name = "openai" },
     { name = "packaging" },
+    { name = "posthog" },
     { name = "prompt-toolkit" },
     { name = "protobuf" },
     { name = "psutil" },
@@ -2142,7 +2148,6 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
     { name = "keyring", specifier = ">=25.5" },
     { name = "keyrings-alt", marker = "sys_platform == 'linux'", specifier = ">=5.0" },
-    { name = "logfire", extras = ["system-metrics"], specifier = ">=4.0" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "mcp", specifier = ">=1.23.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0" },
@@ -2153,6 +2158,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "openai", specifier = ">=1.50" },
     { name = "packaging", specifier = ">=24.0" },
+    { name = "posthog", specifier = ">=3.0" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "protobuf", specifier = ">=6.33.5" },
     { name = "psutil", specifier = ">=6.1" },
@@ -2673,20 +2679,6 @@ wheels = [
 ]
 
 [[package]]
-name = "opentelemetry-instrumentation-system-metrics"
-version = "0.60b0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation" },
-    { name = "psutil" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/32/99/db1b50b12a53945e4b4e000f7d2835e31cce65c4c94ed8a4681ab881fb09/opentelemetry_instrumentation_system_metrics-0.60b0.tar.gz", hash = "sha256:8f96faa2005ebdcdbb67c7356168afbc9ae51a3b0b3659ef4b269f3549df3338", size = 15871, upload-time = "2025-12-03T13:22:34.761Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/88/83659a2c0881f98ce8f86c4607d93cbbc2ea6c1ec6ab727ff61d5179a4cc/opentelemetry_instrumentation_system_metrics-0.60b0-py3-none-any.whl", hash = "sha256:0dc9ac92db3f6616a583bd110121f211d24d35b772ded69ab0e50e33b259975e", size = 13516, upload-time = "2025-12-03T13:21:43.271Z" },
-]
-
-[[package]]
 name = "opentelemetry-proto"
 version = "1.39.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2795,6 +2787,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "posthog"
+version = "7.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "backoff" },
+    { name = "distro" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+    { name = "six" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/06/bcffcd262c861695fbaa74490b872e37d6fc41d3dcc1a43207d20525522f/posthog-7.9.3.tar.gz", hash = "sha256:55f7580265d290936ac4c112a4e2031a41743be4f90d4183ac9f85b721ff13ae", size = 172336, upload-time = "2026-02-18T22:20:24.085Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/7e/0e06a96823fa7c11ce73920e6ff77e82445db62ac4eae0b6f211edb4c4c2/posthog-7.9.3-py3-none-any.whl", hash = "sha256:2ddcacdef6c4afb124ebfcf27d7be58388943a7e24f8d4a51a52732c9b90bad6", size = 197819, upload-time = "2026-02-18T22:20:22.015Z" },
 ]
 
 [[package]]

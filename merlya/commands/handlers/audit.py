@@ -241,13 +241,13 @@ async def cmd_audit_stats(_ctx: SharedContext, _args: list[str]) -> CommandResul
 
     # Observability status
     obs_status = audit.get_observability_status()
-    logfire_status = "enabled" if obs_status.logfire_enabled else "disabled"
+    posthog_status = "enabled" if obs_status.posthog_enabled else "disabled"
     sqlite_status = "enabled" if obs_status.sqlite_enabled else "disabled"
     lines.extend(
         [
             "",
             "**Observability:**",
-            f"  - Logfire/OTEL: `{logfire_status}`",
+            f"  - Telemetry (PostHog): `{posthog_status}`",
             f"  - SQLite: `{sqlite_status}`",
         ]
     )

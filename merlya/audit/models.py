@@ -17,11 +17,11 @@ class ObservabilityStatus(NamedTuple):
     """Status of observability backends.
 
     Attributes:
-        logfire_enabled: Whether Logfire/OpenTelemetry is enabled.
+        posthog_enabled: Whether PostHog anonymous telemetry is enabled.
         sqlite_enabled: Whether SQLite persistence is enabled.
     """
 
-    logfire_enabled: bool
+    posthog_enabled: bool
     sqlite_enabled: bool
 
 

@@ -2,13 +2,11 @@
 Merlya Audit - Logger implementation.
 
 Logs security-sensitive operations to SQLite for audit trail.
-Supports OpenTelemetry/Logfire for observability when configured.
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 import threading
 from typing import TYPE_CHECKING, Any
 
@@ -27,15 +25,6 @@ from .storage import (
 from .storage import (
     get_recent as storage_get_recent,
 )
-
-# Optional logfire integration (PydanticAI's observability)
-try:
-    import logfire as _logfire
-
-    LOGFIRE_AVAILABLE = True
-except ImportError:
-    _logfire = None  # type: ignore[assignment]
-    LOGFIRE_AVAILABLE = False
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -61,39 +50,16 @@ class AuditLogger:
     # Maximum allowed limit for get_recent queries (prevent excessive memory usage)
     MAX_RECENT_LIMIT = MAX_RECENT_LIMIT
 
-    def __init__(self, enabled: bool = True, logfire_enabled: bool | None = None) -> None:
+    def __init__(self, enabled: bool = True) -> None:
         """
         Initialize the audit logger.
 
         Args:
             enabled: Whether audit logging is enabled.
-            logfire_enabled: Whether to send events to Logfire/OpenTelemetry.
-                           None = auto-detect from LOGFIRE_TOKEN env var.
         """
         self.enabled = enabled
         self._db: Database | None = None
         self._initialized = False
-
-        # Logfire/OpenTelemetry integration
-        self._logfire_enabled = False
-        if logfire_enabled is None:
-            # Auto-detect: enable if LOGFIRE_TOKEN is set
-            logfire_enabled = bool(os.getenv("LOGFIRE_TOKEN"))
-
-        if logfire_enabled and LOGFIRE_AVAILABLE and _logfire:
-            try:
-                # Configure logfire if not already configured
-                if not _logfire.DEFAULT_LOGFIRE_INSTANCE._initialized:  # type: ignore[attr-defined]
-                    _logfire.configure(
-                        service_name="merlya",
-                        send_to_logfire="if-token-present",
-                    )
-                self._logfire_enabled = True
-                logger.debug("Logfire observability enabled for audit logging")
-            except Exception as e:
-                logger.warning(
-                    f"⚠️ Logfire configuration failed: {e}. Audit logs will only be stored locally."
-                )
 
     async def initialize(self, db: Database | None = None) -> None:
         """
@@ -131,29 +97,6 @@ class AuditLogger:
         # Log to loguru (always)
         log_func = logger.info if event.success else logger.warning
         log_func(f"AUDIT: {event.to_log_line()}")
-
-        # Log to Logfire/OpenTelemetry (if enabled)
-        if self._logfire_enabled and _logfire:
-            try:
-                # Create a span with structured attributes
-                level = "info" if event.success else "warn"
-                _logfire.log(  # type: ignore[call-arg]
-                    level,  # type: ignore[arg-type]
-                    f"audit.{event.event_type.value}",
-                    event_id=event.event_id,
-                    event_type=event.event_type.value,
-                    action=event.action,
-                    target=event.target,
-                    user=event.user,
-                    success=event.success,
-                    **{  # type: ignore[arg-type]
-                        f"details.{k}": v
-                        for k, v in (event.details or {}).items()
-                        if isinstance(v, (str, int, float, bool))
-                    },  # Only primitive types
-                )
-            except Exception as e:
-                logger.debug(f"Logfire logging failed: {e}")
 
         # Log to database (if available)
         if self._db and self._initialized:
@@ -232,10 +175,12 @@ class AuditLogger:
         """Get the status of observability backends.
 
         Returns:
-            ObservabilityStatus with logfire_enabled and sqlite_enabled booleans.
+            ObservabilityStatus with posthog_enabled and sqlite_enabled booleans.
         """
+        from merlya.core.observability import is_telemetry_enabled
+
         return ObservabilityStatus(
-            logfire_enabled=self._logfire_enabled,
+            posthog_enabled=is_telemetry_enabled(),
             sqlite_enabled=self._db is not None and self._initialized,
         )
 
@@ -313,7 +258,6 @@ async def get_audit_logger(enabled: bool = True) -> AuditLogger:
 
 
 __all__ = [
-    "LOGFIRE_AVAILABLE",
     "AuditEvent",
     "AuditEventType",
     "AuditLogger",

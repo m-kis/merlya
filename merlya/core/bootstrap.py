@@ -67,13 +67,11 @@ async def bootstrap(
     # Configure logging from config (respects saved settings)
     _configure_logging_from_config(ctx, verbose=verbose, quiet=quiet)
 
-    # Initialize Logfire observability (if LOGFIRE_TOKEN is set)
+    # Initialize anonymous telemetry (opt-out: MERLYA_TELEMETRY=off)
     try:
-        _init_observability()
+        _init_observability(ctx)
     except Exception as e:
-        logger.warning(
-            f"Observability initialization failed, continuing without it: {e}", exc_info=True
-        )
+        logger.debug(f"Telemetry initialization failed, continuing without it: {e}")
 
     # Load API keys from keyring
     load_api_keys_from_keyring(ctx.config, ctx.secrets)
@@ -160,16 +158,21 @@ def _configure_logging_from_config(
     logger.debug(f"⚙️ Logging configured: console={console_level}, file={file_level}")
 
 
-def _init_observability() -> None:
+def _init_observability(ctx: SharedContext | None = None) -> None:
     """
-    Initialize Logfire observability if configured.
+    Initialize PostHog anonymous telemetry.
 
-    Logfire is enabled when LOGFIRE_TOKEN environment variable is set.
-    It provides:
-    - Distributed tracing for PydanticAI agent calls
-    - LLM cost and token tracking
-    - Loguru logs bridged to Logfire dashboard
+    Opt-out: set MERLYA_TELEMETRY=off in the environment.
     """
-    from merlya.core.observability import init_logfire
+    from merlya.core.observability import capture_app_started, init_telemetry
 
-    init_logfire()
+    if init_telemetry() and ctx is not None:
+        try:
+            from importlib.metadata import version
+
+            app_version = version("merlya")
+        except Exception:
+            app_version = "unknown"
+
+        provider = ctx.config.model.provider if ctx.config else "unknown"
+        capture_app_started(version=app_version, provider=provider)

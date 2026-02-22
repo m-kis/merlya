@@ -277,6 +277,9 @@ class REPL:
                             self.ctx.ui.markdown(result.message)
                         else:
                             self.ctx.ui.error(result.message)
+
+                        # Telemetry: track slash command usage (no content)
+                        _telemetry_command(user_input, success=result.success)
                     continue
 
                 # =====================================================
@@ -295,6 +298,13 @@ class REPL:
                     self.ctx.ui.newline()
                     self.ctx.ui.warning(self.ctx.t("ui.request_cancelled"))
                     continue
+
+                # Telemetry: track request type (no content, no hostnames)
+                _telemetry_request(
+                    response.handled_by,
+                    provider=self.ctx.config.model.provider,
+                    success=True,
+                )
 
                 # Display response
                 self.ctx.ui.newline()
@@ -657,3 +667,30 @@ async def run_repl() -> None:
     # Run REPL
     repl = REPL(ctx, agent)
     await repl.run()
+
+
+# ---------------------------------------------------------------------------
+# Telemetry helpers — fire-and-forget, never raise
+# ---------------------------------------------------------------------------
+
+
+def _telemetry_command(user_input: str, *, success: bool) -> None:
+    """Track a slash command usage (command name only, no arguments)."""
+    try:
+        from merlya.core.observability import capture_command
+
+        # Extract command name only — drop arguments to avoid capturing content
+        cmd_name = user_input.lstrip("/").split()[0].lower()
+        capture_command(cmd_name, success=success)
+    except Exception:
+        pass
+
+
+def _telemetry_request(handled_by: str, *, provider: str, success: bool) -> None:
+    """Track an agent request (intent type only, no content)."""
+    try:
+        from merlya.core.observability import capture_request
+
+        capture_request(handled_by, provider, success=success)
+    except Exception:
+        pass
