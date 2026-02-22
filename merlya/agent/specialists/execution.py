@@ -12,10 +12,7 @@ from pydantic_ai.usage import UsageLimits
 
 from merlya.agent.confirmation import ConfirmationResult, confirm_command
 from merlya.agent.specialists.deps import SpecialistDeps
-from merlya.agent.specialists.elevation import (
-    auto_collect_elevation_credentials,
-    needs_elevation_stdin,
-)
+from merlya.agent.specialists.elevation import prepare_host_elevation
 from merlya.agent.specialists.prompts import EXECUTION_PROMPT
 from merlya.agent.specialists.types import SSHResult
 from merlya.config.providers import get_model_for_role, get_pydantic_model_string
@@ -174,21 +171,19 @@ def _register_tools(
                     exit_code=-1,
                 )
 
-        # AUTO-ELEVATION: Collect credentials if needed
-        effective_stdin = stdin
-        if needs_elevation_stdin(command) and not stdin:
-            logger.debug(f"🔐 Auto-elevation: {command[:40]}...")
-            effective_stdin = await auto_collect_elevation_credentials(
-                ctx.deps.context, effective_host, command
+        # TRANSPARENT ELEVATION: apply host-config-based elevation (no regex heuristics).
+        elevated_cmd, effective_stdin = await prepare_host_elevation(
+            command, effective_host, ctx.deps.context, stdin
+        )
+        if elevated_cmd is None:
+            return SSHResult(
+                success=False,
+                stdout="",
+                stderr="Credentials required but not provided",
+                exit_code=-1,
+                error="User cancelled credential prompt",
             )
-            if not effective_stdin:
-                return SSHResult(
-                    success=False,
-                    stdout="",
-                    stderr="Credentials required but not provided",
-                    exit_code=-1,
-                    error="User cancelled credential prompt",
-                )
+        command = elevated_cmd
 
         result = await _ssh_execute(
             ctx.deps.context,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import getpass
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
@@ -29,6 +29,38 @@ class CredentialBundle:
     host: str | None
     values: dict[str, str]
     stored: bool
+
+
+_SENSITIVE_FIELD_NAMES = frozenset(
+    {"password", "token", "secret", "key", "passphrase", "api_key"}
+)
+
+
+def _sanitize_values(
+    values: dict[str, str],
+    key_prefix: str,
+    secret_store: Any,
+    stored: bool,
+) -> dict[str, str]:
+    """
+    Replace sensitive credential values with @keyring-references.
+
+    Sensitive fields (password, token, secret, key, passphrase, api_key) are
+    stored in the secret store if not already persisted, then returned as
+    ``@<key_prefix>:<field>`` references so the LLM never receives raw values.
+
+    Non-sensitive fields (e.g. username) are returned unchanged.
+    """
+    safe: dict[str, str] = {}
+    for name, val in values.items():
+        if name.lower() in _SENSITIVE_FIELD_NAMES:
+            secret_key = f"{key_prefix}:{name}"
+            if not stored:
+                secret_store.set(secret_key, val)
+            safe[name] = f"@{secret_key}"
+        else:
+            safe[name] = val
+    return safe
 
 
 async def _verify_elevation_password(
@@ -295,8 +327,9 @@ async def request_credentials(
                     if ssh_pool.has_connection(
                         host_entry.hostname, port=host_entry.port, username=values.get("username")
                     ):
+                        safe = _sanitize_values(values, key_prefix, secret_store, stored)
                         bundle = CredentialBundle(
-                            service=service, host=host, values=values, stored=stored
+                            service=service, host=host, values=safe, stored=stored
                         )
                         return CommandResult(
                             success=True,
@@ -304,8 +337,9 @@ async def request_credentials(
                             data=bundle,
                         )
                 elif host and ssh_pool.has_connection(host):
+                    safe = _sanitize_values(values, key_prefix, secret_store, stored)
                     bundle = CredentialBundle(
-                        service=service, host=host, values=values, stored=stored
+                        service=service, host=host, values=safe, stored=stored
                     )
                     return CommandResult(
                         success=True,
@@ -316,14 +350,16 @@ async def request_credentials(
                 logger.debug(f"Could not check SSH connection cache: {exc}")
 
         if not missing_fields:
-            bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
+            safe = _sanitize_values(values, key_prefix, secret_store, stored)
+            bundle = CredentialBundle(service=service, host=host, values=safe, stored=stored)
             return CommandResult(success=True, message="✅ Credentials resolved", data=bundle)
 
         # For SSH, avoid prompting for password unless explicitly requested by format_hint
         if service_lower in {"ssh", "ssh_login", "ssh_auth"}:
             if key_based_ssh and not prompt_password_for_ssh:
                 # Return what we have (username, maybe key) without prompting
-                bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
+                safe = _sanitize_values(values, key_prefix, secret_store, stored)
+                bundle = CredentialBundle(service=service, host=host, values=safe, stored=stored)
                 return CommandResult(
                     success=True,
                     message="✅ Credentials resolved (no password prompt for key-based SSH)",
@@ -335,7 +371,8 @@ async def request_credentials(
                 f for f in missing_fields if f != "password" or prompt_password_for_ssh
             ]
             if not missing_fields:
-                bundle = CredentialBundle(service=service, host=host, values=values, stored=stored)
+                safe = _sanitize_values(values, key_prefix, secret_store, stored)
+                bundle = CredentialBundle(service=service, host=host, values=safe, stored=stored)
                 return CommandResult(success=True, message="✅ Credentials resolved", data=bundle)
 
         # NON-INTERACTIVE MODE CHECK: Fail early if we can't prompt
@@ -421,16 +458,20 @@ async def request_credentials(
 
                     set_cached_elevation_method(host, working_method)
 
-                    # PERSIST to Host model for future sessions
+                    # PERSIST to Host model for future sessions.
+                    # "sudo" means the password worked with sudo -S, so the host
+                    # requires a password → persist as "sudo_password" (not "sudo"
+                    # which would mean passwordless sudo NOPASSWD).
+                    persist_method = "sudo_password" if working_method == "sudo" else working_method
                     try:
                         host_entry = await ctx.hosts.get_by_name(host)
                         if (
                             host_entry
-                            and getattr(host_entry, "elevation_method", None) != working_method
+                            and str(getattr(host_entry, "elevation_method", None)) != persist_method
                         ):
-                            host_entry.elevation_method = cast("ElevationMethod", working_method)
+                            host_entry.elevation_method = cast("ElevationMethod", persist_method)
                             await ctx.hosts.update(host_entry)
-                            logger.info(f"💾 Elevation method '{working_method}' saved for {host}")
+                            logger.info(f"💾 Elevation method '{persist_method}' saved for {host}")
                     except Exception as e:
                         logger.debug(f"Could not persist elevation method: {e}")
                 else:
@@ -477,25 +518,10 @@ async def request_credentials(
                 stored = True
                 ctx.ui.success("✅ Credentials stored securely")
 
-        # SECURITY: Return secret references instead of raw values
-        # This prevents the LLM from seeing or logging actual passwords
-        # The references will be resolved at execution time by resolve_secrets()
-        safe_values = {}
-        # Use the appropriate key prefix for safe references
+        # SECURITY: Return secret references instead of raw values.
+        # Resolved at execution time by resolve_secrets(); LLM never sees plain text.
         reference_key_prefix = final_key_prefix if "final_key_prefix" in locals() else key_prefix
-        for name, val in values.items():
-            if name.lower() in {"password", "token", "secret", "key", "passphrase", "api_key"}:
-                # Store the value and return a reference
-                secret_key = f"{reference_key_prefix}:{name}"
-                if not stored:
-                    # Always store sensitive values so references work
-                    secret_store.set(secret_key, val)
-                # Return reference like @sudo:hostname:password
-                safe_values[name] = f"@{secret_key}"
-            else:
-                # Non-sensitive fields (like username) can be returned as-is
-                safe_values[name] = val
-
+        safe_values = _sanitize_values(values, reference_key_prefix, secret_store, stored)
         bundle = CredentialBundle(service=service, host=host, values=safe_values, stored=True)
         return CommandResult(success=True, message="✅ Credentials captured", data=bundle)
 

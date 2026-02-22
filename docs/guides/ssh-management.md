@@ -198,65 +198,29 @@ ssh:
 
 ## Privilege Elevation
 
-Merlya automatically handles privilege elevation (sudo, doas, su) with an auto-healing fallback system.
+Merlya handles privilege elevation (sudo, doas, su) **transparently** based on each host's configuration. You declare the elevation method once in the inventory; the system applies it automatically to every command.
+
+See the dedicated guide: **[Privilege Elevation Guide](./elevation.md)**
+
+### Quick reference
+
+```bash
+# Set elevation method when adding a host
+/hosts add web-01 192.168.1.10 --user deploy --elevation sudo_password
+
+# Pre-store the elevation password
+/secret set sudo:web-01:password
+
+# Check a host's current elevation config
+/hosts get web-01
+```
 
 ### SSH Commands
 
 ```bash
-# Basic SSH commands
 /ssh connect <host>       # Connect to a host
 /ssh exec <host> <cmd>    # Execute command
 /ssh config <host>        # Configure SSH (user, key, port, jump)
 /ssh test <host>          # Test connection with diagnostics
 /ssh disconnect [host]    # Disconnect
-
-# Elevation commands
-/ssh elevation detect <host>   # Detect sudo/doas/su capabilities
-/ssh elevation status <host>   # Show elevation status and failed methods
-/ssh elevation reset [host]    # Clear failed methods (retry with new password)
-```
-
-### Elevation Priority
-
-Merlya tries elevation methods in order:
-
-1. **sudo (NOPASSWD)** - Best: no password needed
-2. **doas (NOPASSWD)** - Common on BSD
-3. **sudo_with_password** - Fallback with password
-4. **doas_with_password** - Alternative with password
-5. **su** - Last resort (root password)
-
-### Auto-Healing Fallback
-
-When an elevation method fails (wrong password):
-
-1. Merlya **verifies** the password with a test command
-2. **Marks failed** methods to avoid retry loops
-3. **Tries next** method in the chain automatically
-4. **Caches** passwords only after verification succeeds
-
-```text
-Merlya > Read /etc/shadow on web01
-
-🔒 Command may require elevation. Use sudo_with_password? [y/N] y
-🔑 Your password for elevation: ****
-🔐 Verifying sudo_with_password...
-❌ sudo_with_password failed (wrong password?)
-🔒 Trying fallback methods: su
-🔑 su (root password): ****
-🔐 Verifying su...
-✅ su verified
-root:*:19000:0:99999:7:::
-```
-
-### Resetting Elevation
-
-If passwords change or you need to retry:
-
-```bash
-# Reset for one host
-/ssh elevation reset web01
-
-# Reset for all hosts
-/ssh elevation reset
 ```

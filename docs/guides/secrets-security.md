@@ -171,6 +171,69 @@ _SENSITIVE_VALUE_PATTERNS = (
 
 Sanitization is **recursive**: it traverses nested dicts and lists.
 
+## Setting a Host's Sudo / Elevation Password
+
+> For the full elevation system documentation (methods, configuration, examples), see the [Privilege Elevation Guide](./elevation.md).
+
+There are two ways to give Merlya a sudo or root password for a host.
+
+### Automatic (interactive session)
+
+Just ask for something that requires elevation:
+
+```
+Merlya > apt update on web-01
+```
+
+If `web-01` has `elevation_method = sudo_password` in the inventory, the agent automatically requests credentials:
+
+1. The REPL prompts you: `🔐 Credentials needed for sudo @web-01`
+2. You enter the password (hidden input)
+3. Merlya verifies it via `sudo -S true` on the host — if it fails, you retry (max 3 attempts)
+4. The verified password is stored in keyring as `sudo:web-01:password`
+5. A reference `@sudo:web-01:password` is passed to the agent — the raw value is never sent to the LLM
+
+On subsequent requests for the same host, the keyring lookup succeeds immediately and no prompt is shown.
+
+### Manual (pre-populate the keyring)
+
+Useful before a session, in CI/CD, or to set credentials without triggering a command:
+
+```bash
+# sudo password for web-01
+/secret set sudo:web-01:password
+
+# root password for db-prod (su method)
+/secret set root:db-prod:password
+```
+
+Both commands prompt for the value with hidden input.
+
+### Key naming convention
+
+| Elevation method | Key format | Example |
+| ---------------- | ---------- | ------- |
+| `sudo_password` | `sudo:<hostname>:password` | `sudo:web-01:password` |
+| `su` (root) | `root:<hostname>:password` | `root:db-prod:password` |
+
+The hostname must match the **name** field in your inventory (not the IP or FQDN), since that is how the agent looks it up.
+
+### Check what is stored
+
+```bash
+/secret list
+# Shows all secret names (values never displayed)
+```
+
+### Clear a stored password
+
+```bash
+/secret clear-elevation web-01      # Clear for one host
+/secret clear-elevation --all       # Clear all elevation passwords
+```
+
+---
+
 ## Comparison with Other Agents
 
 | Aspect | OpenHands | Gemini CLI | SHAI | Merlya |

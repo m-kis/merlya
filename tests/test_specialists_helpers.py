@@ -1,125 +1,110 @@
-"""Tests for the specialist agent helper functions."""
+"""Tests for the specialist agent elevation helpers."""
 
-from merlya.agent.specialists.elevation import needs_elevation_stdin as _needs_elevation_stdin
+from merlya.agent.specialists.elevation import _strip_elevation_prefix
 
 
-class TestNeedsElevationStdin:
-    """Tests for _needs_elevation_stdin() function."""
+class TestStripElevationPrefix:
+    """Tests for _strip_elevation_prefix()."""
 
-    # ==========================================================================
-    # sudo -S (uppercase S) - SHOULD trigger (reads password from stdin)
-    # ==========================================================================
+    # ------------------------------------------------------------------
+    # sudo -S (uppercase S)
+    # ------------------------------------------------------------------
 
-    def test_sudo_uppercase_s_triggers(self) -> None:
-        """sudo -S (uppercase) should trigger - reads from stdin."""
-        assert _needs_elevation_stdin("sudo -S cat /etc/shadow")
+    def test_strips_sudo_s(self) -> None:
+        assert _strip_elevation_prefix("sudo -S apt update") == "apt update"
 
-    def test_sudo_uppercase_s_with_path(self) -> None:
-        """sudo -S with full path should trigger."""
-        assert _needs_elevation_stdin("sudo -S /usr/bin/cat /etc/shadow")
+    def test_strips_sudo_s_lowercase(self) -> None:
+        assert _strip_elevation_prefix("sudo -s apt update") == "apt update"
 
-    def test_sudo_uppercase_s_systemctl(self) -> None:
-        """sudo -S systemctl should trigger."""
-        assert _needs_elevation_stdin("sudo -S systemctl restart nginx")
+    def test_strips_sudo_s_systemctl(self) -> None:
+        assert _strip_elevation_prefix("sudo -S systemctl restart nginx") == "systemctl restart nginx"
 
-    # ==========================================================================
-    # sudo -s (lowercase s) - should NOT trigger (runs a shell, no stdin needed)
-    # ==========================================================================
+    # ------------------------------------------------------------------
+    # Plain sudo (no -S)
+    # ------------------------------------------------------------------
 
-    def test_sudo_lowercase_s_does_not_trigger(self) -> None:
-        """sudo -s (lowercase) should NOT trigger - runs a shell."""
-        assert not _needs_elevation_stdin("sudo -s")
+    def test_strips_plain_sudo(self) -> None:
+        assert _strip_elevation_prefix("sudo apt update") == "apt update"
 
-    def test_sudo_lowercase_s_with_command(self) -> None:
-        """sudo -s with command should NOT trigger."""
-        assert not _needs_elevation_stdin("sudo -s cat /etc/shadow")
+    def test_strips_plain_sudo_cat(self) -> None:
+        assert _strip_elevation_prefix("sudo cat /etc/shadow") == "cat /etc/shadow"
 
-    def test_sudo_lowercase_s_interactive(self) -> None:
-        """sudo -s for interactive shell should NOT trigger."""
-        assert not _needs_elevation_stdin("sudo -s -u postgres")
+    # ------------------------------------------------------------------
+    # doas
+    # ------------------------------------------------------------------
 
-    # ==========================================================================
-    # Plain sudo (no -S or -s) - should NOT trigger
-    # ==========================================================================
+    def test_strips_doas(self) -> None:
+        assert _strip_elevation_prefix("doas apt update") == "apt update"
 
-    def test_plain_sudo_does_not_trigger(self) -> None:
-        """Plain sudo without -S should NOT trigger."""
-        assert not _needs_elevation_stdin("sudo cat /etc/shadow")
+    def test_strips_doas_systemctl(self) -> None:
+        assert _strip_elevation_prefix("doas systemctl restart nginx") == "systemctl restart nginx"
 
-    def test_sudo_with_user_does_not_trigger(self) -> None:
-        """sudo -u user should NOT trigger."""
-        assert not _needs_elevation_stdin("sudo -u postgres psql")
+    # ------------------------------------------------------------------
+    # su -c
+    # ------------------------------------------------------------------
 
-    def test_sudo_preserve_env_does_not_trigger(self) -> None:
-        """sudo -E should NOT trigger."""
-        assert not _needs_elevation_stdin("sudo -E cat /etc/shadow")
+    def test_strips_su_c_single_quotes(self) -> None:
+        assert _strip_elevation_prefix("su -c 'apt update'") == "apt update"
 
-    # ==========================================================================
-    # su -c commands - SHOULD trigger (needs password)
-    # ==========================================================================
+    def test_strips_su_c_double_quotes(self) -> None:
+        assert _strip_elevation_prefix('su -c "apt update"') == "apt update"
 
-    def test_su_c_with_single_quotes_triggers(self) -> None:
-        """su -c with single quotes should trigger."""
-        assert _needs_elevation_stdin("su -c 'cat /etc/shadow'")
+    def test_strips_su_c_without_quotes(self) -> None:
+        assert _strip_elevation_prefix("su -c apt update") == "apt update"
 
-    def test_su_c_with_double_quotes_triggers(self) -> None:
-        """su -c with double quotes should trigger."""
-        assert _needs_elevation_stdin('su -c "cat /etc/shadow"')
+    # ------------------------------------------------------------------
+    # No prefix — should be unchanged
+    # ------------------------------------------------------------------
 
-    def test_su_c_with_user_triggers(self) -> None:
-        """su - root -c should trigger."""
-        assert _needs_elevation_stdin("su - root -c 'cat /etc/shadow'")
+    def test_plain_command_unchanged(self) -> None:
+        assert _strip_elevation_prefix("apt update") == "apt update"
 
-    def test_su_at_start_triggers(self) -> None:
-        """su at start of command should trigger."""
-        assert _needs_elevation_stdin("su -c 'systemctl restart nginx'")
+    def test_systemctl_unchanged(self) -> None:
+        assert _strip_elevation_prefix("systemctl restart nginx") == "systemctl restart nginx"
 
-    def test_su_with_pipe_triggers(self) -> None:
-        """Command with su -c after pipe should trigger."""
-        assert _needs_elevation_stdin("echo password | su -c 'cat /etc/shadow'")
+    def test_cat_unchanged(self) -> None:
+        assert _strip_elevation_prefix("cat /etc/passwd") == "cat /etc/passwd"
 
-    # ==========================================================================
-    # Non-elevation commands - should NOT trigger
-    # ==========================================================================
+    # ------------------------------------------------------------------
+    # Mid-command sudo — must NOT be stripped (only strips from START)
+    # ------------------------------------------------------------------
 
-    def test_regular_command_does_not_trigger(self) -> None:
-        """Regular command should NOT trigger."""
-        assert not _needs_elevation_stdin("cat /etc/passwd")
+    def test_apt_install_sudo_unchanged(self) -> None:
+        """'apt install sudo' should NOT have sudo stripped — it's a package name."""
+        assert _strip_elevation_prefix("apt install sudo") == "apt install sudo"
 
-    def test_ls_command_does_not_trigger(self) -> None:
-        """ls command should NOT trigger."""
-        assert not _needs_elevation_stdin("ls -la /etc")
+    def test_echo_sudo_in_text_unchanged(self) -> None:
+        """echo 'use sudo' should NOT have sudo stripped."""
+        assert _strip_elevation_prefix("echo 'use sudo'") == "echo 'use sudo'"
 
-    def test_systemctl_without_sudo_does_not_trigger(self) -> None:
-        """systemctl without sudo should NOT trigger."""
-        assert not _needs_elevation_stdin("systemctl status nginx")
+    def test_grep_sudo_log_unchanged(self) -> None:
+        """grep through sudo log should NOT be modified."""
+        assert _strip_elevation_prefix("grep sudo /var/log/auth.log") == "grep sudo /var/log/auth.log"
 
-    def test_grep_with_sudo_in_pattern_does_not_trigger(self) -> None:
-        """grep for 'sudo' in output should NOT trigger."""
-        assert not _needs_elevation_stdin("grep 'sudo -S' /var/log/auth.log")
+    # ------------------------------------------------------------------
+    # Chained commands — only the leading prefix is stripped
+    # ------------------------------------------------------------------
 
-    def test_echo_with_su_in_text_does_not_trigger(self) -> None:
-        """echo with 'su' in text should NOT trigger (not at boundary)."""
-        # This should NOT trigger because "resultat" contains "su" but not as command
-        assert not _needs_elevation_stdin("echo resultat")
+    def test_strips_leading_prefix_only_in_chain(self) -> None:
+        """
+        'sudo -S apt update && sudo -S systemctl restart' → leading prefix stripped,
+        the rest of the chain is preserved.
+        """
+        result = _strip_elevation_prefix("sudo -S apt update && sudo -S systemctl restart nginx")
+        assert result == "apt update && sudo -S systemctl restart nginx"
 
-    # ==========================================================================
+    # ------------------------------------------------------------------
     # Edge cases
-    # ==========================================================================
+    # ------------------------------------------------------------------
 
-    def test_empty_command_does_not_trigger(self) -> None:
-        """Empty command should NOT trigger."""
-        assert not _needs_elevation_stdin("")
+    def test_empty_string(self) -> None:
+        assert _strip_elevation_prefix("") == ""
 
-    def test_whitespace_command_does_not_trigger(self) -> None:
-        """Whitespace-only command should NOT trigger."""
-        assert not _needs_elevation_stdin("   ")
+    def test_whitespace_only(self) -> None:
+        assert _strip_elevation_prefix("   ") == ""
 
-    def test_sudo_in_path_does_not_trigger(self) -> None:
-        """Path containing 'sudo' should NOT trigger."""
-        assert not _needs_elevation_stdin("cat /var/log/sudo.log")
-
-    def test_case_sensitivity_su(self) -> None:
-        """su commands are case-insensitive."""
-        assert _needs_elevation_stdin("SU -c 'cat /etc/shadow'")
-        assert _needs_elevation_stdin("Su -C 'cat /etc/shadow'")
+    def test_sudo_only(self) -> None:
+        """'sudo' with no real command after it — returned as-is (not a real case in practice)."""
+        # The trailing space is stripped before the regex runs, so "sudo" alone doesn't match.
+        result = _strip_elevation_prefix("sudo ")
+        assert result in ("", "sudo")  # either is acceptable

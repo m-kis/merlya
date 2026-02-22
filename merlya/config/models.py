@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class GeneralConfig(BaseModel):
@@ -19,6 +19,13 @@ class GeneralConfig(BaseModel):
     log_level: Literal["debug", "info", "warning", "error"] = Field(
         default="info", description="DEPRECATED: Use logging.console_level instead"
     )
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.lower()
+        return v
     data_dir: Path = Field(default=Path.home() / ".merlya", description="Data directory path")
 
 

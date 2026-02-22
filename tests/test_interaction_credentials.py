@@ -113,7 +113,8 @@ async def test_request_credentials_prefills_from_secret_store() -> None:
 
     assert result.success
     assert result.data.values["username"] == "dbuser"
-    assert result.data.values["password"] == "pwd"
+    # Password must be returned as a @reference, never as plain text
+    assert result.data.values["password"] == "@mysql:db:password"
     assert ui.secret_prompts == []  # no prompt since secrets exist
 
 
@@ -203,6 +204,7 @@ async def test_request_credentials_succeeds_in_non_interactive_with_stored_creds
 
     # Should succeed because credentials are already stored
     assert result.success
-    assert result.data.values.get("password") == "stored_pwd"
+    # Password must be a @reference, not the raw value
+    assert result.data.values.get("password") == "@sudo:server01:password"
     # Should NOT have called any prompts
     assert ui.secret_prompts == []
