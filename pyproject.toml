@@ -1,6 +1,6 @@
 [project]
 name = "merlya"
-version = "0.8.4"
+version = "0.8.5"
 description = "Merlya - AI-powered infrastructure assistant"
 authors = [
     { name = "Cedric", email = "infra@merlya.fr" }
