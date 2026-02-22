@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-class PipelineStage(str, Enum):
+class PipelineStage(StrEnum):
     """Stages in a change pipeline."""
 
     PLAN = "plan"
