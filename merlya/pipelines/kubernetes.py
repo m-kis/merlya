@@ -11,7 +11,7 @@ import tempfile
 import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-class KubernetesOperation(str, Enum):
+class KubernetesOperation(StrEnum):
     """Kubernetes operation types."""
 
     APPLY = "apply"  # kubectl apply -f

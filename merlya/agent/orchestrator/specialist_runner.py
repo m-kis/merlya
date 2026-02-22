@@ -15,14 +15,16 @@ from merlya.agent.specialists.deps import SpecialistDeps
 
 from .completion import task_seems_complete
 from .constants import MAX_SPECIALIST_RETRIES, SPECIALIST_LIMITS
-from .models import DelegationResult, OrchestratorDeps
+from .models import DelegationResult
 
 if TYPE_CHECKING:
     from pydantic_ai import RunContext
 
+    from merlya.agent.main import AgentDependencies
+
 
 async def run_specialist_with_retry(
-    ctx: RunContext[OrchestratorDeps],
+    ctx: RunContext[AgentDependencies],
     specialist_fn: object,
     specialist_type: Literal["diagnostic", "execution", "security", "query"],
     target: str,
@@ -137,7 +139,7 @@ async def run_specialist_with_retry(
 
 
 async def run_specialist_once(
-    ctx: RunContext[OrchestratorDeps],
+    ctx: RunContext[AgentDependencies],
     specialist_fn: object,
     specialist_type: Literal["diagnostic", "execution", "security", "query"],
     target: str,

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from merlya.provisioners.providers.base import InstanceSpec, ProviderType
 
 
-class BackendType(str, Enum):
+class BackendType(StrEnum):
     """Supported backend types."""
 
     TERRAFORM = "terraform"

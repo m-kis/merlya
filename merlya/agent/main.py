@@ -16,7 +16,7 @@ from pydantic_ai import ModelMessage, ModelMessagesTypeAdapter
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
-from merlya.agent.agent_factory import create_agent
+from merlya.agent.confirmation import ConfirmationState
 from merlya.agent.tracker import ToolCallTracker
 from merlya.config.constants import (
     DEFAULT_REQUEST_LIMIT,
@@ -25,8 +25,7 @@ from merlya.config.constants import (
 )
 from merlya.config.provider_env import ensure_provider_env
 
-# Re-export create_agent from agent_factory
-__all__ = ["AgentDependencies", "AgentResponse", "MerlyaAgent", "create_agent"]
+__all__ = ["AgentDependencies", "AgentResponse", "MerlyaAgent"]
 
 if TYPE_CHECKING:
     from merlya.core.context import SharedContext
@@ -41,6 +40,7 @@ class AgentDependencies:
     context: SharedContext
     router_result: RouterResult | None = None
     tracker: ToolCallTracker = field(default_factory=ToolCallTracker)
+    confirmation_state: ConfirmationState = field(default_factory=ConfirmationState)
     user_input: str = ""  # Original user request for context
 
 
@@ -74,9 +74,12 @@ class MerlyaAgent:
         self.context = context
         ensure_provider_env(self.context.config)
         self.model = model
+        from merlya.agent.agent_factory import create_agent
+
         self._agent = create_agent(model)
         self._message_history: list[ModelMessage] = []
         self._active_conversation: Conversation | None = None
+        self._confirmation_state = ConfirmationState()
 
     async def run(
         self,
@@ -111,6 +114,7 @@ class MerlyaAgent:
             deps = AgentDependencies(
                 context=self.context,
                 router_result=router_result,
+                confirmation_state=self._confirmation_state,
                 user_input=user_input,
             )
             return await self._run_agent_with_errors(user_input, deps, limits)
@@ -239,6 +243,7 @@ class MerlyaAgent:
         """Clear conversation history."""
         self._message_history.clear()
         self._active_conversation = None
+        self._confirmation_state.reset()
         logger.debug("Conversation history cleared")
 
     async def _create_conversation(self, title_seed: str | None = None) -> Conversation:

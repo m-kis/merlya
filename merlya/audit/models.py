@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, NamedTuple
 
 
@@ -25,7 +25,7 @@ class ObservabilityStatus(NamedTuple):
     sqlite_enabled: bool
 
 
-class AuditEventType(str, Enum):
+class AuditEventType(StrEnum):
     """Types of audit events."""
 
     COMMAND_EXECUTED = "command_executed"

@@ -10,7 +10,6 @@ from pydantic_ai.messages import (
 
 from merlya.agent.history import (
     create_history_processor,
-    create_loop_aware_history_processor,
     find_safe_truncation_point,
     get_tool_call_count,
     get_user_message_count,
@@ -305,99 +304,3 @@ class TestGetUserMessageCount:
         ]
         # Only 1 user message, tool return is not a user message
         assert get_user_message_count(messages) == 1
-
-
-class TestCreateLoopAwareHistoryProcessor:
-    """Tests for create_loop_aware_history_processor factory function."""
-
-    def test_returns_callable(self) -> None:
-        """Factory should return a callable."""
-        processor = create_loop_aware_history_processor(max_messages=10)
-        assert callable(processor)
-
-    def test_processor_limits_history(self) -> None:
-        """Processor should limit history to max_messages."""
-        processor = create_loop_aware_history_processor(max_messages=2)
-        messages = [
-            _make_user_request("msg1"),
-            _make_assistant_response("resp1"),
-            _make_user_request("msg2"),
-            _make_assistant_response("resp2"),
-        ]
-        result = processor(messages)
-        assert len(result) == 2
-
-    def test_no_breaker_when_disabled(self) -> None:
-        """Processor should not inject breaker when detection disabled."""
-        processor = create_loop_aware_history_processor(
-            max_messages=50, enable_loop_detection=False
-        )
-
-        # Create many tool calls
-        messages = [_make_user_request("do stuff")]
-        for i in range(100):
-            messages.append(_make_tool_call(f"call_{i}"))
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        result = processor(messages)
-
-        # Check that no breaker message was added (only truncation)
-        has_breaker = False
-        for msg in result:
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if isinstance(part, UserPromptPart) and "tool calls" in part.content:
-                        has_breaker = True
-                        break
-
-        assert not has_breaker, "Breaker should NOT be injected when disabled"
-
-    def test_injects_breaker_at_threshold(self) -> None:
-        """Processor should inject breaker at exactly MAX_TOOL_CALLS_SINCE_LAST_USER."""
-        from merlya.agent.history import MAX_TOOL_CALLS_SINCE_LAST_USER
-
-        processor = create_loop_aware_history_processor(max_messages=200)
-
-        # Create exactly threshold number of tool calls
-        messages: list = [_make_user_request("start")]
-        for i in range(MAX_TOOL_CALLS_SINCE_LAST_USER):
-            messages.append(_make_tool_call(f"call_{i}"))
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        result = processor(messages)
-
-        # Verify breaker was injected
-        breaker_found = False
-        for msg in result:
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if isinstance(part, UserPromptPart) and "tool calls" in part.content:
-                        breaker_found = True
-                        break
-
-        assert breaker_found, "Breaker should be injected at threshold"
-
-    def test_no_breaker_below_threshold(self) -> None:
-        """Processor should NOT inject breaker below threshold."""
-        from merlya.agent.history import MAX_TOOL_CALLS_SINCE_LAST_USER
-
-        processor = create_loop_aware_history_processor(max_messages=200)
-
-        # Create one less than threshold
-        messages: list = [_make_user_request("start")]
-        for i in range(MAX_TOOL_CALLS_SINCE_LAST_USER - 1):
-            messages.append(_make_tool_call(f"call_{i}"))
-            messages.append(_make_tool_return(f"call_{i}"))
-
-        result = processor(messages)
-
-        # Verify NO breaker was injected
-        breaker_found = False
-        for msg in result:
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if isinstance(part, UserPromptPart) and "tool calls" in part.content:
-                        breaker_found = True
-                        break
-
-        assert not breaker_found, "Breaker should NOT be injected below threshold"

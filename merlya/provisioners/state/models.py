@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import copy
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class ResourceStatus(str, Enum):
+class ResourceStatus(StrEnum):
     """Status of a managed resource."""
 
     PENDING = "pending"  # Resource planned but not yet created
@@ -29,7 +29,7 @@ class ResourceStatus(str, Enum):
     UNKNOWN = "unknown"  # Resource state cannot be determined
 
 
-class DriftStatus(str, Enum):
+class DriftStatus(StrEnum):
     """Drift detection status."""
 
     NO_DRIFT = "no_drift"  # Resource matches expected state

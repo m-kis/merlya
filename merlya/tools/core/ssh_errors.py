@@ -20,6 +20,7 @@ class SSHErrorInfo:
     symptom: str
     explanation: str
     suggestion: str
+    circuit_breaker_open: bool = False
 
 
 @dataclass(frozen=True)
@@ -125,6 +126,7 @@ def _circuit_breaker_info(ctx: _ErrorContext, error_str: str) -> SSHErrorInfo:
         symptom=f"🔌 Circuit breaker open for {ctx.host}{suffix}",
         explanation="Too many SSH failures in a short time; Merlya temporarily stops attempts",
         suggestion=f"Wait{suffix} or run: reset_circuit({ctx.host})",
+        circuit_breaker_open=True,
     )
 
 

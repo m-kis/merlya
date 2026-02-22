@@ -32,31 +32,31 @@ DEFAULT_LIST_LIMIT = 10  # Default limit for list operations
 MAX_LIST_LIMIT = 100  # Maximum allowed list limit
 
 # Agent Limits
-DEFAULT_MAX_HISTORY_MESSAGES = 1000  # Give the agent infinite history
-DIAGNOSTIC_MAX_HISTORY_MESSAGES = 2000
-DEFAULT_REQUEST_LIMIT = 500  # Massive request ceiling
-DEFAULT_TOOL_CALLS_LIMIT = 500  # Let the agent explore infinitely
+DEFAULT_MAX_HISTORY_MESSAGES = 50  # Reasonable conversation history
+DIAGNOSTIC_MAX_HISTORY_MESSAGES = 80
+DEFAULT_REQUEST_LIMIT = 100  # Per-run request ceiling
+DEFAULT_TOOL_CALLS_LIMIT = 50  # Aligned with ToolCallTracker.MAX_TOTAL_CALLS_SESSION
 MIN_RESPONSE_LENGTH_WITH_ACTIONS = 20  # Minimum response length when actions taken
-HARD_MAX_HISTORY_MESSAGES = 5000  # Absolute maximum to prevent JSON unbounded growth
+HARD_MAX_HISTORY_MESSAGES = 200  # Absolute maximum to prevent JSON unbounded growth
 
-# Mode-specific tool call limits (set by router based on task type)
-# IMPORTANT: Increased massively per user request to enable full autonomy
-TOOL_CALLS_LIMIT_DIAGNOSTIC = 500
-TOOL_CALLS_LIMIT_REMEDIATION = 500
-TOOL_CALLS_LIMIT_QUERY = 500
-TOOL_CALLS_LIMIT_CHAT = 500
+# Mode-specific tool call limits
+TOOL_CALLS_LIMIT_DIAGNOSTIC = 50
+TOOL_CALLS_LIMIT_REMEDIATION = 50
+TOOL_CALLS_LIMIT_QUERY = 20
+TOOL_CALLS_LIMIT_CHAT = 30
 
 # Mode-specific request limits (should be >= tool_calls_limit)
-REQUEST_LIMIT_DIAGNOSTIC = 1000
-REQUEST_LIMIT_REMEDIATION = 1000
-REQUEST_LIMIT_QUERY = 1000
-REQUEST_LIMIT_CHAT = 1000
+REQUEST_LIMIT_DIAGNOSTIC = 100
+REQUEST_LIMIT_REMEDIATION = 100
+REQUEST_LIMIT_QUERY = 40
+REQUEST_LIMIT_CHAT = 60
 
-# Skill-specific limits (skills can involve complex multi-step operations)
-REQUEST_LIMIT_SKILL = 1000  # Request limit for skill execution
+# Skill-specific limits
+REQUEST_LIMIT_SKILL = 100
 
-# Tool retry configuration
-DEFAULT_TOOL_RETRIES = 50  # Let the model retry as many times as it needs to elevate/authenticate
+# Tool retry configuration — 3 retries is enough for elevation/credential flows
+DEFAULT_TOOL_RETRIES = 3
+
 
 # LLM Request Timeouts (seconds) - per provider best practices
 # These are timeouts for individual API requests, not overall agent run time

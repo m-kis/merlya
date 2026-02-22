@@ -280,37 +280,16 @@ class REPL:
                     continue
 
                 # =====================================================
-                # FREE TEXT → Orchestrator (LLM delegates to specialists)
+                # FREE TEXT → Agent (delegates to specialists)
                 # =====================================================
 
                 # Expand @ mentions (variables → values, secrets → kept as @ref)
                 expanded_input = await self._expand_mentions(user_input)
 
-                # Process with Agent
+                # Process with Agent — it decides DIAG vs CHANGE based on system prompt
                 try:
-                    # Provide conversational context to the stateless Router/SmartExtractor
-                    router_input = expanded_input
-                    if self.ctx.last_remote_target:
-                        router_input = f"{expanded_input}\n[Context: Ongoing conversation about host {self.ctx.last_remote_target}]"
-
-                    route_result = await self.ctx.router.route(router_input)
-
-                    # Agentic Clarity: Intercept ambiguous requests before hitting the main LLM agent
-                    if getattr(route_result, "needs_clarification", False) and not self.ctx.last_remote_target:
-                        msg = route_result.clarification_message or self.ctx.t("ui.needs_clarification", default="Could you please clarify your request?")
-                        self.ctx.ui.warning(self.ctx.t("ui.ambiguous_request", default="Ambiguous request detected."))
-                        clarification = await self.ctx.ui.prompt(msg)
-
-                        if not clarification:
-                            self.ctx.ui.muted(self.ctx.t("ui.cancelled", default="Cancelled."))
-                            continue
-
-                        # Append the clarification to the original input and route again
-                        expanded_input = f"{expanded_input}\nClarification: {clarification}"
-                        route_result = await self.ctx.router.route(expanded_input)
-
                     with self.ctx.ui.spinner(self.ctx.t("ui.spinner.agent")):
-                        response = await handle_message(self.ctx, self.agent, expanded_input, route_result)
+                        response = await handle_message(self.ctx, self.agent, expanded_input)
                 except asyncio.CancelledError:
                     # Handle Ctrl+C during orchestrator execution
                     self.ctx.ui.newline()
@@ -656,11 +635,11 @@ async def run_repl() -> None:
         # Eagerly load models in background to reduce latency on first prompt
         preload_task = asyncio.create_task(ctx.router.preload_models())
         preload_task.add_done_callback(
-            lambda task: logger.debug(
-                f"Router model preload failed: {task.exception()}"
+            lambda task: (
+                logger.debug(f"Router model preload failed: {task.exception()}")
+                if task.exception()
+                else None
             )
-            if task.exception()
-            else None
         )
     except Exception as e:
         logger.warning(f"Failed to initialize router: {e}")

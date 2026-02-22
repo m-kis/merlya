@@ -54,7 +54,8 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
     servers = await manager.list_servers()
     if not servers:
         return CommandResult(
-            success=True, message="ℹ️ No MCP servers configured. Use `/mcp add <name> <command>` or `--url=<url>`."
+            success=True,
+            message="ℹ️ No MCP servers configured. Use `/mcp add <name> <command>` or `--url=<url>`.",
         )
 
     ctx.ui.table(
@@ -64,7 +65,9 @@ async def cmd_mcp_list(ctx: SharedContext, _args: list[str]) -> CommandResult:
                 srv["name"],
                 "Remote (SSE)" if srv.get("url") else "Local (stdio)",
                 srv.get("url") or f"{srv.get('command', '-')} {' '.join(srv.get('args', []))}",
-                ", ".join(srv.get("headers", {}).keys()) if srv.get("url") else ", ".join(srv.get("env_keys", [])),
+                ", ".join(srv.get("headers", {}).keys())
+                if srv.get("url")
+                else ", ".join(srv.get("env_keys", [])),
                 "✅" if srv["enabled"] else "❌",
             ]
             for srv in servers
@@ -107,7 +110,10 @@ async def cmd_mcp_add(ctx: SharedContext, args: list[str]) -> CommandResult:
         cmd_args = remaining[1:]
 
     if not command and not url:
-        return CommandResult(success=False, message="❌ Missing either a command to start the MCP server or an --url for remote connection.")
+        return CommandResult(
+            success=False,
+            message="❌ Missing either a command to start the MCP server or an --url for remote connection.",
+        )
 
     manager = await _manager(ctx)
     if await manager.show_server(name) is not None:

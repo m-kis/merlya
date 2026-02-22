@@ -56,24 +56,16 @@ async def handle_message(
     ctx: SharedContext,
     agent: MerlyaAgent,
     user_input: str,
-    route_result: object | None = None,
 ) -> HandlerResponse:
     """
     Handle a user message by delegating to the MerlyaAgent.
 
-    This is the main entry point for processing free text user input.
-    Slash commands are handled separately in the REPL.
-
-    Flow:
-    1. Expand @ mentions (variables, hosts)
-    2. Send to Agent
-    3. Return formatted response
+    The agent decides DIAG vs CHANGE based on its system prompt guardrails.
 
     Args:
         ctx: Shared context.
         agent: MerlyaAgent instance.
         user_input: User input text.
-        route_result: Optional routing result.
 
     Returns:
         HandlerResponse with the result.
@@ -81,10 +73,8 @@ async def handle_message(
     logger.debug(f"🤖 Processing with Agent: {user_input[:50]}...")
 
     try:
-        # Process with agent
-        result = await agent.run(user_input, router_result=route_result)
+        result = await agent.run(user_input)
 
-        # Format response
         return HandlerResponse(
             message=result.message,
             actions_taken=result.actions_taken or None,
@@ -101,92 +91,3 @@ async def handle_message(
             suggestions=[ctx.t("suggestions.try_again")],
             handled_by="error",
         )
-
-
-# =============================================================================
-# Backward Compatibility - Legacy exports
-# =============================================================================
-
-# For code that still imports these, provide minimal stubs
-# TODO: Remove after migration is complete
-
-
-async def handle_user_message(
-    ctx: SharedContext,
-    agent: object,
-    user_input: str,
-    route_result: object,
-) -> HandlerResponse:
-    """
-    Legacy handler - DEPRECATED.
-
-    This function is kept for backward compatibility.
-    New code should use handle_message() with Orchestrator.
-    """
-    logger.warning("⚠️ handle_user_message is deprecated, use handle_message instead")
-
-    # Try to use agent if available in context
-    agent_inst = getattr(ctx, "_agent", None)
-    if agent_inst:
-        return await handle_message(ctx, agent_inst, user_input, route_result)
-
-    # Fallback to old agent if available
-    if hasattr(agent, "run"):
-        response: AgentResponse = await agent.run(user_input, route_result)
-        return HandlerResponse(
-            message=response.message,
-            actions_taken=response.actions_taken,
-            suggestions=response.suggestions,
-            handled_by="agent_legacy",
-        )
-
-    return HandlerResponse(
-        message="No handler available",
-        handled_by="error",
-    )
-
-
-async def handle_fast_path(
-    ctx: SharedContext,
-    _route_result: object,
-) -> HandlerResponse:
-    """
-    Legacy fast path handler - DEPRECATED.
-
-    Fast path operations are now handled by slash commands.
-    This stub returns an error directing to slash commands.
-    """
-    logger.warning("⚠️ handle_fast_path is deprecated, use slash commands instead")
-    return HandlerResponse(
-        message=ctx.t("errors.use_slash_commands"),
-        handled_by="deprecated",
-        suggestions=["/hosts", "/vars", "/help"],
-    )
-
-
-async def handle_skill_flow(
-    _ctx: SharedContext,
-    _user_input: str,
-    _route_result: object,
-) -> HandlerResponse | None:
-    """
-    Legacy skill handler - DEPRECATED.
-
-    Skills have been removed. Returns None to indicate no skill handled the request.
-    """
-    logger.debug("⚠️ handle_skill_flow is deprecated, skills removed")
-    return None
-
-
-async def handle_agent(
-    ctx: SharedContext,
-    agent: object,
-    user_input: str,
-    route_result: object,
-) -> HandlerResponse:
-    """
-    Legacy agent handler - DEPRECATED.
-
-    Redirects to handle_user_message for backward compatibility.
-    """
-    return await handle_user_message(ctx, agent, user_input, route_result)

@@ -60,3 +60,11 @@ rag/.wrangler/
 # Project specific
 .claude/
 ARCHITECTURE_DECISIONS.md
+
+# BMAD (AI Agent framework)
+*BMAD*
+*bmad*
+bmad-agent/
+.bmad-core/
+bmad_core/
+.bmadrc

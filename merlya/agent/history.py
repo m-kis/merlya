@@ -1,10 +1,11 @@
 """
 Merlya Agent - History processors for conversation management.
 
-Simplified version that focuses on:
+Focuses on:
 - Tool call/return pairing validation
-- Context window limiting
-- Simple tool call limit (no complex pattern detection)
+- Context window limiting (prevent unbounded context growth)
+
+Loop detection is handled by ToolCallTracker (tracker.py) — not here.
 """
 
 from __future__ import annotations
@@ -20,11 +21,6 @@ from pydantic_ai.messages import (
 )
 
 from merlya.config.constants import HARD_MAX_HISTORY_MESSAGES
-
-# Simple guardrail: max tool calls since last user message
-# This prevents runaway loops without complex pattern detection
-# NOTE: Must be LOWER than DEFAULT_TOOL_CALLS_LIMIT (50) to fire before failsafe
-MAX_TOOL_CALLS_SINCE_LAST_USER = 25
 
 # Type alias for history processor function
 HistoryProcessor = Callable[[list[ModelMessage]], list[ModelMessage]]
@@ -201,27 +197,6 @@ def get_user_message_count(messages: list[ModelMessage]) -> int:
     return count
 
 
-def _find_last_user_message_index(messages: list[ModelMessage]) -> int:
-    """Find the index of the last user message."""
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, UserPromptPart):
-                    return i
-    return 0
-
-
-def _count_tool_calls_since_user(messages: list[ModelMessage]) -> int:
-    """Count tool calls since the last user message."""
-    last_user_idx = _find_last_user_message_index(messages)
-    count = 0
-    for msg in messages[last_user_idx:]:
-        if isinstance(msg, ModelResponse):
-            count += sum(1 for part in msg.parts if isinstance(part, ToolCallPart))
-    return count
-
-
 def create_history_processor(max_messages: int = 20) -> HistoryProcessor:
     """
     Create a simple history processor.
@@ -235,50 +210,5 @@ def create_history_processor(max_messages: int = 20) -> HistoryProcessor:
 
     def processor(messages: list[ModelMessage]) -> list[ModelMessage]:
         return limit_history(messages, max_messages=max_messages)
-
-    return processor
-
-
-def create_loop_aware_history_processor(
-    max_messages: int = 20,
-    enable_loop_detection: bool = True,
-) -> HistoryProcessor:
-    """
-    Create a history processor with simple tool call limiting.
-
-    This processor:
-    1. Checks if too many tool calls happened since last user message
-    2. If so, injects a message asking the agent to change approach
-    3. Truncates history while preserving tool call/return pairs
-
-    Args:
-        max_messages: Maximum messages to retain.
-        enable_loop_detection: Whether to check for excessive tool calls.
-
-    Returns:
-        A callable history processor for PydanticAI agent.
-    """
-
-    def processor(messages: list[ModelMessage]) -> list[ModelMessage]:
-        result = messages
-
-        if enable_loop_detection:
-            tool_calls = _count_tool_calls_since_user(messages)
-            if tool_calls >= MAX_TOOL_CALLS_SINCE_LAST_USER:
-                logger.warning(f"Too many tool calls ({tool_calls}), injecting guidance")
-                breaker = ModelRequest(
-                    parts=[
-                        UserPromptPart(
-                            content=(
-                                f"You have made {tool_calls} tool calls without completing the task. "
-                                "STOP and reassess: What is the core issue? "
-                                "Try a completely different approach or report what you've learned."
-                            )
-                        )
-                    ]
-                )
-                result = [*messages, breaker]
-
-        return limit_history(result, max_messages=max_messages)
 
     return processor

@@ -7,7 +7,7 @@ Caches approval decisions for semantic signatures.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal, cast
 
 from loguru import logger
@@ -15,7 +15,7 @@ from loguru import logger
 from merlya.fingerprint.models import ApprovalRecord, SemanticSignature
 
 
-class ApprovalScope(str, Enum):
+class ApprovalScope(StrEnum):
     """Scope for approval decisions."""
 
     ONCE = "once"  # This execution only

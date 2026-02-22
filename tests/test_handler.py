@@ -11,10 +11,6 @@ import pytest
 from merlya.router.classifier import AgentMode, RouterResult
 from merlya.router.handler import (
     HandlerResponse,
-    handle_agent,
-    handle_fast_path,
-    handle_skill_flow,
-    handle_user_message,
 )
 
 # ==============================================================================
@@ -91,9 +87,9 @@ def mock_context() -> MagicMock:
         ]
     )
     ctx.variables.get = AsyncMock(
-        side_effect=lambda name: MockVariable(name=name, value="test_value")
-        if name == "ENV"
-        else None
+        side_effect=lambda name: (
+            MockVariable(name=name, value="test_value") if name == "ENV" else None
+        )
     )
 
     # Mock UI
@@ -185,131 +181,6 @@ class TestHandlerResponse:
 # ==============================================================================
 # Fast Path Tests (DEPRECATED - now handled by slash commands)
 # ==============================================================================
-
-
-class TestHandleFastPath:
-    """Tests for handle_fast_path function (DEPRECATED).
-
-    NOTE: Fast path operations are now handled by slash commands.
-    handle_fast_path() returns a deprecation message directing users
-    to use slash commands instead.
-    """
-
-    @pytest.mark.asyncio
-    async def test_deprecated_returns_message(self, mock_context: MagicMock) -> None:
-        """Test that fast path returns deprecation message."""
-        route_result = RouterResult(
-            mode=AgentMode.QUERY,
-            tools=["core"],
-            fast_path="host.list",
-            fast_path_args={},
-        )
-
-        response = await handle_fast_path(mock_context, route_result)
-
-        assert response.handled_by == "deprecated"
-        # Should suggest using slash commands
-        assert "/hosts" in response.suggestions or "/vars" in response.suggestions
-
-
-# NOTE: Old fast path tests removed - fast path is now handled by slash commands.
-# handle_fast_path() is deprecated and returns a deprecation message.
-
-
-# ==============================================================================
-# Skill Flow Tests (DEPRECATED - skills have been removed)
-# ==============================================================================
-
-
-class TestHandleSkillFlow:
-    """Tests for handle_skill_flow function (DEPRECATED).
-
-    NOTE: Skills have been removed from Merlya.
-    handle_skill_flow() always returns None.
-    """
-
-    @pytest.mark.asyncio
-    async def test_skill_flow_returns_none(self, mock_context: MagicMock) -> None:
-        """Test skill flow always returns None (skills removed)."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-            skill_match="any_skill",
-            skill_confidence=0.95,
-        )
-
-        response = await handle_skill_flow(mock_context, "test input", route_result)
-
-        # Skills are removed, always returns None
-        assert response is None
-
-
-# ==============================================================================
-# Handle Agent Tests (DEPRECATED - now uses Orchestrator)
-# ==============================================================================
-
-
-class TestHandleAgent:
-    """Tests for handle_agent function (DEPRECATED).
-
-    NOTE: handle_agent is deprecated and redirects to handle_user_message.
-    The new architecture uses Orchestrator for LLM processing.
-    """
-
-    @pytest.mark.asyncio
-    async def test_agent_legacy_calls_run(
-        self, mock_context: MagicMock, mock_agent: MagicMock
-    ) -> None:
-        """Test legacy agent handler falls back to agent.run()."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core", "system"],
-        )
-
-        response = await handle_agent(mock_context, mock_agent, "test input", route_result)
-
-        # Legacy handler calls agent.run if agent has run method
-        assert response.handled_by == "agent_legacy"
-        mock_agent.run.assert_called_once()
-
-
-# ==============================================================================
-# Handle User Message Integration Tests (DEPRECATED)
-# ==============================================================================
-
-
-class TestHandleUserMessage:
-    """Tests for handle_user_message (DEPRECATED).
-
-    NOTE: handle_user_message is deprecated. The new architecture is:
-    - "/" commands → Slash command dispatch (fast-path)
-    - Free text → Orchestrator (LLM) via handle_message()
-
-    These tests verify the legacy fallback behavior for backward compatibility.
-    """
-
-    @pytest.mark.asyncio
-    async def test_legacy_agent_fallback(
-        self, mock_context: MagicMock, mock_agent: MagicMock
-    ) -> None:
-        """Test legacy handler falls back to agent.run()."""
-        route_result = RouterResult(
-            mode=AgentMode.DIAGNOSTIC,
-            tools=["core"],
-        )
-
-        response = await handle_user_message(
-            mock_context, mock_agent, "check server status", route_result
-        )
-
-        # Legacy handler calls agent.run if agent has run method
-        assert response.handled_by == "agent_legacy"
-        mock_agent.run.assert_called_once()
-
-
-# NOTE: Tests for skill routing, target prompts, etc. have been removed
-# as they tested deprecated functionality. Skills have been removed and
-# the new architecture uses Orchestrator for all LLM processing.
 
 
 # ==============================================================================

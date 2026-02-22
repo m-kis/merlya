@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-from mcp.client.session_group import ClientSessionGroup
+from mcp.client.session_group import ClientSessionGroup, SseServerParameters
 from mcp.client.stdio import StdioServerParameters, get_default_environment
 
 from merlya.config.models import MCPServerConfig
@@ -329,11 +329,15 @@ class MCPManager:
                 with suppress_mcp_capability_warnings():
                     server_config = self.config.mcp.servers[name]
                     if server_config.is_remote and server_config.url:
-                        from mcp.client.sse import sse_client
-                        headers = self._resolve_env(server_config.headers) if server_config.headers else None
-                        # sse_client returns an async context manager that yields (read_stream, write_stream)
-                        # connect_to_server expects either StdioServerParameters or an async context manager yielding streams
-                        await group.connect_to_server(sse_client(server_config.url, headers=headers))
+                        headers = (
+                            self._resolve_env(server_config.headers)
+                            if server_config.headers
+                            else None
+                        )
+                        await group.connect_to_server(
+                            SseServerParameters(url=server_config.url, headers=headers)
+                        )
+
                     else:
                         params = self._build_server_params(name, server_config)
                         await group.connect_to_server(params)
