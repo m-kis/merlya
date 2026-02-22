@@ -9,6 +9,13 @@ Supported formats:
   - "user@host"           → explicit username + IP/hostname
   - "1.2.3.4"             → direct IP, no username
   - anything else         → rejected, defaults to local
+
+Disambiguation — @name vs @secret:
+  - "@name" as a *target argument* → inventory lookup (this module)
+  - "@name" inside a *command string* → secret keyring reference (resolve_secrets)
+  Both namespaces are separate; collisions are detected and logged.
+  Convention: secret names SHOULD use ":" namespacing (e.g. "@db:password"),
+  which host names cannot contain, making the distinction unambiguous.
 """
 
 from __future__ import annotations
@@ -63,7 +70,32 @@ async def resolve_target(
                 "Defaulting to local."
             )
             return "local", None
+
         name = target[1:]
+
+        # Disambiguation: "@name:with:colons" looks like a secret reference.
+        # Secret names use ":" namespacing (e.g. "@db:password", "@elevation:host:pass").
+        # Host names cannot contain ":", so this is an unambiguous signal.
+        if ":" in name:
+            logger.error(
+                f"Target '{target}' looks like a secret reference (contains ':'), "
+                "not an inventory host. "
+                "Use '@hostname' (no colons) for hosts. "
+                "Secret references belong inside command strings, not as targets."
+            )
+            return "local", None
+
+        # Collision detection: warn if the same name exists as both a host and a secret.
+        # Inventory takes precedence when used as a target argument.
+        if context.secrets.has(name):
+            logger.warning(
+                f"Name collision: '@{name}' is both an inventory host target and a "
+                f"known secret. Resolving as inventory host. "
+                f"To reference the secret, use '@{name}' inside a command string, "
+                f"not as a target. Consider renaming the secret with a namespace "
+                f"(e.g. 'service:{name}') to avoid ambiguity."
+            )
+
         entry = await context.hosts.get_by_name(name) or await context.hosts.get_by_hostname(name)
         if entry:
             logger.debug(f"Resolved @{name} → hostname={entry.hostname}, username={entry.username}")
