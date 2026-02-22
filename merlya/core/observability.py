@@ -34,8 +34,8 @@ from loguru import logger
 # PostHog project API key — write-only, safe to embed in OSS.
 # Replace with your actual key after creating a PostHog project:
 #   https://posthog.com  (or EU: https://eu.posthog.com)
-_POSTHOG_API_KEY = "phc_YOUR_PROJECT_API_KEY_HERE"
-_POSTHOG_HOST = "https://eu.posthog.com"  # EU server (GDPR)
+_POSTHOG_API_KEY = "phc_JUT7Uk7kq0kL6DIDEBn5FUpUqjkckhPeE4umngsU8ou"
+_POSTHOG_HOST = "https://us.i.posthog.com"
 
 # Module state
 _telemetry_initialized = False
