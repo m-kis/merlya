@@ -10,7 +10,7 @@ import re
 import socket
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -42,7 +42,7 @@ NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 TAG_PATTERN = re.compile(r"^[a-zA-Z0-9_:-]{1,50}$")
 
 
-class ElevationMethod(str, Enum):
+class ElevationMethod(StrEnum):
     """Elevation method for privilege escalation.
 
     Configured explicitly per host - no auto-detection.
@@ -56,7 +56,7 @@ class ElevationMethod(str, Enum):
     SU = "su"  # su (requires root password)
 
 
-class SSHMode(str, Enum):
+class SSHMode(StrEnum):
     """SSH access mode for the host."""
 
     READ_ONLY = "read_only"  # Only read operations allowed

@@ -11,13 +11,13 @@ Defines structured output types for the parser service:
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003 - Required at runtime for Pydantic
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Incident severity levels."""
 
     CRITICAL = "critical"
@@ -27,7 +27,7 @@ class Severity(str, Enum):
     INFO = "info"
 
 
-class Environment(str, Enum):
+class Environment(StrEnum):
     """Environment types."""
 
     PRODUCTION = "production"
@@ -37,7 +37,7 @@ class Environment(str, Enum):
     UNKNOWN = "unknown"
 
 
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     """Log level types."""
 
     ERROR = "error"

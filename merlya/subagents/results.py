@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from loguru import logger
@@ -24,7 +24,7 @@ SUBAGENT_ID_LENGTH = 8
 EXECUTION_ID_LENGTH = 8
 
 
-class SubagentStatus(str, Enum):
+class SubagentStatus(StrEnum):
     """Status of a subagent execution."""
 
     PENDING = "pending"

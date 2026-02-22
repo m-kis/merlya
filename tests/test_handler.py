@@ -11,7 +11,6 @@ import pytest
 from merlya.router.classifier import AgentMode, RouterResult
 from merlya.router.handler import (
     HandlerResponse,
-    handle_message,
 )
 
 # ==============================================================================

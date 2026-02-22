@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -45,7 +45,7 @@ _DOAS_PREFIX_RE = re.compile(
 )
 
 
-class CenterMode(str, Enum):
+class CenterMode(StrEnum):
     """Operation mode for centers."""
 
     DIAGNOSTIC = "diagnostic"  # Read-only investigation

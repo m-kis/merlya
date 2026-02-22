@@ -7,13 +7,13 @@ Defines capability structures for hosts and tools.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
-class ToolName(str, Enum):
+class ToolName(StrEnum):
     """Supported infrastructure tools."""
 
     ANSIBLE = "ansible"

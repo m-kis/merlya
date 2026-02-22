@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from merlya.core.context import SharedContext
 
 
-class ProviderType(str, Enum):
+class ProviderType(StrEnum):
     """Supported cloud provider types."""
 
     AWS = "aws"
@@ -31,7 +31,7 @@ class ProviderType(str, Enum):
     VMWARE = "vmware"
 
 
-class InstanceStatus(str, Enum):
+class InstanceStatus(StrEnum):
     """Instance status values."""
 
     PENDING = "pending"

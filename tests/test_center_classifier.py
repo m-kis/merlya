@@ -2,11 +2,11 @@
 
 import pytest
 
-from merlya.security import CenterMode
 from merlya.router.center_classifier import (
     CenterClassification,
     CenterClassifier,
 )
+from merlya.security import CenterMode
 
 
 @pytest.fixture

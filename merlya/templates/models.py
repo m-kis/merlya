@@ -9,7 +9,7 @@ v0.9.0: Initial implementation.
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path  # noqa: TC003 - Required at runtime for Pydantic
 from typing import Any
 
@@ -17,7 +17,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 
-class TemplateCategory(str, Enum):
+class TemplateCategory(StrEnum):
     """Categories for organizing templates."""
 
     COMPUTE = "compute"
@@ -30,7 +30,7 @@ class TemplateCategory(str, Enum):
     OTHER = "other"
 
 
-class VariableType(str, Enum):
+class VariableType(StrEnum):
     """Types for template variables."""
 
     STRING = "string"
@@ -41,7 +41,7 @@ class VariableType(str, Enum):
     SECRET = "secret"
 
 
-class IaCBackend(str, Enum):
+class IaCBackend(StrEnum):
     """Supported IaC backends for templates."""
 
     TERRAFORM = "terraform"

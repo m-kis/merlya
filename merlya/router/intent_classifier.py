@@ -11,12 +11,12 @@ For advanced classification, use the CenterClassifier with mini-LLM
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 from loguru import logger
 
 
-class AgentMode(str, Enum):
+class AgentMode(StrEnum):
     """Agent operation modes."""
 
     DIAGNOSTIC = "diagnostic"  # Read-only investigation

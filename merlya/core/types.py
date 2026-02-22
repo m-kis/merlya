@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class AgentMode(str, Enum):
+class AgentMode(StrEnum):
     """Agent operating mode."""
 
     DIAGNOSTIC = "diagnostic"
@@ -19,7 +19,7 @@ class AgentMode(str, Enum):
     CHAT = "chat"
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     """Health check status."""
 
     OK = "ok"
@@ -28,7 +28,7 @@ class CheckStatus(str, Enum):
     DISABLED = "disabled"
 
 
-class HostStatus(str, Enum):
+class HostStatus(StrEnum):
     """Host health status."""
 
     HEALTHY = "healthy"
@@ -37,7 +37,7 @@ class HostStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
-class Priority(str, Enum):
+class Priority(StrEnum):
     """Alert priority levels."""
 
     P0 = "P0"  # Critical
@@ -46,7 +46,7 @@ class Priority(str, Enum):
     P3 = "P3"  # Low
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """Command risk level for confirmation."""
 
     LOW = "low"
