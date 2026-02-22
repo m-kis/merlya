@@ -235,7 +235,9 @@ async def resolve_host_references(
                 # Runtime resolution may still succeed in the execution context.
                 if _looks_like_fqdn(ref_name):
                     replacement = ref_name
-                    logger.debug(f"🌐 Keeping @{ref_name} as hostname (DNS pre-check unavailable)")
+                    logger.debug(
+                        f"🌐 Keeping @{ref_name} as hostname (DNS pre-check unavailable)"
+                    )
 
         # 3. Ask user for IP
         if replacement is None and ui:
