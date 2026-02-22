@@ -95,10 +95,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clean dist
+        run: rm -rf dist/
+
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
+
 
       - name: Create GitHub Release
         env:
@@ -123,6 +127,9 @@ jobs:
       name: pypi
       url: https://pypi.org/p/merlya
     steps:
+      - name: Clean dist
+        run: rm -rf dist/
+
       - uses: actions/download-artifact@v4
         with:
           name: dist
