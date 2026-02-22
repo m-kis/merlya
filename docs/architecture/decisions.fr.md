@@ -391,7 +391,7 @@ class ElevationMethod(str, Enum):
 
 ## ADR-013 : Architecture des Centres DIAGNOSTIC/CHANGE
 
-**Statut :** Accepté (v0.8.0)
+**Statut :** Remplacé par ADR-018 (v0.8.3)
 
 **Contexte :** Merlya avait besoin d'une séparation claire entre l'investigation en lecture seule et les opérations modifiant l'état pour améliorer la sécurité et fournir des garde-fous appropriés pour chaque type d'opération.
 
@@ -512,7 +512,7 @@ class AbstractPipeline(ABC):
 
 ## ADR-015 : CenterClassifier pour le Routage d'Intent
 
-**Statut :** Accepté (v0.8.0)
+**Statut :** Remplacé par ADR-018 (v0.8.3)
 
 **Contexte :** Les requêtes utilisateur doivent être routées vers le centre approprié (DIAGNOSTIC ou CHANGE) en fonction de l'intent.
 
@@ -650,6 +650,83 @@ class CapabilityDetector:
 
 ---
 
+## ADR-018 : Architecture Agent basée sur les Spécialistes (v0.8.3)
+
+**Statut :** Accepté (v0.8.3)
+
+**Contexte :** L'architecture des Centres (v0.8.0) n'était jamais appelée depuis le REPL. Le `MerlyaAgent` principal avait tous les outils enregistrés à plat, et l'Orchestrateur était du code mort. Cela créait 3 mécanismes de prévention de boucles contradictoires (seuils 25/50/500) et une surface d'outils surchargée.
+
+**Décision :** Remplacer les Centres et l'Orchestrateur par un seul `MerlyaAgent` qui délègue aux agents spécialistes :
+
+| Spécialiste | Objectif | HITL |
+| --- | --- | --- |
+| DiagnosticSpecialist | Investigation lecture seule | Non |
+| ExecutionSpecialist | Mutations (write/restart) | Oui |
+| SecuritySpecialist | Audits de sécurité | Non |
+| QuerySpecialist | Requêtes inventaire | Non |
+
+**Architecture :**
+
+```text
+MerlyaAgent (prompt système : quand déléguer)
+├── delegate_diagnostic(target, task) → DiagnosticSpecialist (blocked_commands appliqués)
+├── delegate_execution(target, task)  → ExecutionSpecialist (HITL obligatoire)
+├── delegate_security(target, task)   → SecuritySpecialist
+├── delegate_query(question)          → QuerySpecialist
+└── list_hosts / get_host / ask_user  (outils directs)
+```
+
+**Raison :**
+
+- Séparation claire des responsabilités sans code mort
+- Garde-fous appliqués au niveau du spécialiste (HITL, commandes bloquées)
+- Mécanisme de routage unique (prompt système de l'agent)
+- Limites rationalisées : `DEFAULT_TOOL_RETRIES=3`, `DEFAULT_TOOL_CALLS_LIMIT=50`
+
+**Conséquences :**
+
+- Code des Centres supprimé (~500 lignes)
+- Code mort de l'Orchestrateur supprimé
+- Débogage simplifié : point d'entrée unique
+- Spécialistes testables indépendamment
+
+---
+
+## ADR-019 : Observabilité In-Memory (v0.8.3)
+
+**Statut :** Accepté (v0.8.3)
+
+**Contexte :** Aucune visibilité sur les métriques opérationnelles durant une session.
+
+**Décision :** Ajouter `merlya/core/metrics.py` (métriques in-memory) et `merlya/core/resilience.py` (circuit breaker + retry), avec une commande slash `/metrics`.
+
+**Métriques suivies :**
+
+- `merlya_commands_total` — exécutions par type/statut
+- `merlya_ssh_duration_seconds` — histogramme de latence SSH
+- `merlya_llm_calls_total` — appels API LLM par fournisseur/modèle
+- `merlya_pipeline_executions` — exécutions de pipelines par type/statut
+- `merlya_retry_attempts_total` — comptage des retries pour l'observabilité
+
+**Patterns de résilience :**
+
+- `@circuit_breaker(failure_threshold=5, recovery_timeout=60s)` — s'ouvre après 5 échecs consécutifs, récupère après 60s
+- `@retry(max_attempts=3, exponential_base=2.0)` — retries avec backoff exponentiel
+
+**Choix de conception :**
+
+- Pas de backend externe (Prometheus/Grafana reporté à V2.0)
+- Thread-safe avec `threading.Lock` (fonctionne en sync et async)
+- L'histogramme utilise une fenêtre glissante (max 10k observations) pour éviter les fuites mémoire
+
+**Conséquences :**
+
+- Visibilité opérationnelle via la commande `/metrics`
+- Les circuit breakers préviennent les défaillances en cascade sur SSH/LLM
+- Zéro dépendance externe
+
+---
+
 ## Considérations Futures
 
 ### En Évaluation
@@ -663,6 +740,11 @@ class CapabilityDetector:
 - ~~Intégration Kubernetes~~ → KubernetesPipeline
 - ~~Intégration Terraform~~ → TerraformPipeline
 - ~~Intégration Ansible~~ → AnsiblePipeline
+
+### Implémenté (v0.8.3)
+
+- ~~Architecture Centres~~ → Architecture Spécialistes (ADR-018)
+- ~~Pas d'observabilité~~ → Métriques in-memory + commande `/metrics` (ADR-019)
 
 ### Rejeté
 

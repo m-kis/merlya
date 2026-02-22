@@ -467,6 +467,25 @@ Test SSH connectivity (diagnostics).
 
 ## System
 
+### `/metrics`
+
+Show in-memory metrics summary for the current session.
+
+```bash
+/metrics
+```
+
+Displays:
+
+- **Commands:** total execution count by type and status
+- **SSH Operations:** count, average duration, maximum duration
+- **LLM Calls:** count by provider and model
+- **Pipeline Executions:** count by type and status
+
+Metrics are tracked automatically as you work; they reset when the session ends.
+
+Alias: `/m`
+
 ### `/health`
 Show system health status.
 

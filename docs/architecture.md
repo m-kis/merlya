@@ -5,15 +5,20 @@
 ```
 merlya/
 ├── agent/          # PydanticAI agent and tools
+│   ├── orchestrator/     # Specialist delegation tools + runner
+│   │   ├── specialist_tools.py  # delegate_diagnostic/execution/security/query
+│   │   ├── specialist_runner.py
+│   │   └── models.py    # DelegationResult
+│   ├── specialists/      # Specialist agent implementations
+│   │   ├── diagnostic.py # DiagnosticSpecialist (read-only, blocks dangerous commands)
+│   │   ├── execution.py  # ExecutionSpecialist (HITL required for mutations)
+│   │   ├── security.py   # SecuritySpecialist
+│   │   └── query.py      # QuerySpecialist
+│   └── ... (other agent files)
 ├── capabilities/   # Capability detection for hosts/tools
 │   ├── detector.py # CapabilityDetector (SSH, Ansible, TF, K8s)
 │   ├── models.py   # HostCapabilities, ToolCapability
 │   └── cache.py    # TTL cache for capabilities
-├── centers/        # Operational centers (DIAGNOSTIC/CHANGE)
-│   ├── base.py     # AbstractCenter, CenterMode, RiskLevel
-│   ├── diagnostic.py # DiagnosticCenter (read-only)
-│   ├── change.py   # ChangeCenter (pipelines + HITL)
-│   └── registry.py # CenterRegistry
 ├── cli/            # CLI entry point
 ├── commands/       # Slash command system
 ├── config/         # Configuration management + policies
@@ -21,7 +26,10 @@ merlya/
 │   ├── models.py   # Pydantic config models
 │   ├── tiers.py    # Tier configuration (deprecated, kept for compatibility)
 │   └── policies.py # Policy management (guardrails)
-├── core/           # Shared context and logging
+├── core/           # Shared context, logging, and observability
+│   ├── context.py  # SharedContext (central dependency container)
+│   ├── metrics.py  # In-memory metrics (Counter, Histogram, Gauge, MetricsRegistry)
+│   └── resilience.py # Circuit breaker and retry decorators
 ├── health/         # Startup health checks
 ├── hosts/          # Host resolution
 ├── i18n/           # Internationalization (EN, FR)
@@ -35,7 +43,7 @@ merlya/
 ├── persistence/    # SQLite database layer
 │   ├── database.py # Async DB with migration locking
 │   └── repositories.py # Typed repositories
-├── pipelines/      # IaC pipelines for CHANGE center
+├── pipelines/      # IaC pipelines for execution operations
 │   ├── base.py     # AbstractPipeline, PipelineStage
 │   ├── ansible.py  # AnsiblePipeline (ad-hoc/inline/repo)
 │   ├── terraform.py # TerraformPipeline
@@ -69,7 +77,6 @@ merlya/
 ├── repl/           # Interactive console
 ├── router/         # Intent classification
 │   ├── classifier.py # IntentRouter with fast/heavy path
-│   ├── center_classifier.py # CenterClassifier (DIAG/CHANGE)
 │   └── handler.py  # Request handler (fast path, skills, agent)
 ├── secrets/        # Keyring integration
 ├── security/       # Permission management + audit
@@ -96,17 +103,25 @@ merlya/
 
 ### 1. Agent System (`merlya/agent/`)
 
-The agent is built on **PydanticAI** with a ReAct loop for reasoning and action.
+The agent is built on **PydanticAI** with a ReAct loop for reasoning and action. As of v0.8.3, `MerlyaAgent` delegates work to specialist agents via delegation tools registered in `merlya/agent/orchestrator/specialist_tools.py`.
 
 **Key Classes:**
-- `MerlyaAgent` - Main agent wrapper with conversation management
+- `MerlyaAgent` - Main agent wrapper with conversation management and specialist delegation
 - `AgentDependencies` - Dependency injection for tools
 - `AgentResponse` - Structured response (message, actions, suggestions)
+
+**Delegation Tools:**
+- `delegate_diagnostic(target, task)` - Read-only investigation (DiagnosticSpecialist)
+- `delegate_execution(target, task)` - Mutations with mandatory HITL (ExecutionSpecialist)
+- `delegate_security(target, task)` - Security audits (SecuritySpecialist)
+- `delegate_query(question)` - Inventory queries (QuerySpecialist)
+- `list_hosts` / `get_host` / `ask_user` - Direct tools
 
 **Features:**
 - 120s timeout to prevent LLM hangs
 - Conversation persistence to SQLite
 - Tool registration via decorators
+- Rationalized limits: `DEFAULT_TOOL_RETRIES=3`, `DEFAULT_TOOL_CALLS_LIMIT=50`
 
 ### 2. SmartExtractor (`merlya/parser/smart_extractor.py`)
 
@@ -120,73 +135,30 @@ Extracts host references from natural language using a hybrid LLM + regex approa
 
 **Output:**
 
-The SmartExtractor injects detected hosts into the agent context, enabling the orchestrator to work with the correct targets without explicit host specification in prompts.
+The SmartExtractor injects detected hosts into the agent context, enabling the agent to work with the correct targets without explicit host specification in prompts.
 
-### 3. Center Classifier (`merlya/router/center_classifier.py`)
+### 3. Specialist Agents (`merlya/agent/specialists/`)
 
-Routes user requests to either DIAGNOSTIC or CHANGE center based on intent classification.
+`MerlyaAgent` delegates to four specialist agents based on the nature of the request. The agent selects which specialist to invoke via its system prompt — no separate classifier step is required.
 
-**CenterMode:**
-```python
-class CenterMode(str, Enum):
-    DIAGNOSTIC = "diagnostic"  # Read-only investigation
-    CHANGE = "change"          # Controlled mutations
-```
+| Specialist | Purpose | HITL Required |
+|-----------|---------|---------------|
+| `DiagnosticSpecialist` | Read-only investigation; blocks dangerous commands | No |
+| `ExecutionSpecialist` | Mutations (write, restart, deploy) | Yes (mandatory) |
+| `SecuritySpecialist` | Security audits | No |
+| `QuerySpecialist` | Inventory queries | No |
 
-**Classification Strategy:**
+**DiagnosticSpecialist guardrails:**
+- Enforces `blocked_commands` list (rm, kill, restart, reboot, shutdown, apt/yum install, chmod, chown, systemctl start/stop)
+- All SSH operations are read-only (df, free, ps, cat, tail, grep, kubectl get/describe/logs)
 
-1. **Pattern Matching** - Fast regex-based classification for clear intents
-2. **LLM Fallback** - Uses fast model for ambiguous cases
-3. **Clarification** - Asks user if confidence < 0.7
+**ExecutionSpecialist guardrails:**
+- HITL approval is mandatory before any mutation is applied
+- Integrates with the Pipeline system (Ansible / Terraform / Kubernetes / Bash)
 
-**DIAGNOSTIC Patterns:** check, status, show, list, logs, analyze, why, what
-**CHANGE Patterns:** restart, fix, deploy, install, update, scale, delete
+### 4. Pipelines (`merlya/pipelines/`)
 
-### 4. Operational Centers (`merlya/centers/`)
-
-Two operational centers handle all user requests:
-
-#### DiagnosticCenter (Read-Only)
-
-Executes investigation tasks without modifying system state.
-
-**Allowed Tools:**
-- SSH read commands (df, free, ps, cat, tail, grep)
-- kubectl get/describe/logs
-- Log analysis
-- Security audits
-
-**Blocked Commands:**
-
-- rm, kill, restart, reboot, shutdown
-- apt/yum install, pip install
-- chmod, chown, systemctl start/stop
-
-**Evidence Collection:**
-```python
-class Evidence(BaseModel):
-    timestamp: datetime
-    host: str
-    command: str
-    output: str
-    exit_code: int
-    duration_ms: int
-```
-
-#### ChangeCenter (Controlled Mutations)
-
-All changes go through a Pipeline with mandatory HITL (Human-In-The-Loop) approval.
-
-**Pipeline Selection:**
-
-1. Ansible - if installed and task matches (deploy, configure, service)
-2. Terraform - if installed and task matches (infrastructure, cloud)
-3. Kubernetes - if kubectl available and task matches (pod, deployment, scale)
-4. Bash - fallback with strict HITL
-
-### 5. Pipelines (`merlya/pipelines/`)
-
-All CHANGE operations go through a mandatory pipeline:
+All execution (mutation) operations go through a mandatory pipeline:
 
 ```text
 Plan → Diff/Dry-run → Summary → HITL → Apply → Post-check → Rollback
@@ -213,7 +185,7 @@ class PipelineStage(str, Enum):
 | KubernetesPipeline | Container orchestration              | `kubectl diff`     |
 | BashPipeline       | Fallback for simple commands         | Preview only       |
 
-### 6. SSH Pool (`merlya/ssh/`)
+### 5. SSH Pool (`merlya/ssh/`)
 
 Manages SSH connections with pooling and authentication.
 
@@ -229,7 +201,7 @@ Manages SSH connections with pooling and authentication.
 - `SSHAuthManager` - Authentication handling
 - `SSHResult` - Command result (stdout, stderr, exit_code)
 
-### 7. Shared Context (`merlya/core/context.py`)
+### 6. Shared Context (`merlya/core/context.py`)
 
 Central dependency container passed to all components.
 
@@ -246,6 +218,31 @@ SharedContext
 ├── router          # IntentRouter
 └── ssh_pool        # SSHPool (lazy)
 ```
+
+### 7. Observability (`merlya/core/`)
+
+#### Metrics (`merlya/core/metrics.py`)
+
+Thread-safe in-memory metrics registry. Accessible via the `/metrics` slash command.
+
+**Metric Types:** `Counter`, `Histogram`, `Gauge`, `MetricsRegistry`
+
+**Tracked metrics:**
+- `merlya_commands_total` - Executions by type/status
+- `merlya_ssh_duration_seconds` - SSH latency histogram
+- `merlya_llm_calls_total` - LLM API calls by provider/model
+- `merlya_pipeline_executions` - Pipeline runs by type/status
+- `merlya_retry_attempts_total` - Retry counts
+
+**Design:** Thread-safe via `threading.Lock`. Histogram uses a sliding window (max 10k observations) to prevent memory growth. No external backend — Prometheus/Grafana deferred to V2.0.
+
+#### Resilience (`merlya/core/resilience.py`)
+
+Circuit breaker and retry decorators for SSH, LLM, and pipeline operations.
+
+**Patterns:**
+- `@circuit_breaker(failure_threshold=5, recovery_timeout=60)` — Opens after 5 consecutive failures; auto-recovers after 60s
+- `@retry(max_attempts=3, exponential_base=2.0)` — Exponential backoff retries
 
 ### 8. Persistence (`merlya/persistence/`)
 
@@ -423,31 +420,33 @@ Messages persisted to SQLite for session resumption:
                      │
                      ▼
          ┌─────────────────────────────────┐
-         │ IntentRouter.route()            │
-         │ • Mode: DIAGNOSTIC              │
-         │ • Tools: [system]               │
-         │ • Entities: {hosts: ["web01"]}  │
-         │ • Jump host: "bastion"          │
-         └───────────┬─────────────────────┘
-                     │
-                     ▼
-         ┌─────────────────────────────────┐
-         │ Resolve host names              │
-         │ web01 → resolve from inventory  │
+         │ handle_message()                │
+         │ • SmartExtractor detects hosts  │
+         │ • Injects host context          │
          └───────────┬─────────────────────┘
                      │
                      ▼
          ┌─────────────────────────────────┐
          │ MerlyaAgent.run()               │
-         │ • Inject router_result          │
-         │ • Execute ReAct loop            │
-         │   → get_host("web01")           │
-         │   → ssh_execute(                │
-         │       host="web01",             │
-         │       command="df -h",          │
-         │       via="bastion"             │
+         │ • ReAct loop reasons over task  │
+         │ • Selects specialist via system │
+         │   prompt guidance               │
+         │   → delegate_diagnostic(        │
+         │       target="web01",           │
+         │       task="check disk usage"   │
          │     )                           │
-         │ • Persist conversation          │
+         └───────────┬─────────────────────┘
+                     │
+                     ▼
+         ┌─────────────────────────────────┐
+         │ DiagnosticSpecialist runs       │
+         │ • Enforces blocked_commands     │
+         │ • ssh_execute(                  │
+         │     host="web01",               │
+         │     command="df -h",            │
+         │     via="bastion"               │
+         │   )                             │
+         │ • Returns DelegationResult      │
          └───────────┬─────────────────────┘
                      │
                      ▼
@@ -487,7 +486,7 @@ merlya
   │   └─ Load pattern matcher
   │
   ├─ Create agent
-  │   └─ Register all tools
+  │   └─ Register all tools (including delegation tools)
   │
   └─ Start REPL loop
 ```
@@ -517,9 +516,8 @@ async def ssh_execute(
 ```
 
 The agent decides which tools to call based on:
-1. Router-suggested tools
-2. System prompt guidance
-3. LLM reasoning
+1. System prompt guidance (which specialist to delegate to)
+2. LLM reasoning
 
 ### 14. Provisioners System (`merlya/provisioners/`)
 

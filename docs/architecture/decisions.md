@@ -4,7 +4,7 @@ Key architectural decisions and their rationale.
 
 ## Overview
 
-Merlya is built on a modular architecture designed for extensibility, security, and ease of use. Version 0.8.0 introduces the **DIAGNOSTIC/CHANGE center architecture** for intelligent routing between read-only investigation and controlled mutations.
+Merlya is built on a modular architecture designed for extensibility, security, and ease of use. Version 0.8.3 introduces the **specialist agent architecture** where a single `MerlyaAgent` delegates to focused specialist agents for different operation types.
 
 ```mermaid
 graph TB
@@ -12,14 +12,19 @@ graph TB
         CLI[CLI / REPL]
     end
 
-    subgraph "Routing Layer"
+    subgraph "Parsing Layer"
         SmartExtractor[SmartExtractor<br/>Host Detection]
-        CenterClassifier[CenterClassifier<br/>DIAGNOSTIC/CHANGE]
     end
 
-    subgraph "Operational Centers"
-        DiagCenter[DIAGNOSTIC Center<br/>Read-Only]
-        ChangeCenter[CHANGE Center<br/>Mutations + HITL]
+    subgraph "Agent"
+        MerlyaAgent[MerlyaAgent<br/>Orchestration + Delegation]
+    end
+
+    subgraph "Specialist Agents"
+        DiagSpec[DiagnosticSpecialist<br/>Read-Only]
+        ExecSpec[ExecutionSpecialist<br/>Mutations + HITL]
+        SecSpec[SecuritySpecialist<br/>Security Audits]
+        QuerySpec[QuerySpecialist<br/>Inventory Queries]
     end
 
     subgraph "Pipelines"
@@ -40,18 +45,20 @@ graph TB
     end
 
     CLI --> SmartExtractor
-    SmartExtractor --> CenterClassifier
-    CenterClassifier -->|read-only| DiagCenter
-    CenterClassifier -->|mutations| ChangeCenter
-    DiagCenter --> SSH
-    ChangeCenter --> Capabilities
+    SmartExtractor --> MerlyaAgent
+    MerlyaAgent -->|delegate_diagnostic| DiagSpec
+    MerlyaAgent -->|delegate_execution| ExecSpec
+    MerlyaAgent -->|delegate_security| SecSpec
+    MerlyaAgent -->|delegate_query| QuerySpec
+    DiagSpec --> SSH
+    ExecSpec --> Capabilities
     Capabilities --> Ansible
     Capabilities --> Terraform
     Capabilities --> K8s
     Capabilities --> Bash
-    CenterClassifier --> Fast
-    DiagCenter --> Brain
-    ChangeCenter --> Brain
+    MerlyaAgent --> Brain
+    DiagSpec --> Brain
+    ExecSpec --> Brain
 ```
 
 ---
@@ -245,9 +252,9 @@ class MyTool(MerlyaTool):
 ```python
 from loguru import logger
 
-logger.info("✅ Operation completed successfully")
-logger.warning("⚠️ Connection retry required")
-logger.error("❌ SSH connection failed: {error}", error=e)
+logger.info("Operation completed successfully")
+logger.warning("Connection retry required")
+logger.error("SSH connection failed: {error}", error=e)
 ```
 
 **Log Levels:**
@@ -255,9 +262,6 @@ logger.error("❌ SSH connection failed: {error}", error=e)
 - INFO: Key operations and results
 - WARNING: Recoverable issues
 - ERROR: Failures requiring attention
-
-**Emoji Convention:**
-All log messages use emojis for visual clarity (see CONTRIBUTING.md).
 
 ---
 
@@ -391,7 +395,7 @@ class ElevationMethod(str, Enum):
 
 ## ADR-013: DIAGNOSTIC/CHANGE Center Architecture
 
-**Status:** Accepted (v0.8.0)
+**Status:** Superseded by ADR-018 (v0.8.3)
 
 **Context:** Merlya needed a clear separation between read-only investigation and state-changing operations to improve safety and provide appropriate guardrails for each type of operation.
 
@@ -402,48 +406,7 @@ class ElevationMethod(str, Enum):
 | **DIAGNOSTIC** | Read-only investigation | LOW | No |
 | **CHANGE** | Controlled mutations | HIGH | Yes |
 
-**DIAGNOSTIC Center:**
-```python
-class DiagnosticCenter(AbstractCenter):
-    """Read-only investigation center."""
-
-    allowed_tools = [
-        "ssh_execute",  # With read-only validation
-        "kubectl_get", "kubectl_describe", "kubectl_logs",
-        "read_file", "list_directory",
-        "check_disk_usage", "check_memory",
-        "analyze_logs", "tail_log",
-    ]
-
-    blocked_commands = [
-        "rm ", "mv ", "chmod", "chown",
-        "systemctl start/stop/restart",
-        "kill", "reboot", "shutdown",
-    ]
-```
-
-**CHANGE Center:**
-```python
-class ChangeCenter(AbstractCenter):
-    """Controlled mutation center via Pipelines."""
-
-    async def execute(self, deps: CenterDeps) -> CenterResult:
-        # 1. Detect capabilities
-        caps = await self.capabilities.detect_all(deps.target)
-
-        # 2. Select appropriate pipeline
-        pipeline = self._select_pipeline(caps, deps.task)
-
-        # 3. Execute pipeline (includes mandatory HITL)
-        return await pipeline.execute()
-```
-
-**Consequences:**
-
-- Clear separation of concerns
-- Appropriate security for each operation type
-- All mutations go through Pipeline + HITL
-- Read-only operations are fast (no approval needed)
+**Note:** The Centers architecture was replaced in v0.8.3 by the specialist agent model (ADR-018). The `DiagnosticCenter` and `ChangeCenter` classes no longer exist; their responsibilities are now handled by `DiagnosticSpecialist` and `ExecutionSpecialist` respectively.
 
 ---
 
@@ -512,7 +475,7 @@ class AbstractPipeline(ABC):
 
 ## ADR-015: CenterClassifier for Intent Routing
 
-**Status:** Accepted (v0.8.0)
+**Status:** Superseded by ADR-018 (v0.8.3)
 
 **Context:** User requests need to be routed to the appropriate center (DIAGNOSTIC or CHANGE) based on intent.
 
@@ -522,41 +485,7 @@ class AbstractPipeline(ABC):
 2. **LLM Fallback**: Fast model for ambiguous cases
 3. **Clarification**: User prompt when confidence < 0.7
 
-**Implementation:**
-```python
-class CenterClassifier:
-    CONFIDENCE_THRESHOLD = 0.7
-
-    async def classify(self, user_input: str) -> CenterClassification:
-        # 1. Try pattern-based classification
-        result = self._classify_patterns(user_input)
-
-        # 2. LLM fallback if low confidence
-        if result.confidence < self.CONFIDENCE_THRESHOLD:
-            llm_result = await self._classify_with_llm(user_input)
-            if llm_result.confidence > result.confidence:
-                result = llm_result
-
-        # 3. Request clarification if still ambiguous
-        if result.confidence < self.CONFIDENCE_THRESHOLD:
-            result.clarification_needed = True
-
-        return result
-```
-
-**Pattern Examples:**
-
-| Pattern | Center |
-|---------|--------|
-| `check status`, `show logs`, `what is` | DIAGNOSTIC |
-| `restart`, `deploy`, `fix`, `update` | CHANGE |
-
-**Consequences:**
-
-- Fast routing for clear intents (< 1ms)
-- Accurate classification via LLM fallback
-- Safe default to DIAGNOSTIC when unsure
-- User clarification prevents misrouting
+**Note:** The `CenterClassifier` was removed in v0.8.3. Routing is now handled by the `MerlyaAgent` system prompt, which instructs the agent directly on which specialist to delegate to based on request semantics. See ADR-018.
 
 ---
 
@@ -590,10 +519,10 @@ model:
 
 **Usage in Code:**
 ```python
-# CenterClassifier uses fast model
+# Fast model for quick decisions
 model = ctx.config.get_model("fast")
 
-# Orchestrator uses brain model
+# Brain model for reasoning and agent loops
 model = ctx.config.get_model("brain")
 ```
 
@@ -609,7 +538,7 @@ model = ctx.config.get_model("brain")
 
 **Status:** Accepted (v0.8.0)
 
-**Context:** The CHANGE center needs to know which tools are available on target hosts to select the appropriate pipeline.
+**Context:** The execution path needs to know which tools are available on target hosts to select the appropriate pipeline.
 
 **Decision:** Implement capability detection module (`merlya/capabilities/`):
 
@@ -650,6 +579,76 @@ class CapabilityDetector:
 
 ---
 
+## ADR-018: Specialist-Based Agent Architecture (v0.8.3)
+
+**Status:** Accepted (v0.8.3)
+
+**Context:** The v0.8.0 Centers architecture (`DiagnosticCenter`, `ChangeCenter`) was never called from the REPL. The main `MerlyaAgent` had all tools registered flat, and the Orchestrator agent was dead code. This created 3 conflicting loop-prevention mechanisms (thresholds 25/50/500) and a bloated tool surface.
+
+**Decision:** Replace Centers and Orchestrator with a single `MerlyaAgent` that delegates to specialist agents:
+
+| Specialist | Purpose | HITL |
+|-----------|---------|------|
+| DiagnosticSpecialist | Read-only investigation | No |
+| ExecutionSpecialist | Mutations (write/restart) | Yes |
+| SecuritySpecialist | Security audits | No |
+| QuerySpecialist | Inventory queries | No |
+
+**Architecture:**
+```text
+MerlyaAgent (system prompt: when to delegate)
+├── delegate_diagnostic(target, task) → DiagnosticSpecialist (blocked_commands enforced)
+├── delegate_execution(target, task)  → ExecutionSpecialist (HITL mandatory)
+├── delegate_security(target, task)   → SecuritySpecialist
+├── delegate_query(question)          → QuerySpecialist
+└── list_hosts / get_host / ask_user  (direct tools)
+```
+
+**Rationale:**
+- Clear separation of concerns without dead code paths
+- Guards enforced at the specialist level (HITL, blocked commands)
+- Single routing mechanism (agent system prompt)
+- Rationalized limits: `DEFAULT_TOOL_RETRIES=3`, `DEFAULT_TOOL_CALLS_LIMIT=50`
+
+**Consequences:**
+- Centers code removed (~500 lines)
+- Orchestrator dead code removed
+- Simpler debugging: single agent entry point
+- Specialists remain independently testable
+
+---
+
+## ADR-019: In-Memory Observability (v0.8.3)
+
+**Status:** Accepted (v0.8.3)
+
+**Context:** No visibility into operational metrics during a session.
+
+**Decision:** Add `merlya/core/metrics.py` (in-memory metrics) and `merlya/core/resilience.py` (circuit breaker + retry), with a `/metrics` slash command.
+
+**Metrics tracked:**
+- `merlya_commands_total` — executions by type/status
+- `merlya_ssh_duration_seconds` — SSH latency histogram
+- `merlya_llm_calls_total` — LLM API calls by provider/model
+- `merlya_pipeline_executions` — pipeline runs by type/status
+- `merlya_retry_attempts_total` — retry counts for observability
+
+**Resilience patterns:**
+- `@circuit_breaker(failure_threshold=5, recovery_timeout=60s)` — opens after 5 consecutive failures, auto-recovers after 60s
+- `@retry(max_attempts=3, exponential_base=2.0)` — exponential backoff retries
+
+**Design choices:**
+- No external backend (Prometheus/Grafana deferred to V2.0)
+- Thread-safe with `threading.Lock` (works sync and async)
+- Histogram uses sliding window (max 10k observations) to prevent memory leak
+
+**Consequences:**
+- Operational visibility via `/metrics` command
+- Circuit breakers prevent cascading failures on SSH/LLM
+- Zero external dependencies
+
+---
+
 ## Future Considerations
 
 ### Under Evaluation
@@ -658,11 +657,13 @@ class CapabilityDetector:
 - **Knowledge Base** - Three-tier knowledge system (general/validated/observed)
 - **ElevationManager Refactor** - Simplified explicit elevation (no auto-detection)
 
-### Implemented (v0.8.0)
+### Implemented (v0.8.3)
 
 - ~~Kubernetes integration~~ → KubernetesPipeline
 - ~~Terraform integration~~ → TerraformPipeline
 - ~~Ansible integration~~ → AnsiblePipeline
+- ~~Centers architecture~~ → Specialist agent model (ADR-018)
+- ~~No metrics visibility~~ → In-memory observability (ADR-019)
 
 ### Rejected
 
