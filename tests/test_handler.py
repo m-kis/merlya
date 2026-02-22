@@ -87,9 +87,9 @@ def mock_context() -> MagicMock:
         ]
     )
     ctx.variables.get = AsyncMock(
-        side_effect=lambda name: MockVariable(name=name, value="test_value")
-        if name == "ENV"
-        else None
+        side_effect=lambda name: (
+            MockVariable(name=name, value="test_value") if name == "ENV" else None
+        )
     )
 
     # Mock UI

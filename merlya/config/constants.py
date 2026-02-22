@@ -32,12 +32,12 @@ DEFAULT_LIST_LIMIT = 10  # Default limit for list operations
 MAX_LIST_LIMIT = 100  # Maximum allowed list limit
 
 # Agent Limits
-DEFAULT_MAX_HISTORY_MESSAGES = 50   # Reasonable conversation history
+DEFAULT_MAX_HISTORY_MESSAGES = 50  # Reasonable conversation history
 DIAGNOSTIC_MAX_HISTORY_MESSAGES = 80
-DEFAULT_REQUEST_LIMIT = 100         # Per-run request ceiling
-DEFAULT_TOOL_CALLS_LIMIT = 50       # Aligned with ToolCallTracker.MAX_TOTAL_CALLS_SESSION
+DEFAULT_REQUEST_LIMIT = 100  # Per-run request ceiling
+DEFAULT_TOOL_CALLS_LIMIT = 50  # Aligned with ToolCallTracker.MAX_TOTAL_CALLS_SESSION
 MIN_RESPONSE_LENGTH_WITH_ACTIONS = 20  # Minimum response length when actions taken
-HARD_MAX_HISTORY_MESSAGES = 200     # Absolute maximum to prevent JSON unbounded growth
+HARD_MAX_HISTORY_MESSAGES = 200  # Absolute maximum to prevent JSON unbounded growth
 
 # Mode-specific tool call limits
 TOOL_CALLS_LIMIT_DIAGNOSTIC = 50
