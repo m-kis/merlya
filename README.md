@@ -1,3 +1,13 @@
+> ## ⚠️ Projet archivé — non maintenu
+>
+> **Merlya n'est plus activement développé** (dernière version : `v0.8.5`, février 2026).
+>
+> **Pourquoi ?** La montée en puissance rapide des agents CLI génériques — **Claude Code**, Codex CLI, Gemini CLI et consorts — a largement absorbé la proposition de valeur de Merlya. Portés par les grands laboratoires d'IA, ces outils couvrent désormais l'essentiel de l'expérience « assistant CLI en langage naturel » avec des moyens sans commune mesure avec ceux d'un projet indépendant. Maintenir un concurrent sur ce terrain n'est plus pertinent **pour le moment**.
+>
+> Le code reste consultable, réutilisable et installable (`pip install merlya`) sous licence MIT + Commons Clause, **à des fins d'archive uniquement** : aucune nouvelle fonctionnalité, correction de bug ni mise à jour de sécurité n'est prévue. Comme l'outil manipule SSH, des secrets et de l'élévation de privilèges, évaluez ce risque avant tout usage en production.
+>
+> Merci à toutes celles et ceux qui ont testé et soutenu le projet. 🙏
+
 <p align="center">
   <img src="https://merlya.m-kis.fr/assets/logo.png" alt="Merlya Logo" width="120">
 </p>
@@ -17,6 +27,8 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/status-archived-lightgrey" alt="Status: Archived">
+  <img src="https://img.shields.io/badge/maintenance-no%20longer%20maintained-red" alt="Unmaintained">
   <img src="https://img.shields.io/badge/code%20style-ruff-000000" alt="Ruff">
   <img src="https://img.shields.io/badge/type%20checked-mypy-blue" alt="mypy">
 </p>

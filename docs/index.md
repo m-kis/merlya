@@ -4,6 +4,14 @@
 
 # Merlya
 
+!!! warning "Project archived — no longer maintained"
+
+    **Merlya is no longer actively developed** (last release: `v0.8.5`, February 2026).
+
+    **Why?** The rapid rise of general-purpose CLI agents — **Claude Code**, Codex CLI, Gemini CLI and others — has largely absorbed Merlya's value proposition. Backed by the major AI labs, these tools now cover most of the "natural-language CLI assistant" experience with resources far beyond those of an independent project. Maintaining a competitor on that ground no longer makes sense **for now**.
+
+    The code remains browsable, reusable and installable (`pip install merlya`) under the MIT + Commons Clause license, **for archival purposes only**: no new features, bug fixes or security updates are planned. Since the tool handles SSH, secrets and privilege elevation, assess that risk before any production use.
+
 **AI-powered infrastructure assistant for DevOps and SRE teams.**
 
 Merlya is a command-line tool that combines the power of LLMs with practical infrastructure management capabilities:
