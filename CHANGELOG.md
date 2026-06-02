@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Archived
+
+- **Project archived on 2026-06-02 — no longer maintained.** Last released version: `v0.8.5`.
+  The rise of general-purpose CLI agents (Claude Code, Codex CLI, Gemini CLI, …) has largely
+  absorbed Merlya's value proposition, making continued maintenance no longer relevant for now.
+  No new features, bug fixes or security updates are planned. The code remains available under
+  MIT + Commons Clause for archival and reuse.
+
 ## [0.8.3] - 2026-02-20
 
 ### Added
